@@ -4,7 +4,7 @@
 
 ![CI](https://github.com/cristian/gadget-ng/actions/workflows/ci.yml/badge.svg)
 ![Rust](https://img.shields.io/badge/rust-1.74%2B-orange?logo=rust)
-![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 ---
 
@@ -138,4 +138,4 @@ GitHub Actions: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ## Licencia
 
-Dual-licensed bajo [MIT](LICENSE) o Apache-2.0, a tu elección.
+Este repositorio se distribuye bajo la [GNU General Public License v3.0](LICENSE) (GPL-3.0). El texto completo está en el fichero `LICENSE` en la raíz del proyecto.
