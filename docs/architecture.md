@@ -45,6 +45,7 @@ El TOML `[output] snapshot_format` usa el enum `SnapshotFormat` en [`config.rs`]
 | bincode | `gadget-ng-io/bincode` | `particles.bin` | `Vec<ParticleRecord>` serializado; sin dependencias C. |
 | HDF5 | `gadget-ng-io/hdf5` | `snapshot.hdf5` | Grupos `Header` / `PartType1` al estilo GADGET-4 (`Coordinates`, `Velocities`, `Masses`, `ParticleIDs`); dataset `Provenance/gadget_ng_json_utf8`. Requiere `libhdf5` en el sistema. |
 | msgpack | `gadget-ng-io/msgpack` | `particles.msgpack` | `Vec<ParticleRecord>` en MessagePack (`rmp-serde`); puro Rust, compacto, interoperable con Python/R/Julia (`msgpack.unpackb`). |
+| netcdf | `gadget-ng-io/netcdf` | `snapshot.nc` | NetCDF-4 (HDF5 backend). Variables SoA: `x/y/z`, `vx/vy/vz`, `mass`, `id`; atributos globales `time`, `redshift`, `box_size`. Interoperable con `xarray`, `netCDF4`, Julia `NCDatasets`. Requiere `libnetcdf-dev` en el sistema. |
 
 **Escritura:** `gadget_ng_io::writer_for` + trait `SnapshotWriter`, o `write_snapshot_formatted` (usado por el CLI).
 

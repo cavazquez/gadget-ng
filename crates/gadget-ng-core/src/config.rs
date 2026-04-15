@@ -112,6 +112,10 @@ pub enum SnapshotFormat {
     /// MessagePack binario compacto (puro Rust, interoperable con Python/R/Julia).
     /// Requiere feature `msgpack` en `gadget-ng-io`.
     Msgpack,
+    /// NetCDF-4 (HDF5 backend). Estándar en astrofísica/geofísica;
+    /// legible directamente con `xarray`, `netCDF4`, Julia `NCDatasets`.
+    /// Requiere feature `netcdf` en `gadget-ng-io` y `libnetcdf` en el sistema.
+    Netcdf,
 }
 
 fn default_snapshot_format() -> SnapshotFormat {

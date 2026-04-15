@@ -5,6 +5,8 @@ mod error;
 mod hdf5_writer;
 #[cfg(feature = "msgpack")]
 mod msgpack_writer;
+#[cfg(feature = "netcdf")]
+mod netcdf_writer;
 mod provenance;
 mod reader;
 mod snapshot;
@@ -43,6 +45,12 @@ pub fn writer_for(
         SnapshotFormat::Msgpack => Err(SnapshotError::UnsupportedFormat(
             "msgpack (recompilar con --features msgpack)".into(),
         )),
+        #[cfg(feature = "netcdf")]
+        SnapshotFormat::Netcdf => Ok(Box::new(netcdf_writer::NetcdfWriter)),
+        #[cfg(not(feature = "netcdf"))]
+        SnapshotFormat::Netcdf => Err(SnapshotError::UnsupportedFormat(
+            "netcdf (recompilar con --features netcdf)".into(),
+        )),
     }
 }
 
@@ -69,6 +77,12 @@ pub fn reader_for(
         #[cfg(not(feature = "msgpack"))]
         SnapshotFormat::Msgpack => Err(SnapshotError::UnsupportedFormat(
             "msgpack (recompilar con --features msgpack)".into(),
+        )),
+        #[cfg(feature = "netcdf")]
+        SnapshotFormat::Netcdf => Ok(Box::new(netcdf_writer::NetcdfReader)),
+        #[cfg(not(feature = "netcdf"))]
+        SnapshotFormat::Netcdf => Err(SnapshotError::UnsupportedFormat(
+            "netcdf (recompilar con --features netcdf)".into(),
         )),
     }
 }

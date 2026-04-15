@@ -12,6 +12,8 @@ pub enum SnapshotError {
     Bincode(String),
     #[error("msgpack: {0}")]
     Msgpack(String),
+    #[error("netcdf: {0}")]
+    Netcdf(String),
     #[cfg(feature = "hdf5")]
     #[error("HDF5: {0}")]
     Hdf5(#[from] hdf5::Error),
