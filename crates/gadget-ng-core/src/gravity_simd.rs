@@ -145,7 +145,7 @@ mod tests {
     use super::*;
     use crate::config::{
         GravitySection, IcKind, InitialConditionsSection, OutputSection, PerformanceSection,
-        RunConfig, SimulationSection, SolverKind,
+        RunConfig, SimulationSection,
     };
     use crate::gravity::DirectGravity;
     use crate::ic::{build_particles, IcError};
@@ -165,11 +165,9 @@ mod tests {
                 kind: IcKind::Lattice,
             },
             output: OutputSection::default(),
-            gravity: GravitySection {
-                solver: SolverKind::Direct,
-                theta: 0.5,
-            },
+            gravity: GravitySection::default(),
             performance: PerformanceSection::default(),
+            timestep: crate::config::TimestepSection::default(),
         }
     }
 

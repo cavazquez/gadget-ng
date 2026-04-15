@@ -3,6 +3,8 @@ mod bincode_writer;
 mod error;
 #[cfg(feature = "hdf5")]
 mod hdf5_writer;
+#[cfg(feature = "msgpack")]
+mod msgpack_writer;
 mod provenance;
 mod reader;
 mod snapshot;
@@ -35,6 +37,12 @@ pub fn writer_for(
         SnapshotFormat::Hdf5 => Err(SnapshotError::UnsupportedFormat(
             "hdf5 (recompilar con --features hdf5)".into(),
         )),
+        #[cfg(feature = "msgpack")]
+        SnapshotFormat::Msgpack => Ok(Box::new(msgpack_writer::MsgpackWriter)),
+        #[cfg(not(feature = "msgpack"))]
+        SnapshotFormat::Msgpack => Err(SnapshotError::UnsupportedFormat(
+            "msgpack (recompilar con --features msgpack)".into(),
+        )),
     }
 }
 
@@ -55,6 +63,12 @@ pub fn reader_for(
         #[cfg(not(feature = "hdf5"))]
         SnapshotFormat::Hdf5 => Err(SnapshotError::UnsupportedFormat(
             "hdf5 (recompilar con --features hdf5)".into(),
+        )),
+        #[cfg(feature = "msgpack")]
+        SnapshotFormat::Msgpack => Ok(Box::new(msgpack_writer::MsgpackReader)),
+        #[cfg(not(feature = "msgpack"))]
+        SnapshotFormat::Msgpack => Err(SnapshotError::UnsupportedFormat(
+            "msgpack (recompilar con --features msgpack)".into(),
         )),
     }
 }

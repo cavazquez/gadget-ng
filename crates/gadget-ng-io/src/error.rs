@@ -10,6 +10,8 @@ pub enum SnapshotError {
     UnsupportedFormat(String),
     #[error("bincode: {0}")]
     Bincode(String),
+    #[error("msgpack: {0}")]
+    Msgpack(String),
     #[cfg(feature = "hdf5")]
     #[error("HDF5: {0}")]
     Hdf5(#[from] hdf5::Error),

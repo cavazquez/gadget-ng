@@ -16,7 +16,9 @@ bincode = ["gadget-ng-io/bincode"]
 hdf5 = ["gadget-ng-io/hdf5"]
 gpu = ["dep:gadget-ng-gpu", "gadget-ng-core/gpu"]
 simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "dep:rayon"]
-full = ["mpi", "bincode", "hdf5", "gpu", "simd"]
+pm-rayon = ["gadget-ng-pm/rayon", "gadget-ng-treepm/rayon"]
+msgpack = ["gadget-ng-io/msgpack"]
+full = ["mpi", "bincode", "hdf5", "gpu", "simd", "pm-rayon", "msgpack"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core", features = [] }

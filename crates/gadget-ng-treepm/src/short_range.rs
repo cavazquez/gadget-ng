@@ -23,6 +23,9 @@
 use gadget_ng_core::Vec3;
 use gadget_ng_tree::{Octree, NO_CHILD};
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 /// Parámetros del kernel de corto alcance, agrupados para reducir el número
 /// de argumentos en las funciones internas.
 pub struct ShortRangeParams<'a> {
@@ -78,22 +81,33 @@ pub fn short_range_accels(
 
     let tree = Octree::build(params.positions, params.masses);
 
-    for (k, &gi) in global_indices.iter().enumerate() {
-        let xi = params.positions[gi];
-        let mut a = Vec3::zero();
-        walk_short_range(&tree, xi, gi, params, &mut a);
-        out[k] = a;
+    // Con la feature `rayon`, el bucle externo sobre partículas activas se paraleliza.
+    // El árbol es de solo lectura (`&Octree`) y `ShortRangeParams` también,
+    // por lo que ambos son `Sync` y pueden compartirse entre hilos sin problemas.
+    #[cfg(not(feature = "rayon"))]
+    {
+        for (k, &gi) in global_indices.iter().enumerate() {
+            let xi = params.positions[gi];
+            let mut a = Vec3::zero();
+            walk_short_range(&tree, xi, gi, params, &mut a);
+            out[k] = a;
+        }
+    }
+    #[cfg(feature = "rayon")]
+    {
+        out.par_iter_mut()
+            .zip(global_indices.par_iter())
+            .for_each(|(a, &gi)| {
+                let xi = params.positions[gi];
+                let mut acc = Vec3::zero();
+                walk_short_range(&tree, xi, gi, params, &mut acc);
+                *a = acc;
+            });
     }
 }
 
 /// Recorre el octree y acumula la fuerza de corto alcance sobre `xi` (partícula `skip`).
-fn walk_short_range(
-    tree: &Octree,
-    xi: Vec3,
-    skip: usize,
-    p: &ShortRangeParams<'_>,
-    a: &mut Vec3,
-) {
+fn walk_short_range(tree: &Octree, xi: Vec3, skip: usize, p: &ShortRangeParams<'_>, a: &mut Vec3) {
     let mut stack: Vec<u32> = Vec::with_capacity(64);
     stack.push(tree.root);
 

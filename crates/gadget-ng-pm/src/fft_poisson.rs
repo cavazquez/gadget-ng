@@ -18,6 +18,9 @@
 
 use rustfft::{num_complex::Complex, FftPlanner};
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 /// Resuelve la ecuación de Poisson y devuelve las tres componentes de la fuerza
 /// en el grid como arrays planos de longitud `nm³`.
 ///
@@ -94,38 +97,47 @@ fn solve_forces_impl(
     let mut fy_c = vec![Complex::new(0.0, 0.0); nm3];
     let mut fz_c = vec![Complex::new(0.0, 0.0); nm3];
 
-    for iz in 0..nm {
-        let kz = dk * freq_index(iz, nm) as f64;
-        for iy in 0..nm {
+    // Bucle k-space: calcular Φ̂(k) y las tres componentes F̂_α.
+    // Con la feature `rayon`, se paraleliza el índice plano (independiente por celda).
+    #[cfg(not(feature = "rayon"))]
+    let kspace_iter = (0..nm3).into_iter();
+    #[cfg(feature = "rayon")]
+    let kspace_iter = (0..nm3).into_par_iter();
+
+    let results: Vec<(Complex<f64>, Complex<f64>, Complex<f64>)> = kspace_iter
+        .map(|flat| {
+            let iz = flat / nm2;
+            let iy = (flat / nm) % nm;
+            let ix = flat % nm;
+            let kx = dk * freq_index(ix, nm) as f64;
             let ky = dk * freq_index(iy, nm) as f64;
-            for ix in 0..nm {
-                let kx = dk * freq_index(ix, nm) as f64;
-
-                let k2 = kx * kx + ky * ky + kz * kz;
-                let flat = iz * nm2 + iy * nm + ix;
-
-                if k2 < 1e-30 {
-                    // Modo de fondo (DC): sin fuerza global.
-                    // fx_c, fy_c, fz_c ya son 0 por inicialización.
-                    continue;
-                }
-
-                // Φ̂(k) = -4πG · ρ̂(k) / k²
-                // Con filtro Gaussiano de largo alcance: × exp(-k²·r_s²/2)
-                let filter = if let Some(r_s) = r_split {
-                    (-0.5 * k2 * r_s * r_s).exp()
-                } else {
-                    1.0
-                };
-                let phi_k = rho_c[flat] * (-four_pi_g * filter / k2);
-
-                // F̂_α = -i · k_α · Φ̂(k)
-                // -i · k_α multiplicado por complejo c: -i·kα·(a+ib) = (kα·b) - i·(kα·a)
-                fx_c[flat] = Complex::new(kx * phi_k.im, -kx * phi_k.re);
-                fy_c[flat] = Complex::new(ky * phi_k.im, -ky * phi_k.re);
-                fz_c[flat] = Complex::new(kz * phi_k.im, -kz * phi_k.re);
+            let kz = dk * freq_index(iz, nm) as f64;
+            let k2 = kx * kx + ky * ky + kz * kz;
+            if k2 < 1e-30 {
+                return (
+                    Complex::new(0.0, 0.0),
+                    Complex::new(0.0, 0.0),
+                    Complex::new(0.0, 0.0),
+                );
             }
-        }
+            let filter = if let Some(r_s) = r_split {
+                (-0.5 * k2 * r_s * r_s).exp()
+            } else {
+                1.0
+            };
+            let phi_k = rho_c[flat] * (-four_pi_g * filter / k2);
+            (
+                Complex::new(kx * phi_k.im, -kx * phi_k.re),
+                Complex::new(ky * phi_k.im, -ky * phi_k.re),
+                Complex::new(kz * phi_k.im, -kz * phi_k.re),
+            )
+        })
+        .collect();
+
+    for (flat, (fx_v, fy_v, fz_v)) in results.into_iter().enumerate() {
+        fx_c[flat] = fx_v;
+        fy_c[flat] = fy_v;
+        fz_c[flat] = fz_v;
     }
 
     // ── IFFT 3D de cada componente de fuerza ─────────────────────────────────
@@ -262,9 +274,7 @@ mod tests {
     fn fft3d_roundtrip() {
         let nm = 4usize;
         let nm3 = nm * nm * nm;
-        let original: Vec<Complex<f64>> = (0..nm3)
-            .map(|i| Complex::new(i as f64, 0.0))
-            .collect();
+        let original: Vec<Complex<f64>> = (0..nm3).map(|i| Complex::new(i as f64, 0.0)).collect();
         let mut data = original.clone();
         let mut planner = FftPlanner::new();
         let fft_fwd = planner.plan_fft_forward(nm);

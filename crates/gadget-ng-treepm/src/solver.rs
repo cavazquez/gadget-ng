@@ -34,8 +34,8 @@
 //! ```
 
 use gadget_ng_core::{GravitySolver, Vec3};
-use gadget_ng_pm::fft_poisson;
 use gadget_ng_pm::cic;
+use gadget_ng_pm::fft_poisson;
 
 use crate::short_range::{self, ShortRangeParams};
 
@@ -83,10 +83,11 @@ impl GravitySolver for TreePmSolver {
         let density = cic::assign(global_positions, global_masses, self.box_size, nm);
         let [fx_lr, fy_lr, fz_lr] =
             fft_poisson::solve_forces_filtered(&density, g, nm, self.box_size, r_s);
-        let active_pos: Vec<Vec3> =
-            global_indices.iter().map(|&i| global_positions[i]).collect();
-        let acc_lr =
-            cic::interpolate(&fx_lr, &fy_lr, &fz_lr, &active_pos, self.box_size, nm);
+        let active_pos: Vec<Vec3> = global_indices
+            .iter()
+            .map(|&i| global_positions[i])
+            .collect();
+        let acc_lr = cic::interpolate(&fx_lr, &fy_lr, &fz_lr, &active_pos, self.box_size, nm);
 
         // ── 2. Corto alcance: octree con kernel erfc ───────────────────────────
         let sr_params = ShortRangeParams {

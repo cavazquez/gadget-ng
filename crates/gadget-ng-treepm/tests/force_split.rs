@@ -49,7 +49,10 @@ fn treepm_sum_approximates_newton() {
     let ax_treepm = acc_treepm[0].x;
 
     // Misma dirección: la sonda está a +x del centro → fuerza en -x.
-    assert!(ax_direct < 0.0, "DirectGravity ax={ax_direct:.4e} debería ser < 0");
+    assert!(
+        ax_direct < 0.0,
+        "DirectGravity ax={ax_direct:.4e} debería ser < 0"
+    );
     assert!(ax_treepm < 0.0, "TreePM ax={ax_treepm:.4e} debería ser < 0");
 
     // Magnitud: TreePM debe estar dentro de un factor 3 del Newton (tolerancia generosa

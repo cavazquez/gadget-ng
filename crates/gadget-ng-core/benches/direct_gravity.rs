@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use gadget_ng_core::config::{GravitySection, OutputSection, PerformanceSection, SolverKind};
+use gadget_ng_core::config::{OutputSection, PerformanceSection, TimestepSection};
 use gadget_ng_core::{
-    build_particles, DirectGravity, GravitySolver, IcKind, InitialConditionsSection, RunConfig,
-    SimulationSection, Vec3,
+    build_particles, DirectGravity, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, RunConfig, SimulationSection, Vec3,
 };
 
 fn lattice_cfg(n: usize) -> RunConfig {
@@ -20,11 +20,9 @@ fn lattice_cfg(n: usize) -> RunConfig {
             kind: IcKind::Lattice,
         },
         output: OutputSection::default(),
-        gravity: GravitySection {
-            solver: SolverKind::Direct,
-            theta: 0.5,
-        },
+        gravity: GravitySection::default(),
         performance: PerformanceSection::default(),
+        timestep: TimestepSection::default(),
     }
 }
 

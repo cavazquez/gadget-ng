@@ -108,6 +108,7 @@ fn treepm_momentum_conserved() {
     // así que permitimos una tolerancia mayor (1e-4 relativo).
     assert!(
         mag / scale < 1e-3,
-        "|∑ m·a| / max(m·a) = {:.3e} (demasiado grande)", mag / scale
+        "|∑ m·a| / max(m·a) = {:.3e} (demasiado grande)",
+        mag / scale
     );
 }

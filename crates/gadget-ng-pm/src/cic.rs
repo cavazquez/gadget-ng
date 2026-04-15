@@ -11,6 +11,9 @@
 
 use gadget_ng_core::Vec3;
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 /// Asigna masas al grid NM³ usando interpolación CIC periódica.
 ///
 /// - `positions` — posiciones de todas las partículas (coordenadas en `[0, box_size)`).
@@ -127,6 +130,117 @@ pub fn interpolate(
     }
 
     acc
+}
+
+// ── Versiones paralelas (feature `rayon`) ────────────────────────────────────
+
+/// Versión paralela de [`assign`] usando Rayon.
+///
+/// Cada hilo acumula en un array local y al final se suman todos.
+/// Con `N` grande y grids medianos es ~Ncpu× más rápida que la versión serial.
+/// Con la feature `rayon` desactivada, `assign` ya es el punto de entrada.
+#[cfg(feature = "rayon")]
+pub fn assign_rayon(positions: &[Vec3], masses: &[f64], box_size: f64, nm: usize) -> Vec<f64> {
+    assert_eq!(positions.len(), masses.len());
+    let nm2 = nm * nm;
+    let nm3 = nm2 * nm;
+    let inv_cell = nm as f64 / box_size;
+
+    // Cada hilo acumula en un rho local; luego sumamos todos los arrays.
+    let rho = positions
+        .par_iter()
+        .zip(masses.par_iter())
+        .fold(
+            || vec![0.0_f64; nm3],
+            |mut local_rho, (&pos, &m)| {
+                let cx = (pos.x * inv_cell).rem_euclid(nm as f64);
+                let cy = (pos.y * inv_cell).rem_euclid(nm as f64);
+                let cz = (pos.z * inv_cell).rem_euclid(nm as f64);
+                let ix0 = cx.floor() as usize;
+                let iy0 = cy.floor() as usize;
+                let iz0 = cz.floor() as usize;
+                let dx = cx - ix0 as f64;
+                let dy = cy - iy0 as f64;
+                let dz = cz - iz0 as f64;
+                let wx = [1.0 - dx, dx];
+                let wy = [1.0 - dy, dy];
+                let wz = [1.0 - dz, dz];
+                for (diz, &wz_v) in wz.iter().enumerate() {
+                    let iz = (iz0 + diz) % nm;
+                    for (diy, &wy_v) in wy.iter().enumerate() {
+                        let iy = (iy0 + diy) % nm;
+                        for (dix, &wx_v) in wx.iter().enumerate() {
+                            let ix = (ix0 + dix) % nm;
+                            local_rho[iz * nm2 + iy * nm + ix] += m * wx_v * wy_v * wz_v;
+                        }
+                    }
+                }
+                local_rho
+            },
+        )
+        .reduce(
+            || vec![0.0_f64; nm3],
+            |mut a, b| {
+                for (x, y) in a.iter_mut().zip(b.iter()) {
+                    *x += y;
+                }
+                a
+            },
+        );
+    rho
+}
+
+/// Versión paralela de [`interpolate`] usando Rayon.
+///
+/// El cálculo por partícula es independiente (solo lectura del grid),
+/// por lo que el bucle externo se paraleliza directamente.
+#[cfg(feature = "rayon")]
+pub fn interpolate_rayon(
+    fx_grid: &[f64],
+    fy_grid: &[f64],
+    fz_grid: &[f64],
+    positions: &[Vec3],
+    box_size: f64,
+    nm: usize,
+) -> Vec<Vec3> {
+    let nm2 = nm * nm;
+    let inv_cell = nm as f64 / box_size;
+
+    positions
+        .par_iter()
+        .map(|&pos| {
+            let cx = (pos.x * inv_cell).rem_euclid(nm as f64);
+            let cy = (pos.y * inv_cell).rem_euclid(nm as f64);
+            let cz = (pos.z * inv_cell).rem_euclid(nm as f64);
+            let ix0 = cx.floor() as usize;
+            let iy0 = cy.floor() as usize;
+            let iz0 = cz.floor() as usize;
+            let dx = cx - ix0 as f64;
+            let dy = cy - iy0 as f64;
+            let dz = cz - iz0 as f64;
+            let wx = [1.0 - dx, dx];
+            let wy = [1.0 - dy, dy];
+            let wz = [1.0 - dz, dz];
+            let mut ax = 0.0_f64;
+            let mut ay = 0.0_f64;
+            let mut az = 0.0_f64;
+            for (diz, &wz_v) in wz.iter().enumerate() {
+                let iz = (iz0 + diz) % nm;
+                for (diy, &wy_v) in wy.iter().enumerate() {
+                    let iy = (iy0 + diy) % nm;
+                    for (dix, &wx_v) in wx.iter().enumerate() {
+                        let ix = (ix0 + dix) % nm;
+                        let w = wx_v * wy_v * wz_v;
+                        let idx = iz * nm2 + iy * nm + ix;
+                        ax += fx_grid[idx] * w;
+                        ay += fy_grid[idx] * w;
+                        az += fz_grid[idx] * w;
+                    }
+                }
+            }
+            Vec3::new(ax, ay, az)
+        })
+        .collect()
 }
 
 #[cfg(test)]

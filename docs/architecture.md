@@ -29,21 +29,22 @@ Implementación nueva en Rust inspirada **conceptualmente** en GADGET-4 ([sitio 
 | `gadget-ng-tree` | Octree + `BarnesHutGravity` (MAC `s/d` con `d` al COM; no MAC si la evaluación cae dentro de la celda del nodo) |
 | `gadget-ng-pm` | Solver Particle-Mesh periódico 3D: `PmSolver` (CIC, FFT 3D `rustfft`, Poisson en k-space); `solve_forces_filtered` con filtro Gaussiano `exp(-k²·r_s²/2)` para uso desde TreePM |
 | `gadget-ng-treepm` | `TreePmSolver`: PM filtrado (largo alcance, kernel erf) + octree erfc (corto alcance). `ShortRangeParams` agrupa los parámetros del kernel; `erfc_approx` (A&S 7.1.26) |
-| `gadget-ng-integrators` | `leapfrog_kdk_step` (KDK global); `hierarchical_kdk_step` + `HierarchicalState` + `aarseth_bin` (block timesteps al estilo GADGET-4) |
+| `gadget-ng-integrators` | `leapfrog_kdk_step` (KDK global); `hierarchical_kdk_step` + `HierarchicalState` (serializable, `save`/`load` a JSON) + `aarseth_bin` (block timesteps al estilo GADGET-4) |
 | `gadget-ng-parallel` | `ParallelRuntime`: `SerialRuntime`, `MpiRuntime` (`feature = "mpi"`) |
-| `gadget-ng-io` | Snapshots (`SnapshotFormat`: JSONL / bincode / HDF5) + `Provenance` |
+| `gadget-ng-io` | Snapshots (`SnapshotFormat`: JSONL / bincode / HDF5 / **msgpack**) + `Provenance` |
 | `gadget-ng-gpu` | Layout SoA (`GpuParticlesSoA`: 8 arrays planos de f64/usize), `GpuDirectGravity` stub; sin dep sobre `gadget-ng-core` para evitar ciclo |
 | `gadget-ng-cli` | Binario `gadget-ng` (`config`, `stepping`, `snapshot`) |
 
 ### I/O de snapshots
 
-El TOML `[output] snapshot_format` usa el enum `SnapshotFormat` en [`config.rs`](../crates/gadget-ng-core/src/config.rs) (`jsonl` \| `bincode` \| `hdf5`). Siempre se escriben `meta.json` y `provenance.json` (incluyen `time`, `redshift`, `box_size` para cabeceras HDF5).
+El TOML `[output] snapshot_format` usa el enum `SnapshotFormat` en [`config.rs`](../crates/gadget-ng-core/src/config.rs) (`jsonl` \| `bincode` \| `hdf5` \| `msgpack`). Siempre se escriben `meta.json` y `provenance.json` (incluyen `time`, `redshift`, `box_size` para cabeceras HDF5).
 
 | Formato | Feature Cargo | Ficheros extra | Notas |
 |--------|----------------|----------------|--------|
 | JSONL | (default) | `particles.jsonl` | Una línea JSON por partícula; scripts de paridad actuales lo consumen. |
 | bincode | `gadget-ng-io/bincode` | `particles.bin` | `Vec<ParticleRecord>` serializado; sin dependencias C. |
 | HDF5 | `gadget-ng-io/hdf5` | `snapshot.hdf5` | Grupos `Header` / `PartType1` al estilo GADGET-4 (`Coordinates`, `Velocities`, `Masses`, `ParticleIDs`); dataset `Provenance/gadget_ng_json_utf8`. Requiere `libhdf5` en el sistema. |
+| msgpack | `gadget-ng-io/msgpack` | `particles.msgpack` | `Vec<ParticleRecord>` en MessagePack (`rmp-serde`); puro Rust, compacto, interoperable con Python/R/Julia (`msgpack.unpackb`). |
 
 **Escritura:** `gadget_ng_io::writer_for` + trait `SnapshotWriter`, o `write_snapshot_formatted` (usado por el CLI).
 
@@ -115,6 +116,21 @@ cargo bench -p gadget-ng-core --features gadget-ng-core/simd
 cargo bench -p gadget-ng-tree --features gadget-ng-tree/simd
 ```
 
+**Rayon en PM / TreePM** (`feature = "pm-rayon"` en el CLI):
+
+| Función | Estrategia Rayon |
+|---------|-----------------|
+| `cic::assign_rayon` | `par_iter().fold()` con arrays locales por hilo + `reduce()` para sumar |
+| `cic::interpolate_rayon` | `par_iter().map()` — lectura independiente del grid por partícula |
+| `fft_poisson` (k-space) | `(0..nm³).into_par_iter().map().collect()` — cálculo `Φ̂(k)` y `F̂` independiente por celda |
+| `short_range::short_range_accels` (TreePM) | `par_iter_mut().zip().for_each()` — árbol `&Octree` compartido (`Sync`) |
+
+Activar con:
+```toml
+# Cargo.toml del binario:
+features = ["pm-rayon"]
+```
+
 ### Pasos temporales jerárquicos (block timesteps)
 
 La sección `[timestep]` del TOML activa el esquema de block timesteps al estilo GADGET-4:
@@ -150,7 +166,16 @@ evaluación de fuerzas, sin alterar la integración simpléctica de las activas.
 `HierarchicalState` incluye `elapsed: Vec<u64>` para rastrear el tiempo desde el último kick.
 
 `HierarchicalState` mantiene el vector de niveles fuera de `Particle` para no alterar
-`PartialEq`, `Serialize` ni los demás derives del struct de core.
+`PartialEq` y otros derives del struct de core.
+
+**Snapshot de HierarchicalState:** para permitir reanudar simulaciones jerárquicas, `HierarchicalState` implementa `Serialize/Deserialize` (serde) y expone:
+
+```rust
+state.save(dir)           // escribe <dir>/hierarchical_state.json
+HierarchicalState::load(dir) // carga desde <dir>/hierarchical_state.json
+```
+
+El engine guarda automáticamente el estado junto al snapshot final cuando `[timestep] hierarchical = true`.
 
 ### Solver TreePM
 

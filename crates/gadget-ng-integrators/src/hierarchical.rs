@@ -47,16 +47,20 @@
 //! sus posiciones se mejoran de O(Δt²) a O(Δt³) para la evaluación de fuerzas,
 //! sin modificar la integración simpléctica de las partículas activas.
 use gadget_ng_core::{Particle, Vec3};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Estado de bins por partícula. Se mantiene fuera de `Particle` para no contaminar
-/// `PartialEq`, `Serialize` y demás derives del struct de core.
-#[derive(Debug, Clone)]
+/// `PartialEq` y demás derives del struct de core.
+///
+/// Se puede serializar a JSON para persistir el estado entre reinicios de simulación.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HierarchicalState {
     /// Nivel de cada partícula local: `dt_i = dt_base / 2^levels[i]`.
     pub levels: Vec<u32>,
     /// Número de sub-pasos finos transcurridos desde el último kick (START o END).
     /// Se usa para el predictor de posición de partículas inactivas.
-    elapsed: Vec<u64>,
+    pub elapsed: Vec<u64>,
 }
 
 impl HierarchicalState {
@@ -66,6 +70,26 @@ impl HierarchicalState {
             levels: vec![0; n],
             elapsed: vec![0; n],
         }
+    }
+
+    /// Serializa el estado a `<dir>/hierarchical_state.json`.
+    ///
+    /// El directorio debe existir; normalmente es el directorio de un snapshot.
+    /// Guardar el estado permite reanudar una simulación jerárquica sin perder
+    /// la información de bins y contadores de tiempo por partícula.
+    pub fn save(&self, dir: &Path) -> std::io::Result<()> {
+        let path = dir.join("hierarchical_state.json");
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        std::fs::write(path, json)
+    }
+
+    /// Carga el estado desde `<dir>/hierarchical_state.json`.
+    pub fn load(dir: &Path) -> std::io::Result<Self> {
+        let path = dir.join("hierarchical_state.json");
+        let json = std::fs::read_to_string(path)?;
+        serde_json::from_str(&json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
     /// Asigna los bins iniciales en base a las aceleraciones ya calculadas.
@@ -259,6 +283,19 @@ mod tests {
         let hs = HierarchicalState::new(5);
         assert!(hs.levels.iter().all(|&l| l == 0));
         assert!(hs.elapsed.iter().all(|&e| e == 0));
+    }
+
+    #[test]
+    fn hierarchical_state_save_load_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut hs = HierarchicalState::new(4);
+        hs.levels = vec![0, 1, 2, 3];
+        hs.elapsed = vec![0, 3, 7, 1];
+        hs.save(dir.path()).unwrap();
+
+        let hs2 = HierarchicalState::load(dir.path()).unwrap();
+        assert_eq!(hs.levels, hs2.levels);
+        assert_eq!(hs.elapsed, hs2.elapsed);
     }
 
     // ── Tests de stride ───────────────────────────────────────────────────────

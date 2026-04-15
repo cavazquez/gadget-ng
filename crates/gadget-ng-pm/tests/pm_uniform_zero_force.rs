@@ -47,10 +47,7 @@ fn uniform_lattice_gives_zero_acceleration() {
 
     solver.accelerations_for_indices(&positions, &masses, 0.0, 1.0, &all_idx, &mut acc);
 
-    let max_acc = acc
-        .iter()
-        .map(|a| a.dot(*a).sqrt())
-        .fold(0.0_f64, f64::max);
+    let max_acc = acc.iter().map(|a| a.dot(*a).sqrt()).fold(0.0_f64, f64::max);
 
     assert!(
         max_acc < 1e-10,

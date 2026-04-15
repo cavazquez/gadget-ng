@@ -109,6 +109,9 @@ pub enum SnapshotFormat {
     Jsonl,
     Hdf5,
     Bincode,
+    /// MessagePack binario compacto (puro Rust, interoperable con Python/R/Julia).
+    /// Requiere feature `msgpack` en `gadget-ng-io`.
+    Msgpack,
 }
 
 fn default_snapshot_format() -> SnapshotFormat {

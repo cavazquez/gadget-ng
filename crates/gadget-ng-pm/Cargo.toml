@@ -5,9 +5,14 @@ edition.workspace = true
 license.workspace = true
 description = "Particle-Mesh (PM) gravity solver — FFT periódico 3D para gadget-ng"
 
+[features]
+default = []
+rayon = ["dep:rayon"]
+
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
 rustfft = "6.4.1"
+rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

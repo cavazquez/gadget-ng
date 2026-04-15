@@ -10,10 +10,10 @@ use gadget_ng_integrators::{hierarchical_kdk_step, leapfrog_kdk_step, Hierarchic
 use gadget_ng_io::{write_snapshot_formatted, Provenance, SnapshotEnv};
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime};
 use gadget_ng_pm::PmSolver;
-use gadget_ng_treepm::TreePmSolver;
 use gadget_ng_tree::BarnesHutGravity;
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
+use gadget_ng_treepm::TreePmSolver;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -145,6 +145,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file)?;
 
+    // `h_state_opt` se mantiene vivo tras el bucle para poder guardarlo con el snapshot.
+    let mut h_state_opt: Option<HierarchicalState> = None;
+
     if cfg.timestep.hierarchical {
         let eta = cfg.timestep.eta;
         let max_level = cfg.timestep.max_level;
@@ -190,6 +193,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             );
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
         }
+        h_state_opt = Some(h_state);
     } else {
         for step in 1..=cfg.simulation.num_steps {
             leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
@@ -204,12 +208,21 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     if write_final_snapshot {
         if let Some(parts) = rt.root_gather_particles(&local, total) {
             let snap_dir = out_dir.join("snapshot_final");
+            fs::create_dir_all(&snap_dir).map_err(|e| CliError::io(&snap_dir, e))?;
             let env = SnapshotEnv {
                 time: cfg.simulation.num_steps as f64 * cfg.simulation.dt,
                 redshift: 0.0,
                 box_size: cfg.simulation.box_size,
             };
             write_snapshot_formatted(cfg.output.snapshot_format, &snap_dir, &parts, &prov, &env)?;
+            // Guardar el estado jerárquico junto al snapshot si aplica.
+            if cfg.timestep.hierarchical {
+                if let Some(ref h_state) = h_state_opt {
+                    h_state
+                        .save(&snap_dir)
+                        .map_err(|e| CliError::io(&snap_dir, e))?;
+                }
+            }
         }
     }
     Ok(())
