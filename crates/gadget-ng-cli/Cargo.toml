@@ -21,6 +21,8 @@ full = ["mpi", "bincode", "hdf5", "gpu", "simd"]
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core", features = [] }
 gadget-ng-tree = { path = "../gadget-ng-tree" }
+gadget-ng-pm = { path = "../gadget-ng-pm" }
+gadget-ng-treepm = { path = "../gadget-ng-treepm" }
 gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
 rayon = { version = "1.10", optional = true }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }

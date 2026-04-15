@@ -7,6 +7,8 @@ members = [
     "crates/gadget-ng-io",
     "crates/gadget-ng-tree",
     "crates/gadget-ng-gpu",
+    "crates/gadget-ng-pm",
+    "crates/gadget-ng-treepm",
     "crates/gadget-ng-cli",
 ]
 

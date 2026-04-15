@@ -9,6 +9,8 @@ use gadget_ng_core::{
 use gadget_ng_integrators::{hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState};
 use gadget_ng_io::{write_snapshot_formatted, Provenance, SnapshotEnv};
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime};
+use gadget_ng_pm::PmSolver;
+use gadget_ng_treepm::TreePmSolver;
 use gadget_ng_tree::BarnesHutGravity;
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
@@ -73,6 +75,21 @@ fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     //     return Box::new(gadget_ng_core::GpuDirectGravity);
     // }
 
+    // Los solvers PM y TreePM no usan Rayon; se enrutan antes del bloque SIMD.
+    if cfg.gravity.solver == SolverKind::Pm {
+        return Box::new(PmSolver {
+            grid_size: cfg.gravity.pm_grid_size,
+            box_size: cfg.simulation.box_size,
+        });
+    }
+    if cfg.gravity.solver == SolverKind::TreePm {
+        return Box::new(TreePmSolver {
+            grid_size: cfg.gravity.pm_grid_size,
+            box_size: cfg.simulation.box_size,
+            r_split: cfg.gravity.r_split,
+        });
+    }
+
     #[cfg(feature = "simd")]
     if !cfg.performance.deterministic {
         if let Some(n) = cfg.performance.num_threads {
@@ -86,6 +103,7 @@ fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             SolverKind::BarnesHut => Box::new(RayonBarnesHutGravity {
                 theta: cfg.gravity.theta,
             }),
+            SolverKind::Pm | SolverKind::TreePm => unreachable!("handled above"),
         };
     }
     // Modo serial (default): determinismo garantizado.
@@ -94,6 +112,7 @@ fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
         SolverKind::BarnesHut => Box::new(BarnesHutGravity {
             theta: cfg.gravity.theta,
         }),
+        SolverKind::Pm | SolverKind::TreePm => unreachable!("handled above"),
     }
 }
 

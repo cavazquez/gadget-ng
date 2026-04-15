@@ -11,7 +11,7 @@ Implementación nueva en Rust inspirada **conceptualmente** en GADGET-4 ([sitio 
 
 ## Qué se simplifica
 
-- **Gravedad**: **fuerza directa \(O(N^2)\)** (`DirectGravity` en `gadget-ng-core`) y **Barnes–Hut monopolar** \(O(N\log N)\) sobre octree en arena (`gadget-ng-tree`, `BarnesHutGravity`); sin TreePM/FMM ni PM (fases posteriores). Se elige vía TOML `[gravity].solver`.
+- **Gravedad**: **fuerza directa \(O(N^2)\)** (`DirectGravity`), **Barnes–Hut monopolar** \(O(N\log N)\) (`BarnesHutGravity`), **Particle-Mesh periódico** \(O(N + N_M^3 \log N_M)\) (`PmSolver`), y **TreePM** (`TreePmSolver`, splitting Gaussiano en k-space: corto alcance con kernel erfc via octree + largo alcance con PM filtrado). Se elige vía TOML `[gravity].solver = "direct" | "barnes_hut" | "pm" | "tree_pm"`.
 - **Dominio**: sin cosmología, SPH, ni I/O binario legacy; snapshots versionados con `provenance.json` y `meta.json` (véase I/O abajo).
 - **MPI**: sin híbrido MPI+OpenMP del paper de GADGET-4; un solo hilo por rango en el MVP.
 - **Configuración**: TOML + variables de entorno `GADGET_NG_*` (figment), por legibilidad y alineación con el ecosistema Rust.
@@ -27,6 +27,8 @@ Implementación nueva en Rust inspirada **conceptualmente** en GADGET-4 ([sitio 
 |--------|-----|
 | `gadget-ng-core` | `Vec3`, `Particle`, `RunConfig`, IC sintéticas, `DirectGravity` / trait `GravitySolver`; bajo `feature = "gpu"`: `gpu_bridge` (impl `GravitySolver` para `GpuDirectGravity`, conversiones SoA↔Particle) |
 | `gadget-ng-tree` | Octree + `BarnesHutGravity` (MAC `s/d` con `d` al COM; no MAC si la evaluación cae dentro de la celda del nodo) |
+| `gadget-ng-pm` | Solver Particle-Mesh periódico 3D: `PmSolver` (CIC, FFT 3D `rustfft`, Poisson en k-space); `solve_forces_filtered` con filtro Gaussiano `exp(-k²·r_s²/2)` para uso desde TreePM |
+| `gadget-ng-treepm` | `TreePmSolver`: PM filtrado (largo alcance, kernel erf) + octree erfc (corto alcance). `ShortRangeParams` agrupa los parámetros del kernel; `erfc_approx` (A&S 7.1.26) |
 | `gadget-ng-integrators` | `leapfrog_kdk_step` (KDK global); `hierarchical_kdk_step` + `HierarchicalState` + `aarseth_bin` (block timesteps al estilo GADGET-4) |
 | `gadget-ng-parallel` | `ParallelRuntime`: `SerialRuntime`, `MpiRuntime` (`feature = "mpi"`) |
 | `gadget-ng-io` | Snapshots (`SnapshotFormat`: JSONL / bincode / HDF5) + `Provenance` |
@@ -149,6 +151,92 @@ evaluación de fuerzas, sin alterar la integración simpléctica de las activas.
 
 `HierarchicalState` mantiene el vector de niveles fuera de `Particle` para no alterar
 `PartialEq`, `Serialize` ni los demás derives del struct de core.
+
+### Solver TreePM
+
+El crate `gadget-ng-treepm` implementa `TreePmSolver` que divide el campo gravitacional entre largo y corto alcance mediante un **splitting Gaussiano en k-space**, siguiendo el esquema estándar de los códigos cosmológicos (cf. GADGET-4):
+
+```
+F_total(r) = F_lr(r)  +  F_sr(r)
+
+F_lr(r) = G·m/r² · erf(r / (√2·r_s))     ← PM con filtro exp(-k²·r_s²/2)
+F_sr(r) = G·m/r² · erfc(r / (√2·r_s))    ← octree + kernel erfc, cutoff r_cut = 5·r_s
+```
+
+La partición `erf + erfc = 1` garantiza que `F_lr + F_sr = F_Newton`.
+
+#### Parámetros
+
+| Campo TOML | Descripción | Default |
+|-----------|-------------|---------|
+| `pm_grid_size` | Celdas por lado del grid PM | 64 |
+| `r_split` | Radio de splitting (≤ 0 → auto 2.5 × cell_size) | 0.0 |
+
+```toml
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 64
+r_split      = 0.0
+```
+
+#### Largo alcance (`gadget-ng-pm::fft_poisson::solve_forces_filtered`)
+
+Igual que `solve_forces` pero multiplica el potencial en k-space por `exp(-k²·r_s²/2)`.
+Esto corresponde a convolucionar la densidad con una Gaussiana de anchura `r_s` en espacio real.
+
+#### Corto alcance (`gadget-ng-treepm::short_range`)
+
+- Construye un octree con `Octree::build` del crate `gadget-ng-tree`.
+- Para cada partícula activa, recorre el árbol con un **cutoff** `r_cut = 5·r_s` (fuera de r_cut, erfc < 1e-8 → fuerza nula).
+- Para nodos lejanos pero dentro del cutoff: usa el **monopolo** si `half_size < 0.1·r_cut`.
+- Para nodos cercanos: baja hasta las hojas (pares exactos).
+- `erfc_approx(x)` implementa Abramowitz & Stegun §7.1.26 (error máx. 1.5×10⁻⁷, sin dependencias C).
+
+### Solver Particle-Mesh (PM) periódico 3D
+
+El crate `gadget-ng-pm` implementa `PmSolver` que resuelve la ecuación de Poisson gravitacional usando una malla 3D periódica y FFT pura en Rust (`rustfft`). El costo es **O(N + N_M³ log N_M)** por evaluación de fuerzas.
+
+#### Algoritmo
+
+```
+Partículas (x_i, m_i)
+  │  CIC assign
+  ▼
+ρ[NM³]           (masa/celda; NM = pm_grid_size)
+  │  FFT 3D (3× pasadas 1D con rustfft)
+  ▼
+ρ̂(k)
+  │  Poisson: Φ̂(k) = -4πG·ρ̂(k) / k²   (k=0 → 0)
+  ▼
+F̂_α(k) = -i·k_α·Φ̂(k)   (α = x, y, z)
+  │  IFFT 3D × 3
+  ▼
+F_α[NM³]
+  │  CIC interpolate
+  ▼
+a_i  (aceleraciones por partícula)
+```
+
+1. **CIC mass assignment** (`cic::assign`): cada partícula distribuye su masa a los 8 nodos vecinos con pesos trilineales. El grid es periódico (`% nm`).
+2. **FFT 3D** (`fft_poisson`): tres pasadas de 1D FFTs (eje X → Y → Z) con `FftPlanner` de `rustfft`. Sin dependencias C.
+3. **Poisson en k-space**: `Φ̂(k) = -4πG·ρ̂(k) / k²`; el modo DC (k=0) se pone a cero para eliminar la fuerza de fondo uniforme.
+4. **Fuerzas** por componente: `F̂_α = -i·k_α·Φ̂`, IFFT 3D.
+5. **CIC interpolation** (`cic::interpolate`): aceleración por partícula interpolada del grid con los mismos pesos trilineales.
+
+#### Configuración TOML
+
+```toml
+[gravity]
+solver = "pm"
+pm_grid_size = 64   # grid NM³; potencia de 2 recomendada para eficiencia FFT
+```
+
+#### Notas de diseño
+
+- La resolución de fuerza es la escala de celda `box_size / pm_grid_size`; para fuerzas de largo alcance se recomienda `pm_grid_size` ≈ N^(1/3) – 2×N^(1/3).
+- El solver es **serial** por defecto; la paralelización con Rayon se puede añadir en el futuro.
+- Las fuerzas son **periódicas** por construcción (incluyen todas las imágenes del sistema).
+- No aplica softening explícito (`eps2` se ignora); el suavizado natural es la escala de celda.
 
 ## Limitaciones del MVP
 

@@ -54,6 +54,14 @@ pub struct GravitySection {
     /// Criterio Barnes–Hut `s/d < theta` (solo `barnes_hut`). Con `theta = 0` no se usa MAC (equivale a recorrido exhaustivo).
     #[serde(default = "default_theta")]
     pub theta: f64,
+    /// Número de celdas por lado del grid PM (`pm`, `tree_pm`). El grid total es `pm_grid_size³`.
+    /// Potencia de 2 recomendada para eficiencia FFT.
+    #[serde(default = "default_pm_grid_size")]
+    pub pm_grid_size: usize,
+    /// Radio de splitting Gaussiano para el solver `tree_pm` (mismas unidades que posiciones).
+    /// Si es ≤ 0 se calcula automáticamente como `2.5 × (box_size / pm_grid_size)`.
+    #[serde(default = "default_r_split")]
+    pub r_split: f64,
 }
 
 fn default_solver_kind() -> SolverKind {
@@ -64,11 +72,21 @@ fn default_theta() -> f64 {
     0.5
 }
 
+fn default_pm_grid_size() -> usize {
+    64
+}
+
+fn default_r_split() -> f64 {
+    0.0
+}
+
 impl Default for GravitySection {
     fn default() -> Self {
         Self {
             solver: default_solver_kind(),
             theta: default_theta(),
+            pm_grid_size: default_pm_grid_size(),
+            r_split: default_r_split(),
         }
     }
 }
@@ -78,6 +96,11 @@ impl Default for GravitySection {
 pub enum SolverKind {
     Direct,
     BarnesHut,
+    /// Particle-Mesh (PM): FFT periódico 3D. Configurar también `pm_grid_size`.
+    Pm,
+    /// TreePM: Barnes-Hut (corto alcance, kernel erfc) + PM filtrado (largo alcance, kernel erf).
+    /// Configurar `pm_grid_size` y opcionalmente `r_split`.
+    TreePm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
