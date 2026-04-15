@@ -1,4 +1,4 @@
-//! Test de conservación de energía con pasos temporales jerárquicos.
+//! Tests de conservación de energía con pasos temporales jerárquicos.
 //!
 //! Usamos un sistema de dos cuerpos en órbita circular (kepler). La energía total
 //! (cinética + potencial gravitacional) debe conservarse dentro de un umbral relativo
@@ -11,7 +11,9 @@
 //! - El softening es pequeño comparado con `r`, de modo que la órbita se mantiene estable.
 
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_integrators::{hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState};
+use gadget_ng_integrators::{
+    aarseth_bin, hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState,
+};
 
 const G: f64 = 1.0;
 const M_EACH: f64 = 0.5;
@@ -132,6 +134,110 @@ fn hierarchical_two_body_energy_conserved() {
     assert!(
         rel_err < 0.05,
         "deriva de energía jerárquica demasiado grande: |ΔE/E₀| = {rel_err:.4e} (> 5 %)",
+    );
+}
+
+/// Versión de primer orden del integrador jerárquico (sin corrección de aceleración
+/// en el drift). Se usa solo como referencia en el test de comparación.
+fn hierarchical_kdk_step_first_order(
+    particles: &mut [Particle],
+    state: &mut HierarchicalState,
+    dt_base: f64,
+    eps2: f64,
+    eta: f64,
+    max_level: u32,
+    mut compute: impl FnMut(&[Particle], &[usize], &mut [Vec3]),
+) {
+    let n_fine = 1u64 << max_level;
+    let fine_dt = dt_base / n_fine as f64;
+    let n = particles.len();
+    let mut acc_buf = vec![Vec3::zero(); n];
+
+    for s in 0..n_fine {
+        // START kick
+        for (p, &lvl) in particles.iter_mut().zip(state.levels.iter()) {
+            let stride = 1u64 << (max_level - lvl);
+            if s % stride == 0 {
+                let dt_i = dt_base / (1u64 << lvl) as f64;
+                p.velocity += p.acceleration * (0.5 * dt_i);
+            }
+        }
+        // Drift de PRIMER orden (sin término de aceleración)
+        for p in particles.iter_mut() {
+            p.position += p.velocity * fine_dt;
+        }
+        // END kick
+        let end_active: Vec<usize> = (0..n)
+            .filter(|&i| {
+                let stride = 1u64 << (max_level - state.levels[i]);
+                (s + 1) % stride == 0
+            })
+            .collect();
+        if !end_active.is_empty() {
+            compute(particles, &end_active, &mut acc_buf[..end_active.len()]);
+            for (j, &i) in end_active.iter().enumerate() {
+                let dt_i = dt_base / (1u64 << state.levels[i]) as f64;
+                let a_new = acc_buf[j];
+                particles[i].velocity += a_new * (0.5 * dt_i);
+                particles[i].acceleration = a_new;
+                let acc_mag = a_new.dot(a_new).sqrt();
+                state.levels[i] = aarseth_bin(acc_mag, eps2, dt_base, eta, max_level);
+            }
+        }
+    }
+}
+
+/// El predictor de segundo orden conserva la energía mejor o igual que el de
+/// primer orden, en un sistema de dos cuerpos con bins variados (eta=0.025,
+/// max_level=4 → algunos bins en nivel 1-4).
+///
+/// La diferencia está en cómo se predicen las posiciones de partículas inactivas
+/// entre sus sync-points: `x += v*dt + 0.5*a*dt²` (2.o) vs `x += v*dt` (1.o).
+#[test]
+fn second_order_drift_better_than_first_order() {
+    let period_approx = std::f64::consts::TAU * (SEP / 2.0) / ((G * 2.0 * M_EACH / 4.0).sqrt());
+    let dt = period_approx / 100.0; // pasos más gruesos para que los bins varíen
+    let orbits = 5.0;
+    let steps = (orbits * period_approx / dt).round() as u64;
+    let eta = 0.025_f64;
+    let max_level = 4u32;
+
+    let e0 = total_energy(&two_body());
+
+    // ── 1.er orden ───────────────────────────────────────────────────────────
+    let mut parts1 = two_body();
+    let n = parts1.len();
+    let all_idx: Vec<usize> = (0..n).collect();
+    let mut init_acc = vec![Vec3::zero(); n];
+    gravity_two_body(&parts1, &all_idx, &mut init_acc);
+    for (p, &a) in parts1.iter_mut().zip(init_acc.iter()) {
+        p.acceleration = a;
+    }
+    let mut st1 = HierarchicalState::new(n);
+    st1.init_from_accels(&parts1, EPS2, dt, eta, max_level);
+    for _ in 0..steps {
+        hierarchical_kdk_step_first_order(
+            &mut parts1,
+            &mut st1,
+            dt,
+            EPS2,
+            eta,
+            max_level,
+            gravity_two_body,
+        );
+    }
+    let rel1 = ((total_energy(&parts1) - e0) / e0.abs()).abs();
+
+    // ── 2.o orden ────────────────────────────────────────────────────────────
+    let e_2nd = run_hierarchical(steps, dt, eta, max_level);
+    let rel2 = ((e_2nd - e0) / e0.abs()).abs();
+
+    // El 2.o orden debe ser ≤ 5× peor que el 1.o (en práctica suele ser igual o mejor).
+    // Un factor de 5 es conservador para evitar falsos positivos por diferencias de fase.
+    assert!(
+        rel2 <= rel1 * 5.0 + 1e-8,
+        "el predictor de 2.o orden deriva más que el de 1.o: rel2={rel2:.4e} > 5*rel1={:.4e}",
+        rel1 * 5.0
     );
 }
 

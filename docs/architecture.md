@@ -131,16 +131,21 @@ cuantiza a la potencia de 2 inmediatamente menor o igual a `dt_courant = eta * s
 nivel k  →  dt_i = dt_base / 2^k   (k ∈ [0, max_level])
 ```
 
-**Algoritmo KDK start/end** (`hierarchical_kdk_step`): para cada sub-paso fino `s`:
+**Algoritmo KDK con predictor** (`hierarchical_kdk_step`): para cada sub-paso fino `s`:
 
 1. **START kick** para partículas que inician su paso en `t = s·fine_dt` (`s % stride(k) == 0`):
-   `v += a * (dt_i / 2)`
-2. **Drift** de *todas* las partículas: `x += v * fine_dt`
-3. **END kick** para partículas que terminan su paso en `t = (s+1)·fine_dt` (`(s+1) % stride(k) == 0`):
-   se evalúan fuerzas, `v += a_new * (dt_i / 2)`, y se reasigna el bin.
+   `elapsed[i] = 0; v += a * (dt_i / 2)`
+2. **Drift** de *todas* las partículas (primer orden): `x += v * fine_dt; elapsed[i] += 1`
+3. **Predictor + END kick** para partículas que terminan su paso en `t = (s+1)·fine_dt`:
+   - Antes de evaluar fuerzas, las posiciones de las partículas **inactivas** se mejoran temporalmente:
+     `Δx_j = 0.5 * a_j * (elapsed[j] * fine_dt)²` (predictor de Störmer)
+   - Se evalúan fuerzas con las posiciones predichas.
+   - Se restauran las posiciones reales (`x_j -= Δx_j`).
+   - `v += a_new * (dt_i / 2)`, `elapsed[i] = 0`, se reasigna el bin.
 
-Con todas las partículas en nivel 0 el algoritmo es idéntico al KDK global
-(compatibilidad retroactiva verificada por `hierarchical_level0_matches_uniform_leapfrog`).
+El predictor reduce el error de posición de las inactivas de O(Δt²) a O(Δt³) para la
+evaluación de fuerzas, sin alterar la integración simpléctica de las activas.
+`HierarchicalState` incluye `elapsed: Vec<u64>` para rastrear el tiempo desde el último kick.
 
 `HierarchicalState` mantiene el vector de niveles fuera de `Particle` para no alterar
 `PartialEq`, `Serialize` ni los demás derives del struct de core.
