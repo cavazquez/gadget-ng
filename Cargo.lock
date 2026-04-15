@@ -511,6 +511,7 @@ dependencies = [
  "clap",
  "figment",
  "gadget-ng-core",
+ "gadget-ng-gpu",
  "gadget-ng-integrators",
  "gadget-ng-io",
  "gadget-ng-parallel",
@@ -531,9 +532,17 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "criterion",
+ "gadget-ng-gpu",
  "rayon",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "gadget-ng-gpu"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]

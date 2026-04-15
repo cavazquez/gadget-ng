@@ -1,9 +1,11 @@
 use crate::error::SnapshotError;
 use crate::provenance::Provenance;
+use crate::reader::{SnapshotData, SnapshotReader};
 use crate::writer::{SnapshotEnv, SnapshotWriter};
 use gadget_ng_core::Particle;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -45,8 +47,8 @@ impl ParticleRecord {
     }
 }
 
-#[derive(Serialize, Clone)]
-pub(crate) struct SnapshotMeta {
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SnapshotMeta {
     pub schema_version: u32,
     pub provenance: Provenance,
     pub particle_count: usize,
@@ -68,6 +70,11 @@ pub(crate) fn build_meta(
         redshift: env.redshift,
         box_size: env.box_size,
     }
+}
+
+pub(crate) fn read_meta(dir: &Path) -> Result<SnapshotMeta, SnapshotError> {
+    let s = fs::read_to_string(dir.join("meta.json"))?;
+    Ok(serde_json::from_str(&s)?)
 }
 
 pub(crate) fn write_sidecar_json(
@@ -109,6 +116,31 @@ impl SnapshotWriter for JsonlWriter {
         }
         fs::write(out_dir.join("particles.jsonl"), lines)?;
         Ok(())
+    }
+}
+
+/// Lector JSONL: reconstruye partículas y metadatos a partir de un directorio de snapshot.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct JsonlReader;
+
+impl SnapshotReader for JsonlReader {
+    fn read(&self, dir: &Path) -> Result<SnapshotData, SnapshotError> {
+        let meta = read_meta(dir)?;
+        let file = fs::File::open(dir.join("particles.jsonl"))?;
+        let particles = BufReader::new(file)
+            .lines()
+            .map(|l| {
+                let line = l?;
+                let rec: ParticleRecord = serde_json::from_str(&line)?;
+                Ok(rec.into_particle())
+            })
+            .collect::<Result<Vec<_>, SnapshotError>>()?;
+        Ok(SnapshotData {
+            particles,
+            time: meta.time,
+            redshift: meta.redshift,
+            box_size: meta.box_size,
+        })
     }
 }
 
@@ -172,5 +204,30 @@ mod tests {
         let p1: ParticleRecord = serde_json::from_str(&lines[1]).unwrap();
         assert_eq!(p0.into_particle(), particles[0]);
         assert_eq!(p1.into_particle(), particles[1]);
+    }
+
+    #[test]
+    fn jsonl_reader_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let particles = vec![
+            Particle::new(0, 1.5, Vec3::new(0.1, 0.2, 0.3), Vec3::new(0.4, 0.5, 0.6)),
+            Particle::new(1, 2.5, Vec3::new(1.0, 2.0, 3.0), Vec3::new(-1., 0., 1.)),
+        ];
+        let prov = dummy_provenance();
+        let env = SnapshotEnv {
+            time: 0.42,
+            redshift: 1.0,
+            box_size: 5.0,
+        };
+        JsonlWriter
+            .write(dir.path(), &particles, &prov, &env)
+            .unwrap();
+        let data = JsonlReader.read(dir.path()).unwrap();
+        assert_eq!(data.particles.len(), 2);
+        assert_eq!(data.particles[0], particles[0]);
+        assert_eq!(data.particles[1], particles[1]);
+        assert!((data.time - 0.42).abs() < 1e-15);
+        assert!((data.box_size - 5.0).abs() < 1e-15);
+        assert!((data.redshift - 1.0).abs() < 1e-15);
     }
 }

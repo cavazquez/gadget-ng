@@ -22,6 +22,7 @@ fn root_mass_and_com_match_particles() {
         output: Default::default(),
         gravity: Default::default(),
         performance: Default::default(),
+        timestep: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();

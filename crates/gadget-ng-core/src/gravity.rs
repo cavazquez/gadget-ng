@@ -103,6 +103,9 @@ pub mod parallel_direct {
 }
 
 /// Gravedad directa O(N²) paralelizada con Rayon (feature `simd`).
+///
+/// El bucle externo (sobre i) se distribuye en el pool de Rayon; el bucle interno
+/// usa el kernel SoA+caché-blocking+AVX2 de `gravity_simd::accel_soa_blocked`.
 /// **No determinista** respecto al orden de suma entre partículas; no garantiza
 /// paridad bit-a-bit con el modo serial ni con `MpiRuntime`.
 #[cfg(feature = "simd")]
@@ -119,23 +122,30 @@ impl GravitySolver for RayonDirectGravity {
         global_indices: &[usize],
         out: &mut [Vec3],
     ) {
+        use crate::gravity_simd::{accel_soa_blocked, KernelParams};
         use rayon::prelude::*;
+
         assert_eq!(global_positions.len(), global_masses.len());
         assert_eq!(global_indices.len(), out.len());
-        let n = global_positions.len();
+
+        // Extracción SoA una sola vez, fuera del par_iter_mut.
+        let xs: Vec<f64> = global_positions.iter().map(|p| p.x).collect();
+        let ys: Vec<f64> = global_positions.iter().map(|p| p.y).collect();
+        let zs: Vec<f64> = global_positions.iter().map(|p| p.z).collect();
+        let params = KernelParams {
+            xs: &xs,
+            ys: &ys,
+            zs: &zs,
+            masses: global_masses,
+            eps2,
+            g,
+        };
+
         out.par_iter_mut()
             .zip(global_indices.par_iter())
             .for_each(|(a, &gi)| {
-                let xi = global_positions[gi];
-                let mut acc = Vec3::zero();
-                for j in 0..n {
-                    if j == gi {
-                        continue;
-                    }
-                    acc +=
-                        pairwise_accel_plummer(xi, global_masses[j], global_positions[j], g, eps2);
-                }
-                *a = acc;
+                let (ax, ay, az) = accel_soa_blocked(xs[gi], ys[gi], zs[gi], gi, &params);
+                *a = Vec3::new(ax, ay, az);
             });
     }
 }

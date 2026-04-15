@@ -1,11 +1,12 @@
 //! HDF5 al estilo GADGET-4 (grupos `Header`, `PartType1`, etc.) para interoperar con `yt` / `h5py`.
 use std::path::Path;
 
-use gadget_ng_core::Particle;
+use gadget_ng_core::{Particle, Vec3};
 use ndarray::{arr1, Array1, Array2};
 
 use crate::error::SnapshotError;
 use crate::provenance::Provenance;
+use crate::reader::{SnapshotData, SnapshotReader};
 use crate::snapshot::{build_meta, write_sidecar_json};
 use crate::writer::{SnapshotEnv, SnapshotWriter};
 
@@ -114,6 +115,46 @@ impl SnapshotWriter for Hdf5Writer {
     }
 }
 
+/// Lector HDF5: reconstruye partículas desde `snapshot.hdf5` (grupos `Header` y `PartType1`).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Hdf5Reader;
+
+impl SnapshotReader for Hdf5Reader {
+    fn read(&self, dir: &Path) -> Result<SnapshotData, SnapshotError> {
+        let file = hdf5::File::open(dir.join("snapshot.hdf5"))?;
+
+        let header = file.group("Header")?;
+        let time: Vec<f64> = header.attr("Time")?.read_raw()?;
+        let redshift: Vec<f64> = header.attr("Redshift")?.read_raw()?;
+        let box_size: Vec<f64> = header.attr("BoxSize")?.read_raw()?;
+
+        let pt1 = file.group("PartType1")?;
+        let coords: Vec<f64> = pt1.dataset("Coordinates")?.read_raw()?;
+        let vels: Vec<f64> = pt1.dataset("Velocities")?.read_raw()?;
+        let masses: Vec<f64> = pt1.dataset("Masses")?.read_raw()?;
+        let ids: Vec<i64> = pt1.dataset("ParticleIDs")?.read_raw()?;
+
+        let n = ids.len();
+        let particles = (0..n)
+            .map(|i| {
+                Particle::new(
+                    ids[i] as usize,
+                    masses[i],
+                    Vec3::new(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]),
+                    Vec3::new(vels[i * 3], vels[i * 3 + 1], vels[i * 3 + 2]),
+                )
+            })
+            .collect();
+
+        Ok(SnapshotData {
+            particles,
+            time: time[0],
+            redshift: redshift[0],
+            box_size: box_size[0],
+        })
+    }
+}
+
 #[cfg(all(test, feature = "hdf5"))]
 mod tests {
     use super::*;
@@ -152,5 +193,31 @@ mod tests {
         let ids: Vec<i64> = pt1.dataset("ParticleIDs").unwrap().read_raw().unwrap();
         assert_eq!(ids[0], 0);
         assert_eq!(ids[1], 1);
+    }
+
+    #[test]
+    fn hdf5_reader_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let particles = vec![
+            Particle::new(0, 1.5, Vec3::new(0.1, 0.2, 0.3), Vec3::new(0.4, 0.5, 0.6)),
+            Particle::new(1, 2.5, Vec3::new(1.0, 2.0, 3.0), Vec3::new(-1., 0., 1.)),
+        ];
+        let prov =
+            crate::provenance::Provenance::new("0-test", None, "debug", vec![], vec![], "hash");
+        let env = crate::writer::SnapshotEnv {
+            time: 0.33,
+            redshift: 2.0,
+            box_size: 8.0,
+        };
+        Hdf5Writer
+            .write(dir.path(), &particles, &prov, &env)
+            .unwrap();
+        let data = Hdf5Reader.read(dir.path()).unwrap();
+        assert_eq!(data.particles.len(), 2);
+        assert_eq!(data.particles[0], particles[0]);
+        assert_eq!(data.particles[1], particles[1]);
+        assert!((data.time - 0.33).abs() < 1e-12);
+        assert!((data.box_size - 8.0).abs() < 1e-12);
+        assert!((data.redshift - 2.0).abs() < 1e-12);
     }
 }

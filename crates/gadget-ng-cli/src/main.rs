@@ -56,7 +56,7 @@ where
     }
     #[cfg(not(feature = "mpi"))]
     {
-        let rt = SerialRuntime::default();
+        let rt = SerialRuntime;
         f(&rt)
     }
 }

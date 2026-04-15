@@ -6,7 +6,7 @@ use gadget_ng_core::{
     build_particles_for_gid_range, DirectGravity, GravitySolver, Particle, RunConfig, SolverKind,
     Vec3,
 };
-use gadget_ng_integrators::leapfrog_kdk_step;
+use gadget_ng_integrators::{hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState};
 use gadget_ng_io::{write_snapshot_formatted, Provenance, SnapshotEnv};
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime};
 use gadget_ng_tree::BarnesHutGravity;
@@ -65,6 +65,14 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
 }
 
 fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
+    // TODO(gpu): cuando `cfg.performance.use_gpu` esté disponible en el schema
+    // TOML, descomentar el bloque siguiente para enrutar al kernel GPU:
+    //
+    // #[cfg(feature = "gpu")]
+    // if cfg.performance.use_gpu {
+    //     return Box::new(gadget_ng_core::GpuDirectGravity);
+    // }
+
     #[cfg(feature = "simd")]
     if !cfg.performance.deterministic {
         if let Some(n) = cfg.performance.num_threads {
@@ -118,13 +126,60 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file)?;
 
-    for step in 1..=cfg.simulation.num_steps {
-        leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
-            rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
-            let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
-            solver.accelerations_for_indices(&global_pos, &global_mass, eps2, g, &idx, acc);
-        });
-        write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+    if cfg.timestep.hierarchical {
+        let eta = cfg.timestep.eta;
+        let max_level = cfg.timestep.max_level;
+        let mut h_state = HierarchicalState::new(local.len());
+        // Calcular aceleraciones iniciales para que el primer START kick sea correcto.
+        rt.allgatherv_state(&local, total, &mut global_pos, &mut global_mass);
+        let init_idx: Vec<usize> = local.iter().map(|p| p.global_id).collect();
+        solver.accelerations_for_indices(
+            &global_pos,
+            &global_mass,
+            eps2,
+            g,
+            &init_idx,
+            &mut scratch,
+        );
+        for (p, &a) in local.iter_mut().zip(scratch.iter()) {
+            p.acceleration = a;
+        }
+        h_state.init_from_accels(&local, eps2, dt, eta, max_level);
+
+        for step in 1..=cfg.simulation.num_steps {
+            hierarchical_kdk_step(
+                &mut local,
+                &mut h_state,
+                dt,
+                eps2,
+                eta,
+                max_level,
+                |parts, active_local, acc| {
+                    rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                    // Convertir índices locales a global_id para el solver.
+                    let global_idx: Vec<usize> =
+                        active_local.iter().map(|&li| parts[li].global_id).collect();
+                    solver.accelerations_for_indices(
+                        &global_pos,
+                        &global_mass,
+                        eps2,
+                        g,
+                        &global_idx,
+                        acc,
+                    );
+                },
+            );
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+        }
+    } else {
+        for step in 1..=cfg.simulation.num_steps {
+            leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
+                rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
+                solver.accelerations_for_indices(&global_pos, &global_mass, eps2, g, &idx, acc);
+            });
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+        }
     }
 
     if write_final_snapshot {

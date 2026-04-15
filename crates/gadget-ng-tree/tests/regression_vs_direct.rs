@@ -48,6 +48,7 @@ fn lattice_cfg(n: usize, seed: u64) -> RunConfig {
         output: Default::default(),
         gravity: Default::default(),
         performance: Default::default(),
+        timestep: Default::default(),
     }
 }
 

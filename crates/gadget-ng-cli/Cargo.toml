@@ -14,13 +14,14 @@ default = []
 mpi = ["gadget-ng-parallel/mpi"]
 bincode = ["gadget-ng-io/bincode"]
 hdf5 = ["gadget-ng-io/hdf5"]
-gpu = []
+gpu = ["dep:gadget-ng-gpu", "gadget-ng-core/gpu"]
 simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "dep:rayon"]
 full = ["mpi", "bincode", "hdf5", "gpu", "simd"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core", features = [] }
 gadget-ng-tree = { path = "../gadget-ng-tree" }
+gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
 rayon = { version = "1.10", optional = true }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel" }

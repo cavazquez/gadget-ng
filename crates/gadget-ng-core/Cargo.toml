@@ -8,12 +8,13 @@ description = "N-body core: particles, Plummer-softened direct gravity, traits"
 [features]
 default = []
 simd = ["dep:rayon"]
-gpu = []
+gpu = ["dep:gadget-ng-gpu"]
 
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
 rayon = { version = "1.10", optional = true }
+gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
 
 [dev-dependencies]
 approx = "0.5"

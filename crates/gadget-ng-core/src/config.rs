@@ -10,6 +10,8 @@ pub struct RunConfig {
     pub gravity: GravitySection,
     #[serde(default)]
     pub performance: PerformanceSection,
+    #[serde(default)]
+    pub timestep: TimestepSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,6 +128,42 @@ impl Default for PerformanceSection {
         Self {
             deterministic: default_deterministic(),
             num_threads: None,
+        }
+    }
+}
+
+/// Parámetros de pasos temporales (opcional; retrocompatible: `hierarchical = false`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestepSection {
+    /// `false` (default) → paso global uniforme `dt` para todas las partículas.
+    /// `true` → block timesteps al estilo GADGET-4: cada partícula elige su propio
+    /// paso como potencia de 2 de `dt_base`, según el criterio de Aarseth.
+    #[serde(default)]
+    pub hierarchical: bool,
+    /// Parámetro adimensional de Aarseth: `dt_i = eta * sqrt(eps / |a_i|)`.
+    /// Valores típicos: 0.01–0.05. Por defecto 0.025.
+    #[serde(default = "default_eta")]
+    pub eta: f64,
+    /// Número máximo de niveles de subdivisión (potencias de 2).
+    /// Nivel `k` → paso `dt_base / 2^k`. Por defecto 6 (64 sub-pasos por paso base).
+    #[serde(default = "default_max_level")]
+    pub max_level: u32,
+}
+
+fn default_eta() -> f64 {
+    0.025
+}
+
+fn default_max_level() -> u32 {
+    6
+}
+
+impl Default for TimestepSection {
+    fn default() -> Self {
+        Self {
+            hierarchical: false,
+            eta: default_eta(),
+            max_level: default_max_level(),
         }
     }
 }

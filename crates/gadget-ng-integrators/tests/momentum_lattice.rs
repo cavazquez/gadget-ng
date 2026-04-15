@@ -22,6 +22,7 @@ fn lattice_config() -> RunConfig {
         output: Default::default(),
         gravity: Default::default(),
         performance: Default::default(),
+        timestep: Default::default(),
     }
 }
 
