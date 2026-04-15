@@ -1,0 +1,20 @@
+[package]
+name = "gadget-ng-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "N-body core: particles, Plummer-softened direct gravity, traits"
+
+[features]
+default = []
+simd = ["dep:rayon"]
+netcdf = []
+gpu = []
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+rayon = { version = "1.10", optional = true }
+
+[dev-dependencies]
+approx = "0.5"

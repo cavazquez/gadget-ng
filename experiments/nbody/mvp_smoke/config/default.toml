@@ -1,0 +1,14 @@
+[simulation]
+dt = 0.001
+num_steps = 50
+softening = 0.05
+gravitational_constant = 1.0
+particle_count = 8
+box_size = 1.0
+seed = 42
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+snapshot_format = "jsonl"

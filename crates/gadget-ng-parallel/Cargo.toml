@@ -1,0 +1,14 @@
+[package]
+name = "gadget-ng-parallel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Parallel runtime abstraction: serial + optional MPI"
+
+[features]
+default = []
+mpi = ["dep:mpi"]
+
+[dependencies]
+gadget-ng-core = { path = "../gadget-ng-core" }
+mpi = { workspace = true, optional = true }

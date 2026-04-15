@@ -1,0 +1,12 @@
+[package]
+name = "gadget-ng-integrators"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Time integration: leapfrog KDK"
+
+[dependencies]
+gadget-ng-core = { path = "../gadget-ng-core" }
+
+[dev-dependencies]
+approx = "0.5"
