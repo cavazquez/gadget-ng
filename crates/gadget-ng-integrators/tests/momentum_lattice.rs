@@ -20,6 +20,8 @@ fn lattice_config() -> RunConfig {
             kind: IcKind::Lattice,
         },
         output: Default::default(),
+        gravity: Default::default(),
+        performance: Default::default(),
     }
 }
 

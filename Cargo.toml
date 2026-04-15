@@ -5,6 +5,7 @@ members = [
     "crates/gadget-ng-integrators",
     "crates/gadget-ng-parallel",
     "crates/gadget-ng-io",
+    "crates/gadget-ng-tree",
     "crates/gadget-ng-cli",
 ]
 
@@ -25,3 +26,4 @@ sha2 = "0.10.8"
 hex = "0.4.3"
 chrono = { version = "0.4.40", features = ["serde"] }
 mpi = { version = "0.8.0", default-features = false }
+criterion = { version = "0.5", features = ["html_reports"] }

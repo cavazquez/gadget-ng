@@ -4,6 +4,7 @@
 
 - Rust estable (`rustup`) con `rustfmt` y `clippy`.
 - Para MPI: OpenMPI o MPICH (`libopenmpi-dev`, `openmpi-bin` en Debian/Ubuntu).
+- Para `./scripts/check.sh` (usa `clippy`/`test` con **todas** las features): `libhdf5-dev` en Debian/Ubuntu (enlazado por el crate `hdf5`).
 
 ## Comandos
 

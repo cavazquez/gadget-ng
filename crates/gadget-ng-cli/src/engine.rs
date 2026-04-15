@@ -1,11 +1,17 @@
 use crate::config_load;
 use crate::error::CliError;
+#[cfg(feature = "simd")]
+use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
-    build_particles_for_gid_range, DirectGravity, GravitySolver, Particle, RunConfig, Vec3,
+    build_particles_for_gid_range, DirectGravity, GravitySolver, Particle, RunConfig, SolverKind,
+    Vec3,
 };
 use gadget_ng_integrators::leapfrog_kdk_step;
-use gadget_ng_io::{write_snapshot, Provenance};
+use gadget_ng_io::{write_snapshot_formatted, Provenance, SnapshotEnv};
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime};
+use gadget_ng_tree::BarnesHutGravity;
+#[cfg(feature = "simd")]
+use gadget_ng_tree::RayonBarnesHutGravity;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -58,6 +64,31 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     Ok(())
 }
 
+fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
+    #[cfg(feature = "simd")]
+    if !cfg.performance.deterministic {
+        if let Some(n) = cfg.performance.num_threads {
+            // Intentar configurar el pool global de Rayon; si ya está inicializado se ignora.
+            let _ = rayon::ThreadPoolBuilder::new()
+                .num_threads(n)
+                .build_global();
+        }
+        return match cfg.gravity.solver {
+            SolverKind::Direct => Box::new(RayonDirectGravity),
+            SolverKind::BarnesHut => Box::new(RayonBarnesHutGravity {
+                theta: cfg.gravity.theta,
+            }),
+        };
+    }
+    // Modo serial (default): determinismo garantizado.
+    match cfg.gravity.solver {
+        SolverKind::Direct => Box::new(DirectGravity),
+        SolverKind::BarnesHut => Box::new(BarnesHutGravity {
+            theta: cfg.gravity.theta,
+        }),
+    }
+}
+
 pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     rt: &R,
     cfg: &RunConfig,
@@ -72,7 +103,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let mut global_mass: Vec<f64> = Vec::new();
     let g = cfg.simulation.gravitational_constant;
     let eps2 = cfg.softening_squared();
-    let direct = DirectGravity;
+    let solver = make_solver(cfg);
     let dt = cfg.simulation.dt;
 
     fs::create_dir_all(out_dir).map_err(|e| CliError::io(out_dir, e))?;
@@ -91,7 +122,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
             rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
             let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
-            direct.accelerations_for_indices(&global_pos, &global_mass, eps2, g, &idx, acc);
+            solver.accelerations_for_indices(&global_pos, &global_mass, eps2, g, &idx, acc);
         });
         write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
     }
@@ -99,7 +130,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     if write_final_snapshot {
         if let Some(parts) = rt.root_gather_particles(&local, total) {
             let snap_dir = out_dir.join("snapshot_final");
-            write_snapshot(&snap_dir, &parts, &prov)?;
+            let env = SnapshotEnv {
+                time: cfg.simulation.num_steps as f64 * cfg.simulation.dt,
+                redshift: 0.0,
+                box_size: cfg.simulation.box_size,
+            };
+            write_snapshot_formatted(cfg.output.snapshot_format, &snap_dir, &parts, &prov, &env)?;
         }
     }
     Ok(())
@@ -127,8 +163,11 @@ fn enabled_features_list() -> Vec<String> {
     if cfg!(feature = "mpi") {
         f.push("mpi".into());
     }
-    if cfg!(feature = "netcdf") {
-        f.push("netcdf".into());
+    if cfg!(feature = "bincode") {
+        f.push("bincode".into());
+    }
+    if cfg!(feature = "hdf5") {
+        f.push("hdf5".into());
     }
     if cfg!(feature = "gpu") {
         f.push("gpu".into());
@@ -150,7 +189,12 @@ pub fn run_snapshot<R: ParallelRuntime + ?Sized>(
     let prov = provenance_for_run(cfg)?;
     if let Some(parts) = rt.root_gather_particles(&local, total) {
         fs::create_dir_all(out_dir).map_err(|e| CliError::io(out_dir, e))?;
-        write_snapshot(out_dir, &parts, &prov)?;
+        let env = SnapshotEnv {
+            time: 0.0,
+            redshift: 0.0,
+            box_size: cfg.simulation.box_size,
+        };
+        write_snapshot_formatted(cfg.output.snapshot_format, out_dir, &parts, &prov, &env)?;
     }
     Ok(())
 }

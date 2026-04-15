@@ -12,13 +12,16 @@ path = "src/main.rs"
 [features]
 default = []
 mpi = ["gadget-ng-parallel/mpi"]
-netcdf = ["gadget-ng-io/netcdf"]
+bincode = ["gadget-ng-io/bincode"]
+hdf5 = ["gadget-ng-io/hdf5"]
 gpu = []
-simd = ["gadget-ng-core/simd"]
-full = ["mpi", "netcdf", "gpu", "simd"]
+simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "dep:rayon"]
+full = ["mpi", "bincode", "hdf5", "gpu", "simd"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core", features = [] }
+gadget-ng-tree = { path = "../gadget-ng-tree" }
+rayon = { version = "1.10", optional = true }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 gadget-ng-io = { path = "../gadget-ng-io" }

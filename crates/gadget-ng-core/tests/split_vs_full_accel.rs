@@ -19,6 +19,8 @@ fn small_lattice_cfg() -> RunConfig {
             kind: IcKind::Lattice,
         },
         output: Default::default(),
+        gravity: Default::default(),
+        performance: Default::default(),
     }
 }
 

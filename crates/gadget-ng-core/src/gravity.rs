@@ -101,3 +101,41 @@ pub mod parallel_direct {
         let _ = solver;
     }
 }
+
+/// Gravedad directa O(N²) paralelizada con Rayon (feature `simd`).
+/// **No determinista** respecto al orden de suma entre partículas; no garantiza
+/// paridad bit-a-bit con el modo serial ni con `MpiRuntime`.
+#[cfg(feature = "simd")]
+pub struct RayonDirectGravity;
+
+#[cfg(feature = "simd")]
+impl GravitySolver for RayonDirectGravity {
+    fn accelerations_for_indices(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+    ) {
+        use rayon::prelude::*;
+        assert_eq!(global_positions.len(), global_masses.len());
+        assert_eq!(global_indices.len(), out.len());
+        let n = global_positions.len();
+        out.par_iter_mut()
+            .zip(global_indices.par_iter())
+            .for_each(|(a, &gi)| {
+                let xi = global_positions[gi];
+                let mut acc = Vec3::zero();
+                for j in 0..n {
+                    if j == gi {
+                        continue;
+                    }
+                    acc +=
+                        pairwise_accel_plummer(xi, global_masses[j], global_positions[j], g, eps2);
+                }
+                *a = acc;
+            });
+    }
+}
