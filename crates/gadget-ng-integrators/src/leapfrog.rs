@@ -53,7 +53,11 @@ impl CosmoFactors {
     /// `drift = dt`, `kick_half = kick_half2 = dt/2`.
     #[inline]
     pub fn flat(dt: f64) -> Self {
-        Self { drift: dt, kick_half: dt * 0.5, kick_half2: dt * 0.5 }
+        Self {
+            drift: dt,
+            kick_half: dt * 0.5,
+            kick_half2: dt * 0.5,
+        }
     }
 }
 
@@ -130,7 +134,11 @@ mod tests {
         let p_cosmo = CosmologyParams::new(1.0, 0.0, h0);
 
         let (drift, kh, kh2) = p_cosmo.drift_kick_factors(a0, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         let cf_flat = CosmoFactors::flat(dt);
 
         // La diferencia relativa en los factores debe ser O(H₀·dt) ≈ 1e-6.

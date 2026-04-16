@@ -123,9 +123,11 @@ fn plummer_ics(
     lo: usize,
     hi: usize,
 ) -> Result<Vec<Particle>, IcError> {
-    if n == 0 { return Err(IcError::ZeroParticles); }
+    if n == 0 {
+        return Err(IcError::ZeroParticles);
+    }
     let m_each = 1.0 / n as f64; // masa total = 1
-    let m_tot  = 1.0_f64;
+    let m_tot = 1.0_f64;
     let sigma0 = (g * m_tot / (6.0 * a)).sqrt(); // dispersión de Jeans global
 
     // Generamos TODAS las partículas (para el virial scaling global).
@@ -176,7 +178,11 @@ fn plummer_cdf_inv(u: f64, a: f64) -> f64 {
         let mid = 0.5 * (lo + hi);
         let x = mid / a;
         let cdf = x * x * x / (x * x + 1.0).powf(1.5);
-        if cdf < u { lo = mid; } else { hi = mid; }
+        if cdf < u {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
     }
     0.5 * (lo + hi)
 }
@@ -185,7 +191,7 @@ fn plummer_cdf_inv(u: f64, a: f64) -> f64 {
 fn uniform_sphere_point(lcg: &mut LcgState, r: f64) -> (f64, f64, f64) {
     let cos_t = 2.0 * lcg.next_f64() - 1.0;
     let sin_t = (1.0 - cos_t * cos_t).sqrt();
-    let phi   = 2.0 * std::f64::consts::PI * lcg.next_f64();
+    let phi = 2.0 * std::f64::consts::PI * lcg.next_f64();
     (r * sin_t * phi.cos(), r * sin_t * phi.sin(), r * cos_t)
 }
 
@@ -198,13 +204,23 @@ fn gauss_bm(lcg: &mut LcgState) -> f64 {
 
 fn center_of_mass_vel(ps: &[Particle]) -> (Vec3, Vec3) {
     let m_tot: f64 = ps.iter().map(|p| p.mass).sum();
-    let com = ps.iter().map(|p| p.position * p.mass).fold(Vec3::zero(), |a,b| a+b) / m_tot;
-    let vcm = ps.iter().map(|p| p.velocity * p.mass).fold(Vec3::zero(), |a,b| a+b) / m_tot;
+    let com = ps
+        .iter()
+        .map(|p| p.position * p.mass)
+        .fold(Vec3::zero(), |a, b| a + b)
+        / m_tot;
+    let vcm = ps
+        .iter()
+        .map(|p| p.velocity * p.mass)
+        .fold(Vec3::zero(), |a, b| a + b)
+        / m_tot;
     (com, vcm)
 }
 
 fn kinetic_energy(ps: &[Particle]) -> f64 {
-    ps.iter().map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity)).sum()
+    ps.iter()
+        .map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity))
+        .sum()
 }
 
 /// Energía potencial analítica de la esfera de Plummer: W = -3πGM²/(32a).
@@ -217,7 +233,10 @@ struct LcgState(u64);
 
 impl LcgState {
     fn next_f64(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 33) as f64 / u32::MAX as f64
     }
 }

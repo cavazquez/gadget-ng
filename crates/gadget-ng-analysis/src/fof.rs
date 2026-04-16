@@ -16,14 +16,14 @@ use std::collections::HashMap;
 
 struct Uf {
     parent: Vec<usize>,
-    rank:   Vec<u8>,
+    rank: Vec<u8>,
 }
 
 impl Uf {
     fn new(n: usize) -> Self {
         Self {
             parent: (0..n).collect(),
-            rank:   vec![0; n],
+            rank: vec![0; n],
         }
     }
 
@@ -42,9 +42,9 @@ impl Uf {
             return;
         }
         match self.rank[ra].cmp(&self.rank[rb]) {
-            std::cmp::Ordering::Less    => self.parent[ra] = rb,
+            std::cmp::Ordering::Less => self.parent[ra] = rb,
             std::cmp::Ordering::Greater => self.parent[rb] = ra,
-            std::cmp::Ordering::Equal   => {
+            std::cmp::Ordering::Equal => {
                 self.parent[rb] = ra;
                 self.rank[ra] += 1;
             }
@@ -69,7 +69,7 @@ struct CellList {
     /// next[i] = siguiente partícula en la misma celda que i, o `usize::MAX`.
     next: Vec<usize>,
     /// Número de celdas por eje.
-    nc:   i32,
+    nc: i32,
 }
 
 impl CellList {
@@ -94,13 +94,16 @@ impl CellList {
     /// Itera sobre todos los índices en la celda (ix, iy, iz).
     fn iter_cell(&self, ix: i32, iy: i32, iz: i32) -> CellIter<'_> {
         let c = cell_idx(ix, iy, iz, self.nc);
-        CellIter { next: &self.next, cur: self.head[c] }
+        CellIter {
+            next: &self.next,
+            cur: self.head[c],
+        }
     }
 }
 
 struct CellIter<'a> {
     next: &'a [usize],
-    cur:  usize,
+    cur: usize,
 }
 
 impl Iterator for CellIter<'_> {
@@ -157,13 +160,13 @@ pub struct FofHalo {
 /// - `min_particles`: número mínimo de partículas para ser un halo.
 /// - `rho_crit`: densidad crítica en unidades internas (0 → `r_vir` = `r_max`).
 pub fn find_halos(
-    positions:     &[Vec3],
-    velocities:    &[Vec3],
-    masses:        &[f64],
-    box_size:      f64,
-    b:             f64,
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    box_size: f64,
+    b: f64,
     min_particles: usize,
-    rho_crit:      f64,
+    rho_crit: f64,
 ) -> Vec<FofHalo> {
     let n = positions.len();
     if n == 0 {
@@ -172,12 +175,12 @@ pub fn find_halos(
 
     // Longitud de enlace ll = b × l̄ = b × (V/N)^{1/3}
     let l_mean = (box_size * box_size * box_size / n as f64).cbrt();
-    let ll  = b * l_mean;
+    let ll = b * l_mean;
     let ll2 = ll * ll;
 
     // Construir cell-linked-list.
     let cll = CellList::build(positions, ll, box_size);
-    let nc  = cll.nc;
+    let nc = cll.nc;
 
     // Union-Find para agrupar partículas.
     let mut uf = Uf::new(n);
@@ -194,15 +197,12 @@ pub fn find_halos(
                                     if j <= i {
                                         continue;
                                     }
-                                    let dx = periodic_diff(
-                                        positions[i].x, positions[j].x, box_size,
-                                    );
-                                    let dy = periodic_diff(
-                                        positions[i].y, positions[j].y, box_size,
-                                    );
-                                    let dz = periodic_diff(
-                                        positions[i].z, positions[j].z, box_size,
-                                    );
+                                    let dx =
+                                        periodic_diff(positions[i].x, positions[j].x, box_size);
+                                    let dy =
+                                        periodic_diff(positions[i].y, positions[j].y, box_size);
+                                    let dz =
+                                        periodic_diff(positions[i].z, positions[j].z, box_size);
                                     if dx * dx + dy * dy + dz * dz < ll2 {
                                         uf.union(i, j);
                                     }
@@ -226,7 +226,11 @@ pub fn find_halos(
         .values()
         .filter(|g| g.len() >= min_particles)
         .enumerate()
-        .map(|(halo_id, members)| halo_props(halo_id, members, positions, velocities, masses, box_size, rho_crit))
+        .map(|(halo_id, members)| {
+            halo_props(
+                halo_id, members, positions, velocities, masses, box_size, rho_crit,
+            )
+        })
         .collect();
 
     // Ordenar por masa descendente y reasignar IDs.
@@ -245,13 +249,13 @@ fn periodic_diff(a: f64, b: f64, l: f64) -> f64 {
 }
 
 fn halo_props(
-    halo_id:   usize,
-    members:   &[usize],
+    halo_id: usize,
+    members: &[usize],
     positions: &[Vec3],
-    velocities:&[Vec3],
-    masses:    &[f64],
-    box_size:  f64,
-    rho_crit:  f64,
+    velocities: &[Vec3],
+    masses: &[f64],
+    box_size: f64,
+    rho_crit: f64,
 ) -> FofHalo {
     let mass: f64 = members.iter().map(|&i| masses[i]).sum();
     // Centro de masa con corrección periódica respecto a la primera partícula.
@@ -292,12 +296,15 @@ fn halo_props(
         factor.cbrt()
     } else {
         // r_max: mayor distancia de una partícula al COM.
-        members.iter().map(|&i| {
-            let dx = periodic_diff(positions[i].x, com.x, box_size);
-            let dy = periodic_diff(positions[i].y, com.y, box_size);
-            let dz = periodic_diff(positions[i].z, com.z, box_size);
-            (dx * dx + dy * dy + dz * dz).sqrt()
-        }).fold(0.0f64, f64::max)
+        members
+            .iter()
+            .map(|&i| {
+                let dx = periodic_diff(positions[i].x, com.x, box_size);
+                let dy = periodic_diff(positions[i].y, com.y, box_size);
+                let dz = periodic_diff(positions[i].z, com.z, box_size);
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            })
+            .fold(0.0f64, f64::max)
     };
 
     FofHalo {
@@ -339,11 +346,15 @@ mod tests {
     #[test]
     fn fof_single_cluster() {
         // 8 partículas muy juntas forman 1 halo.
-        let pos: Vec<Vec3> = (0..8).map(|i| {
-            Vec3::new(0.5 + 0.001 * (i % 2) as f64,
-                      0.5 + 0.001 * ((i / 2) % 2) as f64,
-                      0.5 + 0.001 * (i / 4) as f64)
-        }).collect();
+        let pos: Vec<Vec3> = (0..8)
+            .map(|i| {
+                Vec3::new(
+                    0.5 + 0.001 * (i % 2) as f64,
+                    0.5 + 0.001 * ((i / 2) % 2) as f64,
+                    0.5 + 0.001 * (i / 4) as f64,
+                )
+            })
+            .collect();
         let vel = vec![Vec3::zero(); 8];
         let mass = vec![1.0f64; 8];
         let halos = find_halos(&pos, &vel, &mass, 1.0, 0.2, 2, 0.0);

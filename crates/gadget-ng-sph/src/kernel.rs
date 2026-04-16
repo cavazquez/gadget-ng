@@ -24,7 +24,9 @@ const SIGMA3: f64 = 21.0 / (16.0 * std::f64::consts::PI);
 #[inline]
 pub fn w(r: f64, h: f64) -> f64 {
     let q = r / h;
-    if q >= 2.0 { return 0.0; }
+    if q >= 2.0 {
+        return 0.0;
+    }
     let t = 1.0 - 0.5 * q;
     SIGMA3 / (h * h * h) * t * t * t * t * (2.0 * q + 1.0)
 }
@@ -36,7 +38,9 @@ pub fn w(r: f64, h: f64) -> f64 {
 #[inline]
 pub fn grad_w(r: f64, h: f64) -> f64 {
     let q = r / h;
-    if q >= 2.0 || r < 1e-300 { return 0.0; }
+    if q >= 2.0 || r < 1e-300 {
+        return 0.0;
+    }
     let t = 1.0 - 0.5 * q;
     // dW/dr = σ₃ / h⁴ · (-5q · t³)
     SIGMA3 / (h * h * h * h) * (-5.0 * q * t * t * t)

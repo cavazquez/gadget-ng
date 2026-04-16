@@ -23,7 +23,7 @@ fn small_lattice_cfg() -> RunConfig {
         performance: Default::default(),
         timestep: Default::default(),
         cosmology: Default::default(),
-        units:       Default::default(),
+        units: Default::default(),
     }
 }
 

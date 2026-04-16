@@ -136,19 +136,14 @@ impl ParallelRuntime for MpiRuntime {
         out
     }
 
-    fn exchange_domain_by_x(
-        &self,
-        local: &mut Vec<Particle>,
-        my_x_lo: f64,
-        my_x_hi: f64,
-    ) {
+    fn exchange_domain_by_x(&self, local: &mut Vec<Particle>, my_x_lo: f64, my_x_hi: f64) {
         let world = self.world();
-        let rank  = world.rank();
-        let size  = world.size();
+        let rank = world.rank();
+        let size = world.size();
 
         // Separar partículas que deben migrar a la izquierda, derecha, o quedarse.
-        let mut stay     = Vec::new();
-        let mut go_left  = Vec::new();
+        let mut stay = Vec::new();
+        let mut go_left = Vec::new();
         let mut go_right = Vec::new();
         for p in local.drain(..) {
             if p.position.x < my_x_lo && rank > 0 {
@@ -163,11 +158,25 @@ impl ParallelRuntime for MpiRuntime {
         // Intercambio punto-a-punto: patrón odd-even para evitar deadlock.
         // Ronda 1: enviar/recibir en dirección derecha.
         // Ronda 2: enviar/recibir en dirección izquierda.
-        let left  = if rank > 0        { Some(world.process_at_rank(rank - 1)) } else { None };
-        let right = if rank < size - 1 { Some(world.process_at_rank(rank + 1)) } else { None };
+        let left = if rank > 0 {
+            Some(world.process_at_rank(rank - 1))
+        } else {
+            None
+        };
+        let right = if rank < size - 1 {
+            Some(world.process_at_rank(rank + 1))
+        } else {
+            None
+        };
 
-        let recv_from_right = point_to_point_exchange(&world, rank, &right, &left,
-            &pack::pack_halo(&go_right), &pack::pack_halo(&go_left));
+        let recv_from_right = point_to_point_exchange(
+            &world,
+            rank,
+            &right,
+            &left,
+            &pack::pack_halo(&go_right),
+            &pack::pack_halo(&go_left),
+        );
 
         // Recombinar
         *local = stay;
@@ -181,7 +190,7 @@ impl ParallelRuntime for MpiRuntime {
         decomp: &crate::sfc::SfcDecomposition,
     ) {
         let world = self.world();
-        let rank  = world.rank();
+        let rank = world.rank();
         // Separar: partículas que se quedan y las que migran (solo vecinos ±1 en la curva).
         // Para SFC, los vecinos "naturales" en la curva son rank-1 y rank+1.
         // Las partículas que van a rangos no adyacentes son raras y se reenvían en
@@ -192,11 +201,19 @@ impl ParallelRuntime for MpiRuntime {
         // Partículas que van más lejos quedan temporalmente en el rango incorrecto
         // y se corrigen en el siguiente paso (converge rápido para distribuciones suaves).
         let size = world.size();
-        let left  = if rank > 0        { Some(world.process_at_rank(rank - 1)) } else { None };
-        let right = if rank < size - 1 { Some(world.process_at_rank(rank + 1)) } else { None };
+        let left = if rank > 0 {
+            Some(world.process_at_rank(rank - 1))
+        } else {
+            None
+        };
+        let right = if rank < size - 1 {
+            Some(world.process_at_rank(rank + 1))
+        } else {
+            None
+        };
 
         let mut go_right = Vec::new();
-        let mut go_left  = Vec::new();
+        let mut go_left = Vec::new();
         for (r, particles) in &leaves {
             if *r == rank + 1 {
                 go_right.extend_from_slice(particles);
@@ -207,7 +224,10 @@ impl ParallelRuntime for MpiRuntime {
         }
 
         let (recv_left, recv_right) = point_to_point_exchange(
-            &world, rank, &right, &left,
+            &world,
+            rank,
+            &right,
+            &left,
             &pack::pack_halo(&go_right),
             &pack::pack_halo(&go_left),
         );
@@ -223,8 +243,8 @@ impl ParallelRuntime for MpiRuntime {
         halo_width: f64,
     ) -> Vec<Particle> {
         let world = self.world();
-        let rank  = world.rank();
-        let size  = world.size();
+        let rank = world.rank();
+        let size = world.size();
         // Usar la componente x del bbox del segmento SFC como proxy del borde.
         // Las partículas dentro de `halo_width` del borde x_lo o x_hi del segmento
         // se comparten con los vecinos izquierdo y derecho en la curva.
@@ -233,18 +253,33 @@ impl ParallelRuntime for MpiRuntime {
         let seg_lo = x_lo + rank as f64 / size as f64 * (x_hi - x_lo);
         let seg_hi = x_lo + (rank + 1) as f64 / size as f64 * (x_hi - x_lo);
 
-        let left  = if rank > 0        { Some(world.process_at_rank(rank - 1)) } else { None };
-        let right = if rank < size - 1 { Some(world.process_at_rank(rank + 1)) } else { None };
+        let left = if rank > 0 {
+            Some(world.process_at_rank(rank - 1))
+        } else {
+            None
+        };
+        let right = if rank < size - 1 {
+            Some(world.process_at_rank(rank + 1))
+        } else {
+            None
+        };
 
-        let send_left:  Vec<Particle> = local.iter()
+        let send_left: Vec<Particle> = local
+            .iter()
             .filter(|p| p.position.x < seg_lo + halo_width && rank > 0)
-            .cloned().collect();
-        let send_right: Vec<Particle> = local.iter()
+            .cloned()
+            .collect();
+        let send_right: Vec<Particle> = local
+            .iter()
             .filter(|p| p.position.x > seg_hi - halo_width && rank < size - 1)
-            .cloned().collect();
+            .cloned()
+            .collect();
 
         let (from_left, from_right) = point_to_point_exchange(
-            &world, rank, &right, &left,
+            &world,
+            rank,
+            &right,
+            &left,
             &pack::pack_halo(&send_right),
             &pack::pack_halo(&send_left),
         );
@@ -261,26 +296,39 @@ impl ParallelRuntime for MpiRuntime {
         halo_width: f64,
     ) -> Vec<Particle> {
         let world = self.world();
-        let rank  = world.rank();
-        let size  = world.size();
+        let rank = world.rank();
+        let size = world.size();
 
         // Partículas que son halo para el vecino izquierdo y derecho.
-        let send_left:  Vec<&Particle> = local.iter()
+        let send_left: Vec<&Particle> = local
+            .iter()
             .filter(|p| p.position.x < my_x_lo + halo_width && rank > 0)
             .collect();
-        let send_right: Vec<&Particle> = local.iter()
+        let send_right: Vec<&Particle> = local
+            .iter()
             .filter(|p| p.position.x > my_x_hi - halo_width && rank < size - 1)
             .collect();
 
-        let left  = if rank > 0        { Some(world.process_at_rank(rank - 1)) } else { None };
-        let right = if rank < size - 1 { Some(world.process_at_rank(rank + 1)) } else { None };
+        let left = if rank > 0 {
+            Some(world.process_at_rank(rank - 1))
+        } else {
+            None
+        };
+        let right = if rank < size - 1 {
+            Some(world.process_at_rank(rank + 1))
+        } else {
+            None
+        };
 
         // Serializar (solo referencias → clonar los datos necesarios)
         let buf_to_right: Vec<Particle> = send_right.iter().map(|p| (*p).clone()).collect();
-        let buf_to_left:  Vec<Particle> = send_left.iter().map(|p| (*p).clone()).collect();
+        let buf_to_left: Vec<Particle> = send_left.iter().map(|p| (*p).clone()).collect();
 
         let (from_left, from_right) = point_to_point_exchange(
-            &world, rank, &right, &left,
+            &world,
+            rank,
+            &right,
+            &left,
             &pack::pack_halo(&buf_to_right),
             &pack::pack_halo(&buf_to_left),
         );
@@ -301,34 +349,57 @@ impl ParallelRuntime for MpiRuntime {
 /// Devuelve `(halos_from_left, halos_from_right)` ya desempaquetados como `Vec<Particle>`.
 fn point_to_point_exchange(
     world: &mpi::topology::SimpleCommunicator,
-    rank:  i32,
+    rank: i32,
     right: &Option<mpi::topology::Process<'_>>,
-    left:  &Option<mpi::topology::Process<'_>>,
+    left: &Option<mpi::topology::Process<'_>>,
     send_right: &[f64],
-    send_left:  &[f64],
+    send_left: &[f64],
 ) -> (Vec<Particle>, Vec<Particle>) {
-    let mut from_left:  Vec<f64> = Vec::new();
+    let mut from_left: Vec<f64> = Vec::new();
     let mut from_right: Vec<f64> = Vec::new();
 
     // ── Ronda 1: pares envían →derecha y reciben ←izquierda ──────────────────
     if rank % 2 == 0 {
-        if let Some(r) = right { r.send(send_right); }
-        if let Some(l) = left  { let (v, _) = l.receive_vec::<f64>(); from_left = v; }
+        if let Some(r) = right {
+            r.send(send_right);
+        }
+        if let Some(l) = left {
+            let (v, _) = l.receive_vec::<f64>();
+            from_left = v;
+        }
     } else {
-        if let Some(l) = left  { let (v, _) = l.receive_vec::<f64>(); from_left = v; }
-        if let Some(r) = right { r.send(send_right); }
+        if let Some(l) = left {
+            let (v, _) = l.receive_vec::<f64>();
+            from_left = v;
+        }
+        if let Some(r) = right {
+            r.send(send_right);
+        }
     }
     world.barrier();
 
     // ── Ronda 2: pares envían ←izquierda y reciben →derecha ──────────────────
     if rank % 2 == 0 {
-        if let Some(l) = left  { l.send(send_left); }
-        if let Some(r) = right { let (v, _) = r.receive_vec::<f64>(); from_right = v; }
+        if let Some(l) = left {
+            l.send(send_left);
+        }
+        if let Some(r) = right {
+            let (v, _) = r.receive_vec::<f64>();
+            from_right = v;
+        }
     } else {
-        if let Some(r) = right { let (v, _) = r.receive_vec::<f64>(); from_right = v; }
-        if let Some(l) = left  { l.send(send_left); }
+        if let Some(r) = right {
+            let (v, _) = r.receive_vec::<f64>();
+            from_right = v;
+        }
+        if let Some(l) = left {
+            l.send(send_left);
+        }
     }
     world.barrier();
 
-    (pack::unpack_halo(&from_left), pack::unpack_halo(&from_right))
+    (
+        pack::unpack_halo(&from_left),
+        pack::unpack_halo(&from_right),
+    )
 }

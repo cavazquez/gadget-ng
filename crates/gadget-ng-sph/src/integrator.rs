@@ -100,10 +100,14 @@ mod tests {
             sph_kdk_step(&mut parts, dt, no_gravity);
         }
 
-        let total_u: f64 = parts.iter()
+        let total_u: f64 = parts
+            .iter()
             .filter_map(|p| p.gas.as_ref())
             .map(|g| g.u)
             .sum();
-        assert!(total_u > 0.0 && total_u < 1000.0, "energía interna total = {total_u:.4}");
+        assert!(
+            total_u > 0.0 && total_u < 1000.0,
+            "energía interna total = {total_u:.4}"
+        );
     }
 }

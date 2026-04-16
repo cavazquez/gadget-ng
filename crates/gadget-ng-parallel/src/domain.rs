@@ -13,15 +13,19 @@ use gadget_ng_core::Vec3;
 #[derive(Debug, Clone, Copy)]
 pub struct SlabDecomposition {
     pub n_ranks: i32,
-    pub x_lo:   f64,
-    pub x_hi:   f64,
+    pub x_lo: f64,
+    pub x_hi: f64,
 }
 
 impl SlabDecomposition {
     /// Crea una descomposición uniforme sobre el intervalo `[x_lo, x_hi]`.
     pub fn new(x_lo: f64, x_hi: f64, n_ranks: i32) -> Self {
         let margin = (x_hi - x_lo) * 0.001 + 1e-12;
-        Self { n_ranks, x_lo: x_lo - margin, x_hi: x_hi + margin }
+        Self {
+            n_ranks,
+            x_lo: x_lo - margin,
+            x_hi: x_hi + margin,
+        }
     }
 
     pub fn slab_width(&self) -> f64 {
@@ -52,7 +56,10 @@ impl SlabDecomposition {
 /// Filtra `positions` para estimar los límites globales x (usado en motor serial).
 pub fn x_bounds_of(positions: &[Vec3]) -> (f64, f64) {
     let lo = positions.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
-    let hi = positions.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+    let hi = positions
+        .iter()
+        .map(|p| p.x)
+        .fold(f64::NEG_INFINITY, f64::max);
     (lo, hi)
 }
 

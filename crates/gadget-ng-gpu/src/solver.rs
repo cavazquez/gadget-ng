@@ -66,10 +66,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 // ── Contexto GPU ─────────────────────────────────────────────────────────────
 
 struct GpuContext {
-    device:   wgpu::Device,
-    queue:    wgpu::Queue,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
-    bgl:      wgpu::BindGroupLayout,
+    bgl: wgpu::BindGroupLayout,
 }
 
 // SAFETY: wgpu::Device, Queue, ComputePipeline y BindGroupLayout son Send+Sync.
@@ -107,8 +107,8 @@ impl GpuDirectGravity {
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference:       wgpu::PowerPreference::HighPerformance,
-                compatible_surface:     None,
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
                 force_fallback_adapter: false,
             })
             .await
@@ -116,69 +116,89 @@ impl GpuDirectGravity {
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label:                 Some("gadget-ng-gpu"),
-                required_features:     wgpu::Features::empty(),
-                required_limits:       wgpu::Limits::default(),
-                memory_hints:          Default::default(),
+                label: Some("gadget-ng-gpu"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: Default::default(),
                 experimental_features: Default::default(),
-                trace:                 Default::default(),
+                trace: Default::default(),
             })
             .await
             .ok()?;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label:  Some("direct_gravity_wgsl"),
+            label: Some("direct_gravity_wgsl"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(SHADER_SRC)),
         });
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label:   Some("direct_gravity_bgl"),
+            label: Some("direct_gravity_bgl"),
             entries: &[
-                bgl_entry(0, wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size:   None,
-                }),
-                bgl_entry(1, wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size:   None,
-                }),
-                bgl_entry(2, wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size:   None,
-                }),
-                bgl_entry(3, wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size:   None,
-                }),
-                bgl_entry(4, wgpu::BindingType::Buffer {
-                    ty:                 wgpu::BufferBindingType::Storage { read_only: false },
-                    has_dynamic_offset: false,
-                    min_binding_size:   None,
-                }),
+                bgl_entry(
+                    0,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+                bgl_entry(
+                    1,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+                bgl_entry(
+                    2,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+                bgl_entry(
+                    3,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+                bgl_entry(
+                    4,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
             ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label:              Some("direct_gravity_pl"),
+            label: Some("direct_gravity_pl"),
             bind_group_layouts: &[Some(&bgl)],
-            immediate_size:     0,
+            immediate_size: 0,
         });
 
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label:               Some("direct_gravity_cp"),
-            layout:              Some(&pipeline_layout),
-            module:              &shader,
-            entry_point:         Some("main"),
+            label: Some("direct_gravity_cp"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("main"),
             compilation_options: Default::default(),
-            cache:               None,
+            cache: None,
         });
 
         Some(Self {
-            ctx: Arc::new(GpuContext { device, queue, pipeline, bgl }),
+            ctx: Arc::new(GpuContext {
+                device,
+                queue,
+                pipeline,
+                bgl,
+            }),
         })
     }
 
@@ -194,17 +214,17 @@ impl GpuDirectGravity {
     pub fn compute_accelerations_raw(
         &self,
         positions_f32: &[f32],
-        masses_f32:    &[f32],
-        query_idx:     &[u32],
-        eps2:          f32,
-        g:             f32,
+        masses_f32: &[f32],
+        query_idx: &[u32],
+        eps2: f32,
+        g: f32,
     ) -> Vec<f32> {
         let n_query = query_idx.len() as u32;
         if n_query == 0 {
             return Vec::new();
         }
         let n_all = masses_f32.len() as u32;
-        let ctx   = &*self.ctx;
+        let ctx = &*self.ctx;
 
         use wgpu::util::DeviceExt;
 
@@ -213,60 +233,85 @@ impl GpuDirectGravity {
             .iter()
             .flat_map(|v| v.to_le_bytes())
             .collect();
-        let buf_params = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label:    Some("params"),
-            contents: &params_bytes,
-            usage:    wgpu::BufferUsages::UNIFORM,
-        });
+        let buf_params = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("params"),
+                contents: &params_bytes,
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
 
-        let buf_pos = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label:    Some("positions"),
-            contents: &f32s_to_bytes(positions_f32),
-            usage:    wgpu::BufferUsages::STORAGE,
-        });
-        let buf_mass = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label:    Some("masses"),
-            contents: &f32s_to_bytes(masses_f32),
-            usage:    wgpu::BufferUsages::STORAGE,
-        });
-        let buf_idx = ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label:    Some("query_idx"),
-            contents: &u32s_to_bytes(query_idx),
-            usage:    wgpu::BufferUsages::STORAGE,
-        });
+        let buf_pos = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("positions"),
+                contents: &f32s_to_bytes(positions_f32),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let buf_mass = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("masses"),
+                contents: &f32s_to_bytes(masses_f32),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let buf_idx = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("query_idx"),
+                contents: &u32s_to_bytes(query_idx),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
 
         let out_bytes = 3 * n_query as u64 * 4; // 4 bytes por f32
         let buf_out = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label:              Some("out_accs"),
-            size:               out_bytes,
-            usage:              wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            label: Some("out_accs"),
+            size: out_bytes,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let buf_rb = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label:              Some("readback"),
-            size:               out_bytes,
-            usage:              wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            label: Some("readback"),
+            size: out_bytes,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
 
         let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label:   Some("bg"),
-            layout:  &ctx.bgl,
+            label: Some("bg"),
+            layout: &ctx.bgl,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: buf_params.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: buf_pos.as_entire_binding()    },
-                wgpu::BindGroupEntry { binding: 2, resource: buf_mass.as_entire_binding()   },
-                wgpu::BindGroupEntry { binding: 3, resource: buf_idx.as_entire_binding()    },
-                wgpu::BindGroupEntry { binding: 4, resource: buf_out.as_entire_binding()    },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buf_params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buf_pos.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buf_mass.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buf_idx.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: buf_out.as_entire_binding(),
+                },
             ],
         });
 
-        let mut enc = ctx.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("gravity_enc"),
-        });
+        let mut enc = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("gravity_enc"),
+            });
         {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label:            Some("gravity_pass"),
+                label: Some("gravity_pass"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&ctx.pipeline);
@@ -279,13 +324,17 @@ impl GpuDirectGravity {
 
         // Readback síncrono
         let (tx, rx) = std::sync::mpsc::channel();
-        buf_rb.slice(..).map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
+        buf_rb
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
         ctx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .expect("GPU device lost during poll");
-        rx.recv().expect("map_async recv").expect("GPU buffer map failed");
+        rx.recv()
+            .expect("map_async recv")
+            .expect("GPU buffer map failed");
 
-        let view   = buf_rb.slice(..).get_mapped_range();
+        let view = buf_rb.slice(..).get_mapped_range();
         let result = bytes_to_f32s(&view);
         drop(view);
         buf_rb.unmap();
@@ -362,17 +411,22 @@ mod tests {
             return;
         };
         let positions = [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0]];
-        let masses    = [1.0f32, 1.0];
+        let masses = [1.0f32, 1.0];
         let flat_pos: Vec<f32> = positions.iter().flat_map(|p| *p).collect();
         let eps2 = 0.01f32;
-        let g    = 1.0f32;
-        let idx  = [0u32, 1];
+        let g = 1.0f32;
+        let idx = [0u32, 1];
         let raw = gpu.compute_accelerations_raw(&flat_pos, &masses, &idx, eps2, g);
         let cpu = direct_gravity_cpu(&positions, &masses, &idx, eps2, g);
         for (k, cpu_acc) in cpu.iter().enumerate() {
             for comp in 0..3 {
                 let diff = (raw[3 * k + comp] - cpu_acc[comp]).abs();
-                assert!(diff < 1e-5, "k={k} comp={comp}: GPU={} CPU={} diff={diff}", raw[3*k+comp], cpu_acc[comp]);
+                assert!(
+                    diff < 1e-5,
+                    "k={k} comp={comp}: GPU={} CPU={} diff={diff}",
+                    raw[3 * k + comp],
+                    cpu_acc[comp]
+                );
             }
         }
     }
@@ -395,13 +449,13 @@ mod tests {
         let flat_pos: Vec<f32> = positions.iter().flat_map(|p| *p).collect();
         let idx: Vec<u32> = (0..n as u32).collect();
         let eps2 = 0.01f32;
-        let g    = 1.0f32;
+        let g = 1.0f32;
         let raw = gpu.compute_accelerations_raw(&flat_pos, &masses, &idx, eps2, g);
         let cpu = direct_gravity_cpu(&positions, &masses, &idx, eps2, g);
         for (k, cpu_acc) in cpu.iter().enumerate() {
             for comp in 0..3 {
                 let diff = (raw[3 * k + comp] - cpu_acc[comp]).abs();
-                let rel  = diff / (cpu_acc[comp].abs() + 1e-12);
+                let rel = diff / (cpu_acc[comp].abs() + 1e-12);
                 assert!(rel < 1e-4, "k={k} comp={comp}: rel_err={rel:.2e}");
             }
         }

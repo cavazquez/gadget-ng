@@ -71,7 +71,10 @@ fn kepler_circular_orbit_one_period() {
     let n_steps = 1000usize;
     let dt = period / n_steps as f64;
 
-    let mut state = TwoBodyState { pos: pos0, vel: vel0 };
+    let state = TwoBodyState {
+        pos: pos0,
+        vel: vel0,
+    };
     let e0 = specific_energy(state.pos, state.vel);
     let l0 = specific_angular_momentum(state.pos, state.vel);
 
@@ -80,7 +83,7 @@ fn kepler_circular_orbit_one_period() {
     use gadget_ng_core::Particle;
 
     let mut particles = vec![Particle::new(0, 1e-6, pos0, vel0)];
-    let mut scratch   = vec![Vec3::zero(); 1];
+    let mut scratch = vec![Vec3::zero(); 1];
 
     for _ in 0..n_steps {
         leapfrog_kdk_step(&mut particles, dt, &mut scratch, |ps, acc| {
@@ -90,8 +93,8 @@ fn kepler_circular_orbit_one_period() {
 
     let pos_f = particles[0].position;
     let vel_f = particles[0].velocity;
-    let e_f   = specific_energy(pos_f, vel_f);
-    let l_f   = specific_angular_momentum(pos_f, vel_f);
+    let e_f = specific_energy(pos_f, vel_f);
+    let l_f = specific_angular_momentum(pos_f, vel_f);
 
     // El planeta debe volver a su posición inicial con <0.5% de error.
     let pos_err = (pos_f - pos0).norm() / R_ORBIT;

@@ -10,16 +10,16 @@ use gadget_ng_integrators::{
     hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, CosmoFactors,
     HierarchicalState,
 };
+use gadget_ng_io::SnapshotReader;
 use gadget_ng_io::{
     write_snapshot_formatted, JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotUnits,
     SnapshotWriter,
 };
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, SlabDecomposition};
-use gadget_ng_io::SnapshotReader;
 use gadget_ng_pm::PmSolver;
-use gadget_ng_tree::{BarnesHutGravity, Octree};
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
+use gadget_ng_tree::{BarnesHutGravity, Octree};
 use gadget_ng_treepm::TreePmSolver;
 use std::fs;
 use std::fs::File;
@@ -182,17 +182,21 @@ fn compute_forces_local_tree(
     parts: &[Particle],
     halos: &[Particle],
     theta: f64,
-    g:     f64,
-    eps2:  f64,
-    out:   &mut [Vec3],
+    g: f64,
+    eps2: f64,
+    out: &mut [Vec3],
 ) {
     debug_assert_eq!(parts.len(), out.len());
     if parts.is_empty() {
         return;
     }
     // Combinar posiciones y masas: [locales, halos]
-    let all_pos:  Vec<Vec3> = parts.iter().chain(halos.iter()).map(|p| p.position).collect();
-    let all_mass: Vec<f64>  = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
+    let all_pos: Vec<Vec3> = parts
+        .iter()
+        .chain(halos.iter())
+        .map(|p| p.position)
+        .collect();
+    let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
     // Solo se computan fuerzas para los índices locales (0..parts.len()).
     // El índice LOCAL `li` coincide con `particle_idx` en las hojas del árbol local.
@@ -268,17 +272,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let total = cfg.simulation.particle_count;
     let (lo, hi) = gid_block_range(total, rt.rank(), rt.size());
 
-    let g    = cfg.effective_g();
+    let g = cfg.effective_g();
     let eps2 = cfg.softening_squared();
     let theta = cfg.gravity.theta;
     let solver = make_solver(cfg);
     let dt = cfg.simulation.dt;
-    let checkpoint_interval  = cfg.output.checkpoint_interval;
-    let snapshot_interval    = cfg.output.snapshot_interval;
+    let checkpoint_interval = cfg.output.checkpoint_interval;
+    let snapshot_interval = cfg.output.snapshot_interval;
 
     // Hash canónico de la config (para checkpoint).
-    let cfg_hash = config_load::config_canonical_hash(cfg)
-        .unwrap_or_else(|_| "unknown".to_owned());
+    let cfg_hash = config_load::config_canonical_hash(cfg).unwrap_or_else(|_| "unknown".to_owned());
 
     // ── Inicialización de estado ──────────────────────────────────────────────
     // Si `resume_from` está presente, cargamos el checkpoint;
@@ -289,12 +292,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 "[gadget-ng] Reanudando desde checkpoint en {:?}",
                 resume_dir.join("checkpoint")
             ));
-            let (p, completed, a, hs) =
-                load_checkpoint(rt, resume_dir, lo, hi, &cfg_hash)?;
+            let (p, completed, a, hs) = load_checkpoint(rt, resume_dir, lo, hi, &cfg_hash)?;
             (p, completed + 1, a, hs)
         } else {
             let p = build_particles_for_gid_range(cfg, lo, hi)?;
-            let a0 = if cfg.cosmology.enabled { cfg.cosmology.a_init } else { 1.0 };
+            let a0 = if cfg.cosmology.enabled {
+                cfg.cosmology.a_init
+            } else {
+                1.0
+            };
             (p, 1u64, a0, None)
         };
 
@@ -311,7 +317,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let use_sfc = use_dtree && cfg.performance.use_sfc;
     let sfc_rebalance = cfg.performance.sfc_rebalance_interval;
     if use_sfc {
-        rt.root_eprintln("[gadget-ng] Árbol distribuido SFC (Morton Z-order 3D, balanceo dinámico).");
+        rt.root_eprintln(
+            "[gadget-ng] Árbol distribuido SFC (Morton Z-order 3D, balanceo dinámico).",
+        );
     } else if use_dtree {
         rt.root_eprintln("[gadget-ng] Árbol distribuido activo (halos punto-a-punto en x).");
     }
@@ -361,14 +369,23 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     let frame_dir = out_dir.join("frames").join(format!("snap_{:06}", $step));
                     fs::create_dir_all(&frame_dir).map_err(|e| CliError::io(&frame_dir, e))?;
                     let t = $step as f64 * cfg.simulation.dt;
-                    let z = if cfg.cosmology.enabled { 1.0 / a_current - 1.0 } else { 0.0 };
+                    let z = if cfg.cosmology.enabled {
+                        1.0 / a_current - 1.0
+                    } else {
+                        0.0
+                    };
                     let env = SnapshotEnv {
-                        time: t, redshift: z,
+                        time: t,
+                        redshift: z,
                         box_size: cfg.simulation.box_size,
                         units: snapshot_units_for(cfg),
                     };
                     write_snapshot_formatted(
-                        cfg.output.snapshot_format, &frame_dir, &all_parts, &prov, &env,
+                        cfg.output.snapshot_format,
+                        &frame_dir,
+                        &all_parts,
+                        &prov,
+                        &env,
                     )?;
                 }
             }
@@ -434,7 +451,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         // Leapfrog cosmológico: factores drift/kick calculados por paso.
         for step in start_step..=cfg.simulation.num_steps {
             let (drift, kick_half, kick_half2) = cosmo_params.drift_kick_factors(a_current, dt);
-            let cf = CosmoFactors { drift, kick_half, kick_half2 };
+            let cf = CosmoFactors {
+                drift,
+                kick_half,
+                kick_half2,
+            };
             a_current = cosmo_params.advance_a(a_current, dt);
             leapfrog_cosmo_kdk_step(&mut local, cf, &mut scratch, |parts, acc| {
                 rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
@@ -452,7 +473,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let mut sfc_decomp = SfcDecomposition::build(&all_pos, box_size, rt.size());
 
         for step in start_step..=cfg.simulation.num_steps {
-            let do_rebalance = sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+            let do_rebalance =
+                sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
             if do_rebalance {
                 let all_pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
                 sfc_decomp = SfcDecomposition::build(&all_pos_loc, box_size, rt.size());
@@ -474,11 +496,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
         for step in start_step..=cfg.simulation.num_steps {
-            let x_lo_loc = local.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
-            let x_hi_loc = local.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max);
+            let x_lo_loc = local
+                .iter()
+                .map(|p| p.position.x)
+                .fold(f64::INFINITY, f64::min);
+            let x_hi_loc = local
+                .iter()
+                .map(|p| p.position.x)
+                .fold(f64::NEG_INFINITY, f64::max);
             let x_lo = rt.allreduce_min_f64(x_lo_loc);
             let x_hi = rt.allreduce_max_f64(x_hi_loc);
-            let decomp  = SlabDecomposition::new(x_lo, x_hi, rt.size());
+            let decomp = SlabDecomposition::new(x_lo, x_hi, rt.size());
             let (my_x_lo, my_x_hi) = decomp.bounds(rt.rank());
             let hw = decomp.halo_width(cfg.performance.halo_factor);
 
@@ -513,7 +541,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             fs::create_dir_all(&snap_dir).map_err(|e| CliError::io(&snap_dir, e))?;
             let time_final = cfg.simulation.num_steps as f64 * cfg.simulation.dt;
             // Con cosmología, redshift = 1/a - 1; sin cosmología, z = 0.
-            let redshift = if cfg.cosmology.enabled { 1.0 / a_current - 1.0 } else { 0.0 };
+            let redshift = if cfg.cosmology.enabled {
+                1.0 / a_current - 1.0
+            } else {
+                0.0
+            };
             let env = SnapshotEnv {
                 time: time_final,
                 redshift,
@@ -555,11 +587,11 @@ fn provenance_for_run(cfg: &RunConfig) -> Result<Provenance, CliError> {
 fn snapshot_units_for(cfg: &RunConfig) -> Option<SnapshotUnits> {
     if cfg.units.enabled {
         Some(SnapshotUnits {
-            length_in_kpc:    cfg.units.length_in_kpc,
-            mass_in_msun:     cfg.units.mass_in_msun,
+            length_in_kpc: cfg.units.length_in_kpc,
+            mass_in_msun: cfg.units.mass_in_msun,
             velocity_in_km_s: cfg.units.velocity_in_km_s,
-            time_in_gyr:      cfg.units.time_unit_in_gyr(),
-            g_internal:       cfg.units.compute_g(),
+            time_in_gyr: cfg.units.time_unit_in_gyr(),
+            g_internal: cfg.units.compute_g(),
         })
     } else {
         None
@@ -598,10 +630,10 @@ pub fn run_snapshot<R: ParallelRuntime + ?Sized>(
     if let Some(parts) = rt.root_gather_particles(&local, total) {
         fs::create_dir_all(out_dir).map_err(|e| CliError::io(out_dir, e))?;
         let env = SnapshotEnv {
-            time:     0.0,
+            time: 0.0,
             redshift: 0.0,
             box_size: cfg.simulation.box_size,
-            units:    snapshot_units_for(cfg),
+            units: snapshot_units_for(cfg),
         };
         write_snapshot_formatted(cfg.output.snapshot_format, out_dir, &parts, &prov, &env)?;
     }
@@ -625,27 +657,33 @@ pub fn run_visualize(
     let data = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, snapshot_dir)
         .map_err(CliError::Snapshot)?;
     let box_size = data.box_size;
-    let n        = data.particles.len();
+    let n = data.particles.len();
 
     if n == 0 {
         eprintln!("Advertencia: snapshot vacío en {:?}", snapshot_dir);
         return Ok(());
     }
 
-    let positions:  Vec<Vec3> = data.particles.iter().map(|p| p.position).collect();
+    let positions: Vec<Vec3> = data.particles.iter().map(|p| p.position).collect();
     let velocities: Vec<Vec3> = data.particles.iter().map(|p| p.velocity).collect();
 
     let proj = match projection {
         "xz" => Projection::XZ,
         "yz" => Projection::YZ,
-        _    => Projection::XY,
+        _ => Projection::XY,
     };
     let cmode = match color {
         "white" => ColorMode::White,
-        _       => ColorMode::Velocity,
+        _ => ColorMode::Velocity,
     };
 
-    let cfg = RendererConfig { width, height, projection: proj, color_mode: cmode, box_size };
+    let cfg = RendererConfig {
+        width,
+        height,
+        projection: proj,
+        color_mode: cmode,
+        box_size,
+    };
     let mut renderer = Renderer::new(cfg);
     renderer.render_frame(&positions, &velocities);
 
@@ -654,9 +692,9 @@ pub fn run_visualize(
             fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
         }
     }
-    renderer.save_frame(out_png).map_err(|e| {
-        CliError::io(out_png, std::io::Error::other(e.to_string()))
-    })?;
+    renderer
+        .save_frame(out_png)
+        .map_err(|e| CliError::io(out_png, std::io::Error::other(e.to_string())))?;
 
     println!(
         "Visualización: {n} partículas → {:?} ({}×{} px, proj={projection}, color={color})",
@@ -676,13 +714,13 @@ pub fn run_analyse(
     pk_mesh: usize,
 ) -> Result<(), CliError> {
     use gadget_ng_analysis::catalog::{write_halo_catalog, write_power_spectrum};
-    use gadget_ng_analysis::{AnalysisParams};
+    use gadget_ng_analysis::AnalysisParams;
     use gadget_ng_core::SnapshotFormat;
 
-    let data     = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, snapshot_dir)
+    let data = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, snapshot_dir)
         .map_err(CliError::Snapshot)?;
     let box_size = data.box_size;
-    let n        = data.particles.len();
+    let n = data.particles.len();
 
     if n == 0 {
         eprintln!("Advertencia: snapshot vacío en {:?}", snapshot_dir);
@@ -692,7 +730,7 @@ pub fn run_analyse(
     // Separación media entre partículas → longitud de enlace física.
     let rho_bg = (n as f64) / (box_size * box_size * box_size);
     let l_mean = rho_bg.cbrt().recip();
-    let b      = linking_length * l_mean;
+    let b = linking_length * l_mean;
 
     let params = AnalysisParams {
         box_size,
@@ -705,10 +743,8 @@ pub fn run_analyse(
     let result = gadget_ng_analysis::analyse(&data.particles, &params);
 
     fs::create_dir_all(out_dir).map_err(|e| CliError::io(out_dir, e))?;
-    write_halo_catalog(out_dir, &result.halos)
-        .map_err(|e| CliError::io(out_dir, e))?;
-    write_power_spectrum(out_dir, &result.power_spectrum)
-        .map_err(|e| CliError::io(out_dir, e))?;
+    write_halo_catalog(out_dir, &result.halos).map_err(|e| CliError::io(out_dir, e))?;
+    write_power_spectrum(out_dir, &result.power_spectrum).map_err(|e| CliError::io(out_dir, e))?;
 
     println!(
         "Análisis: {n} partículas, {} halos, {} bins P(k) → {:?}",

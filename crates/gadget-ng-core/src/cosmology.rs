@@ -37,7 +37,11 @@ pub struct CosmologyParams {
 impl CosmologyParams {
     /// Crea nuevos parámetros cosmológicos.
     pub fn new(omega_m: f64, omega_lambda: f64, h0: f64) -> Self {
-        Self { omega_m, omega_lambda, h0 }
+        Self {
+            omega_m,
+            omega_lambda,
+            h0,
+        }
     }
 
     /// `da/dt = a · H₀ · √(Ω_m/a³ + Ω_Λ)`.
@@ -80,8 +84,8 @@ impl CosmologyParams {
             let a_mid = self.advance_a(a, sub_dt * 0.5);
             let a_right = self.advance_a(a, sub_dt);
 
-            let d_sub = sub_dt / 6.0
-                * (1.0 / a_left.powi(2) + 4.0 / a_mid.powi(2) + 1.0 / a_right.powi(2));
+            let d_sub =
+                sub_dt / 6.0 * (1.0 / a_left.powi(2) + 4.0 / a_mid.powi(2) + 1.0 / a_right.powi(2));
             drift += d_sub;
 
             let k_sub = sub_dt / 6.0 * (1.0 / a_left + 4.0 / a_mid + 1.0 / a_right);
@@ -228,8 +232,14 @@ mod tests {
         let kick_half2_rel = (kick_half2 - kick_half2_ana).abs() / kick_half2_ana;
 
         assert!(drift_rel < 1e-7, "drift_factor: rel_err = {drift_rel:.2e}");
-        assert!(kick_half_rel < 1e-7, "kick_half: rel_err = {kick_half_rel:.2e}");
-        assert!(kick_half2_rel < 1e-7, "kick_half2: rel_err = {kick_half2_rel:.2e}");
+        assert!(
+            kick_half_rel < 1e-7,
+            "kick_half: rel_err = {kick_half_rel:.2e}"
+        );
+        assert!(
+            kick_half2_rel < 1e-7,
+            "kick_half2: rel_err = {kick_half2_rel:.2e}"
+        );
     }
 
     #[test]
@@ -241,8 +251,14 @@ mod tests {
         let (drift, kick_half, kick_half2) = p.drift_kick_factors(1.0, dt);
         let tol = 1e-12;
         assert!((drift - dt).abs() < tol, "drift != dt cuando H₀=0");
-        assert!((kick_half - dt * 0.5).abs() < tol, "kick_half != dt/2 cuando H₀=0");
-        assert!((kick_half2 - dt * 0.5).abs() < tol, "kick_half2 != dt/2 cuando H₀=0");
+        assert!(
+            (kick_half - dt * 0.5).abs() < tol,
+            "kick_half != dt/2 cuando H₀=0"
+        );
+        assert!(
+            (kick_half2 - dt * 0.5).abs() < tol,
+            "kick_half2 != dt/2 cuando H₀=0"
+        );
     }
 
     #[test]
@@ -267,7 +283,13 @@ mod tests {
         let kick_rel = (kick_total - (kick_half_ref + kick_half2_ref)).abs()
             / (kick_half_ref + kick_half2_ref);
 
-        assert!(drift_rel < 1e-3, "drift total vs drift_kick_factors: {drift_rel:.2e}");
-        assert!(kick_rel < 1e-3, "kick total vs drift_kick_factors: {kick_rel:.2e}");
+        assert!(
+            drift_rel < 1e-3,
+            "drift total vs drift_kick_factors: {drift_rel:.2e}"
+        );
+        assert!(
+            kick_rel < 1e-3,
+            "kick total vs drift_kick_factors: {kick_rel:.2e}"
+        );
     }
 }

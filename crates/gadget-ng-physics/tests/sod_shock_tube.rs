@@ -29,10 +29,10 @@ use gadget_ng_sph::{compute_density, SphParticle};
 /// Genera partículas 1D para el tubo de Sod.
 fn setup_sod_tube(n_left: usize, n_right: usize) -> Vec<SphParticle> {
     const GAMMA: f64 = 5.0 / 3.0;
-    let u_l = 1.0 / ((GAMMA - 1.0) * 1.0);    // P_L / ((γ-1) ρ_L)
-    let u_r = 0.1 / ((GAMMA - 1.0) * 0.125);   // P_R / ((γ-1) ρ_R)
+    let u_l = 1.0 / ((GAMMA - 1.0) * 1.0); // P_L / ((γ-1) ρ_L)
+    let u_r = 0.1 / ((GAMMA - 1.0) * 0.125); // P_R / ((γ-1) ρ_R)
 
-    let dx_l = 0.5 / n_left  as f64;
+    let dx_l = 0.5 / n_left as f64;
     let dx_r = 0.5 / n_right as f64;
     let mass = 1.0 * dx_l; // ρ_L·dx_L = ρ_R·dx_R (masas iguales)
 
@@ -40,15 +40,29 @@ fn setup_sod_tube(n_left: usize, n_right: usize) -> Vec<SphParticle> {
     let mut id = 0usize;
 
     for i in 0..n_left {
-        let x  = -0.5 + (i as f64 + 0.5) * dx_l;
+        let x = -0.5 + (i as f64 + 0.5) * dx_l;
         let h0 = 2.5 * dx_l;
-        parts.push(SphParticle::new_gas(id, mass, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u_l, h0));
+        parts.push(SphParticle::new_gas(
+            id,
+            mass,
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::zero(),
+            u_l,
+            h0,
+        ));
         id += 1;
     }
     for i in 0..n_right {
-        let x  = (i as f64 + 0.5) * dx_r;
+        let x = (i as f64 + 0.5) * dx_r;
         let h0 = 2.5 * dx_r;
-        parts.push(SphParticle::new_gas(id, mass, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u_r, h0));
+        parts.push(SphParticle::new_gas(
+            id,
+            mass,
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::zero(),
+            u_r,
+            h0,
+        ));
         id += 1;
     }
     parts
@@ -64,9 +78,20 @@ fn sod_initial_density_ratio() {
     let parts = setup_sod_tube(N_L, N_R);
     // Con la misma masa y dx_L = dx_R, las densidades SPH dependen de h y vecinos.
     // Queremos: masas correctas → m = ρ_L·dx_L y ρ_R·dx_R deben ser iguales.
-    let mass_l = parts.iter().filter(|p| p.position.x < 0.0).map(|p| p.mass).fold(0.0_f64, f64::max);
-    let mass_r = parts.iter().filter(|p| p.position.x > 0.0).map(|p| p.mass).fold(0.0_f64, f64::max);
-    assert!((mass_l - mass_r).abs() < 1e-14, "masas iguales: m_L={mass_l:.6}, m_R={mass_r:.6}");
+    let mass_l = parts
+        .iter()
+        .filter(|p| p.position.x < 0.0)
+        .map(|p| p.mass)
+        .fold(0.0_f64, f64::max);
+    let mass_r = parts
+        .iter()
+        .filter(|p| p.position.x > 0.0)
+        .map(|p| p.mass)
+        .fold(0.0_f64, f64::max);
+    assert!(
+        (mass_l - mass_r).abs() < 1e-14,
+        "masas iguales: m_L={mass_l:.6}, m_R={mass_r:.6}"
+    );
 
     // Las condiciones de Sod requieren dx_R / dx_L = ρ_L / ρ_R = 8.
     // Con N_L = N_R = 20 y dominio L/2 = R/2, dx_L = dx_R → ρ_L = ρ_R (no Sod).
@@ -75,15 +100,26 @@ fn sod_initial_density_ratio() {
     let dx_l = 0.5_f64 / 80.0;
     let dx_r = 0.5_f64 / 10.0;
     let ratio = dx_r / dx_l; // = 8 → ρ_L/ρ_R = 8
-    assert!((ratio - 8.0).abs() < 1e-10, "ratio dx_R/dx_L = {ratio:.2} (esperado 8)");
+    assert!(
+        (ratio - 8.0).abs() < 1e-10,
+        "ratio dx_R/dx_L = {ratio:.2} (esperado 8)"
+    );
     // La masa es igual en ambos lados.
     let m0 = parts2[0].mass;
     for p in &parts2 {
         assert!((p.mass - m0).abs() < 1e-14);
     }
     // La energía interna debe ser mayor a la izquierda.
-    let u_l = parts2.iter().filter(|p| p.position.x < 0.0).filter_map(|p| p.gas.as_ref().map(|g| g.u)).fold(0.0_f64, f64::max);
-    let u_r = parts2.iter().filter(|p| p.position.x > 0.0).filter_map(|p| p.gas.as_ref().map(|g| g.u)).fold(0.0_f64, f64::max);
+    let u_l = parts2
+        .iter()
+        .filter(|p| p.position.x < 0.0)
+        .filter_map(|p| p.gas.as_ref().map(|g| g.u))
+        .fold(0.0_f64, f64::max);
+    let u_r = parts2
+        .iter()
+        .filter(|p| p.position.x > 0.0)
+        .filter_map(|p| p.gas.as_ref().map(|g| g.u))
+        .fold(0.0_f64, f64::max);
     assert!(u_l > u_r, "u_L={u_l:.4} debe ser > u_R={u_r:.4}");
     let _ = parts; // silence warning
 }
@@ -94,11 +130,13 @@ fn sod_initial_pressure_left_greater_than_right() {
     // Usa pocas partículas para que compute_density sea rápido.
     let mut parts = setup_sod_tube(8, 1);
     compute_density(&mut parts);
-    let p_l_max = parts.iter()
+    let p_l_max = parts
+        .iter()
         .filter(|p| p.position.x < -0.1)
         .filter_map(|p| p.gas.as_ref().map(|g| g.pressure))
         .fold(0.0_f64, f64::max);
-    let p_r_max = parts.iter()
+    let p_r_max = parts
+        .iter()
         .filter(|p| p.position.x > 0.1)
         .filter_map(|p| p.gas.as_ref().map(|g| g.pressure))
         .fold(0.0_f64, f64::max);
@@ -114,7 +152,11 @@ fn sod_equal_particle_masses() {
     let parts = setup_sod_tube(80, 10);
     let m0 = parts[0].mass;
     for p in &parts {
-        assert!((p.mass - m0).abs() < 1e-14, "masas desiguales: {:.6e}", (p.mass - m0).abs());
+        assert!(
+            (p.mass - m0).abs() < 1e-14,
+            "masas desiguales: {:.6e}",
+            (p.mass - m0).abs()
+        );
     }
 }
 
@@ -122,19 +164,26 @@ fn sod_equal_particle_masses() {
 #[test]
 fn sod_internal_energy_ratio() {
     const GAMMA: f64 = 5.0 / 3.0;
-    let u_l = 1.0   / ((GAMMA - 1.0) * 1.0);
-    let u_r = 0.1   / ((GAMMA - 1.0) * 0.125);
+    let u_l = 1.0 / ((GAMMA - 1.0) * 1.0);
+    let u_r = 0.1 / ((GAMMA - 1.0) * 0.125);
     // u_L / u_R = (P_L/ρ_L) / (P_R/ρ_R) = (1/1) / (0.1/0.125) = 1 / 0.8 = 1.25
     let ratio = u_l / u_r;
-    assert!((ratio - 1.25).abs() < 1e-10, "u_L/u_R = {ratio:.6} (esperado 1.25)");
+    assert!(
+        (ratio - 1.25).abs() < 1e-10,
+        "u_L/u_R = {ratio:.6} (esperado 1.25)"
+    );
 
     let parts = setup_sod_tube(8, 1);
     // Verificar que u inicial es correcto en las partículas generadas.
-    let u_l_check = parts.iter()
+    let u_l_check = parts
+        .iter()
         .filter(|p| p.position.x < -0.2)
         .filter_map(|p| p.gas.as_ref().map(|g| g.u))
         .fold(0.0_f64, f64::max);
-    assert!((u_l_check - u_l).abs() < 1e-10, "u_L check: {u_l_check:.6} vs {u_l:.6}");
+    assert!(
+        (u_l_check - u_l).abs() < 1e-10,
+        "u_L check: {u_l_check:.6} vs {u_l:.6}"
+    );
 }
 
 // ── Tests lentos: evolución temporal ─────────────────────────────────────────
@@ -147,7 +196,8 @@ fn sod_shock_compresses_right_region() {
 
     fn no_gravity(_: &mut [SphParticle]) {}
     fn max_cs(parts: &[SphParticle]) -> f64 {
-        parts.iter()
+        parts
+            .iter()
             .filter_map(|p| p.gas.as_ref())
             .filter(|g| g.rho > 1e-10)
             .map(|g| (GAMMA * g.pressure / g.rho).sqrt())
@@ -165,17 +215,21 @@ fn sod_shock_compresses_right_region() {
 
     while t < t_end {
         let cs = max_cs(&parts);
-        let h_min = parts.iter()
+        let h_min = parts
+            .iter()
             .filter_map(|p| p.gas.as_ref())
             .map(|g| g.h_sml)
             .fold(f64::INFINITY, f64::min);
         let dt = (0.3 * h_min / cs).min(t_end - t);
-        if dt < 1e-15 { break; }
+        if dt < 1e-15 {
+            break;
+        }
         sph_kdk_step(&mut parts, dt, no_gravity);
         t += dt;
     }
 
-    let rho_max_right = parts.iter()
+    let rho_max_right = parts
+        .iter()
         .filter(|p| p.position.x > 0.05 && p.position.x < 0.3)
         .filter_map(|p| p.gas.as_ref())
         .map(|g| g.rho)

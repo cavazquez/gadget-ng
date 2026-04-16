@@ -9,7 +9,7 @@ use gadget_ng_core::Vec3;
 
 /// Canvas RGBA en CPU.
 pub struct CpuCanvas {
-    pub width:  u32,
+    pub width: u32,
     pub height: u32,
     /// Buffer RGBA lineal (row-major, y=0 arriba).
     pub data: Vec<u8>,
@@ -54,26 +54,29 @@ impl CpuCanvas {
         let (box_min, box_max) = if positions.is_empty() {
             ((0.0, 0.0), (box_size, box_size))
         } else {
-            let (mut xmin, mut ymin) = (f64::INFINITY,  f64::INFINITY);
+            let (mut xmin, mut ymin) = (f64::INFINITY, f64::INFINITY);
             let (mut xmax, mut ymax) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
             for &p in positions {
                 let (xw, yw) = proj.project(p);
-                xmin = xmin.min(xw);  ymin = ymin.min(yw);
-                xmax = xmax.max(xw);  ymax = ymax.max(yw);
+                xmin = xmin.min(xw);
+                ymin = ymin.min(yw);
+                xmax = xmax.max(xw);
+                ymax = ymax.max(yw);
             }
             // Ampliar con 10 % de padding.
             let pad_x = ((xmax - xmin) * 0.1).max(1e-9);
             let pad_y = ((ymax - ymin) * 0.1).max(1e-9);
             // Hacer el encuadre cuadrado para no deformar la escena.
             let half = ((xmax - xmin + 2.0 * pad_x).max(ymax - ymin + 2.0 * pad_y)) * 0.5;
-            let cx   = (xmin + xmax) * 0.5;
-            let cy   = (ymin + ymax) * 0.5;
+            let cx = (xmin + xmax) * 0.5;
+            let cy = (ymin + ymax) * 0.5;
             ((cx - half, cy - half), (cx + half, cy + half))
         };
 
         for (i, &pos) in positions.iter().enumerate() {
             let (xw, yw) = proj.project(pos);
-            let Some((px, py)) = proj.world_to_pixel(xw, yw, box_min, box_max, self.width, self.height)
+            let Some((px, py)) =
+                proj.world_to_pixel(xw, yw, box_min, box_max, self.width, self.height)
             else {
                 continue;
             };
@@ -81,7 +84,7 @@ impl CpuCanvas {
             let [r, g, b] = particle_color(color_mode, scalar, scalar_max);
             let idx = ((py * self.width + px) * 4) as usize;
             // Saturar: si ya hay un píxel brillante no lo oscurecer.
-            self.data[idx]     = self.data[idx].max(r);
+            self.data[idx] = self.data[idx].max(r);
             self.data[idx + 1] = self.data[idx + 1].max(g);
             self.data[idx + 2] = self.data[idx + 2].max(b);
             self.data[idx + 3] = 255;
@@ -90,7 +93,10 @@ impl CpuCanvas {
 
     /// Número de píxeles no negros (útil para tests).
     pub fn non_black_pixels(&self) -> usize {
-        self.data.chunks(4).filter(|p| p[0] > 0 || p[1] > 0 || p[2] > 0).count()
+        self.data
+            .chunks(4)
+            .filter(|p| p[0] > 0 || p[1] > 0 || p[2] > 0)
+            .count()
     }
 }
 
@@ -112,6 +118,10 @@ mod tests {
         let mut canvas = CpuCanvas::new(64, 64);
         let pos = vec![Vec3::new(20.0, 20.0, 0.0)]; // fuera de box_size=10
         canvas.render(&pos, &[0.0], 1.0, &Projection::XY, ColorMode::White, 10.0);
-        assert_eq!(canvas.non_black_pixels(), 0, "se dibujó partícula fuera del dominio");
+        assert_eq!(
+            canvas.non_black_pixels(),
+            0,
+            "se dibujó partícula fuera del dominio"
+        );
     }
 }

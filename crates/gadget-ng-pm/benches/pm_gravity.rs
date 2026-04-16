@@ -24,11 +24,11 @@ fn lattice_cfg(n: usize, grid: usize) -> RunConfig {
             pm_grid_size: grid,
             ..Default::default()
         },
-        output:      Default::default(),
+        output: Default::default(),
         performance: Default::default(),
-        timestep:    Default::default(),
-        cosmology:   Default::default(),
-        units:       UnitsSection::default(),
+        timestep: Default::default(),
+        cosmology: Default::default(),
+        units: UnitsSection::default(),
     }
 }
 
@@ -39,24 +39,21 @@ fn bench_pm(c: &mut Criterion) {
         let cfg = lattice_cfg(n, grid);
         let particles = build_particles(&cfg).unwrap();
         let positions: Vec<_> = particles.iter().map(|p| p.position).collect();
-        let masses:    Vec<_> = particles.iter().map(|p| p.mass).collect();
-        let indices:   Vec<_> = (0..n).collect();
+        let masses: Vec<_> = particles.iter().map(|p| p.mass).collect();
+        let indices: Vec<_> = (0..n).collect();
         let eps2 = cfg.softening_squared();
-        let g    = cfg.effective_g();
-        let solver = PmSolver { grid_size: grid, box_size: 1.0 };
+        let g = cfg.effective_g();
+        let solver = PmSolver {
+            grid_size: grid,
+            box_size: 1.0,
+        };
         let mut acc = vec![gadget_ng_core::Vec3::zero(); n];
 
-        group.bench_with_input(
-            BenchmarkId::new(format!("grid{grid}"), n),
-            &n,
-            |b, _| {
-                b.iter(|| {
-                    solver.accelerations_for_indices(
-                        &positions, &masses, eps2, g, &indices, &mut acc,
-                    );
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new(format!("grid{grid}"), n), &n, |b, _| {
+            b.iter(|| {
+                solver.accelerations_for_indices(&positions, &masses, eps2, g, &indices, &mut acc);
+            });
+        });
     }
     group.finish();
 }

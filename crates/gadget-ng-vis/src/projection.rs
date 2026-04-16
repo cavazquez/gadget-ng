@@ -57,7 +57,9 @@ impl Projection {
         let (x1, y1) = box_max;
         let dx = x1 - x0;
         let dy = y1 - y0;
-        if dx <= 0.0 || dy <= 0.0 { return None; }
+        if dx <= 0.0 || dy <= 0.0 {
+            return None;
+        }
         let px = ((xw - x0) / dx * width as f64) as i64;
         let py = ((yw - y0) / dy * height as f64) as i64;
         if px < 0 || py < 0 || px >= width as i64 || py >= height as i64 {

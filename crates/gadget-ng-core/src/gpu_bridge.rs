@@ -70,11 +70,11 @@ impl GravitySolver for GpuDirectGravity {
     fn accelerations_for_indices(
         &self,
         global_positions: &[Vec3],
-        global_masses:    &[f64],
-        eps2:             f64,
-        g:                f64,
-        global_indices:   &[usize],
-        out:              &mut [Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
     ) {
         assert_eq!(global_indices.len(), out.len());
         if global_indices.is_empty() {

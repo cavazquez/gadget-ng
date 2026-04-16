@@ -1,8 +1,8 @@
 mod decompose;
+pub mod domain;
 #[allow(dead_code)]
 mod pack;
 mod serial;
-pub mod domain;
 pub mod sfc;
 
 #[cfg(feature = "mpi")]
@@ -59,12 +59,7 @@ pub trait ParallelRuntime {
     /// Las partículas cuya posición x ya no pertenece al slab `[my_x_lo, my_x_hi)` se
     /// envían al vecino izquierdo o derecho y se eliminan del vector `local`.
     /// Las partículas recibidas de los vecinos se añaden a `local`.
-    fn exchange_domain_by_x(
-        &self,
-        local: &mut Vec<Particle>,
-        my_x_lo: f64,
-        my_x_hi: f64,
-    );
+    fn exchange_domain_by_x(&self, local: &mut Vec<Particle>, my_x_lo: f64, my_x_hi: f64);
 
     /// Intercambia partículas de halo con los rangos vecinos (punto-a-punto).
     ///
@@ -89,11 +84,7 @@ pub trait ParallelRuntime {
     /// Las partículas del rango incorrecto se envían y las ajenas se reciben.
     ///
     /// En modo serial (1 rango) es un no-op.
-    fn exchange_domain_sfc(
-        &self,
-        local: &mut Vec<Particle>,
-        decomp: &sfc::SfcDecomposition,
-    );
+    fn exchange_domain_sfc(&self, local: &mut Vec<Particle>, decomp: &sfc::SfcDecomposition);
 
     /// Intercambia halos SFC: devuelve las partículas dentro de `halo_width`
     /// de cualquier borde del segmento SFC del rango actual.

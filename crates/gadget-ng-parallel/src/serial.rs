@@ -64,12 +64,7 @@ impl ParallelRuntime for SerialRuntime {
         v
     }
 
-    fn exchange_domain_by_x(
-        &self,
-        _local: &mut Vec<Particle>,
-        _my_x_lo: f64,
-        _my_x_hi: f64,
-    ) {
+    fn exchange_domain_by_x(&self, _local: &mut Vec<Particle>, _my_x_lo: f64, _my_x_hi: f64) {
         // Serial: rango único, nunca hay partículas fuera del dominio.
     }
 
@@ -84,11 +79,7 @@ impl ParallelRuntime for SerialRuntime {
         Vec::new()
     }
 
-    fn exchange_domain_sfc(
-        &self,
-        _local: &mut Vec<Particle>,
-        _decomp: &SfcDecomposition,
-    ) {
+    fn exchange_domain_sfc(&self, _local: &mut Vec<Particle>, _decomp: &SfcDecomposition) {
         // Serial: rango único, todas las partículas pertenecen al rango 0.
     }
 

@@ -191,8 +191,7 @@ pub fn hierarchical_kdk_step(
     // drift_prefix[i]: ∫_0^{i * half_dt} dt/a²(t) acumulado.
     let (kick_prefix, drift_prefix): (Vec<f64>, Vec<f64>) =
         if let Some((cosmo_params, a_ref)) = cosmo.as_ref() {
-            let (_, kp, dp) =
-                cosmo_params.hierarchical_prefixes(**a_ref, fine_dt, n_fine as usize);
+            let (_, kp, dp) = cosmo_params.hierarchical_prefixes(**a_ref, fine_dt, n_fine as usize);
             (kp, dp)
         } else {
             // Sin cosmología: factores planos.
@@ -218,7 +217,7 @@ pub fn hierarchical_kdk_step(
             let stride = 1u64 << (max_level - lvl);
             if s % stride == 0 {
                 state.elapsed[i] = 0; // reiniciar contador desde este sync
-                // Medio-kick START: kick sobre primera mitad de dt_i
+                                      // Medio-kick START: kick sobre primera mitad de dt_i
                 let half_kick_half_steps = 1u64 << (max_level - lvl); // medios sub-pasos
                 let kick_start = kick_prefix[2 * s_idx];
                 let kick_end = kick_prefix[2 * s_idx + half_kick_half_steps as usize];

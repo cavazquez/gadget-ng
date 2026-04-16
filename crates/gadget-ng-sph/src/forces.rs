@@ -27,53 +27,74 @@ use gadget_ng_core::Vec3;
 /// Parámetro de viscosidad artificial.
 const ALPHA_VISC: f64 = 1.0;
 /// Regularización de μ_ij.
-const EPS_VISC:   f64 = 0.01;
+const EPS_VISC: f64 = 0.01;
 
 /// Calcula `acc_sph` y `du_dt` para todas las partículas de gas.
 ///
 /// Requiere que `compute_density` haya sido llamado previamente.
 pub fn compute_sph_forces(particles: &mut [SphParticle]) {
     let n = particles.len();
-    let pos:      Vec<Vec3> = particles.iter().map(|p| p.position).collect();
-    let vel:      Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
-    let mass:     Vec<f64>  = particles.iter().map(|p| p.mass).collect();
-    let rho:      Vec<f64>  = particles.iter().map(|p| p.gas.as_ref().map(|g| g.rho).unwrap_or(0.0)).collect();
-    let pressure: Vec<f64>  = particles.iter().map(|p| p.gas.as_ref().map(|g| g.pressure).unwrap_or(0.0)).collect();
-    let h_sml:    Vec<f64>  = particles.iter().map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0)).collect();
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let vel: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let rho: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.rho).unwrap_or(0.0))
+        .collect();
+    let pressure: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.pressure).unwrap_or(0.0))
+        .collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0))
+        .collect();
 
     for i in 0..n {
-        if particles[i].gas.is_none() { continue; }
-        if rho[i] < 1e-200 { continue; }
+        if particles[i].gas.is_none() {
+            continue;
+        }
+        if rho[i] < 1e-200 {
+            continue;
+        }
 
         let pi_rho2 = pressure[i] / (rho[i] * rho[i]); // P_i / ρ_i²
-        let cs_i    = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0); // velocidad del sonido i
+        let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0); // velocidad del sonido i
 
-        let mut acc  = Vec3::zero();
+        let mut acc = Vec3::zero();
         let mut dudt = 0.0_f64;
 
         for j in 0..n {
-            if j == i || particles[j].gas.is_none() || rho[j] < 1e-200 { continue; }
+            if j == i || particles[j].gas.is_none() || rho[j] < 1e-200 {
+                continue;
+            }
 
-            let r_ij  = pos[i] - pos[j];
-            let r     = r_ij.norm();
-            let h_i   = h_sml[i];
-            let h_j   = h_sml[j];
+            let r_ij = pos[i] - pos[j];
+            let r = r_ij.norm();
+            let h_i = h_sml[i];
+            let h_j = h_sml[j];
 
             // Gradientes del kernel (simétrico)
-            let gw_i  = grad_w(r, h_i);
-            let gw_j  = grad_w(r, h_j);
-            if gw_i == 0.0 && gw_j == 0.0 { continue; }
+            let gw_i = grad_w(r, h_i);
+            let gw_j = grad_w(r, h_j);
+            if gw_i == 0.0 && gw_j == 0.0 {
+                continue;
+            }
 
-            let r_hat = if r > 1e-300 { r_ij * (1.0 / r) } else { Vec3::zero() };
+            let r_hat = if r > 1e-300 {
+                r_ij * (1.0 / r)
+            } else {
+                Vec3::zero()
+            };
             let nabla_w_i = r_hat * (gw_i / h_i);
             let nabla_w_j = r_hat * (gw_j / h_j);
 
             let pj_rho2 = pressure[j] / (rho[j] * rho[j]);
 
             // Viscosidad artificial
-            let v_ij   = vel[i] - vel[j];
-            let h_bar  = 0.5 * (h_i + h_j);
-            let mu_ij  = if v_ij.dot(r_ij) < 0.0 {
+            let v_ij = vel[i] - vel[j];
+            let h_bar = 0.5 * (h_i + h_j);
+            let mu_ij = if v_ij.dot(r_ij) < 0.0 {
                 let cs_j = (GAMMA * pressure[j] / rho[j]).sqrt().max(0.0);
                 let cs_bar = 0.5 * (cs_i + cs_j);
                 let rho_bar = 0.5 * (rho[i] + rho[j]);
@@ -86,7 +107,7 @@ pub fn compute_sph_forces(particles: &mut [SphParticle]) {
             // Aceleración SPH simétrica
             let coeff_i = pi_rho2 + 0.5 * mu_ij;
             let coeff_j = pj_rho2 + 0.5 * mu_ij;
-            acc  -= (nabla_w_i * coeff_i + nabla_w_j * coeff_j) * mass[j];
+            acc -= (nabla_w_i * coeff_i + nabla_w_j * coeff_j) * mass[j];
 
             // Tasa de energía interna (sólo término i)
             dudt += mass[j] * pi_rho2 * v_ij.dot(nabla_w_i);
@@ -94,7 +115,7 @@ pub fn compute_sph_forces(particles: &mut [SphParticle]) {
 
         if let Some(gas) = particles[i].gas.as_mut() {
             gas.acc_sph = acc;
-            gas.du_dt   = dudt;
+            gas.du_dt = dudt;
         }
     }
 }
@@ -130,7 +151,8 @@ mod tests {
         compute_density(&mut parts);
         compute_sph_forces(&mut parts);
 
-        let max_acc = parts.iter()
+        let max_acc = parts
+            .iter()
             .filter_map(|p| p.gas.as_ref())
             .map(|g| g.acc_sph.norm())
             .fold(0.0_f64, f64::max);

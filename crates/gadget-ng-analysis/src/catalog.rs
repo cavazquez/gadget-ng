@@ -16,7 +16,7 @@ pub fn write_halo_catalog(dir: &Path, halos: &[FofHalo]) -> io::Result<()> {
     let path = dir.join("halo_catalog.jsonl");
     let mut f = fs::File::create(&path)?;
     for h in halos {
-        let line =         serde_json::to_string(h).map_err(io::Error::other)?;
+        let line = serde_json::to_string(h).map_err(io::Error::other)?;
         writeln!(f, "{line}")?;
     }
     Ok(())
@@ -45,7 +45,7 @@ pub fn write_power_spectrum(dir: &Path, bins: &[PkBin]) -> io::Result<()> {
     let path = dir.join("power_spectrum.jsonl");
     let mut f = fs::File::create(&path)?;
     for b in bins {
-        let line =         serde_json::to_string(b).map_err(io::Error::other)?;
+        let line = serde_json::to_string(b).map_err(io::Error::other)?;
         writeln!(f, "{line}")?;
     }
     Ok(())
@@ -86,26 +86,26 @@ pub struct AnalysisParams {
 impl Default for AnalysisParams {
     fn default() -> Self {
         Self {
-            box_size:      1.0,
-            b:             0.2,
+            box_size: 1.0,
+            b: 0.2,
             min_particles: 20,
-            rho_crit:      0.0,
-            pk_mesh:       64,
+            rho_crit: 0.0,
+            pk_mesh: 64,
         }
     }
 }
 
 /// Resultado del análisis de un snapshot.
 pub struct AnalysisResult {
-    pub halos:           Vec<FofHalo>,
-    pub power_spectrum:  Vec<PkBin>,
+    pub halos: Vec<FofHalo>,
+    pub power_spectrum: Vec<PkBin>,
 }
 
 /// Analiza un snapshot: ejecuta FoF + P(k) y devuelve el resultado.
 pub fn analyse(particles: &[Particle], params: &AnalysisParams) -> AnalysisResult {
-    let positions:  Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let positions: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let velocities: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
-    let masses:     Vec<f64>  = particles.iter().map(|p| p.mass).collect();
+    let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
     let halos = crate::fof::find_halos(
         &positions,
@@ -117,12 +117,11 @@ pub fn analyse(particles: &[Particle], params: &AnalysisParams) -> AnalysisResul
         params.rho_crit,
     );
 
-    let power_spectrum = crate::power_spectrum::power_spectrum(
-        &positions,
-        &masses,
-        params.box_size,
-        params.pk_mesh,
-    );
+    let power_spectrum =
+        crate::power_spectrum::power_spectrum(&positions, &masses, params.box_size, params.pk_mesh);
 
-    AnalysisResult { halos, power_spectrum }
+    AnalysisResult {
+        halos,
+        power_spectrum,
+    }
 }

@@ -31,12 +31,12 @@ use gadget_ng_core::{Particle, Vec3};
 /// Implementación estándar "magic bits" para Z-order 3D.
 #[inline]
 pub fn spread_bits(mut x: u64) -> u64 {
-    x &= 0x001f_ffff;                           // máscara 21 bits
+    x &= 0x001f_ffff; // máscara 21 bits
     x = (x | (x << 32)) & 0x1f00000000ffff;
     x = (x | (x << 16)) & 0x1f0000ff0000ff;
-    x = (x | (x <<  8)) & 0x100f00f00f00f00f;
-    x = (x | (x <<  4)) & 0x10c30c30c30c30c3;
-    x = (x | (x <<  2)) & 0x1249249249249249;
+    x = (x | (x << 8)) & 0x100f00f00f00f00f;
+    x = (x | (x << 4)) & 0x10c30c30c30c30c3;
+    x = (x | (x << 2)) & 0x1249249249249249;
     x
 }
 
@@ -55,7 +55,15 @@ pub fn morton3(x: f64, y: f64, z: f64) -> u64 {
 
 /// Código Morton de una partícula dada la bounding box del dominio.
 #[inline]
-pub fn particle_morton(pos: Vec3, x_lo: f64, x_hi: f64, y_lo: f64, y_hi: f64, z_lo: f64, z_hi: f64) -> u64 {
+pub fn particle_morton(
+    pos: Vec3,
+    x_lo: f64,
+    x_hi: f64,
+    y_lo: f64,
+    y_hi: f64,
+    z_lo: f64,
+    z_hi: f64,
+) -> u64 {
     let lx = (x_hi - x_lo).max(f64::EPSILON);
     let ly = (y_hi - y_lo).max(f64::EPSILON);
     let lz = (z_hi - z_lo).max(f64::EPSILON);
@@ -76,9 +84,12 @@ pub fn particle_morton(pos: Vec3, x_lo: f64, x_hi: f64, y_lo: f64, y_hi: f64, z_
 #[derive(Debug, Clone)]
 pub struct SfcDecomposition {
     /// Bounding box del dominio.
-    pub x_lo: f64, pub x_hi: f64,
-    pub y_lo: f64, pub y_hi: f64,
-    pub z_lo: f64, pub z_hi: f64,
+    pub x_lo: f64,
+    pub x_hi: f64,
+    pub y_lo: f64,
+    pub y_hi: f64,
+    pub z_lo: f64,
+    pub z_hi: f64,
     /// Puntos de corte (cutpoints.len() == n_ranks - 1).
     /// `rank r` posee partículas con clave SFC en `[cutpoints[r-1], cutpoints[r])`.
     /// `rank 0`  posee claves `[0, cutpoints[0])`.
@@ -99,20 +110,32 @@ impl SfcDecomposition {
         let n_ranks = n_ranks.max(1);
         if positions.is_empty() {
             return Self {
-                x_lo: 0.0, x_hi: box_size,
-                y_lo: 0.0, y_hi: box_size,
-                z_lo: 0.0, z_hi: box_size,
+                x_lo: 0.0,
+                x_hi: box_size,
+                y_lo: 0.0,
+                y_hi: box_size,
+                z_lo: 0.0,
+                z_hi: box_size,
                 cutpoints: vec![u64::MAX / n_ranks as u64; (n_ranks - 1) as usize],
                 n_ranks,
             };
         }
         // Bounding box global.
-        let x_lo = positions.iter().map(|p| p.x).fold(f64::INFINITY,    f64::min);
-        let x_hi = positions.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
-        let y_lo = positions.iter().map(|p| p.y).fold(f64::INFINITY,    f64::min);
-        let y_hi = positions.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
-        let z_lo = positions.iter().map(|p| p.z).fold(f64::INFINITY,    f64::min);
-        let z_hi = positions.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max);
+        let x_lo = positions.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+        let x_hi = positions
+            .iter()
+            .map(|p| p.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let y_lo = positions.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+        let y_hi = positions
+            .iter()
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let z_lo = positions.iter().map(|p| p.z).fold(f64::INFINITY, f64::min);
+        let z_hi = positions
+            .iter()
+            .map(|p| p.z)
+            .fold(f64::NEG_INFINITY, f64::max);
 
         // Calcular claves y ordenarlas.
         let mut keys: Vec<u64> = positions
@@ -130,14 +153,23 @@ impl SfcDecomposition {
             cutpoints.push(keys[idx]);
         }
 
-        Self { x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, cutpoints, n_ranks }
+        Self {
+            x_lo,
+            x_hi,
+            y_lo,
+            y_hi,
+            z_lo,
+            z_hi,
+            cutpoints,
+            n_ranks,
+        }
     }
 
     /// Devuelve el rango propietario de una clave SFC dada.
     #[inline]
     pub fn rank_for(&self, key: u64) -> i32 {
         match self.cutpoints.binary_search(&key) {
-            Ok(pos)  => (pos + 1).min(self.n_ranks as usize - 1) as i32,
+            Ok(pos) => (pos + 1).min(self.n_ranks as usize - 1) as i32,
             Err(pos) => pos.min(self.n_ranks as usize - 1) as i32,
         }
     }
@@ -145,7 +177,9 @@ impl SfcDecomposition {
     /// Devuelve el rango propietario de una posición.
     #[inline]
     pub fn rank_for_pos(&self, pos: Vec3) -> i32 {
-        let key = particle_morton(pos, self.x_lo, self.x_hi, self.y_lo, self.y_hi, self.z_lo, self.z_hi);
+        let key = particle_morton(
+            pos, self.x_lo, self.x_hi, self.y_lo, self.y_hi, self.z_lo, self.z_hi,
+        );
         self.rank_for(key)
     }
 
@@ -203,23 +237,49 @@ pub fn global_bbox<R: crate::ParallelRuntime + ?Sized>(
     local: &[Particle],
 ) -> (f64, f64, f64, f64, f64, f64) {
     let (xl, xh, yl, yh, zl, zh) = if local.is_empty() {
-        (f64::INFINITY, f64::NEG_INFINITY,
-         f64::INFINITY, f64::NEG_INFINITY,
-         f64::INFINITY, f64::NEG_INFINITY)
+        (
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        )
     } else {
         (
-            local.iter().map(|p| p.position.x).fold(f64::INFINITY,    f64::min),
-            local.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max),
-            local.iter().map(|p| p.position.y).fold(f64::INFINITY,    f64::min),
-            local.iter().map(|p| p.position.y).fold(f64::NEG_INFINITY, f64::max),
-            local.iter().map(|p| p.position.z).fold(f64::INFINITY,    f64::min),
-            local.iter().map(|p| p.position.z).fold(f64::NEG_INFINITY, f64::max),
+            local
+                .iter()
+                .map(|p| p.position.x)
+                .fold(f64::INFINITY, f64::min),
+            local
+                .iter()
+                .map(|p| p.position.x)
+                .fold(f64::NEG_INFINITY, f64::max),
+            local
+                .iter()
+                .map(|p| p.position.y)
+                .fold(f64::INFINITY, f64::min),
+            local
+                .iter()
+                .map(|p| p.position.y)
+                .fold(f64::NEG_INFINITY, f64::max),
+            local
+                .iter()
+                .map(|p| p.position.z)
+                .fold(f64::INFINITY, f64::min),
+            local
+                .iter()
+                .map(|p| p.position.z)
+                .fold(f64::NEG_INFINITY, f64::max),
         )
     };
     (
-        rt.allreduce_min_f64(xl), rt.allreduce_max_f64(xh),
-        rt.allreduce_min_f64(yl), rt.allreduce_max_f64(yh),
-        rt.allreduce_min_f64(zl), rt.allreduce_max_f64(zh),
+        rt.allreduce_min_f64(xl),
+        rt.allreduce_max_f64(xh),
+        rt.allreduce_min_f64(yl),
+        rt.allreduce_max_f64(yh),
+        rt.allreduce_min_f64(zl),
+        rt.allreduce_max_f64(zh),
     )
 }
 
@@ -240,11 +300,14 @@ mod tests {
         // que puntos en el octante opuesto.
         let a = morton3(0.1, 0.1, 0.1);
         let b = morton3(0.15, 0.12, 0.11); // cerca de a
-        let c = morton3(0.9, 0.9, 0.9);   // lejos de a
-        // Ambos a y b están en el octante inferior; c está en el superior.
-        // Sus códigos morton deben estar en rangos distintos.
+        let c = morton3(0.9, 0.9, 0.9); // lejos de a
+                                        // Ambos a y b están en el octante inferior; c está en el superior.
+                                        // Sus códigos morton deben estar en rangos distintos.
         assert!(a < c, "morton(0.1,0.1,0.1) debe ser < morton(0.9,0.9,0.9)");
-        assert!(b < c, "morton(0.15,0.12,0.11) debe ser < morton(0.9,0.9,0.9)");
+        assert!(
+            b < c,
+            "morton(0.15,0.12,0.11) debe ser < morton(0.9,0.9,0.9)"
+        );
     }
 
     #[test]
@@ -254,7 +317,11 @@ mod tests {
             let s = spread_bits(x);
             // Verificar que ningún bit impar está activo (posiciones 1, 3, 5, ...).
             let even_mask: u64 = 0x1249249249249249; // bits en posiciones 0,3,6,...
-            assert_eq!(s & !even_mask, 0, "spread_bits({x}) tiene bits en posición incorrecta");
+            assert_eq!(
+                s & !even_mask,
+                0,
+                "spread_bits({x}) tiene bits en posición incorrecta"
+            );
         }
     }
 
@@ -262,11 +329,7 @@ mod tests {
     fn sfc_decomp_all_particles_assigned() {
         let mut positions = Vec::new();
         for i in 0..100 {
-            positions.push(Vec3::new(
-                (i % 10) as f64 * 0.1,
-                (i / 10) as f64 * 0.1,
-                0.5,
-            ));
+            positions.push(Vec3::new((i % 10) as f64 * 0.1, (i / 10) as f64 * 0.1, 0.5));
         }
         let decomp = SfcDecomposition::build(&positions, 1.0, 4);
         for pos in &positions {
@@ -299,7 +362,10 @@ mod tests {
         assert_eq!(total, 1000);
         // Cada rango debe tener entre 150 y 350 partículas (±40%).
         for (r, &c) in counts.iter().enumerate() {
-            assert!(c >= 150 && c <= 350, "rango {r} tiene {c} partículas (desequilibrado)");
+            assert!(
+                c >= 150 && c <= 350,
+                "rango {r} tiene {c} partículas (desequilibrado)"
+            );
         }
     }
 

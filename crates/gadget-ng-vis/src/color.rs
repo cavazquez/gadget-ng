@@ -38,7 +38,11 @@ pub fn particle_color(mode: ColorMode, value: f64, value_max: f64) -> [u8; 3] {
     match mode {
         ColorMode::White => [255, 255, 255],
         ColorMode::Velocity | ColorMode::Density => {
-            let t = if value_max > 0.0 { value / value_max } else { 0.0 };
+            let t = if value_max > 0.0 {
+                value / value_max
+            } else {
+                0.0
+            };
             viridis(t)
         }
     }

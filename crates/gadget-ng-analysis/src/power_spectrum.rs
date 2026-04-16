@@ -9,7 +9,7 @@
 //! La salida es un vector de `PkBin`, ordenado por k creciente.
 
 use gadget_ng_core::Vec3;
-use rustfft::{FftPlanner, num_complex::Complex};
+use rustfft::{num_complex::Complex, FftPlanner};
 
 /// Un bin de potencia.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -34,9 +34,9 @@ pub struct PkBin {
 /// Vector de `PkBin` ordenado por k creciente, para k ∈ [k_fund, k_Nyquist].
 pub fn power_spectrum(
     positions: &[Vec3],
-    masses:    &[f64],
-    box_size:  f64,
-    mesh:      usize,
+    masses: &[f64],
+    box_size: f64,
+    mesh: usize,
 ) -> Vec<PkBin> {
     let n = mesh;
     let n3 = n * n * n;
@@ -45,7 +45,7 @@ pub fn power_spectrum(
     // ── 1. Asignación CIC ─────────────────────────────────────────────────────
     let mut rho = vec![0.0f64; n3];
     let total_mass: f64 = masses.iter().sum();
-    let mean_rho   = total_mass / (box_size * box_size * box_size);
+    let mean_rho = total_mass / (box_size * box_size * box_size);
 
     for (&pos, &m) in positions.iter().zip(masses.iter()) {
         cic_assign(&mut rho, pos, m, n, cell);
@@ -77,8 +77,8 @@ pub fn power_spectrum(
     let n_nyq = n / 2;
     let k_fund = 2.0 * std::f64::consts::PI / box_size; // k fundamental
     let n_bins = n_nyq;
-    let mut pk_sum   = vec![0.0f64; n_bins];
-    let mut n_modes  = vec![0u64;   n_bins];
+    let mut pk_sum = vec![0.0f64; n_bins];
+    let mut n_modes = vec![0u64; n_bins];
 
     let vol = box_size * box_size * box_size;
     let norm = (vol / (n3 as f64)).powi(2);
@@ -106,19 +106,20 @@ pub fn power_spectrum(
                 let w2 = (wx * wy * wz).powi(2);
                 let idx = ix * n * n + iy * n + iz;
                 let delta2 = buf[idx].norm_sqr() / w2;
-                pk_sum[bin]  += delta2 * norm;
+                pk_sum[bin] += delta2 * norm;
                 n_modes[bin] += 1;
             }
         }
     }
 
-    pk_sum.iter()
+    pk_sum
+        .iter()
         .zip(n_modes.iter())
         .enumerate()
         .filter(|(_, (_, &nm))| nm > 0)
         .map(|(bin, (&ps, &nm))| PkBin {
-            k:       (bin as f64 + 1.0) * k_fund,
-            pk:      ps / nm as f64,
+            k: (bin as f64 + 1.0) * k_fund,
+            pk: ps / nm as f64,
             n_modes: nm,
         })
         .collect()
@@ -129,7 +130,11 @@ pub fn power_spectrum(
 fn freq(i: usize, n: usize) -> i32 {
     let h = (n / 2) as i32;
     let ii = i as i32;
-    if ii <= h { ii } else { ii - n as i32 }
+    if ii <= h {
+        ii
+    } else {
+        ii - n as i32
+    }
 }
 
 /// sinc(x) = sin(πx) / (πx) para la deconvolución CIC (ventana de orden 2).
@@ -170,9 +175,9 @@ fn cic_assign(grid: &mut [f64], pos: Vec3, m: f64, n: usize, cell: f64) {
 /// FFT sobre el eje Y: para cada (ix, iz), hace FFT de los n elementos a lo largo de y.
 fn fft_axis(
     buf: &mut [Complex<f64>],
-    nx:  usize,
-    ny:  usize,
-    nz:  usize,
+    nx: usize,
+    ny: usize,
+    nz: usize,
     fft: &std::sync::Arc<dyn rustfft::Fft<f64>>,
 ) {
     let mut tmp = vec![Complex::default(); ny];
@@ -190,11 +195,7 @@ fn fft_axis(
 }
 
 /// FFT sobre el eje X: para cada (iy, iz), hace FFT de los n elementos a lo largo de x.
-fn fft_axis2(
-    buf: &mut [Complex<f64>],
-    n:   usize,
-    fft: &std::sync::Arc<dyn rustfft::Fft<f64>>,
-) {
+fn fft_axis2(buf: &mut [Complex<f64>], n: usize, fft: &std::sync::Arc<dyn rustfft::Fft<f64>>) {
     let mut tmp = vec![Complex::default(); n];
     for iy in 0..n {
         for iz in 0..n {
@@ -243,7 +244,7 @@ mod tests {
     /// Con N=1 partícula, |δ(k)| = constante → P(k) no debe ser NaN/inf.
     #[test]
     fn pk_single_particle_no_nan() {
-        let pos  = vec![Vec3::new(0.5, 0.5, 0.5)];
+        let pos = vec![Vec3::new(0.5, 0.5, 0.5)];
         let mass = vec![1.0f64];
         let bins = power_spectrum(&pos, &mass, 1.0, 8);
         for b in &bins {

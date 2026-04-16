@@ -66,7 +66,9 @@ pub enum IcKind {
     },
 }
 
-fn default_plummer_a() -> f64 { 1.0 }
+fn default_plummer_a() -> f64 {
+    1.0
+}
 
 /// Parámetros del solver de gravedad (opcional en TOML; valores por defecto retrocompatibles).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,9 +162,9 @@ pub struct OutputSection {
 impl Default for OutputSection {
     fn default() -> Self {
         Self {
-            snapshot_format:     default_snapshot_format(),
+            snapshot_format: default_snapshot_format(),
             checkpoint_interval: 0,
-            snapshot_interval:   0,
+            snapshot_interval: 0,
         }
     }
 }
@@ -233,13 +235,13 @@ fn default_sfc_rebalance() -> u64 {
 impl Default for PerformanceSection {
     fn default() -> Self {
         Self {
-            deterministic:           default_deterministic(),
-            num_threads:             None,
-            use_gpu:                 false,
-            use_distributed_tree:    false,
-            halo_factor:             default_halo_factor(),
-            use_sfc:                 false,
-            sfc_rebalance_interval:  default_sfc_rebalance(),
+            deterministic: default_deterministic(),
+            num_threads: None,
+            use_gpu: false,
+            use_distributed_tree: false,
+            halo_factor: default_halo_factor(),
+            use_sfc: false,
+            sfc_rebalance_interval: default_sfc_rebalance(),
         }
     }
 }
@@ -389,9 +391,9 @@ fn default_unit_one() -> f64 {
 impl Default for UnitsSection {
     fn default() -> Self {
         Self {
-            enabled:          false,
-            length_in_kpc:    1.0,
-            mass_in_msun:     1.0,
+            enabled: false,
+            length_in_kpc: 1.0,
+            mass_in_msun: 1.0,
             velocity_in_km_s: 1.0,
         }
     }

@@ -133,7 +133,11 @@ fn quad_accel(r: Vec3, q: [f64; 6], g: f64) -> Vec3 {
 
     let c1 = g * r5_inv;
     let c2 = g * 2.5 * rqr * r7_inv;
-    Vec3::new(c1 * qr_x - c2 * r.x, c1 * qr_y - c2 * r.y, c1 * qr_z - c2 * r.z)
+    Vec3::new(
+        c1 * qr_x - c2 * r.x,
+        c1 * qr_y - c2 * r.y,
+        c1 * qr_z - c2 * r.z,
+    )
 }
 
 /// Tensor octupolar STF `TF3(s, m)_{ijk} = m · (5 s_i s_j s_k − s²(δ_{ij}s_k + δ_{ik}s_j + δ_{jk}s_i))`.
@@ -145,12 +149,12 @@ fn outer3_tf(s: Vec3, m: f64) -> [f64; 7] {
     let s2 = sx * sx + sy * sy + sz * sz;
     [
         m * (5.0 * sx * sx * sx - 3.0 * s2 * sx), // O_xxx
-        m * (5.0 * sx * sx * sy - s2 * sy),        // O_xxy
-        m * (5.0 * sx * sx * sz - s2 * sz),        // O_xxz
-        m * (5.0 * sx * sy * sy - s2 * sx),        // O_xyy
-        m * 5.0 * sx * sy * sz,                    // O_xyz (trace term = 0)
+        m * (5.0 * sx * sx * sy - s2 * sy),       // O_xxy
+        m * (5.0 * sx * sx * sz - s2 * sz),       // O_xxz
+        m * (5.0 * sx * sy * sy - s2 * sx),       // O_xyy
+        m * 5.0 * sx * sy * sz,                   // O_xyz (trace term = 0)
         m * (5.0 * sy * sy * sy - 3.0 * s2 * sy), // O_yyy
-        m * (5.0 * sy * sz * sz - s2 * sy),        // O_yzz
+        m * (5.0 * sy * sz * sz - s2 * sy),       // O_yzz
     ]
 }
 
@@ -207,14 +211,18 @@ fn oct_accel(r: Vec3, o: [f64; 7], g: f64) -> Vec3 {
         + 3.0 * o_yzz * ry * rz * rz
         + o_zzz * rz * rz * rz;
 
-    let r_inv  = 1.0 / r2.sqrt();
+    let r_inv = 1.0 / r2.sqrt();
     let r7_inv = r_inv.powi(7);
     let r9_inv = r_inv.powi(9);
 
     let c1 = -g * 0.5 * r7_inv;
     let c2 = g * (7.0 / 6.0) * orrr * r9_inv;
 
-    Vec3::new(c1 * orr_x + c2 * rx, c1 * orr_y + c2 * ry, c1 * orr_z + c2 * rz)
+    Vec3::new(
+        c1 * orr_x + c2 * rx,
+        c1 * orr_y + c2 * ry,
+        c1 * orr_z + c2 * rz,
+    )
 }
 
 fn octant_of(p: Vec3, c: Vec3) -> usize {
@@ -353,13 +361,13 @@ impl Octree {
                 self.nodes[idx as usize].mass = m;
                 self.nodes[idx as usize].com = c;
                 self.nodes[idx as usize].quad = [0.0; 6];
-                self.nodes[idx as usize].oct  = [0.0; 7];
+                self.nodes[idx as usize].oct = [0.0; 7];
                 return (m, c);
             }
             self.nodes[idx as usize].mass = 0.0;
-            self.nodes[idx as usize].com  = Vec3::zero();
+            self.nodes[idx as usize].com = Vec3::zero();
             self.nodes[idx as usize].quad = [0.0; 6];
-            self.nodes[idx as usize].oct  = [0.0; 7];
+            self.nodes[idx as usize].oct = [0.0; 7];
             return (0.0, Vec3::zero());
         }
         let children = self.nodes[idx as usize].children;
@@ -368,35 +376,49 @@ impl Octree {
         let mut mtot = 0.0_f64;
         let mut com_acc = Vec3::zero();
         for &ch in &children {
-            if ch == NO_CHILD { continue; }
+            if ch == NO_CHILD {
+                continue;
+            }
             let (m, c) = self.aggregate(ch, positions, masses);
             mtot += m;
             com_acc += c * m;
         }
-        let com = if mtot > 0.0 { com_acc / mtot } else { Vec3::zero() };
+        let com = if mtot > 0.0 {
+            com_acc / mtot
+        } else {
+            Vec3::zero()
+        };
         self.nodes[idx as usize].mass = mtot;
-        self.nodes[idx as usize].com  = com;
+        self.nodes[idx as usize].com = com;
 
         // ── Pasada 2: cuadrupolo y octupolo (teorema del eje paralelo) ────────────
         let mut quad = [0.0_f64; 6];
-        let mut oct  = [0.0_f64; 7];
+        let mut oct = [0.0_f64; 7];
         for &ch in &children {
-            if ch == NO_CHILD { continue; }
+            if ch == NO_CHILD {
+                continue;
+            }
             let child_mass = self.nodes[ch as usize].mass;
-            if child_mass == 0.0 { continue; }
-            let child_com  = self.nodes[ch as usize].com;
+            if child_mass == 0.0 {
+                continue;
+            }
+            let child_com = self.nodes[ch as usize].com;
             let child_quad = self.nodes[ch as usize].quad;
-            let child_oct  = self.nodes[ch as usize].oct;
+            let child_oct = self.nodes[ch as usize].oct;
             let s = child_com - com;
             // Cuadrupolo: Q_parent += Q_child + m * outer_TF2(s)
             let outer_q = outer_traceless(s, child_mass);
-            for i in 0..6 { quad[i] += child_quad[i] + outer_q[i]; }
+            for i in 0..6 {
+                quad[i] += child_quad[i] + outer_q[i];
+            }
             // Octupolo: O_parent += O_child + m * TF3(s)
             let outer_o = outer3_tf(s, child_mass);
-            for i in 0..7 { oct[i] += child_oct[i] + outer_o[i]; }
+            for i in 0..7 {
+                oct[i] += child_oct[i] + outer_o[i];
+            }
         }
         self.nodes[idx as usize].quad = quad;
-        self.nodes[idx as usize].oct  = oct;
+        self.nodes[idx as usize].oct = oct;
 
         (mtot, com)
     }
@@ -467,7 +489,7 @@ impl Octree {
             // Monopolo (Plummer suavizado) + cuadrupolo + octupolo (M2L implícito).
             let a_mono = pair(pos_i, node.mass, node.com, g, eps2);
             let a_quad = quad_accel(r_com, node.quad, g);
-            let a_oct  = oct_accel(r_com, node.oct, g);
+            let a_oct = oct_accel(r_com, node.oct, g);
             return a_mono + a_quad + a_oct;
         }
         let mut a = Vec3::zero();
@@ -608,7 +630,9 @@ mod tests {
         let mut masses = Vec::with_capacity(n);
         let mut rng_state = 42u64;
         let mut lcg = || -> f64 {
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (rng_state >> 33) as f64 / (u32::MAX as f64)
         };
         for _ in 0..n {
@@ -683,15 +707,17 @@ mod tests {
         let mut masses = Vec::with_capacity(n);
         let mut rng = 12345u64;
         let mut lcg = || -> f64 {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (rng >> 33) as f64 / (u32::MAX as f64)
         };
         for _ in 0..n {
             pos.push(Vec3::new(lcg() - 0.5, lcg() - 0.5, lcg() - 0.5));
             masses.push(0.5 + lcg() * 0.5);
         }
-        let eps2  = 1e-4_f64;
-        let g     = 1.0_f64;
+        let eps2 = 1e-4_f64;
+        let g = 1.0_f64;
         let theta = 0.4_f64; // θ=0.4 asegura < 0.1 % con quad+oct
 
         // Fuerza de referencia directa (sub-muestra de 50 partículas para velocidad)
@@ -701,7 +727,9 @@ mod tests {
             .map(|&i| {
                 let mut a = Vec3::zero();
                 for j in 0..n {
-                    if j == i { continue; }
+                    if j == i {
+                        continue;
+                    }
                     a += pairwise_accel_plummer(pos[i], masses[j], pos[j], g, eps2);
                 }
                 a

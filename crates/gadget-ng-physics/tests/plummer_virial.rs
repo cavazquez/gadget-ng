@@ -37,7 +37,7 @@ use gadget_ng_tree::BarnesHutGravity;
 
 const G: f64 = 1.0;
 const N: usize = 200;
-const A: f64 = 1.0;  // radio de escala Plummer
+const A: f64 = 1.0; // radio de escala Plummer
 const M_TOT: f64 = 1.0; // masa total
 const THETA: f64 = 0.5;
 const EPS: f64 = 0.05; // suavizado gravitatorio (≈ 0.05 a)
@@ -46,7 +46,10 @@ const EPS: f64 = 0.05; // suavizado gravitatorio (≈ 0.05 a)
 struct Lcg(u64);
 impl Lcg {
     fn next_f64(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 33) as f64 / u32::MAX as f64
     }
     /// Gaussiana estándar via Box-Muller.
@@ -69,7 +72,11 @@ fn plummer_radius(lcg: &mut Lcg) -> f64 {
         let mid = 0.5 * (lo + hi);
         let x = mid / A;
         let cdf = x * x * x / (x * x + 1.0).powf(1.5);
-        if cdf < u { lo = mid; } else { hi = mid; }
+        if cdf < u {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
     }
     0.5 * (lo + hi)
 }
@@ -133,14 +140,25 @@ fn plummer_ics() -> Vec<Particle> {
 
 fn center_of_mass_and_vel(particles: &[Particle]) -> (Vec3, Vec3) {
     let m_tot: f64 = particles.iter().map(|p| p.mass).sum();
-    let com: Vec3  = particles.iter().map(|p| p.position * p.mass).fold(Vec3::zero(), |a, b| a + b) / m_tot;
-    let vcm: Vec3  = particles.iter().map(|p| p.velocity * p.mass).fold(Vec3::zero(), |a, b| a + b) / m_tot;
+    let com: Vec3 = particles
+        .iter()
+        .map(|p| p.position * p.mass)
+        .fold(Vec3::zero(), |a, b| a + b)
+        / m_tot;
+    let vcm: Vec3 = particles
+        .iter()
+        .map(|p| p.velocity * p.mass)
+        .fold(Vec3::zero(), |a, b| a + b)
+        / m_tot;
     (com, vcm)
 }
 
 /// Energía cinética total.
 fn kinetic_energy(particles: &[Particle]) -> f64 {
-    particles.iter().map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity)).sum()
+    particles
+        .iter()
+        .map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity))
+        .sum()
 }
 
 /// Energía potencial gravitatoria total (sum_{i<j} -G mi mj / r_ij, con suavizado).
@@ -161,7 +179,9 @@ fn potential_energy(particles: &[Particle]) -> f64 {
 fn virial_ratio(particles: &[Particle]) -> f64 {
     let t = kinetic_energy(particles);
     let w = potential_energy(particles);
-    if w.abs() < 1e-300 { return 0.0; }
+    if w.abs() < 1e-300 {
+        return 0.0;
+    }
     -t / w
 }
 
@@ -188,8 +208,16 @@ fn plummer_kinetic_energy_positive() {
 fn plummer_com_near_zero_after_correction() {
     let particles = plummer_ics();
     let (com, vcm) = center_of_mass_and_vel(&particles);
-    assert!(com.norm() < 1e-10, "COM no centrado: |COM| = {:.4e}", com.norm());
-    assert!(vcm.norm() < 1e-10, "VCM no nulo: |VCM| = {:.4e}", vcm.norm());
+    assert!(
+        com.norm() < 1e-10,
+        "COM no centrado: |COM| = {:.4e}",
+        com.norm()
+    );
+    assert!(
+        vcm.norm() < 1e-10,
+        "VCM no nulo: |VCM| = {:.4e}",
+        vcm.norm()
+    );
 }
 
 #[test]
@@ -213,8 +241,8 @@ fn plummer_evolved_virial_ratio_near_half() {
     let all_indices: Vec<usize> = (0..N).collect();
     for _ in 0..n_steps {
         leapfrog_kdk_step(&mut particles, dt, &mut scratch, |ps, acc| {
-            let pos:   Vec<Vec3> = ps.iter().map(|p| p.position).collect();
-            let mass:  Vec<f64>  = ps.iter().map(|p| p.mass).collect();
+            let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
+            let mass: Vec<f64> = ps.iter().map(|p| p.mass).collect();
             bh.accelerations_for_indices(&pos, &mass, eps2, G, &all_indices, acc);
         });
     }

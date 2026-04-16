@@ -220,10 +220,10 @@ mod tests {
         ];
         let prov = dummy_provenance();
         let env = SnapshotEnv {
-            time:     0.42,
+            time: 0.42,
             redshift: 1.0,
             box_size: 5.0,
-            units:    None,
+            units: None,
         };
         JsonlWriter
             .write(dir.path(), &particles, &prov, &env)

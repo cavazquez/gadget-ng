@@ -13,21 +13,21 @@ use std::path::Path;
 /// Configuración del renderer.
 #[derive(Clone, Debug)]
 pub struct RendererConfig {
-    pub width:      u32,
-    pub height:     u32,
+    pub width: u32,
+    pub height: u32,
     pub projection: Projection,
     pub color_mode: ColorMode,
-    pub box_size:   f64,
+    pub box_size: f64,
 }
 
 impl Default for RendererConfig {
     fn default() -> Self {
         Self {
-            width:      800,
-            height:     800,
+            width: 800,
+            height: 800,
             projection: Projection::XY,
             color_mode: ColorMode::Velocity,
-            box_size:   1.0,
+            box_size: 1.0,
         }
     }
 }
@@ -91,9 +91,13 @@ impl Renderer {
     }
 
     /// Acceso al canvas (útil para tests).
-    pub fn canvas(&self) -> &CpuCanvas { &self.canvas }
+    pub fn canvas(&self) -> &CpuCanvas {
+        &self.canvas
+    }
 
-    pub fn config(&self) -> &RendererConfig { &self.config }
+    pub fn config(&self) -> &RendererConfig {
+        &self.config
+    }
 }
 
 #[cfg(test)]
@@ -108,15 +112,20 @@ mod tests {
             rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
             (rng >> 33) as f64 / u32::MAX as f64
         };
-        let pos: Vec<Vec3> = (0..n).map(|_| Vec3::new(lcg() * box_size, lcg() * box_size, lcg() * box_size)).collect();
-        let vel: Vec<Vec3> = (0..n).map(|_| Vec3::new(lcg() - 0.5, lcg() - 0.5, lcg() - 0.5)).collect();
+        let pos: Vec<Vec3> = (0..n)
+            .map(|_| Vec3::new(lcg() * box_size, lcg() * box_size, lcg() * box_size))
+            .collect();
+        let vel: Vec<Vec3> = (0..n)
+            .map(|_| Vec3::new(lcg() - 0.5, lcg() - 0.5, lcg() - 0.5))
+            .collect();
         (pos, vel)
     }
 
     #[test]
     fn renderer_draws_particles() {
         let cfg = RendererConfig {
-            width: 128, height: 128,
+            width: 128,
+            height: 128,
             box_size: 1.0,
             projection: Projection::XY,
             color_mode: ColorMode::White,
@@ -130,7 +139,12 @@ mod tests {
     #[test]
     fn renderer_saves_png() {
         let dir = tempdir().unwrap();
-        let cfg = RendererConfig { width: 64, height: 64, box_size: 1.0, ..Default::default() };
+        let cfg = RendererConfig {
+            width: 64,
+            height: 64,
+            box_size: 1.0,
+            ..Default::default()
+        };
         let mut r = Renderer::new(cfg);
         let (pos, vel) = random_particles(50, 1.0);
         r.render_frame(&pos, &vel);
@@ -142,7 +156,9 @@ mod tests {
     #[test]
     fn velocity_color_mode_produces_colored_output() {
         let cfg = RendererConfig {
-            width: 64, height: 64, box_size: 1.0,
+            width: 64,
+            height: 64,
+            box_size: 1.0,
             projection: Projection::XY,
             color_mode: ColorMode::Velocity,
         };

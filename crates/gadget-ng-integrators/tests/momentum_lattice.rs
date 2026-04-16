@@ -24,7 +24,7 @@ fn lattice_config() -> RunConfig {
         performance: Default::default(),
         timestep: Default::default(),
         cosmology: Default::default(),
-        units:       Default::default(),
+        units: Default::default(),
     }
 }
 

@@ -30,7 +30,7 @@ pub fn compute_density(particles: &mut [SphParticle]) {
     let n = particles.len();
     // Extrae datos de todas las partículas (pos, mass) para no tener borrowing doble.
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
-    let mass: Vec<f64>  = particles.iter().map(|p| p.mass).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
     for i in 0..n {
         let gas = match particles[i].gas.as_mut() {
@@ -48,7 +48,9 @@ pub fn compute_density(particles: &mut [SphParticle]) {
             let (rho, drho_dh) = rho_and_deriv(&pos, &mass, pi, h, n);
             // Residuo
             let n_eff = (4.0 * std::f64::consts::PI / 3.0) * (2.0 * h).powi(3) * rho / m_i;
-            if (n_eff - N_NEIGH).abs() < 1e-2 { break; }
+            if (n_eff - N_NEIGH).abs() < 1e-2 {
+                break;
+            }
             // Derivada de n_eff respecto a h
             let dn_dh = (4.0 * std::f64::consts::PI / 3.0)
                 * (24.0 * h * h * rho + (2.0 * h).powi(3) * drho_dh)
@@ -105,7 +107,9 @@ mod tests {
                     let h0 = 2.0 * dx;
                     parts.push(SphParticle::new_gas(id, 1.0, pos, Vec3::zero(), 1.0, h0));
                     id += 1;
-                    if parts.len() == n { break 'outer; }
+                    if parts.len() == n {
+                        break 'outer;
+                    }
                 }
             }
         }
@@ -121,7 +125,8 @@ mod tests {
         compute_density(&mut parts);
 
         let rho_true = n as f64 / (box_size * box_size * box_size);
-        let mean_rho: f64 = parts.iter()
+        let mean_rho: f64 = parts
+            .iter()
             .filter_map(|p| p.gas.as_ref())
             .map(|g| g.rho)
             .sum::<f64>()

@@ -36,7 +36,10 @@ enum Commands {
         #[arg(long, help = "Escribir snapshot final bajo `<out>/snapshot_final`")]
         snapshot: bool,
         /// Reanudar desde el checkpoint guardado en `<RESUME>/checkpoint/`.
-        #[arg(long, help = "Directorio de salida de una corrida anterior para reanudar")]
+        #[arg(
+            long,
+            help = "Directorio de salida de una corrida anterior para reanudar"
+        )]
         resume: Option<PathBuf>,
     },
     /// Escribe un snapshot del estado inicial (IC) resuelto.
@@ -118,18 +121,38 @@ fn main() -> Result<(), CliError> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Config { config } => engine::cmd_config_print(&config)?,
-        Commands::Stepping { config, out, snapshot, resume } => {
+        Commands::Stepping {
+            config,
+            out,
+            snapshot,
+            resume,
+        } => {
             let cfg = config_load::load_run_config(&config)?;
-            run_with_runtime(|rt| engine::run_stepping(rt, &cfg, &out, snapshot, resume.as_deref()))?;
+            run_with_runtime(|rt| {
+                engine::run_stepping(rt, &cfg, &out, snapshot, resume.as_deref())
+            })?;
         }
         Commands::Snapshot { config, out } => {
             let cfg = config_load::load_run_config(&config)?;
             run_with_runtime(|rt| engine::run_snapshot(rt, &cfg, &out))?;
         }
-        Commands::Visualize { snapshot, output, width, height, projection, color } => {
+        Commands::Visualize {
+            snapshot,
+            output,
+            width,
+            height,
+            projection,
+            color,
+        } => {
             engine::run_visualize(&snapshot, &output, width, height, &projection, &color)?;
         }
-        Commands::Analyse { snapshot, out, linking_length, min_particles, pk_mesh } => {
+        Commands::Analyse {
+            snapshot,
+            out,
+            linking_length,
+            min_particles,
+            pk_mesh,
+        } => {
             engine::run_analyse(&snapshot, &out, linking_length, min_particles, pk_mesh)?;
         }
     }
