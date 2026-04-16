@@ -63,20 +63,44 @@ impl GpuParticlesSoAExt for gadget_ng_gpu::GpuParticlesSoA {
 // ── GravitySolver para GpuDirectGravity ──────────────────────────────────────
 
 impl GravitySolver for GpuDirectGravity {
+    /// Calcula aceleraciones usando el compute shader wgpu.
+    ///
+    /// Los datos f64 se convierten a f32 para la transferencia al device GPU.
+    /// El error relativo introducido es O(1e-7) (precisión f32).
     fn accelerations_for_indices(
         &self,
-        _global_positions: &[Vec3],
-        _global_masses: &[f64],
-        _eps2: f64,
-        _g: f64,
-        _global_indices: &[usize],
-        _out: &mut [Vec3],
+        global_positions: &[Vec3],
+        global_masses:    &[f64],
+        eps2:             f64,
+        g:                f64,
+        global_indices:   &[usize],
+        out:              &mut [Vec3],
     ) {
-        // TODO(gpu): replace with wgpu/cuda/hip kernel launch
-        unimplemented!(
-            "GPU kernel not yet implemented. \
-             Compile without --features gpu, or use DirectGravity / SimdDirectGravity."
-        )
+        assert_eq!(global_indices.len(), out.len());
+        if global_indices.is_empty() {
+            return;
+        }
+
+        // Empaquetar posiciones globales como [x0,y0,z0, x1,y1,z1, ...] en f32
+        let positions_f32: Vec<f32> = global_positions
+            .iter()
+            .flat_map(|p| [p.x as f32, p.y as f32, p.z as f32])
+            .collect();
+        let masses_f32: Vec<f32> = global_masses.iter().map(|&m| m as f32).collect();
+        let query_idx: Vec<u32> = global_indices.iter().map(|&i| i as u32).collect();
+
+        let raw = self.compute_accelerations_raw(
+            &positions_f32,
+            &masses_f32,
+            &query_idx,
+            eps2 as f32,
+            g as f32,
+        );
+
+        // Convertir resultados f32 → Vec3 f64
+        for (k, chunk) in raw.chunks_exact(3).enumerate() {
+            out[k] = Vec3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+        }
     }
 }
 

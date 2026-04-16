@@ -17,3 +17,8 @@ rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
+criterion.workspace = true
+
+[[bench]]
+name = "treepm_gravity"
+harness = false

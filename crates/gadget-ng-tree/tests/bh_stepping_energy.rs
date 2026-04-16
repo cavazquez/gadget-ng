@@ -32,6 +32,8 @@ fn stepping_with_barnes_hut_kinetic_bounded() {
         gravity: Default::default(),
         performance: Default::default(),
         timestep: Default::default(),
+        cosmology: Default::default(),
+        units:       Default::default(),
     };
     let eps2 = cfg.softening_squared();
     let g = cfg.simulation.gravitational_constant;

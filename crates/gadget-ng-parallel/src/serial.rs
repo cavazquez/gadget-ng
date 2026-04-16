@@ -54,4 +54,32 @@ impl ParallelRuntime for SerialRuntime {
     fn allreduce_sum_f64(&self, v: f64) -> f64 {
         v
     }
+
+    fn allreduce_min_f64(&self, v: f64) -> f64 {
+        v
+    }
+
+    fn allreduce_max_f64(&self, v: f64) -> f64 {
+        v
+    }
+
+    fn exchange_domain_by_x(
+        &self,
+        _local: &mut Vec<Particle>,
+        _my_x_lo: f64,
+        _my_x_hi: f64,
+    ) {
+        // Serial: rango único, nunca hay partículas fuera del dominio.
+    }
+
+    fn exchange_halos_by_x(
+        &self,
+        _local: &[Particle],
+        _my_x_lo: f64,
+        _my_x_hi: f64,
+        _halo_width: f64,
+    ) -> Vec<Particle> {
+        // Serial: no hay vecinos; el árbol local ya tiene todas las partículas.
+        Vec::new()
+    }
 }

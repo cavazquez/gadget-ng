@@ -1,5 +1,37 @@
 use gadget_ng_core::{Particle, Vec3};
 
+// ── Empaquetado de halos (8 f64 por partícula) ────────────────────────────────
+
+/// Empaqueta partículas para halo exchange: `[global_id_bits, mass, x, y, z, vx, vy, vz]`.
+pub fn pack_halo(particles: &[Particle]) -> Vec<f64> {
+    let mut v = Vec::with_capacity(particles.len() * 8);
+    for p in particles {
+        v.push(f64::from_bits(p.global_id as u64));
+        v.push(p.mass);
+        v.push(p.position.x);
+        v.push(p.position.y);
+        v.push(p.position.z);
+        v.push(p.velocity.x);
+        v.push(p.velocity.y);
+        v.push(p.velocity.z);
+    }
+    v
+}
+
+/// Desempaqueta el buffer generado por [`pack_halo`].
+pub fn unpack_halo(buf: &[f64]) -> Vec<Particle> {
+    buf.chunks_exact(8)
+        .map(|c| {
+            Particle::new(
+                f64::to_bits(c[0]) as usize,
+                c[1],
+                Vec3::new(c[2], c[3], c[4]),
+                Vec3::new(c[5], c[6], c[7]),
+            )
+        })
+        .collect()
+}
+
 /// Estado mínimo para gravedad: `global_id`, `mass`, `px`, `py`, `pz`.
 pub fn pack_pm(local: &[Particle]) -> Vec<f64> {
     let mut v = Vec::with_capacity(local.len() * 5);

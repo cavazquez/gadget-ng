@@ -100,7 +100,7 @@ fn solve_forces_impl(
     // Bucle k-space: calcular Φ̂(k) y las tres componentes F̂_α.
     // Con la feature `rayon`, se paraleliza el índice plano (independiente por celda).
     #[cfg(not(feature = "rayon"))]
-    let kspace_iter = (0..nm3).into_iter();
+    let kspace_iter = 0..nm3;
     #[cfg(feature = "rayon")]
     let kspace_iter = (0..nm3).into_par_iter();
 

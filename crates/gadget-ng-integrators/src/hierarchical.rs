@@ -46,7 +46,7 @@
 //! La corrección `Δx_j` es el predictor de Störmer para partículas inactivas:
 //! sus posiciones se mejoran de O(Δt²) a O(Δt³) para la evaluación de fuerzas,
 //! sin modificar la integración simpléctica de las partículas activas.
-use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_core::{cosmology::CosmologyParams, Particle, Vec3};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -146,6 +146,16 @@ pub fn aarseth_bin(acc_mag: f64, eps2: f64, dt_base: f64, eta: f64, max_level: u
 /// Las posiciones predichas se usan **solo** para la evaluación de fuerzas
 /// y se restauran inmediatamente después, preservando la integración simpléctica.
 ///
+/// ## Cosmología
+///
+/// Si `cosmo = Some((params, a))`, el integrador usa factores de drift/kick
+/// cosmológicos calculados mediante sumas prefijas sobre `a(t)`:
+/// - Drift de cada sub-paso fino: `∫ dt/a²` sobre `fine_dt`
+/// - Kick de nivel `k`: `∫ dt/a` sobre la primera/segunda mitad de `dt_i`
+///
+/// Al finalizar, `*a` se actualiza al valor al final del paso `dt_base`.
+/// Con `cosmo = None` se usa `dt` plano (comportamiento Newtoniano).
+///
 /// # Argumentos
 /// - `particles` — estado de todas las partículas locales (modificado in-place).
 /// - `state` — niveles de bin y contadores de tiempo; gestionado internamente.
@@ -153,9 +163,11 @@ pub fn aarseth_bin(acc_mag: f64, eps2: f64, dt_base: f64, eta: f64, max_level: u
 /// - `eps2` — cuadrado del softening de Plummer.
 /// - `eta` — parámetro de Aarseth.
 /// - `max_level` — máximo nivel de subdivisión.
+/// - `cosmo` — parámetros cosmológicos y factor de escala actual (opcional).
 /// - `compute` — cierre `FnMut(&[Particle], &[usize], &mut [Vec3])`.
 ///   Rellena `out[j]` con la aceleración de `particles[active_local[j]]`.
 ///   Los índices son **locales** (posición en `particles`), no `global_id`.
+#[allow(clippy::too_many_arguments)]
 pub fn hierarchical_kdk_step(
     particles: &mut [Particle],
     state: &mut HierarchicalState,
@@ -163,6 +175,7 @@ pub fn hierarchical_kdk_step(
     eps2: f64,
     eta: f64,
     max_level: u32,
+    cosmo: Option<(&CosmologyParams, &mut f64)>,
     mut compute: impl FnMut(&[Particle], &[usize], &mut [Vec3]),
 ) {
     assert_eq!(particles.len(), state.levels.len());
@@ -172,26 +185,53 @@ pub fn hierarchical_kdk_step(
     let fine_dt = dt_base / n_fine as f64;
     let n = particles.len();
 
+    // Pre-computar sumas prefijas de factores drift/kick cosmológicos si aplica.
+    // Índice: s ∈ [0, n_fine], medio sub-paso: h = s/2 ∈ [0, 2*n_fine].
+    // kick_prefix[i]: ∫_0^{i * half_dt} dt/a(t) acumulado desde a_start.
+    // drift_prefix[i]: ∫_0^{i * half_dt} dt/a²(t) acumulado.
+    let (kick_prefix, drift_prefix): (Vec<f64>, Vec<f64>) =
+        if let Some((cosmo_params, a_ref)) = cosmo.as_ref() {
+            let (_, kp, dp) =
+                cosmo_params.hierarchical_prefixes(**a_ref, fine_dt, n_fine as usize);
+            (kp, dp)
+        } else {
+            // Sin cosmología: factores planos.
+            let n_half = 2 * n_fine as usize;
+            let half_dt = fine_dt * 0.5;
+            let kp: Vec<f64> = (0..=n_half).map(|i| i as f64 * half_dt).collect();
+            let dp = kp.clone();
+            (kp, dp)
+        };
+
     // Buffer de aceleraciones; sólo usamos los primeros `active.len()` elementos.
     let mut acc_buf = vec![Vec3::zero(); n];
     // Buffer de correcciones de posición para predictor inactivo.
     let mut pred_corr = vec![Vec3::zero(); n];
 
     for s in 0..n_fine {
+        let s_idx = s as usize;
+
         // ── 1. START kick para partículas que comienzan su paso en t = s·fine_dt ──
         // Condición: s % stride(k) == 0, stride(k) = 2^(max_level - k).
+        // kick_half_steps = 2^(max_level - lvl) medios sub-pasos = stride/2 fine sub-steps
         for (i, (p, &lvl)) in particles.iter_mut().zip(state.levels.iter()).enumerate() {
             let stride = 1u64 << (max_level - lvl);
             if s % stride == 0 {
                 state.elapsed[i] = 0; // reiniciar contador desde este sync
-                let dt_i = dt_base / (1u64 << lvl) as f64;
-                p.velocity += p.acceleration * (0.5 * dt_i);
+                // Medio-kick START: kick sobre primera mitad de dt_i
+                let half_kick_half_steps = 1u64 << (max_level - lvl); // medios sub-pasos
+                let kick_start = kick_prefix[2 * s_idx];
+                let kick_end = kick_prefix[2 * s_idx + half_kick_half_steps as usize];
+                let k_half = kick_end - kick_start;
+                p.velocity += p.acceleration * k_half;
             }
         }
 
-        // ── 2. Drift de TODAS las partículas (primer orden) ──────────────────────
+        // ── 2. Drift de TODAS las partículas ─────────────────────────────────────
+        // drift_factor = drift_prefix[2*s+2] − drift_prefix[2*s]
+        let drift_factor = drift_prefix[2 * s_idx + 2] - drift_prefix[2 * s_idx];
         for p in particles.iter_mut() {
-            p.position += p.velocity * fine_dt;
+            p.position += p.velocity * drift_factor;
         }
         for e in state.elapsed.iter_mut() {
             *e += 1;
@@ -235,15 +275,26 @@ pub fn hierarchical_kdk_step(
 
             // END kick, actualizar aceleración y reasignar bin.
             for (j, &i) in end_active.iter().enumerate() {
-                let dt_i = dt_base / (1u64 << state.levels[i]) as f64;
+                let lvl = state.levels[i];
                 let a_new = acc_buf[j];
-                particles[i].velocity += a_new * (0.5 * dt_i);
+                // kick_half_steps = 2^(max_level - lvl) medios sub-pasos (igual que START)
+                let half_kick_half_steps = 1usize << (max_level - lvl);
+                let end_idx = 2 * (s_idx + 1);
+                let kick_end_val = kick_prefix[end_idx];
+                let kick_start_val = kick_prefix[end_idx - half_kick_half_steps];
+                let k_half2 = kick_end_val - kick_start_val;
+                particles[i].velocity += a_new * k_half2;
                 particles[i].acceleration = a_new;
                 state.elapsed[i] = 0; // reiniciar tras END kick
                 let acc_mag = a_new.dot(a_new).sqrt();
                 state.levels[i] = aarseth_bin(acc_mag, eps2, dt_base, eta, max_level);
             }
         }
+    }
+
+    // Actualizar el factor de escala al final del paso completo.
+    if let Some((cosmo_params, a_ref)) = cosmo {
+        *a_ref = cosmo_params.advance_a(*a_ref, dt_base);
     }
 }
 
@@ -358,6 +409,7 @@ mod tests {
                 eps2,
                 eta_large,
                 max_level,
+                None,
                 |ps, _idx, out| {
                     out[0] = -k_spring * ps[0].position;
                 },

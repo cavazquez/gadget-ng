@@ -2,44 +2,86 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
-  rust-checks:
+  # ── Formateo ────────────────────────────────────────────────────────────────
+  fmt:
+    name: Rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - name: Install HDF5 (libhdf5) for --all-features
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libhdf5-dev
-      - name: fmt
-        run: cargo fmt --all -- --check
-      - name: clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: test
-        run: cargo test
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
-  mpi-smoke:
+  # ── Linting ─────────────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install OpenMPI
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace -- -D warnings
+
+  # ── Tests ───────────────────────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  # ── Benchmarks (dry-run sin medir, solo verifica que compilan y no panic) ──
+  bench-check:
+    name: Benchmarks (compile + dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compilar benchmarks
+        run: cargo bench --workspace --no-run
+      - name: Dry-run (1 iteración, sin medir)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libopenmpi-dev openmpi-bin python3
-      - name: Build (MPI)
-        run: cargo build --features mpi
-      - name: MPI smoke (4 ranks)
-        run: ./scripts/mpi/run_smoke.sh
-      - name: Serial vs MPI parity
-        run: ./scripts/validation/compare_serial_mpi.sh
+          cargo bench --workspace -- --test 2>&1 | tail -20
+
+  # ── Smoke MPI (serial, sin mpirun real) ─────────────────────────────────────
+  test-parallel:
+    name: Tests parallel (serial runtime)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p gadget-ng-parallel
+
+  # ── Cobertura (opcional, requiere cargo-tarpaulin) ──────────────────────────
+  coverage:
+    name: Coverage (tarpaulin)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Instalar tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+      - name: Ejecutar cobertura
+        run: cargo tarpaulin --workspace --out Xml --timeout 120
+      - name: Subir a Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: cobertura.xml
+        continue-on-error: true

@@ -1,4 +1,5 @@
 pub mod config;
+pub mod cosmology;
 #[cfg(feature = "gpu")]
 pub mod gpu_bridge;
 pub mod gravity;
@@ -14,9 +15,11 @@ pub use gadget_ng_gpu::{GpuDirectGravity, GpuParticlesSoA};
 pub use gpu_bridge::GpuParticlesSoAExt;
 
 pub use config::{
-    GravitySection, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, SnapshotFormat, SolverKind, TimestepSection,
+    CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, SnapshotFormat, SolverKind, TimestepSection,
+    UnitsSection, G_KPC_MSUN_KMPS,
 };
+pub use cosmology::CosmologyParams;
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;
 pub use gravity::{

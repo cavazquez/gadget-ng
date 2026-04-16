@@ -12,3 +12,7 @@ mpi = ["dep:mpi"]
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
 mpi = { workspace = true, optional = true }
+
+[dev-dependencies]
+gadget-ng-integrators = { path = "../gadget-ng-integrators" }
+gadget-ng-tree        = { path = "../gadget-ng-tree" }

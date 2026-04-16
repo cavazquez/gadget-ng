@@ -1,7 +1,7 @@
 use crate::error::SnapshotError;
 use crate::provenance::Provenance;
 use crate::reader::{SnapshotData, SnapshotReader};
-use crate::writer::{SnapshotEnv, SnapshotWriter};
+use crate::writer::{SnapshotEnv, SnapshotUnits, SnapshotWriter};
 use gadget_ng_core::Particle;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -55,6 +55,9 @@ pub struct SnapshotMeta {
     pub time: f64,
     pub redshift: f64,
     pub box_size: f64,
+    /// Unidades físicas usadas en la simulación (ausente si `units.enabled = false`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub units: Option<SnapshotUnits>,
 }
 
 pub(crate) fn build_meta(
@@ -69,6 +72,7 @@ pub(crate) fn build_meta(
         time: env.time,
         redshift: env.redshift,
         box_size: env.box_size,
+        units: env.units.clone(),
     }
 }
 
@@ -182,6 +186,7 @@ mod tests {
             time: 0.05,
             redshift: 0.0,
             box_size: 1.0,
+            units: None,
         };
         JsonlWriter
             .write(dir.path(), &particles, &prov, &env)
@@ -215,9 +220,10 @@ mod tests {
         ];
         let prov = dummy_provenance();
         let env = SnapshotEnv {
-            time: 0.42,
+            time:     0.42,
             redshift: 1.0,
             box_size: 5.0,
+            units:    None,
         };
         JsonlWriter
             .write(dir.path(), &particles, &prov, &env)

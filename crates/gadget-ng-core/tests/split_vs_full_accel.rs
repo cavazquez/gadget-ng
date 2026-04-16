@@ -22,6 +22,8 @@ fn small_lattice_cfg() -> RunConfig {
         gravity: Default::default(),
         performance: Default::default(),
         timestep: Default::default(),
+        cosmology: Default::default(),
+        units:       Default::default(),
     }
 }
 

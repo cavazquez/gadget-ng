@@ -35,6 +35,11 @@ enum Commands {
         out: PathBuf,
         #[arg(long, help = "Escribir snapshot final bajo `<out>/snapshot_final`")]
         snapshot: bool,
+        /// Reanudar desde el checkpoint guardado en `<RESUME>/checkpoint/`.
+        /// El directorio debe ser el mismo `--out` de una corrida anterior
+        /// con `[output] checkpoint_interval > 0`.
+        #[arg(long, help = "Directorio de salida de una corrida anterior para reanudar")]
+        resume: Option<PathBuf>,
     },
     /// Escribe un snapshot del estado inicial (IC) resuelto.
     Snapshot {
@@ -69,9 +74,11 @@ fn main() -> Result<(), CliError> {
             config,
             out,
             snapshot,
+            resume,
         } => {
             let cfg = config_load::load_run_config(&config)?;
-            run_with_runtime(|rt| engine::run_stepping(rt, &cfg, &out, snapshot))?;
+            let resume_ref = resume.as_deref();
+            run_with_runtime(|rt| engine::run_stepping(rt, &cfg, &out, snapshot, resume_ref))?;
         }
         Commands::Snapshot { config, out } => {
             let cfg = config_load::load_run_config(&config)?;

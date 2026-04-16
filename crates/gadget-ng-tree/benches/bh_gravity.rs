@@ -19,10 +19,12 @@ fn lattice_cfg(n: usize) -> RunConfig {
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,
         },
-        output: Default::default(),
-        gravity: Default::default(),
+        output:      Default::default(),
+        gravity:     Default::default(),
         performance: Default::default(),
-        timestep: Default::default(),
+        timestep:    Default::default(),
+        cosmology:   Default::default(),
+        units:       Default::default(),
     }
 }
 

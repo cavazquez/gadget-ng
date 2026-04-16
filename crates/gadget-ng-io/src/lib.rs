@@ -16,7 +16,7 @@ pub use error::SnapshotError;
 pub use provenance::Provenance;
 pub use reader::{SnapshotData, SnapshotReader};
 pub use snapshot::{write_snapshot, JsonlReader, JsonlWriter, ParticleRecord, SnapshotMeta};
-pub use writer::{SnapshotEnv, SnapshotWriter};
+pub use writer::{SnapshotEnv, SnapshotUnits, SnapshotWriter};
 
 use gadget_ng_core::{Particle, SnapshotFormat};
 use std::path::Path;
