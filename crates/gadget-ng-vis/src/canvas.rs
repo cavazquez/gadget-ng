@@ -48,9 +48,28 @@ impl CpuCanvas {
         color_mode: ColorMode,
         box_size: f64,
     ) {
-        // Bounding box del dominio proyectado.
-        let box_min = (0.0, 0.0);
-        let box_max = (box_size, box_size);
+        // Calcular bounding box real de las posiciones proyectadas.
+        // Si todas las posiciones caben en [0, box_size], se usa ese rango.
+        // Si no (e.g. esfera de Plummer centrada en 0), se usa el rango real con padding.
+        let (box_min, box_max) = if positions.is_empty() {
+            ((0.0, 0.0), (box_size, box_size))
+        } else {
+            let (mut xmin, mut ymin) = (f64::INFINITY,  f64::INFINITY);
+            let (mut xmax, mut ymax) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+            for &p in positions {
+                let (xw, yw) = proj.project(p);
+                xmin = xmin.min(xw);  ymin = ymin.min(yw);
+                xmax = xmax.max(xw);  ymax = ymax.max(yw);
+            }
+            // Ampliar con 10 % de padding.
+            let pad_x = ((xmax - xmin) * 0.1).max(1e-9);
+            let pad_y = ((ymax - ymin) * 0.1).max(1e-9);
+            // Hacer el encuadre cuadrado para no deformar la escena.
+            let half = ((xmax - xmin + 2.0 * pad_x).max(ymax - ymin + 2.0 * pad_y)) * 0.5;
+            let cx   = (xmin + xmax) * 0.5;
+            let cy   = (ymin + ymax) * 0.5;
+            ((cx - half, cy - half), (cx + half, cy + half))
+        };
 
         for (i, &pos) in positions.iter().enumerate() {
             let (xw, yw) = proj.project(pos);

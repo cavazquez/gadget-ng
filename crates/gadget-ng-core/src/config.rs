@@ -149,11 +149,12 @@ pub struct OutputSection {
     #[serde(default = "default_snapshot_format")]
     pub snapshot_format: SnapshotFormat,
     /// Guardar checkpoint cada N pasos (0 = desactivado).
-    ///
-    /// El checkpoint se escribe en `<out_dir>/checkpoint/` y permite reanudar
-    /// la simulación con `gadget-ng stepping --resume <out_dir>`.
     #[serde(default)]
     pub checkpoint_interval: u64,
+    /// Guardar snapshot de partículas cada N pasos en `<out_dir>/frames/snap_{step:06}/`
+    /// (0 = desactivado).  Útil para generar animaciones cuadro a cuadro.
+    #[serde(default)]
+    pub snapshot_interval: u64,
 }
 
 impl Default for OutputSection {
@@ -161,6 +162,7 @@ impl Default for OutputSection {
         Self {
             snapshot_format:     default_snapshot_format(),
             checkpoint_interval: 0,
+            snapshot_interval:   0,
         }
     }
 }

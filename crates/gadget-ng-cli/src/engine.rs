@@ -273,7 +273,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let theta = cfg.gravity.theta;
     let solver = make_solver(cfg);
     let dt = cfg.simulation.dt;
-    let checkpoint_interval = cfg.output.checkpoint_interval;
+    let checkpoint_interval  = cfg.output.checkpoint_interval;
+    let snapshot_interval    = cfg.output.snapshot_interval;
 
     // Hash canónico de la config (para checkpoint).
     let cfg_hash = config_load::config_canonical_hash(cfg)
@@ -343,12 +344,33 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // `h_state_opt` se mantiene vivo tras el bucle para poder guardarlo con el snapshot.
     let mut h_state_opt: Option<HierarchicalState> = None;
 
-    // Macro local para guardar checkpoint cuando toca (reduce repetición).
-    // Se usa como expresión `maybe_checkpoint!(step, h_state_ref)`.
+    // Macro local para guardar checkpoint cuando toca.
     macro_rules! maybe_checkpoint {
         ($step:expr, $hs:expr) => {
             if checkpoint_interval > 0 && $step % checkpoint_interval == 0 {
                 save_checkpoint(rt, $step, a_current, &local, total, $hs, out_dir, &cfg_hash)?;
+            }
+        };
+    }
+
+    // Macro local para guardar frame de snapshot intermedio.
+    macro_rules! maybe_snap_frame {
+        ($step:expr) => {
+            if snapshot_interval > 0 && $step % snapshot_interval == 0 {
+                if let Some(all_parts) = rt.root_gather_particles(&local, total) {
+                    let frame_dir = out_dir.join("frames").join(format!("snap_{:06}", $step));
+                    fs::create_dir_all(&frame_dir).map_err(|e| CliError::io(&frame_dir, e))?;
+                    let t = $step as f64 * cfg.simulation.dt;
+                    let z = if cfg.cosmology.enabled { 1.0 / a_current - 1.0 } else { 0.0 };
+                    let env = SnapshotEnv {
+                        time: t, redshift: z,
+                        box_size: cfg.simulation.box_size,
+                        units: snapshot_units_for(cfg),
+                    };
+                    write_snapshot_formatted(
+                        cfg.output.snapshot_format, &frame_dir, &all_parts, &prov, &env,
+                    )?;
+                }
             }
         };
     }
@@ -405,6 +427,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             );
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
             maybe_checkpoint!(step, Some(&h_state));
+            maybe_snap_frame!(step);
         }
         h_state_opt = Some(h_state);
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
@@ -420,20 +443,18 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             });
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
             maybe_checkpoint!(step, None);
+            maybe_snap_frame!(step);
         }
     } else if use_sfc {
         // ── Árbol distribuido SFC: Morton Z-order 3D, balanceo dinámico ───────
         let box_size = cfg.simulation.box_size;
-        // Descomposición SFC inicial (se recalculará cada sfc_rebalance_interval pasos).
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
         let mut sfc_decomp = SfcDecomposition::build(&all_pos, box_size, rt.size());
 
         for step in start_step..=cfg.simulation.num_steps {
-            // Rebalanceo dinámico: recalcular la descomposición SFC periódicamente.
             let do_rebalance = sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
             if do_rebalance {
                 let all_pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                // Construir descomposición con las posiciones locales (aproximación).
                 sfc_decomp = SfcDecomposition::build(&all_pos_loc, box_size, rt.size());
             }
 
@@ -448,6 +469,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             });
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
             maybe_checkpoint!(step, None);
+            maybe_snap_frame!(step);
         }
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
@@ -469,6 +491,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             });
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
             maybe_checkpoint!(step, None);
+            maybe_snap_frame!(step);
         }
     } else {
         // ── Leapfrog clásico: Allgather global ────────────────────────────────
@@ -480,6 +503,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             });
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
             maybe_checkpoint!(step, None);
+            maybe_snap_frame!(step);
         }
     }
 
