@@ -43,13 +43,30 @@ pub struct InitialConditionsSection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IcKind {
+    /// Retícula cúbica regular con perturbación aleatoria pequeña.
+    /// Requiere `particle_count = n³`.
     Lattice,
+    /// Sistema de 2 cuerpos en órbita circular.
     TwoBody {
         mass1: f64,
         mass2: f64,
         separation: f64,
     },
+    /// Esfera de Plummer con posiciones muestreadas de la CDF de masa
+    /// y velocidades Gaussianas escaladas para el equilibrio virial.
+    ///
+    /// ```toml
+    /// [initial_conditions]
+    /// kind = { plummer = { a = 1.0 } }
+    /// ```
+    Plummer {
+        /// Radio de escala de Plummer `a` (en unidades internas).
+        #[serde(default = "default_plummer_a")]
+        a: f64,
+    },
 }
+
+fn default_plummer_a() -> f64 { 1.0 }
 
 /// Parámetros del solver de gravedad (opcional en TOML; valores por defecto retrocompatibles).
 #[derive(Debug, Clone, Serialize, Deserialize)]

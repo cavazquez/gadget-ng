@@ -1,0 +1,35 @@
+# ─── N-body 1000 partículas — Barnes–Hut + FMM octupolo ─────────────────────
+#
+# Retícula cúbica (10³) con perturbaciones aleatorias.  Usa Barnes–Hut
+# con θ = 0.4 para alta precisión (monopolo + cuadrupolo + octupolo STF).
+# Adecuado para benchmark de rendimiento y comparación directa/BH.
+#
+# Ejecución:
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/nbody_bh_1k.toml \
+#     --out runs/nbody_1k --snapshot
+#
+# Analizar halos y espectro de potencia:
+#   cargo run --release -p gadget-ng-cli -- analyse \
+#     --snapshot runs/nbody_1k/snapshot_final \
+#     --out runs/nbody_1k/analysis --linking-length 0.2
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count = 1000         # debe ser n³ para kind = "lattice"
+box_size       = 1.0
+dt             = 0.001
+num_steps      = 100
+softening      = 0.03
+seed           = 42
+
+[initial_conditions]
+kind = "lattice"
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.4                  # alta precisión: error < 0.1 % vs directo
+
+[output]
+snapshot_format    = "jsonl"
+checkpoint_interval = 50

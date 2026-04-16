@@ -1,0 +1,38 @@
+# ─── Simulación cosmológica — ΛCDM, z=49 → z=0 ──────────────────────────────
+#
+# 512 partículas de materia oscura en una caja periódica (comoving).
+# Cosmología ΛCDM estándar (Planck 2018): Ω_m = 0.3, Ω_Λ = 0.7, H₀ = 67.4 km/s/Mpc.
+# Integración con momento canónico + factores Drift/Kick sobre la escala del universo.
+#
+# Ejecución (release para rendimiento):
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/cosmological.toml \
+#     --out runs/cosmo --snapshot
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count = 512
+box_size       = 100.0        # [Mpc/h comoving]
+dt             = 0.0005       # paso en tiempo de integración cosmológica
+num_steps      = 500
+softening      = 0.2          # [Mpc/h]
+seed           = 7777
+
+[initial_conditions]
+kind = "lattice"
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[cosmology]
+enabled        = true
+omega_m        = 0.3
+omega_lambda   = 0.7
+hubble0        = 67.4         # km/s/Mpc
+a_begin        = 0.02         # z_begin ≈ 49
+a_end          = 1.0          # z_end = 0
+
+[output]
+snapshot_format    = "jsonl"
+checkpoint_interval = 100

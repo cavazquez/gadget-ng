@@ -32,6 +32,7 @@ gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 gadget-ng-io       = { path = "../gadget-ng-io" }
 gadget-ng-analysis = { path = "../gadget-ng-analysis" }
+gadget-ng-vis      = { path = "../gadget-ng-vis" }
 clap.workspace = true
 figment.workspace = true
 serde.workspace = true

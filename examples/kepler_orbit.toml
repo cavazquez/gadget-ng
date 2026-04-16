@@ -1,0 +1,27 @@
+# ─── Órbita Kepleriana — 2 cuerpos ──────────────────────────────────────────
+#
+# Sistema Solar simplificado: Sol (1 M_sol) + Tierra (masa despreciable)
+# en órbita circular.  Con G=4π² y unidades UA/año la velocidad orbital
+# es 2π UA/año ≈ 29.78 km/s.
+#
+# Ejecución:
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/kepler_orbit.toml \
+#     --out runs/kepler --snapshot
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count = 2
+box_size       = 4.0          # [UA]
+dt             = 0.001        # [año]
+num_steps      = 1000         # ≈ 1 período orbital completo
+softening      = 1e-4
+# G = 4π² en unidades UA-M_sol-año → v_circ = 2π UA/año para r = 1 UA
+gravitational_constant = 39.478418 # 4π²
+seed           = 0
+
+[initial_conditions]
+kind = { two_body = { mass1 = 1.0, mass2 = 3.0e-6, separation = 1.0 } }
+
+[output]
+snapshot_format = "jsonl"

@@ -1,0 +1,42 @@
+# ─── Esfera de Plummer — auto-gravitación con Barnes–Hut ─────────────────────
+#
+# 512 partículas muestreadas de una esfera de Plummer (a = 1.0 kpc)
+# con velocidades en equilibrio virial.  Solver Barnes–Hut θ = 0.5.
+# Checkpointing cada 100 pasos; se puede reanudar con `--resume`.
+#
+# Ejecución:
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/plummer_sphere.toml \
+#     --out runs/plummer --snapshot
+#
+# Visualizar el resultado:
+#   cargo run --release -p gadget-ng-cli -- visualize \
+#     --snapshot runs/plummer/snapshot_final \
+#     --output runs/plummer/frame.png --color velocity
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count = 512
+box_size       = 20.0         # [kpc] — encuadra la esfera con margen suficiente
+dt             = 0.01         # [Gyr] con [units] activadas
+num_steps      = 200
+softening      = 0.1          # [kpc] suavizado gravitacional
+seed           = 1234
+
+[initial_conditions]
+kind = { plummer = { a = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[output]
+snapshot_format    = "jsonl"
+checkpoint_interval = 100     # reiniciable con --resume runs/plummer
+
+# Sistema de unidades físicas: longitud en kpc, masa en 10^10 M_sol, velocidad en km/s
+[units]
+enabled             = true
+length_in_kpc       = 1.0
+mass_in_1e10_msol   = 1.0
+velocity_in_km_s    = 1.0

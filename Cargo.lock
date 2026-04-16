@@ -705,6 +705,7 @@ dependencies = [
  "gadget-ng-pm",
  "gadget-ng-tree",
  "gadget-ng-treepm",
+ "gadget-ng-vis",
  "hex",
  "rayon",
  "serde",
