@@ -11,6 +11,8 @@ members = [
     "crates/gadget-ng-treepm",
     "crates/gadget-ng-cli",
     "crates/gadget-ng-analysis",
+    "crates/gadget-ng-sph",
+    "crates/gadget-ng-vis",
 ]
 
 [workspace.package]

@@ -1,0 +1,15 @@
+[package]
+name = "gadget-ng-vis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Visualizador de partículas N-body: renderer wgpu + export PNG"
+
+[dependencies]
+gadget-ng-core = { path = "../gadget-ng-core" }
+wgpu = "29.0.1"
+pollster = "0.4.0"
+png = "0.17"
+
+[dev-dependencies]
+tempfile = "3"
