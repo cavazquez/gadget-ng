@@ -46,9 +46,9 @@ jobs:
             cross:   true       # usa `cross` para la cross-compilación
             ext:     ""
 
-          # ── macOS Intel ───────────────────────────────────────────────────
+          # ── macOS Intel (cross-compile desde Apple Silicon) ───────────────
           - target:  x86_64-apple-darwin
-            runner:  macos-13
+            runner:  macos-latest
             cross:   false
             ext:     ""
 
