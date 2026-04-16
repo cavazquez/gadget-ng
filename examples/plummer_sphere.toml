@@ -33,10 +33,11 @@ theta  = 0.5
 [output]
 snapshot_format    = "jsonl"
 checkpoint_interval = 100     # reiniciable con --resume runs/plummer
+snapshot_interval   = 2       # guardar frame cada 2 pasos (→ 100 frames para animación)
 
-# Sistema de unidades físicas: longitud en kpc, masa en 10^10 M_sol, velocidad en km/s
+# Sistema de unidades físicas: longitud en kpc, masa en M_sol, velocidad en km/s
 [units]
-enabled             = true
-length_in_kpc       = 1.0
-mass_in_1e10_msol   = 1.0
-velocity_in_km_s    = 1.0
+enabled          = true
+length_in_kpc    = 1.0
+mass_in_msun     = 1.0e10     # 1 u.m. = 10^10 M_sol (masa total de la esfera ≈ 1)
+velocity_in_km_s = 1.0

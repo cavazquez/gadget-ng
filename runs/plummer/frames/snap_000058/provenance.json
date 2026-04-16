@@ -1,0 +1,15 @@
+{
+  "crate_version": "0.1.0",
+  "git_commit": "24a08bc02871ddf2f468b81512b70d44644f8661",
+  "build_profile": "release",
+  "enabled_features": [],
+  "command_line": [
+    "./target/release/gadget-ng",
+    "stepping",
+    "--config",
+    "examples/plummer_sphere.toml",
+    "--out",
+    "runs/plummer"
+  ],
+  "config_hash": "db93029f48804049c44d911337c88de4a59f42ede2c08aa02041b122c2e29776"
+}
