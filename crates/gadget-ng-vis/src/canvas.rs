@@ -113,15 +113,26 @@ mod tests {
         assert!(canvas.non_black_pixels() > 0, "no se dibujó ningún píxel");
     }
 
+    /// Con auto-bounds, el canvas se adapta al rango real de las posiciones:
+    /// todas las partículas deben ser visibles independientemente de box_size.
     #[test]
-    fn render_outside_box_clipped() {
+    fn render_auto_bounds_all_visible() {
         let mut canvas = CpuCanvas::new(64, 64);
-        let pos = vec![Vec3::new(20.0, 20.0, 0.0)]; // fuera de box_size=10
-        canvas.render(&pos, &[0.0], 1.0, &Projection::XY, ColorMode::White, 10.0);
+        // Partículas muy separadas; con box_size=1 la vieja lógica las recortaría,
+        // pero auto-bounds las incluye a todas.
+        let pos = vec![Vec3::new(-10.0, -10.0, 0.0), Vec3::new(10.0, 10.0, 0.0)];
+        canvas.render(
+            &pos,
+            &[0.0, 0.0],
+            1.0,
+            &Projection::XY,
+            ColorMode::White,
+            1.0,
+        );
         assert_eq!(
             canvas.non_black_pixels(),
-            0,
-            "se dibujó partícula fuera del dominio"
+            2,
+            "ambas partículas deben dibujarse"
         );
     }
 }
