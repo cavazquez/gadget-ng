@@ -1,0 +1,17 @@
+[package]
+name = "gadget-ng-physics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pruebas de validación física para gadget-ng (Kepler, Sod, Plummer)"
+
+# Este crate no tiene código de librería: sólo tests de integración.
+[lib]
+name = "gadget_ng_physics"
+path = "src/lib.rs"
+
+[dependencies]
+gadget-ng-core        = { path = "../gadget-ng-core" }
+gadget-ng-integrators = { path = "../gadget-ng-integrators" }
+gadget-ng-tree        = { path = "../gadget-ng-tree" }
+gadget-ng-sph         = { path = "../gadget-ng-sph" }

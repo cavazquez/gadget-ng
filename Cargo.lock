@@ -777,6 +777,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gadget-ng-physics"
+version = "0.1.0"
+dependencies = [
+ "gadget-ng-core",
+ "gadget-ng-integrators",
+ "gadget-ng-sph",
+ "gadget-ng-tree",
+]
+
+[[package]]
 name = "gadget-ng-pm"
 version = "0.1.0"
 dependencies = [

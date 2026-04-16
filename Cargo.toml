@@ -13,6 +13,7 @@ members = [
     "crates/gadget-ng-analysis",
     "crates/gadget-ng-sph",
     "crates/gadget-ng-vis",
+    "crates/gadget-ng-physics",
 ]
 
 [workspace.package]
