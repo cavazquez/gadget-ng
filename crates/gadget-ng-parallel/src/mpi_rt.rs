@@ -175,6 +175,84 @@ impl ParallelRuntime for MpiRuntime {
         local.extend(recv_from_right.1);
     }
 
+    fn exchange_domain_sfc(
+        &self,
+        local: &mut Vec<Particle>,
+        decomp: &crate::sfc::SfcDecomposition,
+    ) {
+        let world = self.world();
+        let rank  = world.rank();
+        // Separar: partículas que se quedan y las que migran (solo vecinos ±1 en la curva).
+        // Para SFC, los vecinos "naturales" en la curva son rank-1 y rank+1.
+        // Las partículas que van a rangos no adyacentes son raras y se reenvían en
+        // múltiples pasos (simplicidad: solo 1 vecino a cada lado, como slab).
+        let (stay, leaves) = crate::sfc::partition_local(local, decomp, rank);
+
+        // Agrupar envíos: solo enviamos a vecinos directos (rank±1) en esta implementación.
+        // Partículas que van más lejos quedan temporalmente en el rango incorrecto
+        // y se corrigen en el siguiente paso (converge rápido para distribuciones suaves).
+        let size = world.size();
+        let left  = if rank > 0        { Some(world.process_at_rank(rank - 1)) } else { None };
+        let right = if rank < size - 1 { Some(world.process_at_rank(rank + 1)) } else { None };
+
+        let mut go_right = Vec::new();
+        let mut go_left  = Vec::new();
+        for (r, particles) in &leaves {
+            if *r == rank + 1 {
+                go_right.extend_from_slice(particles);
+            } else if *r == rank - 1 {
+                go_left.extend_from_slice(particles);
+            }
+            // Otros destinos lejanos: quedan en stay (se reubican en próximos pasos).
+        }
+
+        let (recv_left, recv_right) = point_to_point_exchange(
+            &world, rank, &right, &left,
+            &pack::pack_halo(&go_right),
+            &pack::pack_halo(&go_left),
+        );
+        *local = stay;
+        local.extend(recv_left);
+        local.extend(recv_right);
+    }
+
+    fn exchange_halos_sfc(
+        &self,
+        local: &[Particle],
+        decomp: &crate::sfc::SfcDecomposition,
+        halo_width: f64,
+    ) -> Vec<Particle> {
+        let world = self.world();
+        let rank  = world.rank();
+        let size  = world.size();
+        // Usar la componente x del bbox del segmento SFC como proxy del borde.
+        // Las partículas dentro de `halo_width` del borde x_lo o x_hi del segmento
+        // se comparten con los vecinos izquierdo y derecho en la curva.
+        let x_lo = decomp.x_lo;
+        let x_hi = decomp.x_hi;
+        let seg_lo = x_lo + rank as f64 / size as f64 * (x_hi - x_lo);
+        let seg_hi = x_lo + (rank + 1) as f64 / size as f64 * (x_hi - x_lo);
+
+        let left  = if rank > 0        { Some(world.process_at_rank(rank - 1)) } else { None };
+        let right = if rank < size - 1 { Some(world.process_at_rank(rank + 1)) } else { None };
+
+        let send_left:  Vec<Particle> = local.iter()
+            .filter(|p| p.position.x < seg_lo + halo_width && rank > 0)
+            .cloned().collect();
+        let send_right: Vec<Particle> = local.iter()
+            .filter(|p| p.position.x > seg_hi - halo_width && rank < size - 1)
+            .cloned().collect();
+
+        let (from_left, from_right) = point_to_point_exchange(
+            &world, rank, &right, &left,
+            &pack::pack_halo(&send_right),
+            &pack::pack_halo(&send_left),
+        );
+        let mut halos = from_left;
+        halos.extend(from_right);
+        halos
+    }
+
     fn exchange_halos_by_x(
         &self,
         local: &[Particle],

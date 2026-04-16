@@ -638,12 +638,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "gadget-ng-analysis"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "gadget-ng-core",
+ "rustfft",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "gadget-ng-cli"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
  "figment",
+ "gadget-ng-analysis",
  "gadget-ng-core",
  "gadget-ng-gpu",
  "gadget-ng-integrators",

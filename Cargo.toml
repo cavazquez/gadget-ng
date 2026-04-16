@@ -10,6 +10,7 @@ members = [
     "crates/gadget-ng-pm",
     "crates/gadget-ng-treepm",
     "crates/gadget-ng-cli",
+    "crates/gadget-ng-analysis",
 ]
 
 [workspace.package]

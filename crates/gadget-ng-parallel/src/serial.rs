@@ -1,3 +1,4 @@
+use crate::sfc::SfcDecomposition;
 use crate::ParallelRuntime;
 use gadget_ng_core::{Particle, Vec3};
 
@@ -80,6 +81,23 @@ impl ParallelRuntime for SerialRuntime {
         _halo_width: f64,
     ) -> Vec<Particle> {
         // Serial: no hay vecinos; el árbol local ya tiene todas las partículas.
+        Vec::new()
+    }
+
+    fn exchange_domain_sfc(
+        &self,
+        _local: &mut Vec<Particle>,
+        _decomp: &SfcDecomposition,
+    ) {
+        // Serial: rango único, todas las partículas pertenecen al rango 0.
+    }
+
+    fn exchange_halos_sfc(
+        &self,
+        _local: &[Particle],
+        _decomp: &SfcDecomposition,
+        _halo_width: f64,
+    ) -> Vec<Particle> {
         Vec::new()
     }
 }

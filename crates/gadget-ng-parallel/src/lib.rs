@@ -3,6 +3,7 @@ mod decompose;
 mod pack;
 mod serial;
 pub mod domain;
+pub mod sfc;
 
 #[cfg(feature = "mpi")]
 mod mpi_rt;
@@ -10,6 +11,7 @@ mod mpi_rt;
 pub use decompose::gid_block_range;
 pub use domain::SlabDecomposition;
 pub use serial::SerialRuntime;
+pub use sfc::{morton3, SfcDecomposition};
 
 #[cfg(feature = "mpi")]
 pub use mpi_rt::MpiRuntime;
@@ -76,6 +78,33 @@ pub trait ParallelRuntime {
         local: &[Particle],
         my_x_lo: f64,
         my_x_hi: f64,
+        halo_width: f64,
+    ) -> Vec<Particle>;
+
+    // ── SFC (Peano-Hilbert) ───────────────────────────────────────────────────
+
+    /// Migra partículas usando una descomposición SFC (Morton Z-order).
+    ///
+    /// Cada partícula se asigna al rango según `decomp.rank_for_pos(p.position)`.
+    /// Las partículas del rango incorrecto se envían y las ajenas se reciben.
+    ///
+    /// En modo serial (1 rango) es un no-op.
+    fn exchange_domain_sfc(
+        &self,
+        local: &mut Vec<Particle>,
+        decomp: &sfc::SfcDecomposition,
+    );
+
+    /// Intercambia halos SFC: devuelve las partículas dentro de `halo_width`
+    /// de cualquier borde del segmento SFC del rango actual.
+    ///
+    /// Implementación simplificada: usa la bounding box del segmento SFC para
+    /// determinar qué partículas enviar a los vecinos en la curva.
+    /// En modo serial devuelve Vec vacío.
+    fn exchange_halos_sfc(
+        &self,
+        local: &[Particle],
+        decomp: &sfc::SfcDecomposition,
         halo_width: f64,
     ) -> Vec<Particle>;
 }

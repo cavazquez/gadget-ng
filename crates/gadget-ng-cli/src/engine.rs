@@ -14,7 +14,7 @@ use gadget_ng_io::{
     write_snapshot_formatted, JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotUnits,
     SnapshotWriter,
 };
-use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SlabDecomposition};
+use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, SlabDecomposition};
 use gadget_ng_io::SnapshotReader;
 use gadget_ng_pm::PmSolver;
 use gadget_ng_tree::{BarnesHutGravity, Octree};
@@ -306,7 +306,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         && cfg.gravity.solver == SolverKind::BarnesHut
         && !cfg.timestep.hierarchical
         && !cfg.cosmology.enabled;
-    if use_dtree {
+    // SFC: requiere use_distributed_tree + use_sfc.
+    let use_sfc = use_dtree && cfg.performance.use_sfc;
+    let sfc_rebalance = cfg.performance.sfc_rebalance_interval;
+    if use_sfc {
+        rt.root_eprintln("[gadget-ng] Árbol distribuido SFC (Morton Z-order 3D, balanceo dinámico).");
+    } else if use_dtree {
         rt.root_eprintln("[gadget-ng] Árbol distribuido activo (halos punto-a-punto en x).");
     }
 
@@ -416,8 +421,36 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
             maybe_checkpoint!(step, None);
         }
+    } else if use_sfc {
+        // ── Árbol distribuido SFC: Morton Z-order 3D, balanceo dinámico ───────
+        let box_size = cfg.simulation.box_size;
+        // Descomposición SFC inicial (se recalculará cada sfc_rebalance_interval pasos).
+        let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+        let mut sfc_decomp = SfcDecomposition::build(&all_pos, box_size, rt.size());
+
+        for step in start_step..=cfg.simulation.num_steps {
+            // Rebalanceo dinámico: recalcular la descomposición SFC periódicamente.
+            let do_rebalance = sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+            if do_rebalance {
+                let all_pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+                // Construir descomposición con las posiciones locales (aproximación).
+                sfc_decomp = SfcDecomposition::build(&all_pos_loc, box_size, rt.size());
+            }
+
+            let hw = sfc_decomp.halo_width(cfg.performance.halo_factor);
+            rt.exchange_domain_sfc(&mut local, &sfc_decomp);
+            scratch.resize(local.len(), Vec3::zero());
+
+            let sfc_snap = sfc_decomp.clone();
+            leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
+                let halos = rt.exchange_halos_sfc(parts, &sfc_snap, hw);
+                compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
+            });
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+            maybe_checkpoint!(step, None);
+        }
     } else if use_dtree {
-        // ── Árbol distribuido: halos punto-a-punto, sin Allgather global ─────
+        // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
         for step in start_step..=cfg.simulation.num_steps {
             let x_lo_loc = local.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
             let x_hi_loc = local.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max);

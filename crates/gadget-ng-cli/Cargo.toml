@@ -30,7 +30,8 @@ gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
 rayon = { version = "1.10", optional = true }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel" }
-gadget-ng-io = { path = "../gadget-ng-io" }
+gadget-ng-io       = { path = "../gadget-ng-io" }
+gadget-ng-analysis = { path = "../gadget-ng-analysis" }
 clap.workspace = true
 figment.workspace = true
 serde.workspace = true

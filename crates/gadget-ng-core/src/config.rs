@@ -175,6 +175,23 @@ pub struct PerformanceSection {
     #[serde(default)]
     pub use_distributed_tree: bool,
 
+    /// `true` → usar curva de Peano-Hilbert (Morton Z-order 3D) para la partición de
+    /// dominio en lugar de slabs 1D en x.
+    ///
+    /// Requiere también `use_distributed_tree = true`. Con `false` (default)
+    /// se usa la descomposición slab 1D original (retrocompatible).
+    ///
+    /// El balanceo dinámico se activa automáticamente: la descomposición SFC
+    /// se recalcula cada `sfc_rebalance_interval` pasos.
+    #[serde(default)]
+    pub use_sfc: bool,
+
+    /// Cada cuántos pasos se recalcula la partición SFC para balanceo dinámico.
+    /// 0 = recalcular en todos los pasos (máximo balanceo, máximo overhead).
+    /// Default: 10.
+    #[serde(default = "default_sfc_rebalance")]
+    pub sfc_rebalance_interval: u64,
+
     /// Factor de anchura de halo: `halo_width = halo_factor × slab_width`.
     /// Valores típicos: 0.5–1.0. Halos más anchos aumentan la precisión en bordes
     /// de dominio a costa de mayor comunicación y memoria local.
@@ -190,14 +207,20 @@ fn default_halo_factor() -> f64 {
     0.5
 }
 
+fn default_sfc_rebalance() -> u64 {
+    10
+}
+
 impl Default for PerformanceSection {
     fn default() -> Self {
         Self {
-            deterministic:        default_deterministic(),
-            num_threads:          None,
-            use_gpu:              false,
-            use_distributed_tree: false,
-            halo_factor:          default_halo_factor(),
+            deterministic:           default_deterministic(),
+            num_threads:             None,
+            use_gpu:                 false,
+            use_distributed_tree:    false,
+            halo_factor:             default_halo_factor(),
+            use_sfc:                 false,
+            sfc_rebalance_interval:  default_sfc_rebalance(),
         }
     }
 }
