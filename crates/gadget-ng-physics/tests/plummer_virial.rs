@@ -31,7 +31,7 @@
 //! Después de evolucionar la esfera durante 2 tiempos de cruce (`t_cross = a/σ`),
 //! el ratio virial debe satisfacer `|Q - 0.5| < 0.05`.
 
-use gadget_ng_core::{pairwise_accel_plummer, Particle, Vec3};
+use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_integrators::leapfrog_kdk_step;
 use gadget_ng_tree::BarnesHutGravity;
 

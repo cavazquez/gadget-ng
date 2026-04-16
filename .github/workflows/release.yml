@@ -1,0 +1,159 @@
+name: Release
+
+# Disparado al hacer push de un tag vX.Y.Z
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: gadget-ng
+
+# ── Plataformas soportadas ──────────────────────────────────────────────────
+# | target                         | runner         | notas                |
+# |--------------------------------|----------------|----------------------|
+# | x86_64-unknown-linux-gnu       | ubuntu-latest  | glibc 2.35+          |
+# | x86_64-unknown-linux-musl      | ubuntu-latest  | static, portable     |
+# | aarch64-unknown-linux-gnu      | ubuntu-latest  | cross para ARM64     |
+# | x86_64-apple-darwin            | macos-13       | Intel Mac            |
+# | aarch64-apple-darwin           | macos-latest   | Apple Silicon M1+    |
+# | x86_64-pc-windows-msvc         | windows-latest | Windows x86_64       |
+
+jobs:
+  build:
+    name: Build · ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux GNU (glibc) ──────────────────────────────────────────────
+          - target:  x86_64-unknown-linux-gnu
+            runner:  ubuntu-latest
+            cross:   false
+            ext:     ""
+
+          # ── Linux musl (binario estático, sin dependencia de libc) ─────────
+          - target:  x86_64-unknown-linux-musl
+            runner:  ubuntu-latest
+            cross:   false
+            ext:     ""
+
+          # ── Linux ARM64 (Raspberry Pi 4, AWS Graviton, …) ─────────────────
+          - target:  aarch64-unknown-linux-gnu
+            runner:  ubuntu-latest
+            cross:   true       # usa `cross` para la cross-compilación
+            ext:     ""
+
+          # ── macOS Intel ───────────────────────────────────────────────────
+          - target:  x86_64-apple-darwin
+            runner:  macos-13
+            cross:   false
+            ext:     ""
+
+          # ── macOS Apple Silicon ───────────────────────────────────────────
+          - target:  aarch64-apple-darwin
+            runner:  macos-latest
+            cross:   false
+            ext:     ""
+
+          # ── Windows x86_64 ────────────────────────────────────────────────
+          - target:  x86_64-pc-windows-msvc
+            runner:  windows-latest
+            cross:   false
+            ext:     ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Rust toolchain + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      # ── musl: necesita musl-tools ──────────────────────────────────────────
+      - name: Instalar musl-tools (solo linux-musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      # ── ARM64 Linux: usa `cross` en lugar de cargo directo ─────────────────
+      - name: Instalar cross (solo aarch64-linux)
+        if: matrix.cross == true
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build release
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release -p gadget-ng-cli --target ${{ matrix.target }}
+          else
+            cargo build --release -p gadget-ng-cli --target ${{ matrix.target }}
+          fi
+
+      # ── Empaquetar ─────────────────────────────────────────────────────────
+      - name: Empaquetar binario
+        id: pack
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"               # e.g. v0.3.0
+          TARGET="${{ matrix.target }}"
+          EXT="${{ matrix.ext }}"
+          BIN="target/${TARGET}/release/${BINARY_NAME}${EXT}"
+          ARCHIVE="${BINARY_NAME}-${TAG}-${TARGET}.tar.gz"
+
+          if [[ "${{ matrix.runner }}" == windows-* ]]; then
+            # En Windows empaquetamos el .exe directamente en zip
+            ARCHIVE="${BINARY_NAME}-${TAG}-${TARGET}.zip"
+            7z a "$ARCHIVE" "$BIN"
+          else
+            tar czf "$ARCHIVE" -C "target/${TARGET}/release" "${BINARY_NAME}${EXT}"
+          fi
+
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+
+      # ── Subir como artefacto del job (lo recoge el job release) ────────────
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: ${{ steps.pack.outputs.archive }}
+          retention-days: 1
+
+  # ── Crear GitHub Release con todos los binarios ──────────────────────────
+  release:
+    name: Crear GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # necesario para crear releases
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar todos los artefactos
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Listar artefactos descargados
+        run: ls -lh dist/
+
+      - name: Crear release en GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}  # v1.0.0-rc.1 → pre-release
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

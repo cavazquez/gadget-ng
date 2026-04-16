@@ -61,7 +61,7 @@ fn setup_sod_tube(n_left: usize, n_right: usize) -> Vec<SphParticle> {
 fn sod_initial_density_ratio() {
     const N_L: usize = 20;
     const N_R: usize = 20;
-    let mut parts = setup_sod_tube(N_L, N_R);
+    let parts = setup_sod_tube(N_L, N_R);
     // Con la misma masa y dx_L = dx_R, las densidades SPH dependen de h y vecinos.
     // Queremos: masas correctas → m = ρ_L·dx_L y ρ_R·dx_R deben ser iguales.
     let mass_l = parts.iter().filter(|p| p.position.x < 0.0).map(|p| p.mass).fold(0.0_f64, f64::max);
@@ -71,7 +71,7 @@ fn sod_initial_density_ratio() {
     // Las condiciones de Sod requieren dx_R / dx_L = ρ_L / ρ_R = 8.
     // Con N_L = N_R = 20 y dominio L/2 = R/2, dx_L = dx_R → ρ_L = ρ_R (no Sod).
     // Usamos n_left=80, n_right=10 para ρ_L/ρ_R = 8.
-    let mut parts2 = setup_sod_tube(80, 10);
+    let parts2 = setup_sod_tube(80, 10);
     let dx_l = 0.5_f64 / 80.0;
     let dx_r = 0.5_f64 / 10.0;
     let ratio = dx_r / dx_l; // = 8 → ρ_L/ρ_R = 8
