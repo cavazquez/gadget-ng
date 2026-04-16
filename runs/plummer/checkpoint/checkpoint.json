@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "completed_step": 200,
-  "a_current": 1.0,
-  "config_hash": "db93029f48804049c44d911337c88de4a59f42ede2c08aa02041b122c2e29776",
-  "total_particles": 512,
-  "has_hierarchical_state": false
-}

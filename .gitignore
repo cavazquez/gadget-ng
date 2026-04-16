@@ -23,3 +23,6 @@ target
 # Salidas de simulación bajo experimentos (mantener solo .gitkeep)
 experiments/**/runs/**
 !experiments/**/runs/.gitkeep
+
+# Salidas de simulación en la raíz del proyecto
+runs/
