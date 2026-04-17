@@ -1,0 +1,32 @@
+[simulation]
+num_steps       = 10
+dt              = 0.025
+softening       = 0.5
+particle_count  = 8000
+box_size        = 20.0
+seed            = 42
+
+[initial_conditions]
+kind = { plummer = { a = 1.0 } }
+
+[gravity]
+solver             = "barnes_hut"
+theta              = 0.5
+mac_softening      = "consistent"
+opening_criterion  = "relative"
+softened_multipoles = true
+multipole_order    = 3
+
+[performance]
+use_distributed_tree      = false
+force_allgather_fallback  = false
+use_sfc                   = true
+sfc_rebalance_interval    = 10
+let_nonblocking           = true
+use_let_tree              = true
+let_tree_threshold        = 64
+let_tree_leaf_max         = 32
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0

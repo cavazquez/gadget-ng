@@ -68,6 +68,8 @@ struct HpcStepStats {
     let_tree_walk_ns: u64,
     /// Número de nodos en el `LetTree` construido. 0 si el path plano está activo.
     let_tree_nodes: usize,
+    /// `true` si el walk del `LetTree` se ejecutó con Rayon (feature `simd`).
+    let_tree_parallel: bool,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -92,6 +94,8 @@ struct HpcTimingsAggregate {
     mean_let_tree_walk_s: f64,
     /// Media de nodos en el `LetTree` por paso. 0 si path plano activo.
     mean_let_tree_nodes: f64,
+    /// `true` si el walk del `LetTree` usó Rayon (feature `simd`).
+    let_tree_parallel: bool,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -990,10 +994,22 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             this_grav += ltb_ns;
 
                             let t_ltw = Instant::now();
-                            for (li, a_out) in acc.iter_mut().enumerate() {
-                                let a_remote =
-                                    let_tree.walk_accel(parts[li].position, g, eps2, theta);
-                                *a_out = local_accels[li] + a_remote;
+                            #[cfg(feature = "simd")]
+                            {
+                                use rayon::prelude::*;
+                                acc.par_iter_mut().enumerate().for_each(|(li, a_out)| {
+                                    *a_out = local_accels[li]
+                                        + let_tree.walk_accel(parts[li].position, g, eps2, theta);
+                                });
+                                hpc.let_tree_parallel = true;
+                            }
+                            #[cfg(not(feature = "simd"))]
+                            {
+                                for (li, a_out) in acc.iter_mut().enumerate() {
+                                    let a_remote =
+                                        let_tree.walk_accel(parts[li].position, g, eps2, theta);
+                                    *a_out = local_accels[li] + a_remote;
+                                }
                             }
                             let ltw_ns = t_ltw.elapsed().as_nanos() as u64;
                             hpc.let_tree_walk_ns += ltw_ns;
@@ -1078,6 +1094,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_hpc.let_tree_build_ns += hpc.let_tree_build_ns;
             acc_hpc.let_tree_walk_ns += hpc.let_tree_walk_ns;
             acc_hpc.let_tree_nodes += hpc.let_tree_nodes;
+            acc_hpc.let_tree_parallel |= hpc.let_tree_parallel;
             steps_run += 1;
 
             write_diagnostic_line(
@@ -1115,6 +1132,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 mean_let_tree_build_s: acc_hpc.let_tree_build_ns as f64 * ns2s / n,
                 mean_let_tree_walk_s: acc_hpc.let_tree_walk_ns as f64 * ns2s / n,
                 mean_let_tree_nodes: acc_hpc.let_tree_nodes as f64 / n,
+                let_tree_parallel: acc_hpc.let_tree_parallel,
             });
         }
     } else if use_sfc {

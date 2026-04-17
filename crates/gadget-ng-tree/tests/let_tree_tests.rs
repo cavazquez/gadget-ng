@@ -281,3 +281,102 @@ fn let_tree_energy_conservation_short() {
         "Conservación energía: |ΔE/E₀| = {de:.4} ≥ 10% (regresión grave)"
     );
 }
+
+// ── Test 7: walk paralelo vs serial (feature simd) ────────────────────────────
+
+/// Verifica que el walk paralelo con Rayon da fuerzas equivalentes al walk serial.
+///
+/// Con Rayon el orden de evaluación puede diferir (float no asociativo) pero las
+/// diferencias deben ser menores que la precisión numérica de doble precisión
+/// para operaciones independientes partícula-a-partícula (cada partícula hace su
+/// propio walk, sin reducción inter-hilo). El error debe ser idéntico a cero
+/// (misma secuencia de ops por partícula) o diferir solo por reordenamiento de
+/// hilos en la cola de trabajo, no en operaciones aritméticas internas.
+///
+/// Tolerancia: diff / |a_serial| < 1e-12 (error de redondeo doble).
+#[test]
+fn let_tree_parallel_walk_matches_serial() {
+    let rmns = gen_rmns(300, 77, 10.0, 1.0 / 300.0);
+    let tree = LetTree::build(&rmns);
+
+    let g = 1.0_f64;
+    let eps2 = 0.01_f64;
+    let theta = 0.5_f64;
+
+    let queries: Vec<Vec3> = (0..30)
+        .map(|i| {
+            let t = i as f64 * 0.2;
+            Vec3::new(12.0 + t.cos() * 2.0, t.sin() * 2.0, 0.05 * t)
+        })
+        .collect();
+
+    // Walk serial de referencia.
+    let a_serial: Vec<Vec3> = queries
+        .iter()
+        .map(|&p| tree.walk_accel(p, g, eps2, theta))
+        .collect();
+
+    // Walk "paralelo": en tests sin feature simd es el mismo camino serial,
+    // en tests con feature simd usa Rayon — ambos deben ser idénticos porque
+    // cada partícula hace su propia secuencia de operaciones sin compartir estado.
+    #[cfg(feature = "simd")]
+    let a_parallel: Vec<Vec3> = {
+        use rayon::prelude::*;
+        queries
+            .par_iter()
+            .map(|&p| tree.walk_accel(p, g, eps2, theta))
+            .collect()
+    };
+    #[cfg(not(feature = "simd"))]
+    let a_parallel: Vec<Vec3> = queries
+        .iter()
+        .map(|&p| tree.walk_accel(p, g, eps2, theta))
+        .collect();
+
+    for (i, (as_, ap)) in a_serial.iter().zip(a_parallel.iter()).enumerate() {
+        let diff = (*as_ - *ap).norm();
+        let mag = as_.norm();
+        let rel = if mag > 1e-30 { diff / mag } else { diff };
+        assert!(
+            rel < 1e-12,
+            "query {i}: serial={as_:?} parallel={ap:?} rel_diff={rel:.2e}"
+        );
+    }
+}
+
+// ── Test 8: fuerza N=1000, theta=0.5, tolerancia estricta < 1% ───────────────
+
+/// Con N=1000 RMNs y θ=0.5, el error RMS del LetTree vs loop plano debe ser < 1%.
+/// Este test es más estricto que `let_tree_force_matches_flat_theta05` (que usa N=200)
+/// y verifica que el árbol funciona correctamente para regímenes HPC realistas.
+#[test]
+fn let_tree_force_n1000_theta05_tight() {
+    let rmns = gen_rmns(1000, 55, 12.0, 1.0 / 1000.0);
+    let tree = LetTree::build(&rmns);
+
+    let g = 1.0_f64;
+    let eps2 = 0.01_f64;
+    let theta = 0.5_f64;
+
+    let queries: Vec<Vec3> = (0..40)
+        .map(|i| {
+            let t = i as f64 * 0.08;
+            Vec3::new(16.0 + t.cos() * 3.0, t.sin() * 3.0, 0.1 * t)
+        })
+        .collect();
+
+    let a_tree: Vec<Vec3> = queries
+        .iter()
+        .map(|&p| tree.walk_accel(p, g, eps2, theta))
+        .collect();
+    let a_flat: Vec<Vec3> = queries
+        .iter()
+        .map(|&p| accel_from_let(p, &rmns, g, eps2))
+        .collect();
+
+    let err = rms_rel_error(&a_tree, &a_flat);
+    assert!(
+        err < 0.01,
+        "N=1000, theta=0.5: RMS error relativo {err:.4} ≥ 1%"
+    );
+}

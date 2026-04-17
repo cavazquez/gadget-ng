@@ -316,6 +316,21 @@ qué nodos son realmente "esenciales" para cada rank.
 
 ---
 
+## Continuación: Fase 11 — LetTree paralelo y validación física MPI
+
+La Fase 10 dejó pendiente:
+1. El walk del LetTree era serial — ignoraba que `LetTree: Sync+Send`.
+2. No había validación física MPI end-to-end de `use_let_tree=true`.
+3. Los benchmarks cubrían solo N ≤ 16000, P ≤ 4.
+
+La **Fase 11** implementa Rayon en el walk del LetTree (`#[cfg(feature="simd")]`),
+valida física MPI en 4 casos (N=2000/8000, P=2/4) con 4/4 PASS (max KE diff ≤ 0.32%),
+y extiende benchmarks a N=32000 y P=8.
+
+Detalles: [2026-04-phase11-let-tree-parallel-validation.md](2026-04-phase11-let-tree-parallel-validation.md)
+
+---
+
 *Reporte generado como parte del proyecto `gadget-ng`. Ver también:*
 - [Fase 9 — HPC local: overlap, Rayon, instrumentación](2026-04-phase9-hpc-local.md)
 - [Fase 8 — HPC scaling](2026-04-phase8-hpc-scaling.md)

@@ -1,0 +1,31 @@
+{
+  "steps": 20,
+  "total_particles": 2000,
+  "total_wall_s": 0.920206837,
+  "total_comm_s": 0.005600817,
+  "total_gravity_s": 0.9125223480000001,
+  "total_integration_s": 0.0011937159999999558,
+  "mean_step_wall_s": 0.04596584405,
+  "mean_comm_s": 0.00028004085000000003,
+  "mean_gravity_s": 0.045626117400000006,
+  "comm_fraction": 0.0060923682744818426,
+  "gravity_fraction": 0.9926091501848534,
+  "hpc": {
+    "mean_tree_build_s": 0.00026877375,
+    "mean_let_export_s": 0.00007152715,
+    "mean_let_pack_s": 0.000010449100000000001,
+    "mean_aabb_allgather_s": 0.000010978,
+    "mean_let_alltoallv_s": 0.00549200825,
+    "mean_walk_local_s": 0.0052636551,
+    "mean_apply_let_s": 0.0400117123,
+    "mean_let_nodes_exported": 1882.25,
+    "mean_let_nodes_imported": 1981.35,
+    "mean_bytes_sent": 271044.0,
+    "mean_bytes_recv": 285314.4,
+    "wait_fraction": 0.004967887672237795,
+    "mean_let_tree_build_s": 0.0,
+    "mean_let_tree_walk_s": 0.0,
+    "mean_let_tree_nodes": 0.0,
+    "let_tree_parallel": false
+  }
+}
