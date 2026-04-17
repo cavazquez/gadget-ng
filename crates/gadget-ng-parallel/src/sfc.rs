@@ -1,27 +1,33 @@
-//! Curva de Peano-Hilbert (Morton / Z-order) en 3D para partición de dominio.
+//! Curvas SFC (Space-Filling Curves) 3D para partición de dominio.
 //!
-//! # Algoritmo
+//! Implementa dos curvas seleccionables mediante [`SfcKind`]:
 //!
-//! Se usa el código de Morton (Z-order) de 21 bits por eje (63 bits en total),
-//! que es una aproximación práctica de la curva de Peano-Hilbert con la misma
-//! localidad espacial a efectos de balanceo de carga N-body.
+//! - **Morton** (Z-order, default): 21 bits/eje, 63 bits totales. Implementación
+//!   clásica con "magic bits". Retrocompatible con Fases 8-12.
 //!
-//! ## Uso
+//! - **Hilbert** (Peano-Hilbert 3D): mismo rango de claves que Morton (63 bits),
+//!   mejor localidad espacial — puntos vecinos en 3D tienden a tener claves más
+//!   cercanas que con Morton. Usa el algoritmo de Skilling (2004).
+//!
+//! # Uso
 //!
 //! ```rust
-//! use gadget_ng_parallel::sfc::{morton3, SfcDecomposition};
-//! use gadget_ng_core::Vec3;
+//! use gadget_ng_parallel::sfc::{morton3, hilbert3, SfcDecomposition};
+//! use gadget_ng_core::{Vec3, SfcKind};
 //!
-//! // Código Morton de una posición normalizada [0,1)³
-//! let key = morton3(0.25, 0.5, 0.75);
+//! // Clave Morton de una posición normalizada [0,1)³
+//! let km = morton3(0.25, 0.5, 0.75);
+//! // Clave Hilbert de la misma posición
+//! let kh = hilbert3(0.25, 0.5, 0.75);
 //!
-//! // Partición de dominio SFC sobre N partículas
+//! // Partición con Morton (default)
 //! let positions = vec![Vec3::new(0.1, 0.2, 0.3), Vec3::new(0.8, 0.8, 0.8)];
-//! let decomp = SfcDecomposition::build(&positions, 1.0, 2);
-//! assert_eq!(decomp.rank_for(key), 0_i32.max(decomp.rank_for(key)));
+//! let decomp_m = SfcDecomposition::build(&positions, 1.0, 2);
+//! // Partición con Hilbert
+//! let decomp_h = SfcDecomposition::build_with_kind(&positions, 1.0, 2, SfcKind::Hilbert);
 //! ```
 
-use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_core::{Particle, SfcKind, Vec3};
 
 // ── Morton code (Z-order) 63 bits ─────────────────────────────────────────────
 
@@ -74,9 +80,132 @@ pub fn particle_morton(
     )
 }
 
+// ── Hilbert curve (Peano-Hilbert 3D) ─────────────────────────────────────────
+
+/// Computa el índice de Hilbert 3D de una posición normalizada `(x, y, z) ∈ [0,1)`.
+///
+/// Usa 21 bits por eje (igual que Morton), produciendo un índice de 63 bits.
+/// Implementación basada en el algoritmo de Skilling (2004):
+/// "Programming the Hilbert Curve", AIP Conference Proceedings 707, pp. 381-387.
+///
+/// La curva de Hilbert tiene mejor localidad espacial que Morton: puntos cercanos
+/// en 3D tienden a recibir claves más cercanas, lo que reduce el volumen LET en
+/// descomposiciones de dominio N-body.
+#[inline]
+pub fn hilbert3(x: f64, y: f64, z: f64) -> u64 {
+    const BITS: u32 = 21;
+    const SCALE: f64 = (1u64 << BITS) as f64;
+    let ix = (x.clamp(0.0, 1.0 - f64::EPSILON) * SCALE) as u32;
+    let iy = (y.clamp(0.0, 1.0 - f64::EPSILON) * SCALE) as u32;
+    let iz = (z.clamp(0.0, 1.0 - f64::EPSILON) * SCALE) as u32;
+    coords_to_hilbert(ix, iy, iz, BITS)
+}
+
+/// Algoritmo de Skilling (2004): transforma coordenadas enteras en p bits por
+/// eje a índice Hilbert de 3p bits.
+///
+/// Referencia: John Skilling, "Programming the Hilbert Curve",
+/// AIP Conf. Proc. 707, 381 (2004). https://doi.org/10.1063/1.1751381
+///
+/// Implementa `AxesToTranspose` — convierte coordenadas espaciales al índice
+/// Hilbert en representación "transpuesta" y lo empaqueta en u64.
+///
+/// # Verificación para p=1
+/// La curva de Hilbert visita las 8 celdas del cubo unidad en el orden:
+/// (0,0,0)=0, (0,0,1)=1, (0,1,1)=2, (0,1,0)=3, (1,1,0)=4, (1,1,1)=5,
+/// (1,0,1)=6, (1,0,0)=7 — un camino Hamiltoniano válido donde cada paso
+/// cambia exactamente una coordenada.
+fn coords_to_hilbert(ix: u32, iy: u32, iz: u32, p: u32) -> u64 {
+    debug_assert!(p > 0 && p <= 21, "p debe estar en [1,21]");
+
+    let mut x = [ix, iy, iz];
+    let n = 3usize;
+    let m = 1u32 << (p - 1);
+
+    // ── Paso 1: "Inverse undo excess work" (Skilling 2004, AxesToTranspose) ──
+    // Transforma las coordenadas espaciales al espacio de transposición Hilbert.
+    // Q va desde m=2^(p-1) descendiendo hasta 2 (mientras Q > 1).
+    {
+        let mut q = m;
+        while q > 1 {
+            let p_mask = q - 1;
+            // Recorrer ejes en orden inverso (n-1 downto 0)
+            let mut i = n;
+            while i > 0 {
+                i -= 1;
+                if (x[i] & q) != 0 {
+                    x[0] ^= p_mask; // invert
+                } else {
+                    // swap
+                    let t = (x[0] ^ x[i]) & p_mask;
+                    x[0] ^= t;
+                    x[i] ^= t;
+                }
+            }
+            q >>= 1;
+        }
+    }
+
+    // ── Paso 2: Gray encode ──────────────────────────────────────────────────
+    // Cada elemento se XOR con el anterior: x[i] ^= x[i-1].
+    // (No es Gray decode; encode y decode son operaciones diferentes.)
+    for i in 1..n {
+        x[i] ^= x[i - 1];
+    }
+
+    // ── Paso 3: Corrección XOR adicional (Skilling 2004) ─────────────────────
+    {
+        let mut q = m;
+        let mut t: u32 = 0;
+        while q > 1 {
+            if (x[n - 1] & q) != 0 {
+                t ^= q - 1;
+            }
+            q >>= 1;
+        }
+        for xi in x.iter_mut() {
+            *xi ^= t;
+        }
+    }
+
+    // ── Paso 4: Empaquetar en u64 (representación transpuesta) ───────────────
+    // X[j][k] codifica el bit k*n+j del índice Hilbert (k=0 → bits más significativos).
+    // Empaquetado: para k ascendente (0 → p-1), luego j ascendente (0 → n-1):
+    //   h = X[0][0], X[1][0], X[2][0], X[0][1], X[1][1], X[2][1], ..., X[2][p-1]
+    // MSB de h = X[0][0].
+    let mut h = 0u64;
+    for k in 0..p {
+        for j in 0..n {
+            h = (h << 1) | (((x[j] >> k) & 1) as u64);
+        }
+    }
+    h
+}
+
+/// Código Hilbert de una partícula dada la bounding box del dominio.
+#[inline]
+pub fn particle_hilbert(
+    pos: Vec3,
+    x_lo: f64,
+    x_hi: f64,
+    y_lo: f64,
+    y_hi: f64,
+    z_lo: f64,
+    z_hi: f64,
+) -> u64 {
+    let lx = (x_hi - x_lo).max(f64::EPSILON);
+    let ly = (y_hi - y_lo).max(f64::EPSILON);
+    let lz = (z_hi - z_lo).max(f64::EPSILON);
+    hilbert3(
+        (pos.x - x_lo) / lx,
+        (pos.y - y_lo) / ly,
+        (pos.z - z_lo) / lz,
+    )
+}
+
 // ── SfcDecomposition ──────────────────────────────────────────────────────────
 
-/// Descomposición de dominio basada en la curva SFC (Morton Z-order).
+/// Descomposición de dominio basada en curva SFC (Morton Z-order o Hilbert 3D).
 ///
 /// El dominio se parte en `n_ranks` segmentos de igual número de partículas
 /// a lo largo de la curva. Para el balanceo dinámico, `build` recalcula los
@@ -97,13 +226,15 @@ pub struct SfcDecomposition {
     cutpoints: Vec<u64>,
     /// Número de rangos.
     n_ranks: i32,
+    /// Curva SFC usada para generar las claves.
+    pub kind: SfcKind,
 }
 
 impl SfcDecomposition {
     /// Construye la descomposición SFC a partir de un conjunto de posiciones.
     ///
-    /// Ordena las partículas por clave Morton y las divide en `n_ranks`
-    /// segmentos de igual tamaño (balanceo por número de partículas).
+    /// Usa Morton Z-order (default retrocompatible). Para Hilbert usar
+    /// [`build_with_kind`] o [`build_with_bbox_and_kind`].
     ///
     /// La bounding box se calcula directamente desde `positions`.
     ///
@@ -111,6 +242,16 @@ impl SfcDecomposition {
     /// box global (obtenida vía `allreduce_min/max` o [`global_bbox`]) para que todos
     /// los rangos produzcan exactamente los mismos cutpoints.
     pub fn build(positions: &[Vec3], box_size: f64, n_ranks: i32) -> Self {
+        Self::build_with_kind(positions, box_size, n_ranks, SfcKind::Morton)
+    }
+
+    /// Construye la descomposición SFC con una curva específica.
+    pub fn build_with_kind(
+        positions: &[Vec3],
+        box_size: f64,
+        n_ranks: i32,
+        kind: SfcKind,
+    ) -> Self {
         let n_ranks = n_ranks.max(1);
         if positions.is_empty() {
             return Self {
@@ -122,6 +263,7 @@ impl SfcDecomposition {
                 z_hi: box_size,
                 cutpoints: vec![u64::MAX / n_ranks as u64; (n_ranks - 1) as usize],
                 n_ranks,
+                kind,
             };
         }
         let x_lo = positions.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
@@ -139,15 +281,16 @@ impl SfcDecomposition {
             .iter()
             .map(|p| p.z)
             .fold(f64::NEG_INFINITY, f64::max);
-        Self::build_with_bbox(positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, n_ranks)
+        Self::build_with_bbox_and_kind(positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, n_ranks, kind)
     }
 
     /// Construye la descomposición SFC con bounding box explícita (correcta en modo MPI).
     ///
-    /// Idéntica a [`build`] pero usa la bbox proporcionada en vez de calcularla desde
-    /// `positions`. En modo MPI, todos los rangos deben llamar a esta función con la
-    /// **bbox global** (obtenida por `allreduce`), garantizando cutpoints idénticos
-    /// en todos los rangos y por tanto particionado reproducible y coherente.
+    /// Usa Morton Z-order (retrocompatible con Fases 8-12).
+    /// Para Hilbert usar [`build_with_bbox_and_kind`].
+    ///
+    /// En modo MPI, todos los rangos deben llamar a esta función con la **bbox global**
+    /// (obtenida por `allreduce`), garantizando cutpoints idénticos en todos los rangos.
     ///
     /// # Ejemplo
     ///
@@ -177,6 +320,28 @@ impl SfcDecomposition {
         z_hi: f64,
         n_ranks: i32,
     ) -> Self {
+        Self::build_with_bbox_and_kind(
+            positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, n_ranks,
+            SfcKind::Morton,
+        )
+    }
+
+    /// Construye la descomposición SFC con bounding box explícita y curva configurable.
+    ///
+    /// Es la función base que usan todas las demás variantes.
+    /// `kind` selecciona entre Morton Z-order o Peano-Hilbert 3D.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_with_bbox_and_kind(
+        positions: &[Vec3],
+        x_lo: f64,
+        x_hi: f64,
+        y_lo: f64,
+        y_hi: f64,
+        z_lo: f64,
+        z_hi: f64,
+        n_ranks: i32,
+        kind: SfcKind,
+    ) -> Self {
         let n_ranks = n_ranks.max(1);
         if positions.is_empty() {
             return Self {
@@ -188,12 +353,20 @@ impl SfcDecomposition {
                 z_hi,
                 cutpoints: vec![u64::MAX / n_ranks as u64; (n_ranks - 1) as usize],
                 n_ranks,
+                kind,
             };
         }
-        let mut keys: Vec<u64> = positions
-            .iter()
-            .map(|p| particle_morton(*p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi))
-            .collect();
+
+        let key_fn: Box<dyn Fn(Vec3) -> u64> = match kind {
+            SfcKind::Morton => Box::new(move |p: Vec3| {
+                particle_morton(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
+            }),
+            SfcKind::Hilbert => Box::new(move |p: Vec3| {
+                particle_hilbert(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
+            }),
+        };
+
+        let mut keys: Vec<u64> = positions.iter().map(|p| key_fn(*p)).collect();
         keys.sort_unstable();
 
         let n = keys.len();
@@ -213,6 +386,7 @@ impl SfcDecomposition {
             z_hi,
             cutpoints,
             n_ranks,
+            kind,
         }
     }
 
@@ -226,11 +400,17 @@ impl SfcDecomposition {
     }
 
     /// Devuelve el rango propietario de una posición.
+    /// Despacha a Morton o Hilbert según `self.kind`.
     #[inline]
     pub fn rank_for_pos(&self, pos: Vec3) -> i32 {
-        let key = particle_morton(
-            pos, self.x_lo, self.x_hi, self.y_lo, self.y_hi, self.z_lo, self.z_hi,
-        );
+        let key = match self.kind {
+            SfcKind::Morton => particle_morton(
+                pos, self.x_lo, self.x_hi, self.y_lo, self.y_hi, self.z_lo, self.z_hi,
+            ),
+            SfcKind::Hilbert => particle_hilbert(
+                pos, self.x_lo, self.x_hi, self.y_lo, self.y_hi, self.z_lo, self.z_hi,
+            ),
+        };
         self.rank_for(key)
     }
 
@@ -340,6 +520,8 @@ pub fn global_bbox<R: crate::ParallelRuntime + ?Sized>(
 mod tests {
     use super::*;
 
+    // ── Tests Morton ──────────────────────────────────────────────────────────
+
     #[test]
     fn morton_zero_maps_to_zero() {
         assert_eq!(morton3(0.0, 0.0, 0.0), 0);
@@ -427,5 +609,150 @@ mod tests {
         for pos in &positions {
             assert_eq!(decomp.rank_for_pos(*pos), 0);
         }
+    }
+
+    // ── Tests Hilbert ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn hilbert_zero_maps_to_zero() {
+        assert_eq!(hilbert3(0.0, 0.0, 0.0), 0);
+    }
+
+    #[test]
+    fn hilbert_keys_in_valid_range() {
+        // Todas las claves deben estar en [0, 2^63 - 1] (63 bits = 3 ejes × 21 bits).
+        let max_valid = (1u64 << 63) - 1;
+        let test_points = [
+            (0.0, 0.0, 0.0),
+            (0.5, 0.5, 0.5),
+            (0.9999, 0.9999, 0.9999),
+            (0.1, 0.9, 0.5),
+            (0.25, 0.75, 0.25),
+        ];
+        for (x, y, z) in test_points {
+            let k = hilbert3(x, y, z);
+            assert!(
+                k <= max_valid,
+                "hilbert3({x},{y},{z}) = {k} excede 63 bits"
+            );
+        }
+    }
+
+    #[test]
+    fn hilbert_preserves_locality_basic() {
+        // Puntos en el mismo octante deben tener claves más cercanas entre sí
+        // que respecto a puntos en el octante opuesto.
+        // La curva de Hilbert garantiza esto por construcción.
+        let near_a = hilbert3(0.1, 0.1, 0.1);
+        let near_b = hilbert3(0.15, 0.12, 0.11);
+        let far_c  = hilbert3(0.85, 0.88, 0.90);
+
+        let dist_near = near_a.abs_diff(near_b);
+        let dist_far_a = near_a.abs_diff(far_c);
+        let dist_far_b = near_b.abs_diff(far_c);
+
+        assert!(
+            dist_near < dist_far_a,
+            "Hilbert: dist(near_a,near_b)={dist_near} debe ser < dist(near_a,far)={dist_far_a}"
+        );
+        assert!(
+            dist_near < dist_far_b,
+            "Hilbert: dist(near_a,near_b)={dist_near} debe ser < dist(near_b,far)={dist_far_b}"
+        );
+    }
+
+    #[test]
+    fn hilbert_unique_keys_for_distinct_points() {
+        // Puntos distintos en un grid 4×4×4 deben producir claves distintas.
+        let mut keys = Vec::new();
+        for ix in 0..4usize {
+            for iy in 0..4 {
+                for iz in 0..4 {
+                    let x = ix as f64 / 4.0 + 0.1;
+                    let y = iy as f64 / 4.0 + 0.1;
+                    let z = iz as f64 / 4.0 + 0.1;
+                    keys.push(hilbert3(x, y, z));
+                }
+            }
+        }
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), 64, "64 puntos distintos deben producir 64 claves distintas");
+    }
+
+    #[test]
+    fn sfc_hilbert_roughly_balanced() {
+        // 1000 partículas en lattice cúbico → ~250 por rango con 4 rangos (Hilbert).
+        let mut positions = Vec::new();
+        for ix in 0..10usize {
+            for iy in 0..10 {
+                for iz in 0..10 {
+                    positions.push(Vec3::new(
+                        ix as f64 / 10.0,
+                        iy as f64 / 10.0,
+                        iz as f64 / 10.0,
+                    ));
+                }
+            }
+        }
+        let decomp = SfcDecomposition::build_with_kind(&positions, 1.0, 4, SfcKind::Hilbert);
+        let mut counts = [0usize; 4];
+        for pos in &positions {
+            counts[decomp.rank_for_pos(*pos) as usize] += 1;
+        }
+        let total: usize = counts.iter().sum();
+        assert_eq!(total, 1000);
+        for (r, &c) in counts.iter().enumerate() {
+            assert!(
+                c >= 150 && c <= 350,
+                "Hilbert rango {r} tiene {c} partículas (desequilibrado)"
+            );
+        }
+    }
+
+    #[test]
+    fn hilbert_near_origin_small_key() {
+        // Puntos en el primer octante (x,y,z << 0.5) deben tener claves
+        // Hilbert menores que puntos en el último octante.
+        // Propiedad: la curva de Hilbert comienza en (0,0,0) y los puntos
+        // cercanos al origen tienen claves pequeñas.
+        let h0 = hilbert3(0.0, 0.0, 0.0);
+        assert_eq!(h0, 0, "hilbert3(0,0,0) debe ser 0");
+
+        // Puntos en el cuadrante inferior-izquierdo deben tener claves pequeñas.
+        let h_small_1 = hilbert3(0.05, 0.05, 0.05);
+        let h_small_2 = hilbert3(0.01, 0.02, 0.03);
+        let h_large   = hilbert3(0.95, 0.95, 0.95);
+
+        // La diferencia entre puntos cerca del origen debe ser mucho menor
+        // que la diferencia de puntos lejanos entre sí.
+        let diff_near_origin = h_small_1.abs_diff(h_small_2);
+        let diff_far = h_small_1.abs_diff(h_large);
+
+        assert!(
+            diff_near_origin < diff_far,
+            "Puntos cercanos al origen deben tener claves más parecidas. \
+             diff_near={diff_near_origin}, diff_far={diff_far}"
+        );
+    }
+
+    #[test]
+    fn hilbert_different_from_morton() {
+        // Hilbert y Morton deben producir ordenamientos distintos para verificar
+        // que ambas implementaciones son genuinamente diferentes.
+        let test_points = [
+            (0.3, 0.7, 0.1),
+            (0.8, 0.2, 0.9),
+            (0.5, 0.5, 0.5),
+            (0.1, 0.9, 0.4),
+        ];
+        let same_count = test_points
+            .iter()
+            .filter(|&&(x, y, z)| hilbert3(x, y, z) == morton3(x, y, z))
+            .count();
+        assert!(
+            same_count < test_points.len(),
+            "Hilbert y Morton deben producir ordenamientos distintos"
+        );
     }
 }

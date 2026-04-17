@@ -17,7 +17,7 @@ pub use gpu_bridge::GpuParticlesSoAExt;
 pub use config::{
     CosmologySection, GravitySection, IcKind, InitialConditionsSection, IntegratorKind,
     MacSoftening, OpeningCriterion, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, SnapshotFormat, SolverKind, TimestepCriterion, TimestepSection,
+    SfcKind, SimulationSection, SnapshotFormat, SolverKind, TimestepCriterion, TimestepSection,
     UnitsSection, G_KPC_MSUN_KMPS,
 };
 pub use cosmology::CosmologyParams;

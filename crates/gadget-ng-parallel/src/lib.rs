@@ -10,7 +10,7 @@ mod mpi_rt;
 pub use decompose::gid_block_range;
 pub use domain::SlabDecomposition;
 pub use serial::SerialRuntime;
-pub use sfc::{morton3, SfcDecomposition};
+pub use sfc::{hilbert3, morton3, SfcDecomposition};
 
 #[cfg(feature = "mpi")]
 pub use mpi_rt::MpiRuntime;

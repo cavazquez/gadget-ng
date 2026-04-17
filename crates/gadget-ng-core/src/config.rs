@@ -395,6 +395,13 @@ pub struct PerformanceSection {
     /// Solo tiene efecto cuando `use_sfc = true`.
     #[serde(default)]
     pub let_theta_export_factor: f64,
+
+    /// Curva SFC para domain decomposition.
+    /// `"morton"` (default) → Z-order 63 bits. Retrocompatible con Fases 8-12.
+    /// `"hilbert"` → Peano-Hilbert 3D (Skilling 2004), mejor localidad espacial.
+    /// Solo tiene efecto cuando `use_sfc = true` (path SFC+LET).
+    #[serde(default)]
+    pub sfc_kind: SfcKind,
 }
 
 fn default_deterministic() -> bool {
@@ -425,6 +432,22 @@ fn default_let_tree_leaf_max() -> usize {
     8
 }
 
+/// Curva SFC (Space-Filling Curve) para domain decomposition.
+///
+/// Controla qué curva se usa para ordenar partículas y construir los cutpoints
+/// de la partición de dominio en el path SFC+LET.
+///
+/// - `"morton"` (default): Z-order 3D, 21 bits/eje. Retrocompatible con Fases 8-12.
+/// - `"hilbert"`: Peano-Hilbert 3D (algoritmo Skilling 2004), misma precisión.
+///   Mejor localidad espacial que Morton para distribuciones no uniformes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SfcKind {
+    #[default]
+    Morton,
+    Hilbert,
+}
+
 impl Default for PerformanceSection {
     fn default() -> Self {
         Self {
@@ -441,6 +464,7 @@ impl Default for PerformanceSection {
             let_tree_threshold: default_let_tree_threshold(),
             let_tree_leaf_max: default_let_tree_leaf_max(),
             let_theta_export_factor: 0.0,
+            sfc_kind: SfcKind::Morton,
         }
     }
 }

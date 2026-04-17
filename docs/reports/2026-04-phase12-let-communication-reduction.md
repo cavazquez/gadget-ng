@@ -411,4 +411,6 @@ python3 experiments/nbody/phase12_let_comm_reduction/scripts/analyze_phase12.py
 
 ---
 
+**Fase siguiente:** [Phase 13 — Hilbert 3D Domain Decomposition](2026-04-phase13-hilbert-decomposition.md)
+
 *Generado: Abril 2026 — gadget-ng Fase 12*

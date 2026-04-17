@@ -4,7 +4,7 @@ use crate::error::CliError;
 use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
     build_particles_for_gid_range, cosmology::CosmologyParams, DirectGravity, GravitySolver,
-    IntegratorKind, OpeningCriterion, Particle, RunConfig, SolverKind, Vec3,
+    IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind, SolverKind, Vec3,
 };
 use gadget_ng_integrators::{
     hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, yoshida4_cosmo_kdk_step,
@@ -74,6 +74,12 @@ struct HpcStepStats {
     max_let_nodes_per_rank: usize,
     /// Número total de nodos del árbol local (para calcular prune ratio).
     local_tree_nodes: usize,
+    /// Tiempo de rebalanceo SFC (recompute cutpoints + bbox global) (ns).
+    domain_rebalance_ns: u64,
+    /// Tiempo de migración de partículas (exchange_domain_sfc) (ns).
+    domain_migration_ns: u64,
+    /// Partículas locales tras migración (count al inicio del paso).
+    local_particle_count: usize,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -107,6 +113,17 @@ struct HpcTimingsAggregate {
     /// Ratio de poda: `let_nodes_exported / (local_tree_nodes * (P-1))`.
     /// Mide qué fracción del árbol se exporta en promedio por rank remoto.
     mean_export_prune_ratio: f64,
+    /// Tiempo medio de rebalanceo SFC (recompute cutpoints) por paso (s).
+    mean_domain_rebalance_s: f64,
+    /// Tiempo medio de migración de partículas por paso (s).
+    mean_domain_migration_s: f64,
+    /// Media de partículas locales por paso.
+    mean_local_particle_count: f64,
+    /// Ratio de imbalance de partículas: max_count / min_count entre ranks.
+    /// Calculado al final de la simulación con el último paso.
+    particle_imbalance_ratio: f64,
+    /// Curva SFC usada: "morton" o "hilbert".
+    sfc_kind: String,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -822,10 +839,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         //   • Rebalanceo dinámico basado en costo: `allreduce max/min walk_local_ns`.
         use gadget_ng_parallel::sfc::global_bbox;
 
+        let sfc_kind = cfg.performance.sfc_kind;
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-        let mut sfc_decomp = SfcDecomposition::build_with_bbox(
-            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+        let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
         );
         let size = rt.size() as usize;
         let my_rank = rt.rank() as usize;
@@ -835,6 +853,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let mut acc_hpc = HpcStepStats::default();
         // Umbral para rebalanceo por costo: si max/min walk_local_ns > 1.3 → rebalanceo inmediato.
         let mut cost_rebalance_pending = false;
+        // Seguimiento de particle imbalance: max/min a través de allreduce por paso.
+        let mut acc_max_local: f64 = 0.0;
+        let mut acc_min_local: f64 = f64::MAX;
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -850,16 +871,29 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let t_rb = Instant::now();
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                sfc_decomp = SfcDecomposition::build_with_bbox(
-                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+                sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
                 );
-                this_comm += t_rb.elapsed().as_nanos() as u64;
+                let rb_ns = t_rb.elapsed().as_nanos() as u64;
+                this_comm += rb_ns;
+                acc_hpc.domain_rebalance_ns += rb_ns;
             }
 
             // ── Migración de partículas ──────────────────────────────────────
             let t_domain = Instant::now();
             rt.exchange_domain_sfc(&mut local, &sfc_decomp);
-            this_comm += t_domain.elapsed().as_nanos() as u64;
+            let migration_ns = t_domain.elapsed().as_nanos() as u64;
+            this_comm += migration_ns;
+            acc_hpc.domain_migration_ns += migration_ns;
+            acc_hpc.local_particle_count += local.len();
+            // Acumulamos max/min de partículas locales para calcular imbalance.
+            {
+                let n_loc = local.len() as f64;
+                let max_n = rt.allreduce_max_f64(n_loc);
+                let min_n = rt.allreduce_min_f64(n_loc);
+                acc_max_local += max_n;
+                acc_min_local = acc_min_local.min(min_n);
+            }
             scratch.resize(local.len(), Vec3::zero());
 
             // ── Función de evaluación de fuerza SFC+LET ─────────────────────
@@ -1165,16 +1199,29 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         0.0
                     }
                 },
+                mean_domain_rebalance_s: acc_hpc.domain_rebalance_ns as f64 * ns2s / n,
+                mean_domain_migration_s: acc_hpc.domain_migration_ns as f64 * ns2s / n,
+                mean_local_particle_count: acc_hpc.local_particle_count as f64 / n,
+                particle_imbalance_ratio: {
+                    let mean_max = acc_max_local / n;
+                    let mean_min = acc_min_local.max(1.0);
+                    mean_max / mean_min
+                },
+                sfc_kind: match cfg.performance.sfc_kind {
+                    SfcKind::Morton => "morton".to_string(),
+                    SfcKind::Hilbert => "hilbert".to_string(),
+                },
             });
         }
     } else if use_sfc {
         // ── Árbol distribuido SFC legacy: Morton Z-order 3D, halos de partículas
         use gadget_ng_parallel::sfc::global_bbox;
 
+        let sfc_kind_legacy = cfg.performance.sfc_kind;
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-        let mut sfc_decomp = SfcDecomposition::build_with_bbox(
-            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+        let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
         );
 
         for step in start_step..=cfg.simulation.num_steps {
@@ -1187,8 +1234,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let t_rb = Instant::now();
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let all_pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                sfc_decomp = SfcDecomposition::build_with_bbox(
-                    &all_pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+                sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+                    &all_pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
                 );
                 this_comm += t_rb.elapsed().as_nanos() as u64;
             }
