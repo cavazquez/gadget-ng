@@ -16,7 +16,7 @@ fn two_particles_bh_matches_direct_theta_half() {
     let mut acc_d = vec![Vec3::zero(); 2];
     let mut acc_bh = vec![Vec3::zero(); 2];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.5 }.accelerations_for_indices(
+    BarnesHutGravity { theta: 0.5, ..Default::default() }.accelerations_for_indices(
         &pos,
         &mass,
         eps2,
@@ -41,6 +41,7 @@ fn lattice_cfg(n: usize, seed: u64) -> RunConfig {
             particle_count: n,
             box_size: 1.0,
             seed,
+            integrator: Default::default(),
         },
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,
@@ -67,7 +68,7 @@ fn barnes_hut_theta_zero_matches_direct() {
     let mut acc_d = vec![Vec3::zero(); n];
     let mut acc_bh = vec![Vec3::zero(); n];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.0 }.accelerations_for_indices(
+    BarnesHutGravity { theta: 0.0, ..Default::default() }.accelerations_for_indices(
         &pos,
         &mass,
         eps2,
@@ -97,7 +98,7 @@ fn barnes_hut_theta_half_mean_relative_error_small_on_strong_accel() {
     let mut acc_d = vec![Vec3::zero(); n];
     let mut acc_bh = vec![Vec3::zero(); n];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.5 }.accelerations_for_indices(
+    BarnesHutGravity { theta: 0.5, ..Default::default() }.accelerations_for_indices(
         &pos,
         &mass,
         eps2,
@@ -150,7 +151,7 @@ fn barnes_hut_theta_quarter_mean_relative_error_under_1pct() {
     let mut acc_d = vec![Vec3::zero(); n];
     let mut acc_bh = vec![Vec3::zero(); n];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.25 }.accelerations_for_indices(
+    BarnesHutGravity { theta: 0.25, ..Default::default() }.accelerations_for_indices(
         &pos,
         &mass,
         eps2,

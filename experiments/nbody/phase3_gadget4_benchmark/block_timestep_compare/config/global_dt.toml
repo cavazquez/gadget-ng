@@ -1,0 +1,35 @@
+# ── Block Timestep Comparison — Global dt (fijo) ──────────────────────────────
+#
+# Colapso frío (UniformSphere) con timestep global uniforme.
+# Referencia para comparar contra mode jerárquico (block timesteps).
+#
+# T_ff = π/√2 ≈ 2.221  →  dt = T_ff/100 ≈ 0.02221
+# Corrida de 3·T_ff (300 pasos) para capturar el colapso y rebote.
+#
+# Modo: timestep global, Barnes-Hut θ=0.5
+
+[simulation]
+particle_count         = 200
+box_size               = 6.0
+dt                     = 0.02221
+num_steps              = 300
+softening              = 0.05
+gravitational_constant = 1.0
+seed                   = 99
+
+[initial_conditions]
+kind = { uniform_sphere = { r = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[timestep]
+hierarchical = false
+
+[output]
+snapshot_format   = "jsonl"
+snapshot_interval = 5
+
+[performance]
+deterministic = true

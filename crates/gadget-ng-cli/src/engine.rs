@@ -4,11 +4,11 @@ use crate::error::CliError;
 use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
     build_particles_for_gid_range, cosmology::CosmologyParams, DirectGravity, GravitySolver,
-    Particle, RunConfig, SolverKind, Vec3,
+    IntegratorKind, OpeningCriterion, Particle, RunConfig, SolverKind, Vec3,
 };
 use gadget_ng_integrators::{
-    hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, CosmoFactors,
-    HierarchicalState,
+    hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, yoshida4_cosmo_kdk_step,
+    yoshida4_kdk_step, CosmoFactors, HierarchicalState, StepStats, YOSHIDA4_W0, YOSHIDA4_W1,
 };
 use gadget_ng_io::SnapshotReader;
 use gadget_ng_io::{
@@ -26,6 +26,39 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+use std::time::Instant;
+
+// ── Timing report ─────────────────────────────────────────────────────────────
+
+/// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
+///
+/// Permite medir el desglose entre comunicación MPI, cálculo de fuerzas e integración
+/// sin necesidad de herramientas externas de profiling.
+#[derive(serde::Serialize)]
+struct TimingsReport {
+    /// Número de pasos ejecutados.
+    steps: u64,
+    /// Número de partículas totales.
+    total_particles: usize,
+    /// Tiempo de pared total del loop de integración (segundos).
+    total_wall_s: f64,
+    /// Tiempo acumulado en comunicación MPI / allgather (segundos).
+    total_comm_s: f64,
+    /// Tiempo acumulado en cálculo de fuerzas gravitatorias (segundos).
+    total_gravity_s: f64,
+    /// Tiempo acumulado en kicks+drifts de integración (segundos).
+    total_integration_s: f64,
+    /// Tiempo de pared medio por paso (segundos).
+    mean_step_wall_s: f64,
+    /// Tiempo medio de comunicación por paso (segundos).
+    mean_comm_s: f64,
+    /// Tiempo medio de fuerza gravitatoria por paso (segundos).
+    mean_gravity_s: f64,
+    /// Fracción del tiempo total gastada en comunicación.
+    comm_fraction: f64,
+    /// Fracción del tiempo total gastada en fuerzas.
+    gravity_fraction: f64,
+}
 
 // ── Checkpoint ────────────────────────────────────────────────────────────────
 
@@ -154,17 +187,93 @@ fn kinetic_local(parts: &[Particle]) -> f64 {
         .sum()
 }
 
+/// Agregados locales O(N) usados en los diagnósticos por paso.
+#[derive(Clone, Copy, Default)]
+struct LocalMoments {
+    /// Momento lineal total: Σ mᵢ vᵢ.
+    p: [f64; 3],
+    /// Momento angular total respecto al origen: Σ mᵢ (rᵢ × vᵢ).
+    l: [f64; 3],
+    /// Σ mᵢ rᵢ (para el centro de masa).
+    mass_weighted_pos: [f64; 3],
+    /// Σ mᵢ.
+    mass: f64,
+}
+
+fn local_moments(parts: &[Particle]) -> LocalMoments {
+    let mut m = LocalMoments::default();
+    for p in parts {
+        let w = p.mass;
+        let r = &p.position;
+        let v = &p.velocity;
+        m.mass += w;
+        m.p[0] += w * v.x;
+        m.p[1] += w * v.y;
+        m.p[2] += w * v.z;
+        m.l[0] += w * (r.y * v.z - r.z * v.y);
+        m.l[1] += w * (r.z * v.x - r.x * v.z);
+        m.l[2] += w * (r.x * v.y - r.y * v.x);
+        m.mass_weighted_pos[0] += w * r.x;
+        m.mass_weighted_pos[1] += w * r.y;
+        m.mass_weighted_pos[2] += w * r.z;
+    }
+    m
+}
+
 fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     rt: &R,
     step: u64,
     local: &[Particle],
     diag_path: &Path,
     diag_file: &mut Option<File>,
+    step_stats: Option<&StepStats>,
 ) -> Result<(), CliError> {
     let ke_loc = kinetic_local(local);
     let ke = rt.allreduce_sum_f64(ke_loc);
+    // Agregados O(N): p, L, COM. Usan 10 allreduces; coste despreciable frente al paso.
+    let lm = local_moments(local);
+    let px = rt.allreduce_sum_f64(lm.p[0]);
+    let py = rt.allreduce_sum_f64(lm.p[1]);
+    let pz = rt.allreduce_sum_f64(lm.p[2]);
+    let lx = rt.allreduce_sum_f64(lm.l[0]);
+    let ly = rt.allreduce_sum_f64(lm.l[1]);
+    let lz = rt.allreduce_sum_f64(lm.l[2]);
+    let mrx = rt.allreduce_sum_f64(lm.mass_weighted_pos[0]);
+    let mry = rt.allreduce_sum_f64(lm.mass_weighted_pos[1]);
+    let mrz = rt.allreduce_sum_f64(lm.mass_weighted_pos[2]);
+    let mtot = rt.allreduce_sum_f64(lm.mass);
+    let com = if mtot > 0.0 {
+        [mrx / mtot, mry / mtot, mrz / mtot]
+    } else {
+        [0.0, 0.0, 0.0]
+    };
     if let Some(ref mut f) = diag_file {
-        let line = serde_json::json!({"step": step, "kinetic_energy": ke}).to_string();
+        let mut obj = serde_json::json!({
+            "step": step,
+            "kinetic_energy": ke,
+            "momentum": [px, py, pz],
+            "angular_momentum": [lx, ly, lz],
+            "com": com,
+            "mass_total": mtot,
+        });
+        // Si se proveen estadísticas del paso jerárquico, añadirlas como campos opcionales.
+        if let Some(ss) = step_stats {
+            let map = obj.as_object_mut().unwrap();
+            map.insert(
+                "level_histogram".into(),
+                serde_json::Value::Array(
+                    ss.level_histogram
+                        .iter()
+                        .map(|&v| serde_json::Value::Number(v.into()))
+                        .collect(),
+                ),
+            );
+            map.insert("active_total".into(), ss.active_total.into());
+            map.insert("force_evals".into(), ss.force_evals.into());
+            map.insert("dt_min_effective".into(), ss.dt_min_effective.into());
+            map.insert("dt_max_effective".into(), ss.dt_max_effective.into());
+        }
+        let line = obj.to_string();
         writeln!(f, "{line}").map_err(|e| CliError::io(diag_path, e))?;
     }
     rt.barrier();
@@ -245,6 +354,11 @@ fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             SolverKind::Direct => Box::new(RayonDirectGravity),
             SolverKind::BarnesHut => Box::new(RayonBarnesHutGravity {
                 theta: cfg.gravity.theta,
+                multipole_order: cfg.gravity.multipole_order,
+                use_relative_criterion: cfg.gravity.opening_criterion == OpeningCriterion::Relative,
+                err_tol_force_acc: cfg.gravity.err_tol_force_acc,
+                softened_multipoles: cfg.gravity.softened_multipoles,
+                mac_softening: cfg.gravity.mac_softening,
             }),
             SolverKind::Pm | SolverKind::TreePm => unreachable!("handled above"),
         };
@@ -254,6 +368,11 @@ fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
         SolverKind::Direct => Box::new(DirectGravity),
         SolverKind::BarnesHut => Box::new(BarnesHutGravity {
             theta: cfg.gravity.theta,
+            multipole_order: cfg.gravity.multipole_order,
+            use_relative_criterion: cfg.gravity.opening_criterion == OpeningCriterion::Relative,
+            err_tol_force_acc: cfg.gravity.err_tol_force_acc,
+            softened_multipoles: cfg.gravity.softened_multipoles,
+            mac_softening: cfg.gravity.mac_softening,
         }),
         SolverKind::Pm | SolverKind::TreePm => unreachable!("handled above"),
     }
@@ -347,7 +466,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         None
     };
 
-    write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file)?;
+    write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file, None)?;
 
     // `h_state_opt` se mantiene vivo tras el bucle para poder guardarlo con el snapshot.
     let mut h_state_opt: Option<HierarchicalState> = None;
@@ -392,9 +511,26 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
+    // ── Acumuladores de tiempos por fase ─────────────────────────────────────
+    let mut acc_comm_ns: u64 = 0;
+    let mut acc_gravity_ns: u64 = 0;
+    let mut acc_step_ns: u64 = 0;
+    let mut steps_run: u64 = 0;
+    let wall_loop_start = Instant::now();
+
+    let integrator_kind = cfg.simulation.integrator;
+    if cfg.timestep.hierarchical && integrator_kind != IntegratorKind::Leapfrog {
+        return Err(CliError::InvalidConfig(
+            "Yoshida4 no está implementado con block timesteps (timestep.hierarchical = true); \
+             usa integrator = leapfrog o desactiva hierarchical"
+                .into(),
+        ));
+    }
+
     if cfg.timestep.hierarchical {
         let eta = cfg.timestep.eta;
         let max_level = cfg.timestep.max_level;
+        let criterion = cfg.timestep.criterion;
         // Reutilizar HierarchicalState del checkpoint, o crear uno nuevo.
         let mut h_state = h_state_resume.take().unwrap_or_else(|| {
             let mut hs = HierarchicalState::new(local.len());
@@ -412,26 +548,33 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             for (p, &a) in local.iter_mut().zip(scratch.iter()) {
                 p.acceleration = a;
             }
-            hs.init_from_accels(&local, eps2, dt, eta, max_level);
+            hs.init_from_accels(&local, eps2, dt, eta, max_level, criterion);
             hs
         });
 
         for step in start_step..=cfg.simulation.num_steps {
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
             let cosmo_arg = cosmo_state
                 .as_ref()
                 .map(|(params, _)| (params, &mut a_current));
-            hierarchical_kdk_step(
+            let step_stats = hierarchical_kdk_step(
                 &mut local,
                 &mut h_state,
                 dt,
                 eps2,
                 eta,
                 max_level,
+                criterion,
                 cosmo_arg,
                 |parts, active_local, acc| {
+                    let t0 = Instant::now();
                     rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                    this_comm += t0.elapsed().as_nanos() as u64;
                     let global_idx: Vec<usize> =
                         active_local.iter().map(|&li| parts[li].global_id).collect();
+                    let t1 = Instant::now();
                     solver.accelerations_for_indices(
                         &global_pos,
                         &global_mass,
@@ -440,29 +583,78 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         &global_idx,
                         acc,
                     );
+                    this_grav += t1.elapsed().as_nanos() as u64;
                 },
             );
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, Some(&step_stats))?;
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
         }
         h_state_opt = Some(h_state);
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
-        // Leapfrog cosmológico: factores drift/kick calculados por paso.
+        // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
         for step in start_step..=cfg.simulation.num_steps {
-            let (drift, kick_half, kick_half2) = cosmo_params.drift_kick_factors(a_current, dt);
-            let cf = CosmoFactors {
-                drift,
-                kick_half,
-                kick_half2,
-            };
-            a_current = cosmo_params.advance_a(a_current, dt);
-            leapfrog_cosmo_kdk_step(&mut local, cf, &mut scratch, |parts, acc| {
-                rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
-                let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
-                solver.accelerations_for_indices(&global_pos, &global_mass, eps2, g, &idx, acc);
-            });
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
+            let mut compute_acc =
+                |parts: &[Particle], acc: &mut [Vec3], this_comm: &mut u64, this_grav: &mut u64| {
+                    let t0 = Instant::now();
+                    rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                    *this_comm += t0.elapsed().as_nanos() as u64;
+                    let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
+                    let t1 = Instant::now();
+                    solver.accelerations_for_indices(
+                        &global_pos,
+                        &global_mass,
+                        eps2,
+                        g,
+                        &idx,
+                        acc,
+                    );
+                    *this_grav += t1.elapsed().as_nanos() as u64;
+                };
+            match integrator_kind {
+                IntegratorKind::Leapfrog => {
+                    let (drift, kick_half, kick_half2) =
+                        cosmo_params.drift_kick_factors(a_current, dt);
+                    let cf = CosmoFactors {
+                        drift,
+                        kick_half,
+                        kick_half2,
+                    };
+                    a_current = cosmo_params.advance_a(a_current, dt);
+                    leapfrog_cosmo_kdk_step(&mut local, cf, &mut scratch, |parts, acc| {
+                        compute_acc(parts, acc, &mut this_comm, &mut this_grav);
+                    });
+                }
+                IntegratorKind::Yoshida4 => {
+                    let sub_dts = [YOSHIDA4_W1 * dt, YOSHIDA4_W0 * dt, YOSHIDA4_W1 * dt];
+                    let mut cfs = [CosmoFactors::flat(0.0); 3];
+                    for (i, &sub_dt) in sub_dts.iter().enumerate() {
+                        let (drift, kick_half, kick_half2) =
+                            cosmo_params.drift_kick_factors(a_current, sub_dt);
+                        cfs[i] = CosmoFactors {
+                            drift,
+                            kick_half,
+                            kick_half2,
+                        };
+                        a_current = cosmo_params.advance_a(a_current, sub_dt);
+                    }
+                    yoshida4_cosmo_kdk_step(&mut local, cfs, &mut scratch, |parts, acc| {
+                        compute_acc(parts, acc, &mut this_comm, &mut this_grav);
+                    });
+                }
+            }
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -473,6 +665,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let mut sfc_decomp = SfcDecomposition::build(&all_pos, box_size, rt.size());
 
         for step in start_step..=cfg.simulation.num_steps {
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
             let do_rebalance =
                 sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
             if do_rebalance {
@@ -481,21 +676,42 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             }
 
             let hw = sfc_decomp.halo_width(cfg.performance.halo_factor);
+            let t_domain = Instant::now();
             rt.exchange_domain_sfc(&mut local, &sfc_decomp);
+            this_comm += t_domain.elapsed().as_nanos() as u64;
             scratch.resize(local.len(), Vec3::zero());
 
             let sfc_snap = sfc_decomp.clone();
-            leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
+            let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
+                let t0 = Instant::now();
                 let halos = rt.exchange_halos_sfc(parts, &sfc_snap, hw);
+                this_comm += t0.elapsed().as_nanos() as u64;
+                let t1 = Instant::now();
                 compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
-            });
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+                this_grav += t1.elapsed().as_nanos() as u64;
+            };
+            match integrator_kind {
+                IntegratorKind::Leapfrog => {
+                    leapfrog_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+                IntegratorKind::Yoshida4 => {
+                    yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+            }
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
         for step in start_step..=cfg.simulation.num_steps {
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
             let x_lo_loc = local
                 .iter()
                 .map(|p| p.position.x)
@@ -504,34 +720,107 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 .iter()
                 .map(|p| p.position.x)
                 .fold(f64::NEG_INFINITY, f64::max);
+            let t_allreduce = Instant::now();
             let x_lo = rt.allreduce_min_f64(x_lo_loc);
             let x_hi = rt.allreduce_max_f64(x_hi_loc);
+            this_comm += t_allreduce.elapsed().as_nanos() as u64;
             let decomp = SlabDecomposition::new(x_lo, x_hi, rt.size());
             let (my_x_lo, my_x_hi) = decomp.bounds(rt.rank());
             let hw = decomp.halo_width(cfg.performance.halo_factor);
 
+            let t_domain = Instant::now();
             rt.exchange_domain_by_x(&mut local, my_x_lo, my_x_hi);
+            this_comm += t_domain.elapsed().as_nanos() as u64;
             scratch.resize(local.len(), Vec3::zero());
 
-            leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
+            let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
+                let t0 = Instant::now();
                 let halos = rt.exchange_halos_by_x(parts, my_x_lo, my_x_hi, hw);
+                this_comm += t0.elapsed().as_nanos() as u64;
+                let t1 = Instant::now();
                 compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
-            });
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+                this_grav += t1.elapsed().as_nanos() as u64;
+            };
+            match integrator_kind {
+                IntegratorKind::Leapfrog => {
+                    leapfrog_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+                IntegratorKind::Yoshida4 => {
+                    yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+            }
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
     } else {
         // ── Leapfrog clásico: Allgather global ────────────────────────────────
         for step in start_step..=cfg.simulation.num_steps {
-            leapfrog_kdk_step(&mut local, dt, &mut scratch, |parts, acc| {
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
+            let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
+                let t0 = Instant::now();
                 rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                this_comm += t0.elapsed().as_nanos() as u64;
                 let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
+                let t1 = Instant::now();
                 solver.accelerations_for_indices(&global_pos, &global_mass, eps2, g, &idx, acc);
-            });
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file)?;
+                this_grav += t1.elapsed().as_nanos() as u64;
+            };
+            match integrator_kind {
+                IntegratorKind::Leapfrog => {
+                    leapfrog_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+                IntegratorKind::Yoshida4 => {
+                    yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+            }
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+        }
+    }
+
+    // ── Escribir timings.json ─────────────────────────────────────────────────
+    if rt.rank() == 0 && steps_run > 0 {
+        let total_wall_s = wall_loop_start.elapsed().as_secs_f64();
+        let total_comm_s = acc_comm_ns as f64 * 1e-9;
+        let total_gravity_s = acc_gravity_ns as f64 * 1e-9;
+        let total_step_s = acc_step_ns as f64 * 1e-9;
+        let total_integration_s = (total_step_s - total_comm_s - total_gravity_s).max(0.0);
+        let report = TimingsReport {
+            steps: steps_run,
+            total_particles: total,
+            total_wall_s,
+            total_comm_s,
+            total_gravity_s,
+            total_integration_s,
+            mean_step_wall_s: total_step_s / steps_run as f64,
+            mean_comm_s: total_comm_s / steps_run as f64,
+            mean_gravity_s: total_gravity_s / steps_run as f64,
+            comm_fraction: if total_step_s > 0.0 {
+                total_comm_s / total_step_s
+            } else {
+                0.0
+            },
+            gravity_fraction: if total_step_s > 0.0 {
+                total_gravity_s / total_step_s
+            } else {
+                0.0
+            },
+        };
+        let timings_path = out_dir.join("timings.json");
+        if let Ok(f) = fs::File::create(&timings_path) {
+            let _ = serde_json::to_writer_pretty(f, &report);
         }
     }
 

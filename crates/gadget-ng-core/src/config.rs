@@ -29,6 +29,24 @@ pub struct SimulationSection {
     pub particle_count: usize,
     pub box_size: f64,
     pub seed: u64,
+    /// Integrador temporal usado por el motor.
+    ///
+    /// - `leapfrog` (default): leapfrog KDK clásico, orden 2, 2 force evals/step.
+    /// - `yoshida4`: composición simpléctica de Yoshida (1990), orden 4, 4
+    ///   force evals/step. No compatible con `[timestep] hierarchical = true`.
+    #[serde(default)]
+    pub integrator: IntegratorKind,
+}
+
+/// Selección del integrador temporal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum IntegratorKind {
+    /// Leapfrog KDK (default), 2º orden, 2 force evals/step.
+    #[default]
+    Leapfrog,
+    /// Yoshida composición simpléctica 4º orden, 4 force evals/step.
+    Yoshida4,
 }
 
 fn default_g() -> f64 {
@@ -64,9 +82,27 @@ pub enum IcKind {
         #[serde(default = "default_plummer_a")]
         a: f64,
     },
+    /// Esfera sólida uniforme con partículas en reposo (v = 0).
+    ///
+    /// Benchmark clásico de colapso gravitacional frío (cold collapse):
+    /// la esfera colapsa libremente y virializa al cabo de ~3 tiempos de caída libre.
+    ///
+    /// ```toml
+    /// [initial_conditions]
+    /// kind = { uniform_sphere = { r = 1.0 } }
+    /// ```
+    UniformSphere {
+        /// Radio de la esfera sólida (en unidades internas).
+        #[serde(default = "default_sphere_r")]
+        r: f64,
+    },
 }
 
 fn default_plummer_a() -> f64 {
+    1.0
+}
+
+fn default_sphere_r() -> f64 {
     1.0
 }
 
@@ -78,6 +114,44 @@ pub struct GravitySection {
     /// Criterio Barnes–Hut `s/d < theta` (solo `barnes_hut`). Con `theta = 0` no se usa MAC (equivale a recorrido exhaustivo).
     #[serde(default = "default_theta")]
     pub theta: f64,
+    /// Orden de la expansión multipolar para Barnes–Hut (solo `barnes_hut`):
+    /// - `1` → monopolo únicamente
+    /// - `2` → monopolo + cuadrupolo
+    /// - `3` → monopolo + cuadrupolo + octupolo (default, máxima precisión)
+    ///
+    /// Útil para benchmarks de ablación que cuantifican la contribución de cada término.
+    #[serde(default = "default_multipole_order")]
+    pub multipole_order: u8,
+    /// Criterio de apertura del árbol Barnes–Hut (solo `barnes_hut`):
+    /// - `"geometric"` (default) → abre el nodo cuando `s/d ≥ theta` (criterio clásico)
+    /// - `"relative"` → abre cuando el error de truncamiento estimado supera `err_tol_force_acc`
+    ///   (equivalente a `TypeOfOpeningCriterion=1` de GADGET-4)
+    #[serde(default = "default_opening_criterion")]
+    pub opening_criterion: OpeningCriterion,
+    /// Tolerancia de error de fuerza para el criterio de apertura relativo.
+    /// GADGET-4 usa `ErrTolForceAcc ≈ 0.0025`. Solo se usa cuando `opening_criterion = "relative"`.
+    #[serde(default = "default_err_tol_force_acc")]
+    pub err_tol_force_acc: f64,
+    /// Si `true`, aplica el mismo softening Plummer en los términos cuadrupolar y octupolar
+    /// (reemplaza `r²` por `r² + ε²` en los denominadores, coherente con el monopolo).
+    ///
+    /// La inconsistencia de softening (monopolo suavizado, quad/oct bare) es la causa principal
+    /// del empeoramiento de precisión en distribuciones concentradas con criterio geométrico.
+    ///
+    /// `false` (default) → comportamiento clásico/retrocompatible.
+    /// `true` → corrección física necesaria para sistemas con `r_núcleo ~ ε`.
+    #[serde(default)]
+    pub softened_multipoles: bool,
+    /// Softening aplicado al **estimador del MAC relativo** (no al cálculo de fuerza).
+    ///
+    /// - `"bare"` (default) → el estimador usa `|Q|_F / d⁵` (retrocompatible).
+    /// - `"consistent"` → usa `|Q|_F / (d² + ε²)^{5/2}`, coherente con el monopolo
+    ///   suavizado. Evita sobre-estimar el error de truncamiento cuando `d ~ ε`
+    ///   y reduce la apertura espuria de nodos en el núcleo.
+    ///
+    /// Solo surte efecto cuando `opening_criterion = "relative"`.
+    #[serde(default)]
+    pub mac_softening: MacSoftening,
     /// Número de celdas por lado del grid PM (`pm`, `tree_pm`). El grid total es `pm_grid_size³`.
     /// Potencia de 2 recomendada para eficiencia FFT.
     #[serde(default = "default_pm_grid_size")]
@@ -96,6 +170,18 @@ fn default_theta() -> f64 {
     0.5
 }
 
+fn default_multipole_order() -> u8 {
+    3
+}
+
+fn default_opening_criterion() -> OpeningCriterion {
+    OpeningCriterion::Geometric
+}
+
+fn default_err_tol_force_acc() -> f64 {
+    0.005
+}
+
 fn default_pm_grid_size() -> usize {
     64
 }
@@ -109,10 +195,41 @@ impl Default for GravitySection {
         Self {
             solver: default_solver_kind(),
             theta: default_theta(),
+            multipole_order: default_multipole_order(),
+            opening_criterion: default_opening_criterion(),
+            err_tol_force_acc: default_err_tol_force_acc(),
+            softened_multipoles: false,
+            mac_softening: MacSoftening::default(),
             pm_grid_size: default_pm_grid_size(),
             r_split: default_r_split(),
         }
     }
+}
+
+/// Softening del estimador del MAC relativo.
+///
+/// Controla si el término multipolar que entra en el estimador de error usa
+/// el denominador bare `d⁵` o el denominador softened-consistent `(d² + ε²)^{5/2}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MacSoftening {
+    /// `|Q|_F / d⁵` (retrocompatible, por defecto).
+    #[default]
+    Bare,
+    /// `|Q|_F / (d² + ε²)^{5/2}` (coherente con el monopolo softened).
+    Consistent,
+}
+
+/// Criterio de apertura del árbol Barnes–Hut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OpeningCriterion {
+    /// Criterio geométrico clásico: abre si `s/d ≥ theta`.
+    #[default]
+    Geometric,
+    /// Criterio relativo (GADGET-4 `TypeOfOpeningCriterion=1`): abre si el error de
+    /// truncamiento estimado supera `err_tol_force_acc`.
+    Relative,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -246,6 +363,24 @@ impl Default for PerformanceSection {
     }
 }
 
+/// Criterio de asignación del paso individual en block timesteps.
+///
+/// - `acceleration` (default) → `dt_i = η · sqrt(ε / |a_i|)` (criterio de Aarseth básico,
+///   solo magnitud de aceleración). Retrocompatible con el comportamiento previo.
+/// - `jerk` → `dt_i = η · sqrt(|a_i| / |ȧ_i|)` donde el jerk se aproxima como
+///   `ȧ ≈ (a_i − a_prev) / dt_prev` mediante diferencia finita sobre el último paso
+///   individual de la partícula. Más próximo al criterio de GADGET-2/4.
+///   Si el jerk es cero o dt_prev ≤ 0, se degrada automáticamente al criterio `acceleration`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TimestepCriterion {
+    /// `dt_i = η · sqrt(ε / |a_i|)` (default, retrocompatible).
+    #[default]
+    Acceleration,
+    /// `dt_i = η · sqrt(|a_i| / |ȧ_i|)` con jerk por diferencia finita.
+    Jerk,
+}
+
 /// Parámetros de pasos temporales (opcional; retrocompatible: `hierarchical = false`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimestepSection {
@@ -262,6 +397,18 @@ pub struct TimestepSection {
     /// Nivel `k` → paso `dt_base / 2^k`. Por defecto 6 (64 sub-pasos por paso base).
     #[serde(default = "default_max_level")]
     pub max_level: u32,
+    /// Criterio de asignación del paso individual por partícula.
+    /// Ver [`TimestepCriterion`]. Default: `acceleration`.
+    #[serde(default)]
+    pub criterion: TimestepCriterion,
+    /// Paso mínimo absoluto (override del mínimo implícito `dt_base / 2^max_level`).
+    /// `None` (default) → usar el mínimo implícito del nivel.
+    #[serde(default)]
+    pub dt_min: Option<f64>,
+    /// Paso máximo absoluto (override del máximo implícito `dt_base`).
+    /// `None` (default) → usar `dt_base` como máximo.
+    #[serde(default)]
+    pub dt_max: Option<f64>,
 }
 
 fn default_eta() -> f64 {
@@ -278,6 +425,9 @@ impl Default for TimestepSection {
             hierarchical: false,
             eta: default_eta(),
             max_level: default_max_level(),
+            criterion: TimestepCriterion::default(),
+            dt_min: None,
+            dt_max: None,
         }
     }
 }

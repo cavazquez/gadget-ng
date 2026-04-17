@@ -160,6 +160,7 @@ mod tests {
                 particle_count: n,
                 box_size: 1.0,
                 seed: 42,
+                integrator: Default::default(),
             },
             initial_conditions: InitialConditionsSection {
                 kind: IcKind::Lattice,

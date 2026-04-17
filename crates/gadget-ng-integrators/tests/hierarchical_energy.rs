@@ -11,6 +11,7 @@
 //! - El softening es pequeño comparado con `r`, de modo que la órbita se mantiene estable.
 
 use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_core::TimestepCriterion;
 use gadget_ng_integrators::{
     aarseth_bin, hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState,
 };
@@ -100,7 +101,7 @@ fn run_hierarchical(steps: u64, dt: f64, eta: f64, max_level: u32) -> f64 {
     }
 
     let mut h_state = HierarchicalState::new(n);
-    h_state.init_from_accels(&parts, EPS2, dt, eta, max_level);
+    h_state.init_from_accels(&parts, EPS2, dt, eta, max_level, TimestepCriterion::Acceleration);
 
     for _ in 0..steps {
         hierarchical_kdk_step(
@@ -110,6 +111,7 @@ fn run_hierarchical(steps: u64, dt: f64, eta: f64, max_level: u32) -> f64 {
             EPS2,
             eta,
             max_level,
+            TimestepCriterion::Acceleration,
             None,
             gravity_two_body,
         );
@@ -215,7 +217,7 @@ fn second_order_drift_better_than_first_order() {
         p.acceleration = a;
     }
     let mut st1 = HierarchicalState::new(n);
-    st1.init_from_accels(&parts1, EPS2, dt, eta, max_level);
+    st1.init_from_accels(&parts1, EPS2, dt, eta, max_level, TimestepCriterion::Acceleration);
     for _ in 0..steps {
         hierarchical_kdk_step_first_order(
             &mut parts1,
@@ -239,6 +241,66 @@ fn second_order_drift_better_than_first_order() {
         rel2 <= rel1 * 5.0 + 1e-8,
         "el predictor de 2.o orden deriva más que el de 1.o: rel2={rel2:.4e} > 5*rel1={:.4e}",
         rel1 * 5.0
+    );
+}
+
+/// El criterio Jerk no introduce divergencias en un sistema kepleriano de dos cuerpos.
+///
+/// La normalización usa la energía cinética inicial (E_kin = 0.25) en lugar de E_total,
+/// porque la `two_body()` construye una órbita casi-parabólica (E_total ≈ 0) donde la
+/// métrica `|ΔE/E_total|` es inestable. La variación absoluta de energía producida por el
+/// criterio Jerk (nivel 0, dt = T/200) es ~3e-4, que es < 0.2 % de E_kin. Las pruebas
+/// más exhaustivas sobre órbitas ligadas están en `hierarchical_jerk_kepler.rs`.
+#[test]
+fn hierarchical_jerk_criterion_energy_conserved() {
+    let period_approx = std::f64::consts::TAU * (SEP / 2.0) / ((G * 2.0 * M_EACH / 4.0).sqrt());
+    let dt = period_approx / 200.0;
+    let orbits = 5.0;
+    let steps = (orbits * period_approx / dt).round() as u64;
+
+    let mut parts = two_body();
+    let n = parts.len();
+    let all_idx: Vec<usize> = (0..n).collect();
+    let mut init_acc = vec![Vec3::zero(); n];
+    gravity_two_body(&parts, &all_idx, &mut init_acc);
+    for (p, &a) in parts.iter_mut().zip(init_acc.iter()) {
+        p.acceleration = a;
+    }
+
+    let e0 = total_energy(&parts);
+    // Normalizar por E_kin (siempre positiva y O(1)), no por E_total ≈ 0.
+    let e_kin0: f64 = parts
+        .iter()
+        .map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity))
+        .sum();
+
+    let eta = 0.025_f64;
+    let max_level = 4u32;
+    let mut h_state = HierarchicalState::new(n);
+    // Para el criterio Jerk: empezar en nivel 0 (sin historial de jerk en el primer paso).
+    h_state.init_from_accels(&parts, EPS2, dt, eta, max_level, TimestepCriterion::Jerk);
+
+    for _ in 0..steps {
+        hierarchical_kdk_step(
+            &mut parts,
+            &mut h_state,
+            dt,
+            EPS2,
+            eta,
+            max_level,
+            TimestepCriterion::Jerk,
+            None,
+            gravity_two_body,
+        );
+    }
+
+    let e_final = total_energy(&parts);
+    // |ΔE| / E_kin: variación absoluta normalizada por energía cinética inicial.
+    // Con nivel 0 y dt = T/200: se espera ~0.1-0.2 %; umbral holgado: 2 %.
+    let abs_drift_normalized = (e_final - e0).abs() / e_kin0;
+    assert!(
+        abs_drift_normalized < 0.02,
+        "criterio Jerk: |ΔE|/E_kin = {abs_drift_normalized:.4e} (> 2 %). Posible bug en aarseth_bin_jerk.",
     );
 }
 

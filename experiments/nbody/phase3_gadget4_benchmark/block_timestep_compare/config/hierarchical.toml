@@ -1,0 +1,39 @@
+# ── Block Timestep Comparison — Hierarchical / Block Timesteps ────────────────
+#
+# Colapso frío (UniformSphere) con block timesteps al estilo GADGET-4.
+# Cada partícula elige su propio paso basado en el criterio de Aarseth:
+#
+#   dt_i = η · √(ε / |a_i|)
+#
+# con η=0.025 (conservador) y hasta max_level=6 subdivisiones de dt_base.
+# El colapso genera fuerzas extremas que activan niveles finos automáticamente.
+#
+# Comparar con global_dt.toml para medir el impacto en |ΔE/E₀|.
+
+[simulation]
+particle_count         = 200
+box_size               = 6.0
+dt                     = 0.02221   # dt_base: igual que global para comparación justa
+num_steps              = 300
+softening              = 0.05
+gravitational_constant = 1.0
+seed                   = 99
+
+[initial_conditions]
+kind = { uniform_sphere = { r = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[timestep]
+hierarchical = true
+eta          = 0.025   # criterio Aarseth (conservador)
+max_level    = 6       # hasta dt_base/64 de paso mínimo
+
+[output]
+snapshot_format   = "jsonl"
+snapshot_interval = 5
+
+[performance]
+deterministic = true

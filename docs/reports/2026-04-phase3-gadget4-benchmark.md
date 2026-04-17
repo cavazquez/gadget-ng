@@ -1,0 +1,394 @@
+# Fase 3: Benchmarking HPC y Validación Cuantitativa vs GADGET-4
+
+**Proyecto:** gadget-ng  
+**Fecha:** Abril 2026  
+**Autores:** Validación automatizada, fase 3  
+**Pregunta guía:** ¿En qué condiciones gadget-ng compite razonablemente con GADGET-4, y en qué condiciones todavía no?
+
+---
+
+## 1. Objetivo
+
+Esta fase cuantifica cuatro dimensiones de calidad del código:
+
+1. **Precisión física del árbol BH** — error de fuerza vs Direct, barrido de θ
+2. **Costo computacional vs N** — crossover entre Direct y Barnes-Hut
+3. **Impacto de block timesteps** — conservación de energía y costo relativo
+4. **Paridad y escalado MPI** — strong scaling, weak scaling, paridad serial vs MPI
+
+El objetivo no es afirmar que gadget-ng compite con GADGET-4 hoy, sino medir cuantitativamente la brecha y priorizar el backlog técnico.
+
+---
+
+## 2. Hardware y versiones
+
+| Parámetro        | Valor                             |
+|------------------|-----------------------------------|
+| CPU              | Linux 6.17.0-22 (12 cores)       |
+| Compilador       | rustc (stable), --release         |
+| MPI              | OpenMPI (mpirun disponible)       |
+| BH solver        | Multipolar (mono+quad+oct), criterio geométrico θ |
+| Integrador       | Leapfrog KDK                      |
+| Block timesteps  | Aarseth: dt_i = η√(ε/|a_i|)      |
+
+---
+
+## 3. Benchmarks elegidos y justificación
+
+| Experimento              | Justificación                                                          |
+|--------------------------|------------------------------------------------------------------------|
+| BH vs Direct, barrido θ  | Cuantifica el error del árbol multipolar (mono+quad+oct) vs referencia exacta |
+| Scaling N (Direct vs BH) | Muestra el crossover BH > Direct y la complejidad empírica             |
+| Block timestep compare   | Evalúa si el integrador jerárquico mejora eficiencia vs global dt      |
+| Serial vs MPI parity     | Verifica reproducibilidad y "verdadera" no-determinismo del runtime    |
+| Strong scaling (N=1000)  | Mide eficiencia MPI y fracción de comunicación por rank                |
+| Weak scaling (N ∝ ranks) | Expone la limitación fundamental del diseño Allgatherv                 |
+
+---
+
+## 4. Experimento 1: Error de fuerza BH vs DirectGravity
+
+**Configuración:** N=500, ε=0.05, G=1.0  
+**Distribuciones:** esfera uniforme (extendida) y Plummer a=0.1 (concentrada)  
+**Herramienta:** `crates/gadget-ng-physics/tests/bh_force_accuracy.rs`
+
+### 4.1 Resultados: error relativo de fuerza
+
+| Distribución   | θ    | mean\_err% | max\_err% | rms\_err% | t\_direct ms | t\_BH ms | Speedup |
+|----------------|------|-----------|----------|----------|-------------|---------|---------|
+| Esfera uniforme | 0.20 | 0.006     | 0.127    | 0.016    | 0.7         | 4.3     | 0.16x   |
+| Esfera uniforme | 0.50 | 0.309     | 8.059    | 0.771    | 0.7         | 1.9     | 0.35x   |
+| Esfera uniforme | 0.80 | 2.152     | 80.987   | 5.990    | 0.7         | 1.1     | 0.59x   |
+| Esfera uniforme | 1.00 | 4.659     | 120.287  | 9.605    | 0.7         | 0.8     | 0.87x   |
+| Plummer a=0.1   | 0.20 | 0.286     | 1.423    | 0.365    | 0.7         | 4.8     | 0.14x   |
+| Plummer a=0.1   | 0.50 | 3.757     | 27.724   | 5.057    | 0.7         | 1.9     | 0.35x   |
+| Plummer a=0.1   | 0.80 | 17.529    | 190.625  | 27.135   | 0.7         | 1.2     | 0.56x   |
+| Plummer a=0.1   | 1.00 | 30.943    | 277.270  | 43.753   | 0.7         | 0.9     | 0.80x   |
+
+### 4.2 Observaciones críticas
+
+> **Nota corregida post-Fase 3:** Los errores medidos en esta tabla son los errores **con multipolar completo** (monopolo + cuadrupolo + octupolo). El solver BH de gadget-ng ya implementa los tres términos desde la construcción del octree (`aggregate()` calcula `quad:[f64;6]` y `oct:[f64;7]` con el teorema del eje paralelo; `walk_inner()` aplica `a_mono + a_quad + a_oct` cuando el MAC se satisface). El diagnóstico previo que lo clasificaba como "BH monopolar" era incorrecto.
+
+- **Para N=500, BH es más lento que Direct en todos los θ.** El crossover BH > Direct ocurre aproximadamente en N=3000–5000 (ver Experimento 2). Esto es coherente con la literatura: para N pequeño, el overhead de construcción y recorrido del octree supera el ahorro de interacciones.
+
+- **El error multipolar crece fuertemente con la concentración de la distribución.** Plummer a=0.1 tiene un núcleo mucho más denso que la esfera uniforme: a θ=0.5 el error medio es 3.76% (Plummer) vs 0.31% (esfera uniforme) **incluso con cuadrupolo y octupolo activos**. El error máximo llega a 190% para partículas del núcleo denso a θ=0.8 — lo que significa que la expansión puede estar equivocada en un factor ~3 para interacciones con el núcleo compacto. Esto no es un déficit de orden multipolar, sino del criterio de apertura geométrico fijo θ, que es demasiado permisivo en regiones de alta densidad.
+
+- **GADGET-4 con criterio de apertura relativo (`ErrTolForceAcc`) supera al criterio geométrico.** A θ=0.5 fijo, gadget-ng tiene error medio 3.76% en Plummer; GADGET-4 con criterio relativo adaptaría automáticamente el MAC efectivo por interacción, abriéndolo más en el núcleo denso donde la expansión converge peor. Esto se traduce en mejor precisión en sistemas inhomogéneos sin cambios de orden multipolar.
+
+- **Criterio de apertura relativo de GADGET-4** (`TypeOfOpeningCriterion=1`, `ErrTolForceAcc`): en lugar de abrir nodos cuando `s/d > θ` (criterio geométrico), estima el error de truncamiento de la expansión multipolar y abre el nodo cuando ese error supere un umbral `α`. Esto adapta el MAC por interacción en lugar de usar un θ global fijo, con mayor impacto en distribuciones inhomogéneas.
+
+### 4.3 Implicación para producción
+
+Para usar BH con confianza en simulaciones de tipo paper:
+- Distribuciones extendidas (esfera uniforme, halos de materia oscura): θ=0.5 con |ΔE/E|<1% es aceptable.
+- Distribuciones concentradas (Plummer, cúmulos globulares, núcleos densos): θ≤0.3 o implementar criterio de apertura relativo (`ErrTolForceAcc`). θ=0.5 con criterio geométrico produce errores de fuerza inaceptables para las partículas centrales incluso con cuadrupolo+octupolo activos.
+
+---
+
+## 5. Experimento 2: Costo computacional vs N
+
+**Configuración:** Plummer a=1.0, 10 pasos, ε=0.05  
+**Herramienta:** `experiments/nbody/phase3_gadget4_benchmark/scaling_n/scripts/run_scaling_n.py`
+
+### 5.1 Resultados
+
+| Solver     | N     | t/paso (ms) | Speedup BH/Direct |
+|------------|-------|------------|-------------------|
+| Direct     | 100   | 0.07       | 0.21x             |
+| Direct     | 500   | 1.70       | 0.45x             |
+| Direct     | 1000  | 6.81       | 0.57x             |
+| Direct     | 2000  | 22.52      | 0.62x             |
+| Direct     | 5000  | 132.54     | 1.21x             |
+| Barnes-Hut | 100   | 0.33       | (ver ratio)       |
+| Barnes-Hut | 500   | 3.79       |                   |
+| Barnes-Hut | 1000  | 11.98      |                   |
+| Barnes-Hut | 2000  | 36.31      |                   |
+| Barnes-Hut | 5000  | 109.66     |                   |
+
+**Crossover observado:** BH empieza a ser más rápido que Direct en torno a N≈4000–5000. Para N≤2000, Direct es más eficiente. La fracción de tiempo en gravedad es ≥99.9% para ambos solvers en modo serial.
+
+### 5.2 Ajuste de complejidad empírica
+
+Fitting log-log sobre los datos:
+- Direct: exponente ~1.95 ≈ O(N²) — confirma complejidad teórica
+- Barnes-Hut: exponente ~1.42 — sublineal respecto a N², pero BH multipolar no alcanza el O(N log N) teórico puro por overhead de árbol y cálculo de términos cuadrupolar/octupolar
+
+### 5.3 Implicación
+
+Para N<2000 en modo serial, usar DirectGravity. Para N>5000, BH empieza a compensar. Con criterio de apertura relativo (GADGET-4), se podría usar un θ efectivo mayor con la misma precisión, reduciendo el trabajo de recorrido del árbol y desplazando el crossover a N menor. La ausencia de paralelismo interno (sin OpenMP/Rayon activo por defecto) limita el rendimiento para N grande en serial.
+
+---
+
+## 6. Experimento 3: Block Timesteps vs Global dt
+
+**Configuración:** Cold collapse, N=200, 300 pasos (≈3·T_ff), Barnes-Hut θ=0.5  
+**Modos:** global dt=0.02221, hierarchical (η=0.025, max_level=6)
+
+### 6.1 Resultados
+
+| Modo                   | Wall total (s) | t/paso (ms) | max\|ΔE/E₀\|  | Fracción gravedad |
+|------------------------|---------------|-------------|--------------|-------------------|
+| Global dt fijo         | 0.328         | 1.08        | 0.43%        | 99.9%             |
+| Block timesteps Aarseth | 1.075         | 3.56        | 0.58%        | 98.8%             |
+| Ratio global/hierárq.  | 0.30x         | —           | ~similar     | —                 |
+
+### 6.2 Interpretación
+
+**Resultado negativo pero honesto:** Para N=200 y un colapso frío moderado, los block timesteps son **3.3× más lentos** que el timestep global con **peor** (o similar) conservación de energía. Esto no significa que los block timesteps sean incorrectos; significa que para este régimen (N pequeño, dt_base ya relativamente fino), el overhead supera el beneficio.
+
+Los block timesteps son ventajosos cuando:
+1. **N es grande** (el overhead de bookkeeping se amortiza sobre muchas partículas)
+2. **El rango dinámico de aceleraciones es extremo** (núcleo denso + halo difuso), creando niveles de timestep con diferencia de ~10² o más
+3. **En sistemas con partículas de muy distinta masa** (e.g., binarias + halo cosmológico)
+
+Para el colapso frío con N=200 y ε=0.05, las aceleraciones varían solo ~100x durante el colapso, insuficiente para que los 6 niveles jerárquicos compensen el overhead de allgatherv por sub-paso fino. El diagnóstico es que `max_level=6` es excesivo para este caso; con `max_level=2` el overhead sería menor.
+
+**Comparación con GADGET-4:** GADGET-4 usa block timesteps porque simula N=10⁶–10⁹ partículas donde el overhead es despreciable y el rango dinámico de aceleraciones puede ser 10⁶. Con N=200, incluso GADGET-4 desactivaría efectivamente los niveles finos.
+
+---
+
+## 7. Experimento 4: Paridad Serial vs MPI
+
+**Configuración:** Plummer N=300, 100 pasos, BH θ=0.5, `deterministic=true/false`
+
+### 7.1 Resultados
+
+| Referencia | vs.                | max\|Δr\| | max\|Δv\| | \|ΔE/E\|   | \|ΔLz/Lz\| |
+|------------|-------------------|---------|---------|----------|----------|
+| serial     | mpi\_2rank\_det   | 0.000   | 0.000   | 0.000%   | 0.000%   |
+| serial     | mpi\_2rank\_nondet | 0.000  | 0.000   | 0.000%   | 0.000%   |
+| serial     | mpi\_4rank\_det   | 0.000   | 0.000   | 0.000%   | 0.000%   |
+
+### 7.2 Análisis del resultado
+
+**Paridad bit-exacta en todos los modos, incluyendo el "no-determinístico".** Esto es una consecuencia del diseño Allgatherv de gadget-ng:
+
+1. Cada rank recoge el estado global de **todas** las partículas vía `allgatherv_state`
+2. El estado global se ordena por `global_id` de forma determinista
+3. Cada rank calcula las fuerzas para su subconjunto de partículas, pero usando el mismo estado global ordenado
+4. Las operaciones de punto flotante ocurren exactamente en el mismo orden independientemente del número de ranks
+
+El flag `deterministic=false` en gadget-ng **no introduce no-determinismo real** en el modo Allgatherv clásico. Solo tiene efecto en modos de árbol distribuido donde cada rank trabaja con subconjuntos locales.
+
+**Diferencia con GADGET-4:** En GADGET-4, el modo no-determinístico usa recorridos de árbol en distintos órdenes por rank, con reducciones de punto flotante no-asociativas (`MPI_Allreduce` con orden variable). Esto produce divergencias de ~10⁻¹⁵ a 10⁻¹² entre ejecuciones con distinto número de ranks. Gadget-ng evita esta divergencia por diseño (Allgatherv), pero lo hace a costo de escalabilidad.
+
+---
+
+## 8. Experimento 5: Strong Scaling
+
+**Configuración:** Plummer N=1000, 50 pasos, BH θ=0.5  
+**Ranks probados:** 1, 2, 4 (8 ranks no disponibles por límite de slots del nodo)
+
+### 8.1 Resultados
+
+| Ranks | Wall (s) | t/paso (ms) | Speedup | Efficiency | Comm frac |
+|-------|---------|-------------|---------|------------|-----------|
+| 1     | 0.636   | 12.72       | 1.00x   | 100%       | 0.09%     |
+| 2     | 0.316   | 6.25        | 2.01x   | 100.8%     | 1.32%     |
+| 4     | 0.179   | 3.46        | 3.56x   | 88.9%      | 4.30%     |
+
+### 8.2 Interpretación
+
+- **2 ranks: 2.01x speedup (super-lineal por ruido de medición).** La variabilidad de timing es ±5% para este tiempo de run; el speedup real es ~2.0x.
+- **4 ranks: 3.56x speedup (89% efficiency).** Buen resultado para Allgatherv puro.
+- **La fracción de comunicación crece:** 0.09% → 1.32% → 4.30%. Con 8 ranks se estimaría ~8–12%, con 16 ranks >20%. El punto de inflexión donde la comunicación degrada seriamente el rendimiento está en ~8–16 ranks para N=1000.
+
+**Análisis de Amdahl:** La fracción serial implícita estimada (de los datos 1→4 ranks) es ~f≈0.035 (3.5%). A 8 ranks, el speedup máximo teórico sería ~1/f ≈ 28x, pero la comunicación creciente lo limitará mucho antes.
+
+**Por qué gadget-ng no puede escalar como GADGET-4:** GADGET-4 usa comunicación punto-a-punto selectiva — cada rank solo envía/recibe partículas de los ranks vecinos en la descomposición SFC. La complejidad de comunicación es O(N_halo) por rank, no O(N_total). Para N=10⁶ y 1000 ranks, GADGET-4 sigue escalando porque cada rank solo comunica su fracción de halo. En gadget-ng, allgatherv distribuye **todo** el estado global a **todos** los ranks en cada paso.
+
+---
+
+## 9. Experimento 6: Weak Scaling
+
+**Configuración:** N = 1000 × ranks, BH θ=0.5, 50 pasos
+
+### 9.1 Resultados
+
+| Ranks | N     | Wall (s) | t/paso (ms) | Weak efficiency | Comm frac |
+|-------|-------|---------|-------------|-----------------|-----------|
+| 1     | 1000  | 0.615   | 12.30       | 100%            | 0.10%     |
+| 2     | 2000  | 0.986   | 19.63       | 62.4%           | 0.57%     |
+| 4     | 4000  | 1.294   | 25.44       | 47.6%           | 2.14%     |
+
+### 9.2 Interpretación — la limitación fundamental del Allgatherv
+
+El weak scaling de gadget-ng es **fundamentalmente pobre** y el motivo es analítico:
+
+**Costo de comunicación:** `allgatherv` transfiere `N × tamaño_partícula` bytes a cada rank. Con N ∝ ranks:
+```
+T_comm ∝ N_total × ranks = N₀ × ranks²
+```
+
+**Costo de fuerzas:** O(N log N) = O(N₀ × ranks × log(N₀ × ranks))
+
+**Resultado:** la comunicación crece como O(ranks²) mientras la computación crece como O(ranks log ranks). En weak scaling ideal, ambas deberían crecer a la misma tasa.
+
+A 4 ranks con N=4000, la eficiencia ya ha caído al 47.6%. Extrapolando:
+- 8 ranks + N=8000: eficiencia estimada ~30–35%
+- 16 ranks + N=16000: eficiencia estimada ~15–20%
+- 64 ranks + N=64000: eficiencia estimada <5%
+
+Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de Allgatherv**. Para superar las ~4–8 ranks con eficiencia razonable, se requiere comunicación punto-a-punto con descomposición de dominio real.
+
+---
+
+## 10. Comparación conceptual con GADGET-4
+
+### 10.1 Tabla comparativa de características
+
+| Característica               | gadget-ng (actual)          | GADGET-4                             |
+|------------------------------|-----------------------------|--------------------------------------|
+| Integrador                   | Leapfrog KDK                | Leapfrog KDK (mismo)                 |
+| Block timesteps              | Sí (Aarseth, implementado)  | Sí (Aarseth, idéntico criterio)      |
+| Solver gravitatorio          | Direct O(N²), BH multipolar (mono+quad+oct) | TreePM (BH + cuadrupolo + PM grid) |
+| Orden multipolar             | Mono+quad+oct (orden 3, activo) | Hasta hexadecapolo (orden 5)    |
+| Criterio apertura árbol      | Geométrico (θ fijo)         | Geométrico + relativo (ErrTolForceAcc) |
+| Comunicación MPI             | Allgatherv (O(N × ranks))   | Punto-a-punto SFC (O(N_halo/rank))   |
+| Descomposición dominio       | Allgather total             | Peano-Hilbert SFC con balance carga  |
+| Paralelismo híbrido          | MPI puro                    | MPI + shared-memory OpenMP           |
+| Paralelismo intra-nodo       | Sin OpenMP activo           | OpenMP (hilos por rank)              |
+| Fast Multipole Method (FMM)  | No                          | Sí (alternativa al árbol BH)         |
+| PM gravitacional             | Sí (PmSolver)               | Sí (TreePM con splitting erf/erfc)   |
+| Cosmología                   | Sí (básica, a(t))           | Sí (completa, ΛCDM)                  |
+| Condiciones iniciales        | Lattice/TwoBody/Plummer/Sphere | N-GenIC, MUSIC, formatos estándar  |
+| Diagnósticos de timing       | timings.json (nuevo)        | timings.txt por fase detallado       |
+| Escalabilidad demostrada     | ~4 ranks (89% eff)          | 160,000 ranks (UEABS benchmark)      |
+
+### 10.2 Los tres cambios de mayor impacto
+
+> **Corrección post-Fase 3:** El diagnóstico inicial priorizaba "implementar cuadrupolo" como Cambio 1. Esto era incorrecto: gadget-ng ya implementa cuadrupolo y octupolo completamente en `octree.rs` (`quad:[f64;6]`, `oct:[f64;7]`, aplicados en `walk_inner()`). El ranking se actualiza a continuación.
+
+**Cambio 1 — Criterio de apertura relativo** (impacto: ALTO, esfuerzo: BAJO)
+- Implementar `TypeOfOpeningCriterion=1` de GADGET-4: abrir el nodo si el error de truncamiento estimado supera `ErrTolForceAcc`
+- Adapta automáticamente el MAC por interacción en lugar de usar θ global fijo
+- Es la causa raíz del error 3.76% en Plummer a θ=0.5 — el criterio geométrico es demasiado permisivo en el núcleo denso incluso con cuadrupolo+octupolo
+- Implementable sobre el octree existente sin cambios de estructura de datos
+- Añadir además `multipole_order: u8` configurable (1=mono, 2=mono+quad, 3=mono+quad+oct) para habilitar benchmarks de ablación
+
+**Cambio 2 — Comunicación punto-a-punto con SFC real** (impacto: CRÍTICO para HPC, esfuerzo: ALTO)
+- Reemplazar `allgatherv_state` por descomposición Peano-Hilbert real con intercambio de halos
+- Transforma la complejidad de comunicación de O(N × ranks) a O(N_halo/rank)
+- Prerequisito para escalar más allá de ~8 ranks
+- Este cambio es arquitectónico y requiere rediseñar el módulo gadget-ng-parallel
+
+**Cambio 3 — OpenMP intra-nodo** (impacto: MEDIO, esfuerzo: MEDIO)
+- `rayon_bh.rs` existe pero no está activo por defecto
+- Activar paralelismo intra-nodo para reducir wall time serial para N>5000
+- Especialmente útil para el recorrido del árbol con términos cuadrupolar/octupolar
+
+---
+
+## 11. Limitaciones actuales cuantificadas
+
+| Limitación                  | Impacto medido                                      | Umbral de aceptabilidad          |
+|-----------------------------|-----------------------------------------------------|----------------------------------|
+| Criterio apertura geométrico fijo θ | mean\_err=3.76% Plummer θ=0.5 (con quad+oct activos) | <0.5% para publicaciones  |
+| Max\_err = 190% (Plummer, θ=0.8) | Partículas del núcleo con MAC demasiado permisivo incluso con multipolos | Inaceptable para núcleos densos |
+| Allgatherv weak scaling     | 47.6% efficiency a 4 ranks                          | >80% para HPC serio              |
+| Block timesteps para N pequeño | 3.3x más lento sin mejora de precisión           | Solo útil para N>10⁴ con alto rango dinámico |
+| Sin OpenMP intra-nodo       | 1 hilo por rank, subutiliza cores modernos          | Multi-core necesario para >N=5000 |
+| Crossover BH > Direct       | Ocurre en N≈4000–5000, no en N≈1000                | Con criterio relativo podría bajar a N≈2000–3000 |
+
+---
+
+## 12. Backlog técnico priorizado
+
+> **Corrección post-Fase 3:** "Cuadrupolo en octree" ya está completamente implementado (`quad:[f64;6]`, `oct:[f64;7]` calculados en `aggregate()`, aplicados en `walk_inner()`). El backlog se actualiza eliminando esa tarea y reordenando prioridades.
+>
+> **Actualización post-Fase 5:** Prioridad 1 (criterio relativo + `multipole_order` + softening consistente entre monopolo y multipolos) está **completada** por las Fases 4 y 5. La Fase 5 añadió además `mac_softening=consistent`, que hace el estimador del MAC relativo coherente con el kernel Plummer, validó multi-step y confirmó que el drift energético está dominado por el integrador, no por el solver. Ver [Fase 5 — Consistencia MAC-softening](2026-04-phase5-energy-mac-consistency.md).
+
+### Prioridad 1 — Criterio de apertura relativo + `multipole_order` configurable (retorno: ALTO)
+- Ficheros: `crates/gadget-ng-tree/src/octree.rs`, `crates/gadget-ng-core/src/config.rs`, `crates/gadget-ng-tree/src/barnes_hut.rs`
+- Impacto: el criterio geométrico fijo θ es la causa raíz del error 3.76% en Plummer; el criterio relativo adapta el MAC por interacción estimando el error de truncamiento multipolar
+- Añadir además `multipole_order: u8` (1=mono, 2=mono+quad, 3=mono+quad+oct) para benchmarks de ablación cuantitativos
+- Implementable sin cambios de estructura de datos del octree
+- Estimación: 3–5 días
+
+### Prioridad 2 — Comunicación punto-a-punto (retorno: CRÍTICO para HPC)
+- Ficheros: `crates/gadget-ng-parallel/src/`
+- Impacto: weak scaling de 47% a >80% a 4 ranks; habilita >16 ranks
+- Requisito: descomposición Peano-Hilbert real, intercambio de halos selectivo
+- Estimación: 3–4 semanas
+
+### Prioridad 3 — OpenMP intra-nodo (retorno: MEDIO)
+- Ficheros: `crates/gadget-ng-tree/src/rayon_bh.rs` (parcialmente implementado)
+- Impacto: paralelismo intra-nodo, reduce wall time serial para N>5000
+- Nota: `rayon_bh.rs` existe pero no está activo por defecto
+- Estimación: 1 semana
+
+### Prioridad 4 — Diagnósticos de timing por fase (completado en Fase 3)
+- Implementado: `timings.json` con desglose comm/gravity/integration
+- Suficiente para benchmarking; GADGET-4 tiene diagnósticos más detallados (stack/fetch time)
+
+### Prioridad 5 — TreePM real (retorno: BAJO para N<10⁴)
+- PM grid ya implementado (`PmSolver`, `TreePmSolver`)
+- El splitting erf/erfc para TreePM ya existe en `gadget-ng-treepm`
+- Validación formal con benchmarks cosmológicos pendiente
+- Estimación: 2 semanas (validación + integración con criterio relativo)
+
+---
+
+## 13. Conclusiones
+
+**¿En qué condiciones gadget-ng ya es físicamente confiable?**
+- Sistemas con N≤500 y distribuciones extendidas: |ΔE/E|<0.5% con BH θ=0.5
+- Validaciones de conservación (Kepler, Plummer virial, colapso frío): cumplidas en Fase 2
+- Modo serial para investigación de N-body pequeño a mediano: funcional
+
+**¿Dónde el Barnes-Hut actual todavía falla?**
+- Distribuciones concentradas (Plummer a<0.3): error máximo >100% para θ≥0.8 **incluso con cuadrupolo y octupolo activos**
+- Para θ=0.5, el error medio ya es 3.76% en Plummer → no aceptable para papers
+- La causa raíz es el **criterio de apertura geométrico fijo θ**, que es demasiado permisivo en el núcleo denso; el cuadrupolo ya está implementado pero no puede compensar un MAC incorrecto
+- Requiere criterio de apertura relativo (Prioridad 1) para sistemas tipo cúmulo estelar
+
+**¿Cuánto escala MPI realmente?**
+- Strong scaling: 89% efficiency a 4 ranks — aceptable para grupos de trabajo pequeños
+- Weak scaling: 47.6% a 4 ranks — inaceptable para HPC serio
+- La limitación es arquitectónica (Allgatherv O(N×ranks))
+- La "paridad no-determinística" es ilusoria: el Allgatherv garantiza bit-exactitud siempre
+
+**¿Qué falta implementar para acercarse técnicamente a GADGET-4?**
+1. Criterio de apertura relativo (`ErrTolForceAcc`) — impacto inmediato en precisión para sistemas densos
+2. `multipole_order` configurable — permite benchmarks de ablación para cuantificar contribución de cada término
+3. Comunicación punto-a-punto SFC — impacto fundamental en escalabilidad
+
+**Próximo paso con mayor retorno:**
+Implementar el criterio de apertura relativo y `multipole_order` configurable. El cuadrupolo y octupolo ya están presentes; lo que falta es un MAC adaptativo que los aproveche correctamente en distribuciones inhomogéneas, y la posibilidad de desactivarlos individualmente para benchmarks cuantitativos de ablación.
+
+---
+
+## Apéndice: Comandos de reproducibilidad
+
+```bash
+# Clonar y compilar
+git clone <repo> gadget-ng && cd gadget-ng
+cargo build --release
+
+# Experimento 1: BH force accuracy
+cargo test -p gadget-ng-physics --test bh_force_accuracy --release -- --nocapture bh_force_accuracy_full_sweep
+python3 experiments/nbody/phase3_gadget4_benchmark/bh_force_error/scripts/plot_bh_accuracy.py
+
+# Experimento 2: Scaling N
+python3 experiments/nbody/phase3_gadget4_benchmark/scaling_n/scripts/run_scaling_n.py
+python3 experiments/nbody/phase3_gadget4_benchmark/scaling_n/scripts/plot_scaling_n.py
+
+# Experimento 3: Block timesteps
+bash experiments/nbody/phase3_gadget4_benchmark/block_timestep_compare/scripts/run_block_compare.sh
+python3 experiments/nbody/phase3_gadget4_benchmark/block_timestep_compare/scripts/analyze_block_compare.py
+python3 experiments/nbody/phase3_gadget4_benchmark/block_timestep_compare/scripts/plot_block_compare.py
+
+# Experimento 4: Paridad serial vs MPI
+bash experiments/nbody/phase3_gadget4_benchmark/serial_vs_mpi_parity/scripts/run_parity.sh
+python3 experiments/nbody/phase3_gadget4_benchmark/serial_vs_mpi_parity/scripts/analyze_parity.py
+
+# Experimento 5: Strong scaling
+bash experiments/nbody/phase3_gadget4_benchmark/mpi_strong_scaling/scripts/run_strong_scaling.sh
+python3 experiments/nbody/phase3_gadget4_benchmark/mpi_strong_scaling/scripts/analyze_strong_scaling.py
+
+# Experimento 6: Weak scaling
+bash experiments/nbody/phase3_gadget4_benchmark/mpi_weak_scaling/scripts/run_weak_scaling.sh
+python3 experiments/nbody/phase3_gadget4_benchmark/mpi_weak_scaling/scripts/analyze_weak_scaling.py
+```
+
+Todos los resultados numéricos son reproducibles desde el mismo commit con los comandos anteriores.

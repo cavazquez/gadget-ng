@@ -8,12 +8,35 @@
 use rayon::prelude::*;
 
 use crate::octree::Octree;
-use gadget_ng_core::{GravitySolver, Vec3};
+use gadget_ng_core::{GravitySolver, MacSoftening, Vec3};
 
 /// Solver Barnes-Hut con paralelismo Rayon en el bucle de partículas.
 #[derive(Debug, Clone, Copy)]
 pub struct RayonBarnesHutGravity {
     pub theta: f64,
+    /// Orden de expansión multipolar: 1=monopolo, 2=mono+quad, 3=mono+quad+oct.
+    pub multipole_order: u8,
+    /// `true` → criterio de apertura relativo (GADGET-4 `ErrTolForceAcc`).
+    pub use_relative_criterion: bool,
+    /// Tolerancia para el criterio relativo.
+    pub err_tol_force_acc: f64,
+    /// `true` → softening Plummer consistente en términos cuadrupolar y octupolar.
+    pub softened_multipoles: bool,
+    /// Softening aplicado al estimador del MAC relativo.
+    pub mac_softening: MacSoftening,
+}
+
+impl Default for RayonBarnesHutGravity {
+    fn default() -> Self {
+        Self {
+            theta: 0.5,
+            multipole_order: 3,
+            use_relative_criterion: false,
+            err_tol_force_acc: 0.005,
+            softened_multipoles: false,
+            mac_softening: MacSoftening::Bare,
+        }
+    }
 }
 
 impl GravitySolver for RayonBarnesHutGravity {
@@ -33,10 +56,15 @@ impl GravitySolver for RayonBarnesHutGravity {
         }
         let tree = Octree::build(global_positions, global_masses);
         let theta = self.theta;
+        let multipole_order = self.multipole_order;
+        let use_relative_criterion = self.use_relative_criterion;
+        let err_tol = self.err_tol_force_acc;
+        let softened_multipoles = self.softened_multipoles;
+        let mac_softening = self.mac_softening;
         out.par_iter_mut()
             .zip(global_indices.par_iter())
             .for_each(|(a, &gi)| {
-                *a = tree.walk_accel(
+                *a = tree.walk_accel_multipole(
                     global_positions[gi],
                     gi,
                     g,
@@ -44,6 +72,11 @@ impl GravitySolver for RayonBarnesHutGravity {
                     theta,
                     global_positions,
                     global_masses,
+                    multipole_order,
+                    use_relative_criterion,
+                    err_tol,
+                    softened_multipoles,
+                    mac_softening,
                 );
             });
     }

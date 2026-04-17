@@ -51,7 +51,93 @@
 //! la contribución del multipolo remoto se acumula directamente en la fuerza
 //! de la partícula evaluada. La propagación jerárquica de este efecto (L2L)
 //! es la recursión del árbol hacia las hojas.
-use gadget_ng_core::Vec3;
+use gadget_ng_core::{MacSoftening, Vec3};
+use std::cell::Cell;
+
+// ── Instrumentación opcional del tree walk ───────────────────────────────────
+//
+// Los contadores `WALK_*` son thread-local y sólo se incrementan cuando
+// `WALK_INSTRUMENT` está activo, para no penalizar las rutas de producción.
+// Los benchmarks de fase 5 los utilizan para reportar:
+//   - `opened_nodes`: número de veces que un nodo interno no satisfizo el MAC
+//   - `leaves_visited`: número de interacciones directas partícula-nodo aplicadas
+//     (hojas u hojas virtuales tras aplicar multipolo)
+//   - `max_depth` / `depth_sum`: profundidad del walk
+thread_local! {
+    static WALK_INSTRUMENT: Cell<bool> = const { Cell::new(false) };
+    static WALK_OPENED: Cell<u64> = const { Cell::new(0) };
+    static WALK_LEAVES: Cell<u64> = const { Cell::new(0) };
+    static WALK_DEPTH_SUM: Cell<u64> = const { Cell::new(0) };
+    static WALK_MAX_DEPTH: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Estadísticas de un recorrido (o conjunto de recorridos) del tree walk.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WalkStats {
+    pub opened_nodes: u64,
+    pub leaves_visited: u64,
+    pub max_depth: u32,
+    pub depth_sum: u64,
+}
+
+impl WalkStats {
+    pub fn mean_depth(&self) -> f64 {
+        if self.leaves_visited == 0 {
+            0.0
+        } else {
+            self.depth_sum as f64 / self.leaves_visited as f64
+        }
+    }
+}
+
+/// Reinicia los contadores del thread actual y activa la instrumentación.
+pub fn walk_stats_begin() {
+    WALK_INSTRUMENT.with(|c| c.set(true));
+    WALK_OPENED.with(|c| c.set(0));
+    WALK_LEAVES.with(|c| c.set(0));
+    WALK_DEPTH_SUM.with(|c| c.set(0));
+    WALK_MAX_DEPTH.with(|c| c.set(0));
+}
+
+/// Lee los contadores del thread actual y desactiva la instrumentación.
+pub fn walk_stats_end() -> WalkStats {
+    let stats = WalkStats {
+        opened_nodes: WALK_OPENED.with(|c| c.get()),
+        leaves_visited: WALK_LEAVES.with(|c| c.get()),
+        max_depth: WALK_MAX_DEPTH.with(|c| c.get()),
+        depth_sum: WALK_DEPTH_SUM.with(|c| c.get()),
+    };
+    WALK_INSTRUMENT.with(|c| c.set(false));
+    stats
+}
+
+#[inline(always)]
+fn walk_instrumented() -> bool {
+    WALK_INSTRUMENT.with(|c| c.get())
+}
+
+#[inline(always)]
+fn record_opened(depth: u32) {
+    WALK_OPENED.with(|c| c.set(c.get() + 1));
+    WALK_MAX_DEPTH.with(|c| {
+        let m = c.get();
+        if depth > m {
+            c.set(depth);
+        }
+    });
+}
+
+#[inline(always)]
+fn record_leaf(depth: u32) {
+    WALK_LEAVES.with(|c| c.set(c.get() + 1));
+    WALK_DEPTH_SUM.with(|c| c.set(c.get() + depth as u64));
+    WALK_MAX_DEPTH.with(|c| {
+        let m = c.get();
+        if depth > m {
+            c.set(depth);
+        }
+    });
+}
 
 pub const NO_CHILD: u32 = u32::MAX;
 
@@ -137,6 +223,101 @@ fn quad_accel(r: Vec3, q: [f64; 6], g: f64) -> Vec3 {
         c1 * qr_x - c2 * r.x,
         c1 * qr_y - c2 * r.y,
         c1 * qr_z - c2 * r.z,
+    )
+}
+
+/// Aceleración cuadrupolar con softening Plummer consistente.
+///
+/// Idéntica a `quad_accel` pero reemplaza `|r|²` por `|r|² + ε²` en todos los denominadores,
+/// haciendo la expansión multipolar consistente con el kernel de softening del monopolo.
+///
+/// Válida para `|r| ~ ε`; para `|r| ≫ ε` converge a `quad_accel` (bare).
+///
+/// Fórmula: `a_α = G · [(Q·r)_α / (|r|²+ε²)^(5/2) − 5/2 · (r^T Q r) · r_α / (|r|²+ε²)^(7/2)]`
+#[inline]
+fn quad_accel_softened(r: Vec3, q: [f64; 6], g: f64, eps2: f64) -> Vec3 {
+    let r2 = r.dot(r) + eps2;  // Plummer softened
+    if r2 < 1e-300 {
+        return Vec3::zero();
+    }
+    let [qxx, qxy, qxz, qyy, qyz, qzz] = q;
+    let r_inv = 1.0 / r2.sqrt();
+    let r5_inv = r_inv * r_inv * r_inv * r_inv * r_inv;
+    let r7_inv = r5_inv * r_inv * r_inv;
+
+    let qr_x = qxx * r.x + qxy * r.y + qxz * r.z;
+    let qr_y = qxy * r.x + qyy * r.y + qyz * r.z;
+    let qr_z = qxz * r.x + qyz * r.y + qzz * r.z;
+    let rqr = qr_x * r.x + qr_y * r.y + qr_z * r.z;
+
+    let c1 = g * r5_inv;
+    let c2 = g * 2.5 * rqr * r7_inv;
+    Vec3::new(
+        c1 * qr_x - c2 * r.x,
+        c1 * qr_y - c2 * r.y,
+        c1 * qr_z - c2 * r.z,
+    )
+}
+
+/// Aceleración octupolar STF con softening Plummer consistente.
+///
+/// Idéntica a `oct_accel` pero usa `|r|² + ε²` en todos los denominadores.
+///
+/// Fórmula: `a^(oct)_α = G · [−O_{αβγ} r_β r_γ / (2(r²+ε²)^(7/2)) + (7/6) O_{βγδ} r_β r_γ r_δ r_α / (r²+ε²)^(9/2)]`
+#[inline]
+fn oct_accel_softened(r: Vec3, o: [f64; 7], g: f64, eps2: f64) -> Vec3 {
+    let r2 = r.dot(r) + eps2;  // Plummer softened
+    if r2 < 1e-300 {
+        return Vec3::zero();
+    }
+    let [o_xxx, o_xxy, o_xxz, o_xyy, o_xyz, o_yyy, o_yzz] = o;
+    let o_xzz = -(o_xxx + o_xyy);
+    let o_yyz = -(o_xxy + o_yyy);
+    let o_zzz = -(o_xxz - o_xxy - o_yyy);
+
+    let (rx, ry, rz) = (r.x, r.y, r.z);
+
+    let orr_x = o_xxx * rx * rx
+        + 2.0 * o_xxy * rx * ry
+        + 2.0 * o_xxz * rx * rz
+        + o_xyy * ry * ry
+        + 2.0 * o_xyz * ry * rz
+        + o_xzz * rz * rz;
+    let orr_y = o_xxy * rx * rx
+        + 2.0 * o_xyy * rx * ry
+        + 2.0 * o_xyz * rx * rz
+        + o_yyy * ry * ry
+        + 2.0 * o_yyz * ry * rz
+        + o_yzz * rz * rz;
+    let orr_z = o_xxz * rx * rx
+        + 2.0 * o_xyz * rx * ry
+        + 2.0 * o_xzz * rx * rz
+        + o_yyz * ry * ry
+        + 2.0 * o_yzz * ry * rz
+        + o_zzz * rz * rz;
+
+    let orrr = o_xxx * rx * rx * rx
+        + 3.0 * o_xxy * rx * rx * ry
+        + 3.0 * o_xxz * rx * rx * rz
+        + 3.0 * o_xyy * rx * ry * ry
+        + 6.0 * o_xyz * rx * ry * rz
+        + 3.0 * o_xzz * rx * rz * rz
+        + o_yyy * ry * ry * ry
+        + 3.0 * o_yyz * ry * ry * rz
+        + 3.0 * o_yzz * ry * rz * rz
+        + o_zzz * rz * rz * rz;
+
+    let r_inv = 1.0 / r2.sqrt();
+    let r7_inv = r_inv.powi(7);
+    let r9_inv = r_inv.powi(9);
+
+    let c1 = -g * 0.5 * r7_inv;
+    let c2 = g * (7.0 / 6.0) * orrr * r9_inv;
+
+    Vec3::new(
+        c1 * orr_x + c2 * rx,
+        c1 * orr_y + c2 * ry,
+        c1 * orr_z + c2 * rz,
     )
 }
 
@@ -423,8 +604,11 @@ impl Octree {
         (mtot, com)
     }
 
-    /// Aceleración gravitatoria sobre la partícula `gi` en `pos_i`
-    /// (Plummer monopolo + corrección cuadrupolar en zona lejana).
+    /// Aceleración gravitatoria sobre la partícula `gi` en `pos_i`.
+    ///
+    /// - `multipole_order`: 1=monopolo, 2=mono+quad, 3=mono+quad+oct (default)
+    /// - `opening_criterion`: `false`=geométrico (θ), `true`=relativo (ErrTolForceAcc)
+    /// - `err_tol`: tolerancia de error para criterio relativo (ignorado si `opening_criterion=false`)
     #[allow(clippy::too_many_arguments)]
     pub fn walk_accel(
         &self,
@@ -436,6 +620,43 @@ impl Octree {
         positions: &[Vec3],
         masses: &[f64],
     ) -> Vec3 {
+        self.walk_accel_multipole(
+            pos_i,
+            gi,
+            g,
+            eps2,
+            theta,
+            positions,
+            masses,
+            3,
+            false,
+            0.005,
+            false,
+            MacSoftening::Bare,
+        )
+    }
+
+    /// Versión completa con control explícito de orden multipolar, criterio de apertura y softening.
+    ///
+    /// - `softened_multipoles`: si `true`, aplica el mismo softening Plummer en los términos
+    ///   cuadrupolar y octupolar (reemplaza `r²` por `r² + ε²` en los denominadores).
+    ///   Si `false` (default), usa los términos bare sin suavizado (compatibilidad hacia atrás).
+    #[allow(clippy::too_many_arguments)]
+    pub fn walk_accel_multipole(
+        &self,
+        pos_i: Vec3,
+        gi: usize,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+        positions: &[Vec3],
+        masses: &[f64],
+        multipole_order: u8,
+        use_relative_criterion: bool,
+        err_tol: f64,
+        softened_multipoles: bool,
+        mac_softening: MacSoftening,
+    ) -> Vec3 {
         use gadget_ng_core::pairwise_accel_plummer;
         self.walk_inner(
             self.root,
@@ -446,6 +667,12 @@ impl Octree {
             theta,
             positions,
             masses,
+            multipole_order,
+            use_relative_criterion,
+            err_tol,
+            softened_multipoles,
+            mac_softening,
+            0,
             pairwise_accel_plummer,
         )
     }
@@ -461,6 +688,12 @@ impl Octree {
         theta: f64,
         positions: &[Vec3],
         masses: &[f64],
+        multipole_order: u8,
+        use_relative_criterion: bool,
+        err_tol: f64,
+        softened_multipoles: bool,
+        mac_softening: MacSoftening,
+        depth: u32,
         pair: fn(Vec3, f64, Vec3, f64, f64) -> Vec3,
     ) -> Vec3 {
         let node = &self.nodes[node_idx as usize];
@@ -473,31 +706,102 @@ impl Octree {
                 if j == gi {
                     return Vec3::zero();
                 }
+                if walk_instrumented() {
+                    record_leaf(depth);
+                }
                 return pair(pos_i, masses[j], positions[j], g, eps2);
             }
             return Vec3::zero();
         }
         let s = 2.0 * node.half_size;
-        // No aproximar por monopolo si la partícula evaluada cae dentro de la celda: el subárbol
-        // puede incluir su propia masa (fuerza propia / doble conteo).
+        // No aproximar si la partícula evaluada cae dentro de la celda (evita fuerza propia).
         let eval_inside_cell = point_in_node_cell(pos_i, node.center, node.half_size);
-        // MAC clásico Barnes-Hut: s / d < theta con d = distancia al centro de masa del nodo.
         let r_com = pos_i - node.com;
         let d_com = r_com.norm();
-        let use_mac = theta > 0.0 && !eval_inside_cell && d_com > 1e-300 && s / d_com < theta;
+
+        let use_mac = if use_relative_criterion {
+            // Criterio relativo (GADGET-4 TypeOfOpeningCriterion=1):
+            // estima el error de truncamiento multipolar y abre el nodo si supera err_tol.
+            // Estimación: |a_quad| / |a_mono| usando la norma de Frobenius del tensor Q.
+            if !eval_inside_cell && d_com > 1e-300 {
+                let a_mono_mag = g * node.mass / (d_com * d_com + eps2);
+                // Norma de Frobenius del tensor cuadrupolar STF (Q es simétrico).
+                let q = &node.quad;
+                let q_frob2 =
+                    q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] + q[4] * q[4] + q[5] * q[5];
+                let q_frob = q_frob2.sqrt();
+                let quad_mag = match mac_softening {
+                    MacSoftening::Bare => {
+                        let d2 = d_com * d_com;
+                        q_frob / (d2 * d2 * d_com)
+                    }
+                    MacSoftening::Consistent => {
+                        // (d² + ε²)^{5/2} = s2^2 * sqrt(s2)
+                        let s2 = d_com * d_com + eps2;
+                        q_frob / (s2 * s2 * s2.sqrt())
+                    }
+                };
+                a_mono_mag > 1e-300 && quad_mag / a_mono_mag < err_tol
+            } else {
+                false
+            }
+        } else {
+            // Criterio geométrico clásico Barnes-Hut: s / d < theta.
+            theta > 0.0 && !eval_inside_cell && d_com > 1e-300 && s / d_com < theta
+        };
+
         if use_mac {
-            // Monopolo (Plummer suavizado) + cuadrupolo + octupolo (M2L implícito).
+            if walk_instrumented() {
+                record_leaf(depth);
+            }
+            // Monopolo (Plummer suavizado).
             let a_mono = pair(pos_i, node.mass, node.com, g, eps2);
-            let a_quad = quad_accel(r_com, node.quad, g);
-            let a_oct = oct_accel(r_com, node.oct, g);
+            // Cuadrupolo y octupolo: se usa la versión suavizada o bare según configuración.
+            let a_quad = if multipole_order >= 2 {
+                if softened_multipoles {
+                    quad_accel_softened(r_com, node.quad, g, eps2)
+                } else {
+                    quad_accel(r_com, node.quad, g)
+                }
+            } else {
+                Vec3::zero()
+            };
+            let a_oct = if multipole_order >= 3 {
+                if softened_multipoles {
+                    oct_accel_softened(r_com, node.oct, g, eps2)
+                } else {
+                    oct_accel(r_com, node.oct, g)
+                }
+            } else {
+                Vec3::zero()
+            };
             return a_mono + a_quad + a_oct;
+        }
+        if walk_instrumented() {
+            record_opened(depth);
         }
         let mut a = Vec3::zero();
         for &ch in &node.children {
             if ch == NO_CHILD {
                 continue;
             }
-            a += self.walk_inner(ch, pos_i, gi, g, eps2, theta, positions, masses, pair);
+            a += self.walk_inner(
+                ch,
+                pos_i,
+                gi,
+                g,
+                eps2,
+                theta,
+                positions,
+                masses,
+                multipole_order,
+                use_relative_criterion,
+                err_tol,
+                softened_multipoles,
+                mac_softening,
+                depth + 1,
+                pair,
+            );
         }
         a
     }

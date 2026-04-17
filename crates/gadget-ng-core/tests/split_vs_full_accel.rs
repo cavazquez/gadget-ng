@@ -14,6 +14,7 @@ fn small_lattice_cfg() -> RunConfig {
             particle_count: 27,
             box_size: 1.0,
             seed: 1,
+            integrator: Default::default(),
         },
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,

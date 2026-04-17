@@ -101,6 +101,7 @@ pub fn build_particles_for_gid_range(
             Ok(full)
         }
         IcKind::Plummer { a } => plummer_ics(n, a, seed, g, lo, hi),
+        IcKind::UniformSphere { r } => uniform_sphere_ics(n, r, seed, lo, hi),
     }
 }
 
@@ -134,7 +135,7 @@ fn plummer_ics(
     // Cada gid → estado LCG bien definido.
     let mut particles: Vec<Particle> = (0..n)
         .map(|gid| {
-            let mut lcg = LcgState(seed.wrapping_add(gid as u64 * 0x9e3779b97f4a7c15));
+            let mut lcg = LcgState(seed.wrapping_add((gid as u64).wrapping_mul(0x9e3779b97f4a7c15)));
             // Radio (inversión de CDF)
             let r = plummer_cdf_inv(lcg.next_f64(), a);
             // Posición aleatoria en la esfera
@@ -226,6 +227,69 @@ fn kinetic_energy(ps: &[Particle]) -> f64 {
 /// Energía potencial analítica de la esfera de Plummer: W = -3πGM²/(32a).
 fn plummer_potential_energy(m: f64, a: f64, g: f64) -> f64 {
     -3.0 * std::f64::consts::PI * g * m * m / (32.0 * a)
+}
+
+// ── Esfera uniforme (colapso frío) ────────────────────────────────────────────
+
+/// Genera N partículas distribuidas uniformemente en una esfera sólida de radio `r`,
+/// todas con velocidad cero (benchmark de colapso frío). El COM se corrige a cero.
+///
+/// Algoritmo: rejection sampling en el cubo [-r, r]³; determinista por `seed` y `gid`.
+/// Compatible con `build_particles_for_gid_range` para MPI.
+///
+/// Nota: usa un generador LCG independiente con salida en [0, 1) para una distribución
+/// uniforme no sesgada en la esfera completa.
+fn uniform_sphere_ics(
+    n: usize,
+    r: f64,
+    seed: u64,
+    lo: usize,
+    hi: usize,
+) -> Result<Vec<Particle>, IcError> {
+    if n == 0 {
+        return Err(IcError::ZeroParticles);
+    }
+    let m_each = 1.0 / n as f64;
+
+    // LCG con salida correcta en [0, 1) usando los 53 bits superiores.
+    // Es independiente de `LcgState` para no alterar las ICs de Plummer.
+    let lcg_next = |state: &mut u64| -> f64 {
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*state >> 11) as f64 * (1.0_f64 / (1u64 << 53) as f64)
+    };
+
+    // Generar TODAS las N posiciones para poder corregir el COM global.
+    let mut particles: Vec<Particle> = (0..n)
+        .map(|gid| {
+            // Semilla única por partícula y reproducible en rangos MPI.
+            let mut s = seed
+                .wrapping_add(gid as u64)
+                .wrapping_mul(0x9e3779b97f4a7c15)
+                .wrapping_add(0xbf58476d1ce4e5b9);
+            // Rejection sampling: genera puntos en [-r,r]³ hasta caer dentro de la esfera.
+            let pos = loop {
+                let x = (lcg_next(&mut s) * 2.0 - 1.0) * r;
+                let y = (lcg_next(&mut s) * 2.0 - 1.0) * r;
+                let z = (lcg_next(&mut s) * 2.0 - 1.0) * r;
+                if x * x + y * y + z * z <= r * r {
+                    break Vec3::new(x, y, z);
+                }
+            };
+            Particle::new(gid, m_each, pos, Vec3::zero())
+        })
+        .collect();
+
+    // Corregir el centro de masa para que esté en el origen.
+    let (com, _vcm) = center_of_mass_vel(&particles);
+    for p in &mut particles {
+        p.position -= com;
+    }
+
+    // Devolver solo el rango [lo, hi).
+    particles.retain(|p| p.global_id >= lo && p.global_id < hi);
+    Ok(particles)
 }
 
 /// Generador LCG rápido y reproducible.

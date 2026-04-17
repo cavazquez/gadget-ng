@@ -1,0 +1,34 @@
+# ── Serial vs MPI Parity — Plummer N=300 ─────────────────────────────────────
+#
+# Configuración para comparar resultados de:
+#   1. Ejecución serial (1 rank)
+#   2. MPI deterministic (performance.deterministic = true)
+#   3. MPI no-deterministic (performance.deterministic = false)
+#
+# Plummer N=300 es suficientemente grande para activar el dominio MPI
+# pero lo bastante pequeño para ejecutar sin MPI también en tiempo razonable.
+#
+# T_cross ≈ 1/(G·ρ)^0.5 ≈ a/(G·M)^0.5 = 1 (con G=1, M=1, a=1)
+
+[simulation]
+particle_count         = 300
+box_size               = 20.0
+dt                     = 0.01
+num_steps              = 100
+softening              = 0.05
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { plummer = { a = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[output]
+snapshot_format   = "jsonl"
+snapshot_interval = 10
+
+[performance]
+deterministic = true

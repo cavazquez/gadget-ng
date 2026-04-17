@@ -15,8 +15,9 @@ pub use gadget_ng_gpu::{GpuDirectGravity, GpuParticlesSoA};
 pub use gpu_bridge::GpuParticlesSoAExt;
 
 pub use config::{
-    CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, SnapshotFormat, SolverKind, TimestepSection,
+    CosmologySection, GravitySection, IcKind, InitialConditionsSection, IntegratorKind,
+    MacSoftening, OpeningCriterion, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, SnapshotFormat, SolverKind, TimestepCriterion, TimestepSection,
     UnitsSection, G_KPC_MSUN_KMPS,
 };
 pub use cosmology::CosmologyParams;

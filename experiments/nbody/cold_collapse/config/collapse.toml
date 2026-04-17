@@ -1,0 +1,38 @@
+# ── Colapso Gravitacional Frío — Cold Collapse ────────────────────────────────
+#
+# Esfera uniforme sólida en reposo. Colapsa libremente bajo su propia gravedad.
+#
+# Parámetros físicos:
+#   G = 1, M_total = 1, R = 1
+#   ρ₀ = 3M/(4πR³) = 3/(4π) ≈ 0.2387
+#
+# Tiempo de caída libre:
+#   T_ff = π·√(R³/(2·G·M)) = π/√2 ≈ 2.221
+#
+# Configuración de integración:
+#   dt = T_ff/100 ≈ 0.02221
+#   num_steps = 500  →  t_total ≈ 5·T_ff
+#   snapshot_interval = 5 → 100 frames para la serie temporal
+
+[simulation]
+particle_count         = 200
+box_size               = 6.0       # > 4R para evitar efectos de borde
+dt                     = 0.02221   # T_ff/100
+num_steps              = 500       # ≈ 5·T_ff
+softening              = 0.05      # ε = 5% de R
+gravitational_constant = 1.0
+seed                   = 99
+
+[initial_conditions]
+kind = { uniform_sphere = { r = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[output]
+snapshot_format   = "jsonl"
+snapshot_interval = 5
+
+[performance]
+deterministic = true

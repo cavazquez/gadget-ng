@@ -15,6 +15,7 @@ fn root_mass_and_com_match_particles() {
             particle_count: 8,
             box_size: 1.0,
             seed: 3,
+            integrator: Default::default(),
         },
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,

@@ -15,6 +15,7 @@ fn lattice_cfg(n: usize) -> RunConfig {
             particle_count: n,
             box_size: 1.0,
             seed: 7,
+            integrator: Default::default(),
         },
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,
@@ -55,7 +56,7 @@ fn bench_bh_serial(c: &mut Criterion) {
         let g = cfg.simulation.gravitational_constant;
         let idx: Vec<usize> = (0..n).collect();
         let mut out = vec![Vec3::zero(); n];
-        let solver = BarnesHutGravity { theta: 0.5 };
+        let solver = BarnesHutGravity { theta: 0.5, ..Default::default() };
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {
                 solver.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut out);
@@ -78,7 +79,7 @@ fn bench_bh_rayon(c: &mut Criterion) {
         let g = cfg.simulation.gravitational_constant;
         let idx: Vec<usize> = (0..n).collect();
         let mut out = vec![Vec3::zero(); n];
-        let solver = RayonBarnesHutGravity { theta: 0.5 };
+        let solver = RayonBarnesHutGravity { theta: 0.5, ..Default::default() };
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {
                 solver.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut out);

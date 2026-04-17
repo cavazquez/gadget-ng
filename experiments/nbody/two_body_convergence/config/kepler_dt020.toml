@@ -1,0 +1,19 @@
+# ── Kepler convergence: dt = T/20 (muy grueso) ───────────────────────────────
+# T_orbit ≈ 2π ≈ 6.2832  →  dt = T/20 ≈ 0.31416
+# 20 pasos por período: integración muy gruesa, error O(dt²) grande.
+
+[simulation]
+particle_count         = 2
+box_size               = 4.0
+dt                     = 0.31416   # T/20
+num_steps              = 20        # exactamente 1 período
+softening              = 1e-6      # mínimo para no contaminar la solución analítica
+gravitational_constant = 1.0
+seed                   = 0
+
+[initial_conditions]
+kind = { two_body = { mass1 = 1.0, mass2 = 1e-6, separation = 1.0 } }
+
+[output]
+snapshot_format   = "jsonl"
+snapshot_interval = 1   # guardar cada paso para E(t) completo

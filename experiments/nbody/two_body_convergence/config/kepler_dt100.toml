@@ -1,0 +1,18 @@
+# ── Kepler convergence: dt = T/100 ───────────────────────────────────────────
+# T_orbit ≈ 2π ≈ 6.2832  →  dt = T/100 ≈ 0.062832
+
+[simulation]
+particle_count         = 2
+box_size               = 4.0
+dt                     = 0.062832  # T/100
+num_steps              = 100
+softening              = 1e-6
+gravitational_constant = 1.0
+seed                   = 0
+
+[initial_conditions]
+kind = { two_body = { mass1 = 1.0, mass2 = 1e-6, separation = 1.0 } }
+
+[output]
+snapshot_format   = "jsonl"
+snapshot_interval = 2

@@ -1,0 +1,4 @@
+reference,compared_to,N,max_dr,mean_dr,max_dv,mean_dv,E_ref,E_alt,dE_rel,dLz_rel,dp_abs
+serial,mpi_2rank_det,300,0.0,0.0,0.0,0.0,-0.7357149443266933,-0.7357149443266933,0.0,0.0,0.0
+serial,mpi_2rank_nondet,300,0.0,0.0,0.0,0.0,-0.7357149443266933,-0.7357149443266933,0.0,0.0,0.0
+serial,mpi_4rank_det,300,0.0,0.0,0.0,0.0,-0.7357149443266933,-0.7357149443266933,0.0,0.0,0.0

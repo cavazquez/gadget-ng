@@ -8,6 +8,8 @@ use thiserror::Error;
 pub enum CliError {
     #[error("configuración: {0}")]
     Config(Box<FigmentError>),
+    #[error("configuración inválida: {0}")]
+    InvalidConfig(String),
     #[error("I/O {path}: {source}")]
     Io {
         path: PathBuf,

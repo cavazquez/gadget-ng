@@ -50,6 +50,7 @@ fn distributed_tree_serial_kinetic_bounded() {
             particle_count: 27,
             box_size: 1.0,
             seed: 99,
+            integrator: Default::default(),
         },
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,
@@ -135,6 +136,7 @@ fn halo_exchange_serial_returns_empty() {
             num_steps: 1,
             softening: 0.05,
             gravitational_constant: 1.0,
+            integrator: Default::default(),
         },
         initial_conditions: InitialConditionsSection {
             kind: IcKind::Lattice,
