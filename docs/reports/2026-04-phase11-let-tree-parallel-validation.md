@@ -298,3 +298,17 @@ no de optimizaciones adicionales del walk.
 ---
 
 *Generado: Abril 2026 — gadget-ng Fase 11*
+
+---
+
+## Continuación: Fase 12
+
+Fase 12 continúa directamente desde el diagnóstico final de Fase 11:
+el cuello de botella para escalar a cluster real es el **volumen de datos LET
+enviados/recibidos por rank**, no el walk ni el build del LetTree.
+
+**Objetivo de Fase 12**: reducir el volumen de comunicación LET introduciendo
+un parámetro `let_theta_export_factor` que permite exportar nodos más gruesos
+(theta_export = factor × theta_walk), midiendo el tradeoff bytes/precisión física.
+
+Ver: [`docs/reports/2026-04-phase12-let-communication-reduction.md`](2026-04-phase12-let-communication-reduction.md)

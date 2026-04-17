@@ -70,6 +70,10 @@ struct HpcStepStats {
     let_tree_nodes: usize,
     /// `true` si el walk del `LetTree` se ejecutó con Rayon (feature `simd`).
     let_tree_parallel: bool,
+    /// Máximo de nodos LET exportados a un único rank remoto en este paso.
+    max_let_nodes_per_rank: usize,
+    /// Número total de nodos del árbol local (para calcular prune ratio).
+    local_tree_nodes: usize,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -96,6 +100,13 @@ struct HpcTimingsAggregate {
     mean_let_tree_nodes: f64,
     /// `true` si el walk del `LetTree` usó Rayon (feature `simd`).
     let_tree_parallel: bool,
+    /// Media del máximo de nodos LET por rank remoto.
+    mean_max_let_nodes_per_rank: f64,
+    /// Media del número de nodos del árbol local.
+    mean_local_tree_nodes: f64,
+    /// Ratio de poda: `let_nodes_exported / (local_tree_nodes * (P-1))`.
+    /// Mide qué fracción del árbol se exporta en promedio por rank remoto.
+    mean_export_prune_ratio: f64,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -889,9 +900,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     this_grav += build_ns;
 
                     // 3. Exportar y empaquetar nodos LET (cómputo → this_grav).
+                    // Calcular theta_export: factor=0.0 significa "usa theta" (retrocompat.).
+                    let f_export = cfg.performance.let_theta_export_factor;
+                    let theta_export = if f_export > 0.0 { theta * f_export } else { theta };
+
                     let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
                     let mut total_let_exported = 0usize;
                     let mut total_bytes_sent = 0usize;
+                    let mut max_let_per_rank = 0usize;
                     let mut export_ns_eval = 0u64;
                     let mut pack_ns_eval = 0u64;
                     for r in 0..size {
@@ -900,10 +916,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         if ra.len() < 6 { continue; }
                         let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
                         let t_exp = Instant::now();
-                        let let_nodes = tree.export_let(target_aabb, theta);
+                        let let_nodes = tree.export_let(target_aabb, theta_export);
                         export_ns_eval += t_exp.elapsed().as_nanos() as u64;
-                        if !let_nodes.is_empty() {
-                            total_let_exported += let_nodes.len();
+                        let n_exp = let_nodes.len();
+                        if n_exp > 0 {
+                            total_let_exported += n_exp;
+                            if n_exp > max_let_per_rank { max_let_per_rank = n_exp; }
                             let t_pack = Instant::now();
                             sends[r] = pack_let_nodes(&let_nodes);
                             pack_ns_eval += t_pack.elapsed().as_nanos() as u64;
@@ -915,6 +933,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     this_grav += export_ns_eval + pack_ns_eval;
                     hpc.let_nodes_exported += total_let_exported;
                     hpc.bytes_sent += total_bytes_sent;
+                    hpc.max_let_nodes_per_rank += max_let_per_rank;
+                    hpc.local_tree_nodes += tree.node_count();
 
                     // 4. Alltoallv LET + walk local (overlap o bloqueante).
                     if use_overlap {
@@ -1095,6 +1115,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_hpc.let_tree_walk_ns += hpc.let_tree_walk_ns;
             acc_hpc.let_tree_nodes += hpc.let_tree_nodes;
             acc_hpc.let_tree_parallel |= hpc.let_tree_parallel;
+            acc_hpc.max_let_nodes_per_rank += hpc.max_let_nodes_per_rank;
+            acc_hpc.local_tree_nodes += hpc.local_tree_nodes;
             steps_run += 1;
 
             write_diagnostic_line(
@@ -1133,6 +1155,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 mean_let_tree_walk_s: acc_hpc.let_tree_walk_ns as f64 * ns2s / n,
                 mean_let_tree_nodes: acc_hpc.let_tree_nodes as f64 / n,
                 let_tree_parallel: acc_hpc.let_tree_parallel,
+                mean_max_let_nodes_per_rank: acc_hpc.max_let_nodes_per_rank as f64 / n,
+                mean_local_tree_nodes: acc_hpc.local_tree_nodes as f64 / n,
+                mean_export_prune_ratio: {
+                    let denom = acc_hpc.local_tree_nodes as f64 * (size as f64 - 1.0).max(1.0);
+                    if denom > 0.0 {
+                        acc_hpc.let_nodes_exported as f64 / denom
+                    } else {
+                        0.0
+                    }
+                },
             });
         }
     } else if use_sfc {

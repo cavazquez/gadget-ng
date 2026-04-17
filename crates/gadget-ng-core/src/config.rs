@@ -375,6 +375,26 @@ pub struct PerformanceSection {
     /// Default: 8.
     #[serde(default = "default_let_tree_leaf_max")]
     pub let_tree_leaf_max: usize,
+
+    /// Factor multiplicativo sobre `theta` para la exportación LET.
+    ///
+    /// Controla qué tan agresivamente se poda el árbol local al exportar nodos LET
+    /// hacia cada rank remoto. El `theta` efectivo de exportación es:
+    ///
+    /// ```text
+    /// theta_export = theta * let_theta_export_factor   (si let_theta_export_factor > 0)
+    /// theta_export = theta                              (si let_theta_export_factor == 0, default)
+    /// ```
+    ///
+    /// - `0.0` (default): usa el mismo `theta` que el walk. Sin cambio respecto a Fases 9-11.
+    /// - `> 1.0`: exporta nodos más gruesos → menos nodos, menos bytes enviados, mayor
+    ///   error de truncación en el receptor. Ejemplo: `1.4` con `theta = 0.5` → `theta_export = 0.7`.
+    /// - `< 1.0`: más conservador que el walk (más nodos exportados, mayor precisión; útil
+    ///   solo para debug o validación).
+    ///
+    /// Solo tiene efecto cuando `use_sfc = true`.
+    #[serde(default)]
+    pub let_theta_export_factor: f64,
 }
 
 fn default_deterministic() -> bool {
@@ -420,6 +440,7 @@ impl Default for PerformanceSection {
             use_let_tree: default_use_let_tree(),
             let_tree_threshold: default_let_tree_threshold(),
             let_tree_leaf_max: default_let_tree_leaf_max(),
+            let_theta_export_factor: 0.0,
         }
     }
 }

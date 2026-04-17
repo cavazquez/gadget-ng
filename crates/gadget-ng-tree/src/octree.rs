@@ -892,6 +892,15 @@ pub fn unpack_let_nodes(buf: &[f64]) -> Vec<RemoteMultipoleNode> {
 }
 
 impl Octree {
+    /// Número total de nodos en el árbol (internos + hojas).
+    ///
+    /// Útil para calcular el ratio de poda en `export_let`:
+    /// `prune_ratio = let_nodes_exported / (node_count() * (P - 1))`.
+    #[inline]
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// Exporta nodos LET para un rango receptor cuyas partículas viven en `target_aabb`.
     ///
     /// Para cada nodo del árbol local, verifica si satisface el MAC geométrico
