@@ -26,7 +26,33 @@
 use crate::octree::{
     oct_accel_softened, outer3_tf, outer_traceless, quad_accel_softened, RemoteMultipoleNode,
 };
+#[cfg(feature = "simd")]
+use crate::rmn_soa::RmnSoa;
 use gadget_ng_core::Vec3;
+
+// ── Profiling de hojas (atómicos globales) ────────────────────────────────────
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+static LT_PROF_ACTIVE: AtomicBool = AtomicBool::new(false);
+static LT_LEAF_CALLS: AtomicU64 = AtomicU64::new(0);
+static LT_LEAF_RMN_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Reinicia los contadores de profiling de hojas (todos los threads).
+pub fn let_tree_prof_begin() {
+    LT_LEAF_CALLS.store(0, Ordering::Relaxed);
+    LT_LEAF_RMN_COUNT.store(0, Ordering::Relaxed);
+    LT_PROF_ACTIVE.store(true, Ordering::Release);
+}
+
+/// Lee y desactiva los contadores de profiling.
+/// Devuelve `(leaf_calls, leaf_rmn_count)`.
+pub fn let_tree_prof_end() -> (u64, u64) {
+    LT_PROF_ACTIVE.store(false, Ordering::Release);
+    let calls = LT_LEAF_CALLS.load(Ordering::Relaxed);
+    let rmn   = LT_LEAF_RMN_COUNT.load(Ordering::Relaxed);
+    (calls, rmn)
+}
 
 /// Valor centinela: sin hijo en esta dirección.
 const NO_LET_CHILD: u32 = u32::MAX;
@@ -66,7 +92,14 @@ pub struct LetNode {
 pub struct LetTree {
     nodes: Vec<LetNode>,
     root: u32,
+    /// Almacenamiento AoS de RMNs en hojas (siempre presente; usado durante build
+    /// y como fuente para `leaf_soa`; el walk lo lee directamente sin simd).
+    #[allow(dead_code)]
     leaf_storage: Vec<RemoteMultipoleNode>,
+    /// Almacenamiento SoA de RMNs en hojas — activo con feature `simd`.
+    /// Permite kernel fusionado con auto-vectorización AVX2 en `apply_leaf_soa`.
+    #[cfg(feature = "simd")]
+    leaf_soa: RmnSoa,
 }
 
 unsafe impl Sync for LetTree {}
@@ -85,6 +118,8 @@ impl LetTree {
                 nodes: Vec::new(),
                 root: NO_LET_CHILD,
                 leaf_storage: Vec::new(),
+                #[cfg(feature = "simd")]
+                leaf_soa: RmnSoa::default(),
             };
         }
 
@@ -99,10 +134,17 @@ impl LetTree {
         };
         let root = ctx.build_node(&indices, center, half_size, 0);
 
+        // Con feature "simd" construimos el SoA de leaf_storage para el kernel
+        // fusionado con auto-vectorización AVX2.
+        #[cfg(feature = "simd")]
+        let leaf_soa = RmnSoa::from_slice(&ctx.leaf_storage);
+
         Self {
             nodes: ctx.nodes,
             root,
             leaf_storage: ctx.leaf_storage,
+            #[cfg(feature = "simd")]
+            leaf_soa,
         }
     }
 
@@ -136,6 +178,9 @@ impl LetTree {
 
         // Nodo hoja: aplicar cada RMN individualmente (exacto).
         if node.leaf_count > 0 {
+            #[cfg(feature = "simd")]
+            return self.apply_leaf_soa(node, pos_i, g, eps2);
+            #[cfg(not(feature = "simd"))]
             return self.apply_leaf(node, pos_i, g, eps2);
         }
 
@@ -160,8 +205,15 @@ impl LetTree {
         acc
     }
 
+    /// Path AoS: utilizado sin feature `simd` y como referencia de validación.
+    #[cfg_attr(feature = "simd", allow(dead_code))]
     #[inline]
     fn apply_leaf(&self, node: &LetNode, pos_i: Vec3, g: f64, eps2: f64) -> Vec3 {
+        if LT_PROF_ACTIVE.load(Ordering::Relaxed) {
+            LT_LEAF_CALLS.fetch_add(1, Ordering::Relaxed);
+            LT_LEAF_RMN_COUNT.fetch_add(node.leaf_count as u64, Ordering::Relaxed);
+        }
+
         let mut acc = Vec3::zero();
         let start = node.leaf_start as usize;
         let end = start + node.leaf_count as usize;
@@ -175,6 +227,22 @@ impl LetTree {
             acc += oct_accel_softened(r, rmn.oct, g, eps2);
         }
         acc
+    }
+
+    /// Path SoA con kernel fusionado (feature `simd`): mono+quad+oct en un solo
+    /// recorrido con una sola llamada a `sqrt` por nodo j.
+    /// Auto-vectorizable con AVX2+FMA en el loop monopolar.
+    #[cfg(feature = "simd")]
+    #[inline]
+    fn apply_leaf_soa(&self, node: &LetNode, pos_i: Vec3, g: f64, eps2: f64) -> Vec3 {
+        if LT_PROF_ACTIVE.load(Ordering::Relaxed) {
+            LT_LEAF_CALLS.fetch_add(1, Ordering::Relaxed);
+            LT_LEAF_RMN_COUNT.fetch_add(node.leaf_count as u64, Ordering::Relaxed);
+        }
+
+        let start = node.leaf_start as usize;
+        let len   = node.leaf_count as usize;
+        self.leaf_soa.accel_range(pos_i, start, len, g, eps2)
     }
 }
 

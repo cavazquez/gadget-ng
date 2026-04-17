@@ -27,3 +27,7 @@ experiments/**/runs/**
 # Salidas de simulación en la raíz del proyecto
 runs/
 __pycache__
+
+# Phase 14 binarios
+experiments/nbody/phase14_soa_simd/gadget-ng-baseline
+experiments/nbody/phase14_soa_simd/gadget-ng-soa-simd

@@ -80,6 +80,16 @@ struct HpcStepStats {
     domain_migration_ns: u64,
     /// Partículas locales tras migración (count al inicio del paso).
     local_particle_count: usize,
+    /// Tiempo en LetTree::apply_leaf total (ns) — profiling P14.
+    apply_leaf_ns: u64,
+    /// Total de RMNs procesados en hojas del LetTree — profiling P14.
+    apply_leaf_rmn_count: u64,
+    /// Número de llamadas a apply_leaf — profiling P14.
+    apply_leaf_calls: u64,
+    /// Tiempo en evaluaciones de nodos LET con RmnSoa (SoA path) (ns) — P14.
+    rmn_soa_pack_ns: u64,
+    /// Tiempo en accel_from_let_soa (flat LET SoA path) (ns) — P14.
+    accel_from_let_soa_ns: u64,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -124,6 +134,18 @@ struct HpcTimingsAggregate {
     particle_imbalance_ratio: f64,
     /// Curva SFC usada: "morton" o "hilbert".
     sfc_kind: String,
+    /// Tiempo medio en LetTree::apply_leaf por paso (s) — profiling P14.
+    mean_apply_leaf_s: f64,
+    /// Media de RMNs procesados en hojas por paso — profiling P14.
+    mean_apply_leaf_rmn_count: f64,
+    /// Media de llamadas a apply_leaf por paso — profiling P14.
+    mean_apply_leaf_calls: f64,
+    /// Tiempo medio de empaquetado AoS→SoA (RmnSoa::from_slice) por paso (s) — P14.
+    mean_rmn_soa_pack_s: f64,
+    /// Tiempo medio en accel_from_let_soa (flat LET SoA) por paso (s) — P14.
+    mean_accel_from_let_soa_s: f64,
+    /// Si el path SoA está activo (feature simd).
+    soa_simd_active: bool,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -1047,6 +1069,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             hpc.let_tree_nodes += let_tree.node_count();
                             this_grav += ltb_ns;
 
+                            gadget_ng_tree::let_tree_prof_begin();
                             let t_ltw = Instant::now();
                             #[cfg(feature = "simd")]
                             {
@@ -1067,12 +1090,39 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             }
                             let ltw_ns = t_ltw.elapsed().as_nanos() as u64;
                             hpc.let_tree_walk_ns += ltw_ns;
+                            let (leaf_calls, leaf_rmn) = gadget_ng_tree::let_tree_prof_end();
+                            hpc.apply_leaf_calls += leaf_calls;
+                            hpc.apply_leaf_rmn_count += leaf_rmn;
                             this_grav += ltw_ns;
                         } else {
-                            for (li, a_out) in acc.iter_mut().enumerate() {
-                                let a_remote =
-                                    accel_from_let(parts[li].position, &remote_nodes, g, eps2);
-                                *a_out = local_accels[li] + a_remote;
+                            // Path flat LET: con feature "simd" usa RmnSoa para kernel fusionado.
+                            #[cfg(feature = "simd")]
+                            {
+                                let t_pack = Instant::now();
+                                let soa = gadget_ng_tree::RmnSoa::from_slice(&remote_nodes);
+                                hpc.rmn_soa_pack_ns += t_pack.elapsed().as_nanos() as u64;
+
+                                let t_soa = Instant::now();
+                                use rayon::prelude::*;
+                                acc.par_iter_mut().enumerate().for_each(|(li, a_out)| {
+                                    *a_out = local_accels[li]
+                                        + gadget_ng_tree::accel_from_let_soa(
+                                            parts[li].position,
+                                            &soa,
+                                            g,
+                                            eps2,
+                                        );
+                                });
+                                hpc.accel_from_let_soa_ns +=
+                                    t_soa.elapsed().as_nanos() as u64;
+                            }
+                            #[cfg(not(feature = "simd"))]
+                            {
+                                for (li, a_out) in acc.iter_mut().enumerate() {
+                                    let a_remote =
+                                        accel_from_let(parts[li].position, &remote_nodes, g, eps2);
+                                    *a_out = local_accels[li] + a_remote;
+                                }
                             }
                         }
                         let apply_ns = t_apply.elapsed().as_nanos() as u64;
@@ -1151,6 +1201,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_hpc.let_tree_parallel |= hpc.let_tree_parallel;
             acc_hpc.max_let_nodes_per_rank += hpc.max_let_nodes_per_rank;
             acc_hpc.local_tree_nodes += hpc.local_tree_nodes;
+            acc_hpc.apply_leaf_ns += hpc.apply_leaf_ns;
+            acc_hpc.apply_leaf_rmn_count += hpc.apply_leaf_rmn_count;
+            acc_hpc.apply_leaf_calls += hpc.apply_leaf_calls;
+            acc_hpc.rmn_soa_pack_ns += hpc.rmn_soa_pack_ns;
+            acc_hpc.accel_from_let_soa_ns += hpc.accel_from_let_soa_ns;
             steps_run += 1;
 
             write_diagnostic_line(
@@ -1211,6 +1266,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     SfcKind::Morton => "morton".to_string(),
                     SfcKind::Hilbert => "hilbert".to_string(),
                 },
+                mean_apply_leaf_s: acc_hpc.apply_leaf_ns as f64 * ns2s / n,
+                mean_apply_leaf_rmn_count: acc_hpc.apply_leaf_rmn_count as f64 / n,
+                mean_apply_leaf_calls: acc_hpc.apply_leaf_calls as f64 / n,
+                mean_rmn_soa_pack_s: acc_hpc.rmn_soa_pack_ns as f64 * ns2s / n,
+                mean_accel_from_let_soa_s: acc_hpc.accel_from_let_soa_ns as f64 * ns2s / n,
+                #[cfg(feature = "simd")]
+                soa_simd_active: true,
+                #[cfg(not(feature = "simd"))]
+                soa_simd_active: false,
             });
         }
     } else if use_sfc {

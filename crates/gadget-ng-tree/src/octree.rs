@@ -977,6 +977,16 @@ pub fn accel_from_let(pos_i: Vec3, let_nodes: &[RemoteMultipoleNode], g: f64, ep
     acc
 }
 
+/// Variante SoA de [`accel_from_let`]: usa el kernel fusionado mono+quad+oct de
+/// [`RmnSoa`] con un solo `sqrt` por nodo y auto-vectorización AVX2+FMA.
+///
+/// Construir el [`RmnSoa`] tiene un coste O(N) pequeño pero amortizable cuando
+/// se reutiliza el mismo lote para muchas partículas locales.
+#[cfg(feature = "simd")]
+pub fn accel_from_let_soa(pos_i: Vec3, soa: &crate::rmn_soa::RmnSoa, g: f64, eps2: f64) -> Vec3 {
+    soa.accel(pos_i, g, eps2)
+}
+
 fn bounding_cube(pos: &[Vec3]) -> (Vec3, f64) {
     let mut min_x = pos[0].x;
     let mut max_x = pos[0].x;

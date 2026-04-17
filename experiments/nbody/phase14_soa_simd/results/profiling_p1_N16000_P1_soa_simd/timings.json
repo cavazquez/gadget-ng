@@ -1,0 +1,13 @@
+{
+  "steps": 10,
+  "total_particles": 16000,
+  "total_wall_s": 26.435154917,
+  "total_comm_s": 0.002306474,
+  "total_gravity_s": 26.428004817,
+  "total_integration_s": 0.004088253999999125,
+  "mean_step_wall_s": 2.6434399545000002,
+  "mean_comm_s": 0.00023064740000000003,
+  "mean_gravity_s": 2.6428004817,
+  "comm_fraction": 0.00008725274792316074,
+  "gravity_fraction": 0.9997580906655695
+}

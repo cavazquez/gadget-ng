@@ -169,6 +169,8 @@ mod tests {
             gravity: GravitySection::default(),
             performance: PerformanceSection::default(),
             timestep: crate::config::TimestepSection::default(),
+            cosmology: crate::config::CosmologySection::default(),
+            units: crate::config::UnitsSection::default(),
         }
     }
 
