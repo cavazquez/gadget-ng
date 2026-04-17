@@ -335,6 +335,15 @@ pub struct PerformanceSection {
     /// de dominio a costa de mayor comunicación y memoria local.
     #[serde(default = "default_halo_factor")]
     pub halo_factor: f64,
+
+    /// Si `true`, fuerza el path `Allgather O(N·P)` incluso en modo multirank.
+    ///
+    /// Por defecto (`false`), en modo multirank con solver BarnesHut sin cosmología
+    /// ni integrador jerárquico, el motor usa SFC + LET (comunicación selectiva).
+    /// Activar este flag es útil para comparar contra el baseline Allgather o para
+    /// validación paper-grade del resultado serial.
+    #[serde(default)]
+    pub force_allgather_fallback: bool,
 }
 
 fn default_deterministic() -> bool {
@@ -359,6 +368,7 @@ impl Default for PerformanceSection {
             halo_factor: default_halo_factor(),
             use_sfc: false,
             sfc_rebalance_interval: default_sfc_rebalance(),
+            force_allgather_fallback: false,
         }
     }
 }

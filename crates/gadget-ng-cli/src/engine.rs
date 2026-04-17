@@ -19,7 +19,7 @@ use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, Sla
 use gadget_ng_pm::PmSolver;
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
-use gadget_ng_tree::{BarnesHutGravity, Octree};
+use gadget_ng_tree::{accel_from_let, pack_let_nodes, unpack_let_nodes, BarnesHutGravity, Octree};
 use gadget_ng_treepm::TreePmSolver;
 use std::fs;
 use std::fs::File;
@@ -299,7 +299,6 @@ fn compute_forces_local_tree(
     if parts.is_empty() {
         return;
     }
-    // Combinar posiciones y masas: [locales, halos]
     let all_pos: Vec<Vec3> = parts
         .iter()
         .chain(halos.iter())
@@ -307,10 +306,48 @@ fn compute_forces_local_tree(
         .collect();
     let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
-    // Solo se computan fuerzas para los índices locales (0..parts.len()).
-    // El índice LOCAL `li` coincide con `particle_idx` en las hojas del árbol local.
     for (li, acc_out) in out.iter_mut().enumerate() {
         *acc_out = tree.walk_accel(parts[li].position, li, g, eps2, theta, &all_pos, &all_mass);
+    }
+}
+
+/// Calcula aceleraciones para `parts` usando árbol local + nodos LET remotos.
+///
+/// 1. Construye un árbol con solo las partículas locales.
+/// 2. Para cada partícula, aplica la fuerza del árbol local (con auto-exclusión).
+/// 3. Suma la contribución de los nodos multipolares remotos (`remote_let_bufs`,
+///    buffers wire en `f64` empaquetados con [`pack_let_nodes`]).
+///
+/// Esta función implementa el kernel SFC+LET de Fase 8.
+fn compute_forces_sfc_let(
+    parts: &[Particle],
+    remote_let_bufs: &[Vec<f64>],
+    theta: f64,
+    g: f64,
+    eps2: f64,
+    out: &mut [Vec3],
+) {
+    debug_assert_eq!(parts.len(), out.len());
+    if parts.is_empty() {
+        return;
+    }
+    let all_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+    let all_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+    let tree = Octree::build(&all_pos, &all_mass);
+
+    // Desempaquetar nodos LET remotos (verificar múltiplo de RMN_FLOATS antes).
+    let mut remote_nodes = Vec::new();
+    for buf in remote_let_bufs {
+        if !buf.is_empty() {
+            remote_nodes.extend(unpack_let_nodes(buf));
+        }
+    }
+
+    for (li, acc_out) in out.iter_mut().enumerate() {
+        let a_local =
+            tree.walk_accel(parts[li].position, li, g, eps2, theta, &all_pos, &all_mass);
+        let a_remote = accel_from_let(parts[li].position, &remote_nodes, g, eps2);
+        *acc_out = a_local + a_remote;
     }
 }
 
@@ -428,19 +465,43 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let mut global_mass: Vec<f64> = Vec::new();
 
     // Árbol distribuido: solo para BarnesHut sin integrador jerárquico ni cosmología.
-    let use_dtree = cfg.performance.use_distributed_tree
-        && cfg.gravity.solver == SolverKind::BarnesHut
+    let is_barnes_hut_eligible = cfg.gravity.solver == SolverKind::BarnesHut
         && !cfg.timestep.hierarchical
         && !cfg.cosmology.enabled;
-    // SFC: requiere use_distributed_tree + use_sfc.
-    let use_sfc = use_dtree && cfg.performance.use_sfc;
+
+    // SFC+LET es el path por defecto para multirank + BarnesHut.
+    // Se desactiva solo con `force_allgather_fallback = true` (legacy) o tamaño 1.
+    let use_sfc_let = is_barnes_hut_eligible
+        && rt.size() > 1
+        && !cfg.performance.force_allgather_fallback;
+
+    // Path slab legacy: use_distributed_tree + !use_sfc (retrocompatible).
+    let use_dtree = !use_sfc_let
+        && cfg.performance.use_distributed_tree
+        && is_barnes_hut_eligible
+        && !cfg.performance.use_sfc;
+    // Path SFC legacy (halos de partículas): use_distributed_tree + use_sfc.
+    let use_sfc = !use_sfc_let
+        && cfg.performance.use_distributed_tree
+        && is_barnes_hut_eligible
+        && cfg.performance.use_sfc;
+
     let sfc_rebalance = cfg.performance.sfc_rebalance_interval;
-    if use_sfc {
+
+    if use_sfc_let {
         rt.root_eprintln(
-            "[gadget-ng] Árbol distribuido SFC (Morton Z-order 3D, balanceo dinámico).",
+            "[gadget-ng] SFC+LET activado: árbol distribuido con Locally Essential Trees (Fase 8).",
+        );
+    } else if use_sfc {
+        rt.root_eprintln(
+            "[gadget-ng] Árbol distribuido SFC (Morton Z-order 3D, halos de partículas).",
         );
     } else if use_dtree {
         rt.root_eprintln("[gadget-ng] Árbol distribuido activo (halos punto-a-punto en x).");
+    } else if cfg.performance.force_allgather_fallback && rt.size() > 1 {
+        rt.root_eprintln(
+            "[gadget-ng] ADVERTENCIA: force_allgather_fallback=true → comunicación O(N·P).",
+        );
     }
 
     // Estado cosmológico: factor de escala `a` y parámetros (si está habilitado).
@@ -658,11 +719,142 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
-    } else if use_sfc {
-        // ── Árbol distribuido SFC: Morton Z-order 3D, balanceo dinámico ───────
-        let box_size = cfg.simulation.box_size;
+    } else if use_sfc_let {
+        // ── SFC + LET: Fase 8 — comunicación selectiva sin Allgather ─────────
+        //
+        // Cada rango construye un árbol local y exporta nodos multipolares (LET)
+        // para los demás rangos usando el criterio MAC geométrico. Los nodos LET
+        // se intercambian por Alltoallv y se aplican como corrección remota a las
+        // fuerzas locales.
+        use gadget_ng_parallel::sfc::global_bbox;
+
+        let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-        let mut sfc_decomp = SfcDecomposition::build(&all_pos, box_size, rt.size());
+        let mut sfc_decomp = SfcDecomposition::build_with_bbox(
+            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+        );
+        let size = rt.size() as usize;
+        let my_rank = rt.rank() as usize;
+
+        for step in start_step..=cfg.simulation.num_steps {
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
+
+            // Rebalanceo dinámico con bbox global consistente.
+            let do_rebalance =
+                sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+            if do_rebalance {
+                let t_rb = Instant::now();
+                let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+                let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+                sfc_decomp = SfcDecomposition::build_with_bbox(
+                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+                );
+                this_comm += t_rb.elapsed().as_nanos() as u64;
+            }
+
+            // Migración de partículas al rango correcto.
+            let t_domain = Instant::now();
+            rt.exchange_domain_sfc(&mut local, &sfc_decomp);
+            this_comm += t_domain.elapsed().as_nanos() as u64;
+            scratch.resize(local.len(), Vec3::zero());
+
+            // Función de evaluación de fuerza SFC+LET.
+            let sfc_snap = sfc_decomp.clone();
+            let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
+                // Allgather de AABBs locales ajustadas (6 f64 × P, barato).
+                let t_comm = Instant::now();
+                let my_aabb: Vec<f64> = if parts.is_empty() {
+                    vec![
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                    ]
+                } else {
+                    let xlo = parts.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
+                    let xhi = parts
+                        .iter()
+                        .map(|p| p.position.x)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let ylo = parts.iter().map(|p| p.position.y).fold(f64::INFINITY, f64::min);
+                    let yhi = parts
+                        .iter()
+                        .map(|p| p.position.y)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let zlo = parts.iter().map(|p| p.position.z).fold(f64::INFINITY, f64::min);
+                    let zhi = parts
+                        .iter()
+                        .map(|p| p.position.z)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    vec![xlo, xhi, ylo, yhi, zlo, zhi]
+                };
+                let all_aabbs = rt.allgather_f64(&my_aabb);
+
+                // Construir árbol local con partículas de este rango.
+                let all_pos_l: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                let all_mass_l: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                let tree = Octree::build(&all_pos_l, &all_mass_l);
+
+                // Exportar nodos LET para cada rango remoto y empaquetar.
+                let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+                for r in 0..size {
+                    if r == my_rank {
+                        continue;
+                    }
+                    let ra = &all_aabbs[r];
+                    if ra.len() < 6 {
+                        continue;
+                    }
+                    let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
+                    let let_nodes = tree.export_let(target_aabb, theta);
+                    if !let_nodes.is_empty() {
+                        sends[r] = pack_let_nodes(&let_nodes);
+                    }
+                }
+                this_comm += t_comm.elapsed().as_nanos() as u64;
+
+                // Intercambio Alltoallv de nodos LET.
+                let t_comm2 = Instant::now();
+                let received = rt.alltoallv_f64(&sends);
+                this_comm += t_comm2.elapsed().as_nanos() as u64;
+
+                // Calcular fuerzas: árbol local + nodos remotos.
+                let t_grav = Instant::now();
+                compute_forces_sfc_let(parts, &received, theta, g, eps2, acc);
+                this_grav += t_grav.elapsed().as_nanos() as u64;
+
+                let _ = sfc_snap.n_ranks(); // evitar unused warning
+            };
+
+            match integrator_kind {
+                IntegratorKind::Leapfrog => {
+                    leapfrog_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+                IntegratorKind::Yoshida4 => {
+                    yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+                }
+            }
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
+            maybe_checkpoint!(step, None);
+            maybe_snap_frame!(step);
+        }
+    } else if use_sfc {
+        // ── Árbol distribuido SFC legacy: Morton Z-order 3D, halos de partículas
+        use gadget_ng_parallel::sfc::global_bbox;
+
+        let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+        let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+        let mut sfc_decomp = SfcDecomposition::build_with_bbox(
+            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+        );
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -671,8 +863,13 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let do_rebalance =
                 sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
             if do_rebalance {
+                let t_rb = Instant::now();
+                let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let all_pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                sfc_decomp = SfcDecomposition::build(&all_pos_loc, box_size, rt.size());
+                sfc_decomp = SfcDecomposition::build_with_bbox(
+                    &all_pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(),
+                );
+                this_comm += t_rb.elapsed().as_nanos() as u64;
             }
 
             let hw = sfc_decomp.halo_width(cfg.performance.halo_factor);

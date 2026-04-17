@@ -2,7 +2,7 @@ use crate::pack;
 use crate::ParallelRuntime;
 use gadget_ng_core::{Particle, Vec3};
 use mpi::collective::SystemOperation;
-use mpi::datatype::PartitionMut;
+use mpi::datatype::{Partition, PartitionMut};
 use mpi::environment::Universe;
 use mpi::traits::*;
 use mpi::Count;
@@ -189,51 +189,25 @@ impl ParallelRuntime for MpiRuntime {
         local: &mut Vec<Particle>,
         decomp: &crate::sfc::SfcDecomposition,
     ) {
-        let world = self.world();
-        let rank = world.rank();
-        // Separar: partículas que se quedan y las que migran (solo vecinos ±1 en la curva).
-        // Para SFC, los vecinos "naturales" en la curva son rank-1 y rank+1.
-        // Las partículas que van a rangos no adyacentes son raras y se reenvían en
-        // múltiples pasos (simplicidad: solo 1 vecino a cada lado, como slab).
+        let rank = self.world().rank();
+        let size = self.world().size() as usize;
+
+        // Particionar en stay + buckets por destino (Alltoallv, sin restricción de vecinos).
         let (stay, leaves) = crate::sfc::partition_local(local, decomp, rank);
 
-        // Agrupar envíos: solo enviamos a vecinos directos (rank±1) en esta implementación.
-        // Partículas que van más lejos quedan temporalmente en el rango incorrecto
-        // y se corrigen en el siguiente paso (converge rápido para distribuciones suaves).
-        let size = world.size();
-        let left = if rank > 0 {
-            Some(world.process_at_rank(rank - 1))
-        } else {
-            None
-        };
-        let right = if rank < size - 1 {
-            Some(world.process_at_rank(rank + 1))
-        } else {
-            None
-        };
-
-        let mut go_right = Vec::new();
-        let mut go_left = Vec::new();
-        for (r, particles) in &leaves {
-            if *r == rank + 1 {
-                go_right.extend_from_slice(particles);
-            } else if *r == rank - 1 {
-                go_left.extend_from_slice(particles);
-            }
-            // Otros destinos lejanos: quedan en stay (se reubican en próximos pasos).
+        let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+        for (r, particles) in leaves {
+            sends[r as usize] = pack::pack_halo(&particles);
         }
 
-        let (recv_left, recv_right) = point_to_point_exchange(
-            &world,
-            rank,
-            &right,
-            &left,
-            &pack::pack_halo(&go_right),
-            &pack::pack_halo(&go_left),
-        );
+        let received = self.alltoallv_f64(&sends);
+
         *local = stay;
-        local.extend(recv_left);
-        local.extend(recv_right);
+        for (r, data) in received.iter().enumerate() {
+            if r != rank as usize && !data.is_empty() {
+                local.extend(pack::unpack_halo(data));
+            }
+        }
     }
 
     fn exchange_halos_sfc(
@@ -242,50 +216,132 @@ impl ParallelRuntime for MpiRuntime {
         decomp: &crate::sfc::SfcDecomposition,
         halo_width: f64,
     ) -> Vec<Particle> {
-        let world = self.world();
-        let rank = world.rank();
-        let size = world.size();
-        // Usar la componente x del bbox del segmento SFC como proxy del borde.
-        // Las partículas dentro de `halo_width` del borde x_lo o x_hi del segmento
-        // se comparten con los vecinos izquierdo y derecho en la curva.
-        let x_lo = decomp.x_lo;
-        let x_hi = decomp.x_hi;
-        let seg_lo = x_lo + rank as f64 / size as f64 * (x_hi - x_lo);
-        let seg_hi = x_lo + (rank + 1) as f64 / size as f64 * (x_hi - x_lo);
+        let rank = self.world().rank();
+        let size = self.world().size() as usize;
 
-        let left = if rank > 0 {
-            Some(world.process_at_rank(rank - 1))
-        } else {
-            None
-        };
-        let right = if rank < size - 1 {
-            Some(world.process_at_rank(rank + 1))
-        } else {
-            None
-        };
+        // Paso 1: calcular AABB local ajustada (6 f64).
+        let my_aabb = compute_aabb(local);
 
-        let send_left: Vec<Particle> = local
-            .iter()
-            .filter(|p| p.position.x < seg_lo + halo_width && rank > 0)
-            .cloned()
-            .collect();
-        let send_right: Vec<Particle> = local
-            .iter()
-            .filter(|p| p.position.x > seg_hi - halo_width && rank < size - 1)
-            .cloned()
-            .collect();
+        // Paso 2: Allgather las AABBs de todos los rangos.
+        let all_aabbs = self.allgather_f64(&my_aabb);
 
-        let (from_left, from_right) = point_to_point_exchange(
-            &world,
-            rank,
-            &right,
-            &left,
-            &pack::pack_halo(&send_right),
-            &pack::pack_halo(&send_left),
-        );
-        let mut halos = from_left;
-        halos.extend(from_right);
+        // Paso 3: para cada rank r, expandir su AABB por halo_width y enviar las
+        // partículas propias que caen dentro de la AABB expandida.
+        let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+        for r in 0..size {
+            if r == rank as usize {
+                continue;
+            }
+            let a = &all_aabbs[r];
+            if a.len() < 6 {
+                continue;
+            }
+            let (rxlo, rxhi) = (a[0] - halo_width, a[1] + halo_width);
+            let (rylo, ryhi) = (a[2] - halo_width, a[3] + halo_width);
+            let (rzlo, rzhi) = (a[4] - halo_width, a[5] + halo_width);
+            let in_halo: Vec<Particle> = local
+                .iter()
+                .filter(|p| {
+                    p.position.x >= rxlo
+                        && p.position.x <= rxhi
+                        && p.position.y >= rylo
+                        && p.position.y <= ryhi
+                        && p.position.z >= rzlo
+                        && p.position.z <= rzhi
+                })
+                .cloned()
+                .collect();
+            if !in_halo.is_empty() {
+                sends[r] = pack::pack_halo(&in_halo);
+            }
+        }
+
+        // Paso 4: intercambio Alltoallv.
+        let received = self.alltoallv_f64(&sends);
+
+        let mut halos = Vec::new();
+        for (r, data) in received.iter().enumerate() {
+            if r != rank as usize && !data.is_empty() {
+                halos.extend(pack::unpack_halo(data));
+            }
+        }
         halos
+    }
+
+    fn allgather_f64(&self, local: &[f64]) -> Vec<Vec<f64>> {
+        let world = self.world();
+        let my_len = local.len() as Count;
+        let mut counts = vec![0 as Count; world.size() as usize];
+        world.all_gather_into(&[my_len][..], &mut counts[..]);
+
+        let mut displs: Vec<Count> = Vec::with_capacity(world.size() as usize);
+        let mut acc: Count = 0;
+        for &c in &counts {
+            displs.push(acc);
+            acc += c;
+        }
+        let mut recvbuf = vec![0.0f64; acc as usize];
+        {
+            let mut part = PartitionMut::new(&mut recvbuf[..], counts.clone(), &displs[..]);
+            world.all_gather_varcount_into(local, &mut part);
+        }
+
+        let mut result = Vec::with_capacity(world.size() as usize);
+        let mut off = 0usize;
+        for &c in &counts {
+            let n = c as usize;
+            result.push(recvbuf[off..off + n].to_vec());
+            off += n;
+        }
+        result
+    }
+
+    fn alltoallv_f64(&self, sends: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        let world = self.world();
+        let size = world.size() as usize;
+        assert_eq!(sends.len(), size, "alltoallv_f64: sends.len() debe ser igual a world.size()");
+
+        // Paso 1: intercambiar conteos via Alltoall (mensajes fijos de 1 Count por rango).
+        let send_counts: Vec<Count> = sends.iter().map(|v| v.len() as Count).collect();
+        let mut recv_counts = vec![0 as Count; size];
+        world.all_to_all_into(&send_counts[..], &mut recv_counts[..]);
+
+        // Paso 2: construir sendbuf y displacements.
+        let mut sendbuf: Vec<f64> = Vec::new();
+        let mut send_displs: Vec<Count> = Vec::with_capacity(size);
+        let mut sdisp: Count = 0;
+        for v in sends.iter() {
+            send_displs.push(sdisp);
+            sendbuf.extend_from_slice(v);
+            sdisp += v.len() as Count;
+        }
+
+        // Paso 3: construir recvbuf y displacements.
+        let mut recv_displs: Vec<Count> = Vec::with_capacity(size);
+        let mut rdisp: Count = 0;
+        for &c in &recv_counts {
+            recv_displs.push(rdisp);
+            rdisp += c;
+        }
+        let mut recvbuf = vec![0.0f64; rdisp as usize];
+
+        // Paso 4: Alltoallv.
+        {
+            let send_part = Partition::new(&sendbuf[..], send_counts, &send_displs[..]);
+            let mut recv_part =
+                PartitionMut::new(&mut recvbuf[..], recv_counts.clone(), &recv_displs[..]);
+            world.all_to_all_varcount_into(&send_part, &mut recv_part);
+        }
+
+        // Dividir el buffer recibido en subvectores por rango.
+        let mut result = Vec::with_capacity(size);
+        let mut off = 0usize;
+        for &c in &recv_counts {
+            let n = c as usize;
+            result.push(recvbuf[off..off + n].to_vec());
+            off += n;
+        }
+        result
     }
 
     fn exchange_halos_by_x(
@@ -336,6 +392,49 @@ impl ParallelRuntime for MpiRuntime {
         halos.extend(from_right);
         halos
     }
+}
+
+// ── Utilidades locales ────────────────────────────────────────────────────────
+
+/// Calcula la AABB ajustada de un slice de partículas como `[xlo, xhi, ylo, yhi, zlo, zhi]`.
+///
+/// Para partículas vacías devuelve infinitos (convención segura para allreduce).
+fn compute_aabb(particles: &[Particle]) -> Vec<f64> {
+    if particles.is_empty() {
+        return vec![
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
+    }
+    let xlo = particles
+        .iter()
+        .map(|p| p.position.x)
+        .fold(f64::INFINITY, f64::min);
+    let xhi = particles
+        .iter()
+        .map(|p| p.position.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let ylo = particles
+        .iter()
+        .map(|p| p.position.y)
+        .fold(f64::INFINITY, f64::min);
+    let yhi = particles
+        .iter()
+        .map(|p| p.position.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let zlo = particles
+        .iter()
+        .map(|p| p.position.z)
+        .fold(f64::INFINITY, f64::min);
+    let zhi = particles
+        .iter()
+        .map(|p| p.position.z)
+        .fold(f64::NEG_INFINITY, f64::max);
+    vec![xlo, xhi, ylo, yhi, zlo, zhi]
 }
 
 // ── Utilidades de comunicación punto-a-punto ─────────────────────────────────

@@ -807,6 +807,167 @@ impl Octree {
     }
 }
 
+// ── LET (Locally Essential Tree) ─────────────────────────────────────────────
+
+/// Distancia mínima desde el punto `p` a la AABB `[xlo,xhi,ylo,yhi,zlo,zhi]`.
+///
+/// Devuelve 0 si `p` está dentro o en la frontera de la AABB.
+#[inline]
+fn aabb_min_dist(p: Vec3, aabb: [f64; 6]) -> f64 {
+    let [xlo, xhi, ylo, yhi, zlo, zhi] = aabb;
+    let dx = (xlo - p.x).max(0.0).max(p.x - xhi);
+    let dy = (ylo - p.y).max(0.0).max(p.y - yhi);
+    let dz = (zlo - p.z).max(0.0).max(p.z - zhi);
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+/// Nodo multipolar remoto para el protocolo LET (Locally Essential Tree).
+///
+/// Contiene los datos necesarios para aplicar la contribución gravitacional
+/// de un subárbol remoto (monopolo + cuadrupolo + octupolo softened, coherente V5).
+///
+/// ## Layout wire (`RMN_FLOATS = 17` f64 por nodo)
+///
+/// `[com.x, com.y, com.z, mass, quad×6, oct×7, half_size]`
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RemoteMultipoleNode {
+    pub com: Vec3,
+    pub mass: f64,
+    pub quad: [f64; 6],
+    pub oct: [f64; 7],
+    pub half_size: f64,
+}
+
+/// Número de `f64` por nodo en la representación wire.
+pub const RMN_FLOATS: usize = 3 + 1 + 6 + 7 + 1; // = 18
+
+impl RemoteMultipoleNode {
+    /// Serializa este nodo al final de `buf`.
+    #[inline]
+    pub fn pack_into(&self, buf: &mut Vec<f64>) {
+        buf.push(self.com.x);
+        buf.push(self.com.y);
+        buf.push(self.com.z);
+        buf.push(self.mass);
+        buf.extend_from_slice(&self.quad);
+        buf.extend_from_slice(&self.oct);
+        buf.push(self.half_size);
+    }
+
+    /// Deserializa desde un slice de exactamente [`RMN_FLOATS`] elementos.
+    #[inline]
+    pub fn unpack_from(s: &[f64]) -> Self {
+        debug_assert_eq!(s.len(), RMN_FLOATS);
+        Self {
+            com: Vec3::new(s[0], s[1], s[2]),
+            mass: s[3],
+            quad: [s[4], s[5], s[6], s[7], s[8], s[9]],
+            oct: [s[10], s[11], s[12], s[13], s[14], s[15], s[16]],
+            half_size: s[17],
+        }
+    }
+}
+
+/// Empaqueta un slice de nodos LET como buffer wire de `f64`.
+pub fn pack_let_nodes(nodes: &[RemoteMultipoleNode]) -> Vec<f64> {
+    let mut buf = Vec::with_capacity(nodes.len() * RMN_FLOATS);
+    for n in nodes {
+        n.pack_into(&mut buf);
+    }
+    buf
+}
+
+/// Desempaqueta un buffer wire en un `Vec<RemoteMultipoleNode>`.
+///
+/// Entra en pánico si `buf.len()` no es múltiplo de [`RMN_FLOATS`].
+pub fn unpack_let_nodes(buf: &[f64]) -> Vec<RemoteMultipoleNode> {
+    assert_eq!(
+        buf.len() % RMN_FLOATS,
+        0,
+        "buffer LET no es múltiplo de {RMN_FLOATS}"
+    );
+    buf.chunks(RMN_FLOATS)
+        .map(RemoteMultipoleNode::unpack_from)
+        .collect()
+}
+
+impl Octree {
+    /// Exporta nodos LET para un rango receptor cuyas partículas viven en `target_aabb`.
+    ///
+    /// Para cada nodo del árbol local, verifica si satisface el MAC geométrico
+    /// `2·half_size / d_min(com, target_aabb) < theta` (criterio conservador: válido
+    /// para **todos** los puntos de la AABB receptora). Si se satisface, el nodo se
+    /// exporta y su subárbol se poda. Si no, se desciende a los hijos. Las hojas
+    /// siempre se exportan.
+    ///
+    /// # Parámetros
+    ///
+    /// - `target_aabb`: `[xlo, xhi, ylo, yhi, zlo, zhi]` del rango receptor.
+    /// - `theta`: ángulo de apertura del MAC (igual al de la simulación).
+    pub fn export_let(&self, target_aabb: [f64; 6], theta: f64) -> Vec<RemoteMultipoleNode> {
+        let mut result = Vec::new();
+        self.export_let_inner(self.root, target_aabb, theta, &mut result);
+        result
+    }
+
+    fn export_let_inner(
+        &self,
+        node_idx: u32,
+        target_aabb: [f64; 6],
+        theta: f64,
+        result: &mut Vec<RemoteMultipoleNode>,
+    ) {
+        let node = &self.nodes[node_idx as usize];
+        if node.mass == 0.0 {
+            return;
+        }
+
+        let s = 2.0 * node.half_size;
+        let d_min = aabb_min_dist(node.com, target_aabb);
+        let mac_ok = d_min > 0.0 && theta > 0.0 && s / d_min < theta;
+        let is_leaf = node.children.iter().all(|&c| c == NO_CHILD);
+
+        if mac_ok || is_leaf {
+            result.push(RemoteMultipoleNode {
+                com: node.com,
+                mass: node.mass,
+                quad: node.quad,
+                oct: node.oct,
+                half_size: node.half_size,
+            });
+            return;
+        }
+
+        for &child in &node.children {
+            if child != NO_CHILD {
+                self.export_let_inner(child, target_aabb, theta, result);
+            }
+        }
+    }
+}
+
+/// Contribución gravitacional de un slice de nodos multipolares remotos sobre `pos_i`.
+///
+/// Aplica monopolo Plummer softened + cuadrupolo softened + octupolo softened
+/// (consistente con el solver V5). `eps2 = softening²` de la simulación.
+pub fn accel_from_let(pos_i: Vec3, let_nodes: &[RemoteMultipoleNode], g: f64, eps2: f64) -> Vec3 {
+    use gadget_ng_core::pairwise_accel_plummer;
+    let mut acc = Vec3::zero();
+    for node in let_nodes {
+        if node.mass == 0.0 {
+            continue;
+        }
+        let r = pos_i - node.com;
+        // Monopolo softened.
+        acc += pairwise_accel_plummer(pos_i, node.mass, node.com, g, eps2);
+        // Cuadrupolo softened.
+        acc += quad_accel_softened(r, node.quad, g, eps2);
+        // Octupolo softened.
+        acc += oct_accel_softened(r, node.oct, g, eps2);
+    }
+    acc
+}
+
 fn bounding_cube(pos: &[Vec3]) -> (Vec3, f64) {
     let mut min_x = pos[0].x;
     let mut max_x = pos[0].x;

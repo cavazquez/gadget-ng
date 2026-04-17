@@ -67,6 +67,41 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p gadget-ng-parallel
 
+  # ── Tests MPI multirank (mpirun 2 y 4 rangos) ────────────────────────────────
+  mpi-multirank:
+    name: Tests MPI multirank (2 y 4 rangos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Instalar OpenMPI
+        run: sudo apt-get install -y libopenmpi-dev openmpi-bin
+      - name: Compilar tests MPI (sin ejecutar)
+        run: cargo test -p gadget-ng-parallel --features mpi --no-run
+      - name: Ejecutar tests seriales con feature mpi
+        run: cargo test -p gadget-ng-parallel --features mpi
+      - name: Ejecutar tests con mpirun (2 rangos)
+        run: |
+          BIN=$(find target/debug/deps -name "sfc_hardening-*" -executable | head -1)
+          if [ -n "$BIN" ]; then
+            mpirun --oversubscribe -n 2 "$BIN" --test-threads=1
+          fi
+          BIN=$(find target/debug/deps -name "let_validation-*" -executable | head -1)
+          if [ -n "$BIN" ]; then
+            mpirun --oversubscribe -n 2 "$BIN" --test-threads=1
+          fi
+      - name: Ejecutar tests con mpirun (4 rangos)
+        run: |
+          BIN=$(find target/debug/deps -name "sfc_hardening-*" -executable | head -1)
+          if [ -n "$BIN" ]; then
+            mpirun --oversubscribe -n 4 "$BIN" --test-threads=1
+          fi
+          BIN=$(find target/debug/deps -name "let_validation-*" -executable | head -1)
+          if [ -n "$BIN" ]; then
+            mpirun --oversubscribe -n 4 "$BIN" --test-threads=1
+          fi
+
   # ── Cobertura (opcional, requiere cargo-tarpaulin) ──────────────────────────
   coverage:
     name: Coverage (tarpaulin)

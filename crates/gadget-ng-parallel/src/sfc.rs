@@ -106,6 +106,10 @@ impl SfcDecomposition {
     /// segmentos de igual tamaño (balanceo por número de partículas).
     ///
     /// La bounding box se calcula directamente desde `positions`.
+    ///
+    /// **Nota MPI:** en modo multirank, usa [`build_with_bbox`] pasando la bounding
+    /// box global (obtenida vía `allreduce_min/max` o [`global_bbox`]) para que todos
+    /// los rangos produzcan exactamente los mismos cutpoints.
     pub fn build(positions: &[Vec3], box_size: f64, n_ranks: i32) -> Self {
         let n_ranks = n_ranks.max(1);
         if positions.is_empty() {
@@ -120,7 +124,6 @@ impl SfcDecomposition {
                 n_ranks,
             };
         }
-        // Bounding box global.
         let x_lo = positions.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
         let x_hi = positions
             .iter()
@@ -136,15 +139,63 @@ impl SfcDecomposition {
             .iter()
             .map(|p| p.z)
             .fold(f64::NEG_INFINITY, f64::max);
+        Self::build_with_bbox(positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, n_ranks)
+    }
 
-        // Calcular claves y ordenarlas.
+    /// Construye la descomposición SFC con bounding box explícita (correcta en modo MPI).
+    ///
+    /// Idéntica a [`build`] pero usa la bbox proporcionada en vez de calcularla desde
+    /// `positions`. En modo MPI, todos los rangos deben llamar a esta función con la
+    /// **bbox global** (obtenida por `allreduce`), garantizando cutpoints idénticos
+    /// en todos los rangos y por tanto particionado reproducible y coherente.
+    ///
+    /// # Ejemplo
+    ///
+    /// ```rust
+    /// # use gadget_ng_parallel::sfc::{SfcDecomposition, global_bbox};
+    /// # use gadget_ng_parallel::SerialRuntime;
+    /// # use gadget_ng_core::{Particle, Vec3};
+    /// let rt = SerialRuntime;
+    /// let particles = vec![
+    ///     Particle::new(0, 1.0, Vec3::new(0.1, 0.2, 0.3), Vec3::zero()),
+    ///     Particle::new(1, 1.0, Vec3::new(0.8, 0.7, 0.6), Vec3::zero()),
+    /// ];
+    /// let (x_lo, x_hi, y_lo, y_hi, z_lo, z_hi) = global_bbox(&rt, &particles);
+    /// let positions: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    /// let decomp = SfcDecomposition::build_with_bbox(
+    ///     &positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, 2,
+    /// );
+    /// ```
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_with_bbox(
+        positions: &[Vec3],
+        x_lo: f64,
+        x_hi: f64,
+        y_lo: f64,
+        y_hi: f64,
+        z_lo: f64,
+        z_hi: f64,
+        n_ranks: i32,
+    ) -> Self {
+        let n_ranks = n_ranks.max(1);
+        if positions.is_empty() {
+            return Self {
+                x_lo,
+                x_hi,
+                y_lo,
+                y_hi,
+                z_lo,
+                z_hi,
+                cutpoints: vec![u64::MAX / n_ranks as u64; (n_ranks - 1) as usize],
+                n_ranks,
+            };
+        }
         let mut keys: Vec<u64> = positions
             .iter()
             .map(|p| particle_morton(*p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi))
             .collect();
         keys.sort_unstable();
 
-        // Puntos de corte: índices equidistantes en el array ordenado.
         let n = keys.len();
         let mut cutpoints = Vec::with_capacity((n_ranks - 1) as usize);
         for r in 1..n_ranks {

@@ -1,7 +1,6 @@
 mod decompose;
 pub mod domain;
-#[allow(dead_code)]
-mod pack;
+pub mod pack;
 mod serial;
 pub mod sfc;
 
@@ -81,16 +80,16 @@ pub trait ParallelRuntime {
     /// Migra partículas usando una descomposición SFC (Morton Z-order).
     ///
     /// Cada partícula se asigna al rango según `decomp.rank_for_pos(p.position)`.
-    /// Las partículas del rango incorrecto se envían y las ajenas se reciben.
+    /// Las partículas del rango incorrecto se envían a sus rangos correctos usando
+    /// un `Alltoallv`, no solo a vecinos rank±1.
     ///
     /// En modo serial (1 rango) es un no-op.
     fn exchange_domain_sfc(&self, local: &mut Vec<Particle>, decomp: &sfc::SfcDecomposition);
 
-    /// Intercambia halos SFC: devuelve las partículas dentro de `halo_width`
-    /// de cualquier borde del segmento SFC del rango actual.
+    /// Intercambia halos SFC usando una AABB 3D real.
     ///
-    /// Implementación simplificada: usa la bounding box del segmento SFC para
-    /// determinar qué partículas enviar a los vecinos en la curva.
+    /// Para cada rank r, expande su AABB local por `halo_width` en las tres
+    /// dimensiones y envía partículas propias dentro de esa región expandida.
     /// En modo serial devuelve Vec vacío.
     fn exchange_halos_sfc(
         &self,
@@ -98,4 +97,18 @@ pub trait ParallelRuntime {
         decomp: &sfc::SfcDecomposition,
         halo_width: f64,
     ) -> Vec<Particle>;
+
+    // ── Primitivas de comunicación genérica ──────────────────────────────────
+
+    /// Allgather de datos `f64`: contribuye `local` desde este rango y recibe
+    /// los datos de todos los rangos. Devuelve `result[r]` = datos del rango `r`.
+    ///
+    /// En serial devuelve `vec![local.to_vec()]`.
+    fn allgather_f64(&self, local: &[f64]) -> Vec<Vec<f64>>;
+
+    /// Alltoallv de datos `f64`: `sends[r]` = datos a enviar al rango `r`.
+    /// Devuelve `received[r]` = datos recibidos del rango `r`.
+    ///
+    /// En serial devuelve `vec![vec![]]` (ningún otro rango existe).
+    fn alltoallv_f64(&self, sends: &[Vec<f64>]) -> Vec<Vec<f64>>;
 }

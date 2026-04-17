@@ -1,0 +1,27 @@
+[simulation]
+dt            = 0.025
+num_steps     = 100
+softening     = 0.5
+particle_count= 1000
+box_size      = 20.0
+seed          = 42
+
+[initial_conditions]
+kind = { plummer = { a = 1.0 } }
+
+[gravity]
+solver              = "barnes_hut"
+theta               = 0.7
+multipole_order     = 3
+opening_criterion   = "relative"
+err_tol_force_acc   = 0.005
+softened_multipoles = true
+mac_softening       = "consistent"
+
+[performance]
+use_distributed_tree      = false
+force_allgather_fallback  = true
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0

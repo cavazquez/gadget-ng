@@ -91,4 +91,14 @@ impl ParallelRuntime for SerialRuntime {
     ) -> Vec<Particle> {
         Vec::new()
     }
+
+    fn allgather_f64(&self, local: &[f64]) -> Vec<Vec<f64>> {
+        vec![local.to_vec()]
+    }
+
+    fn alltoallv_f64(&self, _sends: &[Vec<f64>]) -> Vec<Vec<f64>> {
+        // En serial no hay otros rangos; el llamante envía sends[0] a sí mismo,
+        // pero como no hay migración real, devolvemos un slot vacío.
+        vec![Vec::new()]
+    }
 }
