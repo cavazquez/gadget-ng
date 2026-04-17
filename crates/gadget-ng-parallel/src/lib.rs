@@ -86,6 +86,23 @@ pub trait ParallelRuntime {
     /// En modo serial (1 rango) es un no-op.
     fn exchange_domain_sfc(&self, local: &mut Vec<Particle>, decomp: &sfc::SfcDecomposition);
 
+    /// Migra partículas a su rango propietario según la descomposición de slabs en **z**.
+    ///
+    /// Análogo a [`exchange_domain_by_x`] pero usando la coordenada z.
+    /// Se usa para la descomposición de dominio del slab PM distribuido (Fase 20).
+    fn exchange_domain_by_z(&self, local: &mut Vec<Particle>, my_z_lo: f64, my_z_hi: f64);
+
+    /// Intercambia partículas de halo con los rangos vecinos en el eje z.
+    ///
+    /// Análogo a [`exchange_halos_by_x`] pero para el eje z.
+    fn exchange_halos_by_z(
+        &self,
+        local: &[Particle],
+        my_z_lo: f64,
+        my_z_hi: f64,
+        halo_width: f64,
+    ) -> Vec<Particle>;
+
     /// Intercambia halos SFC usando una AABB 3D real.
     ///
     /// Para cada rank r, expande su AABB local por `halo_width` en las tres
@@ -97,6 +114,17 @@ pub trait ParallelRuntime {
         decomp: &sfc::SfcDecomposition,
         halo_width: f64,
     ) -> Vec<Particle>;
+
+    // ── PM distribuido ────────────────────────────────────────────────────────
+
+    /// Reduce suma elemento a elemento de un array `f64` entre todos los rangos
+    /// (`MPI_Allreduce(MPI_SUM)` en MPI; no-op en serial).
+    ///
+    /// Tras la llamada, `buf[i]` contiene la suma de `buf[i]` de todos los rangos.
+    /// Se usa para combinar grids de densidad parciales en el PM distribuido
+    /// (Fase 19): cada rank deposita su contribución local y la reducción produce
+    /// la densidad global sin necesitar `allgatherv_state` de partículas.
+    fn allreduce_sum_f64_slice(&self, buf: &mut [f64]);
 
     // ── Primitivas de comunicación genérica ──────────────────────────────────
 

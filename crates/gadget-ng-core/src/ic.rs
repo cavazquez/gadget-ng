@@ -11,6 +11,8 @@ pub enum IcError {
     TwoBodyCount,
     #[error("lattice ic requires a perfect cube particle_count = n^3, got {0}")]
     LatticeNotCube(usize),
+    #[error("perturbed_lattice ic requires cosmology.enabled = true to use velocity_amplitude > 0")]
+    PerturbedLatticeVelNoCosmo,
 }
 
 fn hash_u64(mut x: u64) -> u64 {
@@ -102,6 +104,10 @@ pub fn build_particles_for_gid_range(
         }
         IcKind::Plummer { a } => plummer_ics(n, a, seed, g, lo, hi),
         IcKind::UniformSphere { r } => uniform_sphere_ics(n, r, seed, lo, hi),
+        IcKind::PerturbedLattice {
+            amplitude,
+            velocity_amplitude,
+        } => perturbed_lattice_ics(cfg, n, amplitude, velocity_amplitude, seed, lo, hi),
     }
 }
 
@@ -290,6 +296,93 @@ fn uniform_sphere_ics(
     // Devolver solo el rango [lo, hi).
     particles.retain(|p| p.global_id >= lo && p.global_id < hi);
     Ok(particles)
+}
+
+// ── Retícula perturbada cosmológica ───────────────────────────────────────────
+
+/// Genera ICs sobre retícula cúbica con perturbaciones Gaussianas.
+///
+/// La retícula tiene lado `side = ⌈N^{1/3}⌉`, suficiente para `N` partículas.
+/// Solo se materializan los primeros `N` global_ids en orden lexicográfico (ix, iy, iz).
+///
+/// Las velocidades se almacenan como momentum canónico `p = a_init * v_peculiar`
+/// con `v_peculiar = velocity_amplitude * H0 * box_size * N(0,1)`.
+/// Con `velocity_amplitude = 0.0` todas las velocidades son cero (reposo comóvil).
+fn perturbed_lattice_ics(
+    cfg: &RunConfig,
+    n: usize,
+    amplitude: f64,
+    velocity_amplitude: f64,
+    seed: u64,
+    lo: usize,
+    hi: usize,
+) -> Result<Vec<Particle>, IcError> {
+    if n == 0 {
+        return Err(IcError::ZeroParticles);
+    }
+
+    let box_size = cfg.simulation.box_size;
+    let a_init = if cfg.cosmology.enabled {
+        cfg.cosmology.a_init
+    } else {
+        1.0
+    };
+
+    // Lado de la retícula: mínimo entero tal que side³ ≥ n.
+    let side = {
+        let mut s = (n as f64).cbrt().ceil() as usize;
+        while s * s * s < n {
+            s += 1;
+        }
+        s
+    };
+    let spacing = box_size / side as f64;
+
+    // Escala de velocidades peculiares en unidades de momentum canónico.
+    // v_peculiar = velocity_amplitude * h0 * box_size * N(0,1)
+    // p = a_init * v_peculiar
+    let h0 = cfg.cosmology.h0;
+    let vel_scale = a_init * velocity_amplitude * h0 * box_size;
+
+    let mut out = Vec::with_capacity(hi - lo);
+    for gid in lo..hi {
+        if gid >= n {
+            break;
+        }
+        // Coordenadas de retícula en orden ix, iy, iz (lexicográfico).
+        let ix = gid / (side * side);
+        let rem = gid % (side * side);
+        let iy = rem / side;
+        let iz = rem % side;
+
+        // Centro de la celda.
+        let x0 = (ix as f64 + 0.5) * spacing;
+        let y0 = (iy as f64 + 0.5) * spacing;
+        let z0 = (iz as f64 + 0.5) * spacing;
+
+        // Perturbaciones de posición Gaussianas deterministas.
+        let mut lcg = LcgState(seed.wrapping_add((gid as u64).wrapping_mul(0x9e3779b97f4a7c15)));
+        let dx = amplitude * spacing * gauss_bm(&mut lcg);
+        let dy = amplitude * spacing * gauss_bm(&mut lcg);
+        let dz = amplitude * spacing * gauss_bm(&mut lcg);
+        let pos = Vec3::new(x0 + dx, y0 + dy, z0 + dz);
+
+        // Velocidades peculiares (momentum canónico).
+        let vel = if vel_scale > 0.0 {
+            Vec3::new(
+                vel_scale * gauss_bm(&mut lcg),
+                vel_scale * gauss_bm(&mut lcg),
+                vel_scale * gauss_bm(&mut lcg),
+            )
+        } else {
+            Vec3::zero()
+        };
+
+        let mass = 1.0 / n as f64;
+        out.push(Particle::new(gid, mass, pos, vel));
+    }
+
+    Ok(out)
 }
 
 /// Generador LCG rápido y reproducible.

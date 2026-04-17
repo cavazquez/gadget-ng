@@ -37,11 +37,17 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 static LT_PROF_ACTIVE: AtomicBool = AtomicBool::new(false);
 static LT_LEAF_CALLS: AtomicU64 = AtomicU64::new(0);
 static LT_LEAF_RMN_COUNT: AtomicU64 = AtomicU64::new(0);
+/// Número de llamadas a `apply_leaf_soa_4xi` (Fase 16)
+static LT_TILE_CALLS: AtomicU64 = AtomicU64::new(0);
+/// Suma de `tile_size` en cada llamada tileada (partículas-i evaluadas en modo tileado)
+static LT_TILE_I_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Reinicia los contadores de profiling de hojas (todos los threads).
 pub fn let_tree_prof_begin() {
     LT_LEAF_CALLS.store(0, Ordering::Relaxed);
     LT_LEAF_RMN_COUNT.store(0, Ordering::Relaxed);
+    LT_TILE_CALLS.store(0, Ordering::Relaxed);
+    LT_TILE_I_COUNT.store(0, Ordering::Relaxed);
     LT_PROF_ACTIVE.store(true, Ordering::Release);
 }
 
@@ -52,6 +58,14 @@ pub fn let_tree_prof_end() -> (u64, u64) {
     let calls = LT_LEAF_CALLS.load(Ordering::Relaxed);
     let rmn   = LT_LEAF_RMN_COUNT.load(Ordering::Relaxed);
     (calls, rmn)
+}
+
+/// Lee y devuelve los contadores de profiling tileados (Fase 16).
+/// Devuelve `(tile_calls, tile_i_count)`.
+pub fn let_tree_tile_prof_read() -> (u64, u64) {
+    let calls  = LT_TILE_CALLS.load(Ordering::Relaxed);
+    let i_cnt  = LT_TILE_I_COUNT.load(Ordering::Relaxed);
+    (calls, i_cnt)
 }
 
 /// Valor centinela: sin hijo en esta dirección.
@@ -243,6 +257,107 @@ impl LetTree {
         let start = node.leaf_start as usize;
         let len   = node.leaf_count as usize;
         self.leaf_soa.accel_range(pos_i, start, len, g, eps2)
+    }
+
+    // ── Fase 16: walk tileado 4×N_i ──────────────────────────────────────────
+
+    /// **Fase 16 — Walk tileado**: calcula la aceleración gravitacional sobre
+    /// `tile_size` (1-4) partículas simultáneamente contra todos los nodos LET.
+    ///
+    /// Usa **MAC conservativo**: un nodo se abre si CUALQUIERA de las `tile_size`
+    /// partículas válidas no satisface el criterio. El SFC ordering garantiza que
+    /// `pos[0..tile_size]` son espacialmente próximas, minimizando el overhead.
+    ///
+    /// Solo disponible con feature `simd` (requiere `RmnSoa::accel_range_4xi`).
+    #[cfg(feature = "simd")]
+    pub fn walk_accel_4xi(
+        &self,
+        pos: [Vec3; 4],
+        tile_size: usize,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+    ) -> [Vec3; 4] {
+        if self.root == NO_LET_CHILD {
+            return [Vec3::zero(); 4];
+        }
+        let mut acc = [Vec3::zero(); 4];
+        self.walk_inner_4xi(self.root, &pos, tile_size, g, eps2, theta, &mut acc);
+        acc
+    }
+
+    /// Recursión interna del walk tileado para el nodo `node_idx`.
+    #[cfg(feature = "simd")]
+    fn walk_inner_4xi(
+        &self,
+        node_idx: u32,
+        pos: &[Vec3; 4],
+        tile_size: usize,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+        acc: &mut [Vec3; 4],
+    ) {
+        let node = &self.nodes[node_idx as usize];
+        if node.mass == 0.0 {
+            return;
+        }
+
+        // Hoja: aplicar todos los RMNs a las tile_size partículas con kernel 4xi.
+        if node.leaf_count > 0 {
+            self.apply_leaf_soa_4xi(node, pos, tile_size, g, eps2, acc);
+            return;
+        }
+
+        // MAC conservativo: abrir el nodo si CUALQUIER partícula válida falla.
+        let all_pass = pos[..tile_size].iter().all(|p| {
+            let d = (*p - node.com).norm();
+            d > 1e-300 && 2.0 * node.half_size / d < theta
+        });
+
+        if all_pass {
+            // Aplicar multipolo agregado a cada partícula válida (escalar — raro).
+            for k in 0..tile_size {
+                let r = pos[k] - node.com;
+                acc[k] += accel_mono_softened(pos[k], node.mass, node.com, g, eps2);
+                acc[k] += quad_accel_softened(r, node.quad, g, eps2);
+                acc[k] += oct_accel_softened(r, node.oct, g, eps2);
+            }
+        } else {
+            // MAC falla: descender a hijos (todos bajo el mismo tile).
+            for &ch in &node.children {
+                if ch != NO_LET_CHILD {
+                    self.walk_inner_4xi(ch, pos, tile_size, g, eps2, theta, acc);
+                }
+            }
+        }
+    }
+
+    /// Aplica el leaf SoA a `tile_size` partículas simultáneas via `accel_range_4xi`.
+    ///
+    /// Registra profiling de tiles (contadores atómicos).
+    #[cfg(feature = "simd")]
+    #[inline]
+    fn apply_leaf_soa_4xi(
+        &self,
+        node: &LetNode,
+        pos: &[Vec3; 4],
+        tile_size: usize,
+        g: f64,
+        eps2: f64,
+        acc: &mut [Vec3; 4],
+    ) {
+        if LT_PROF_ACTIVE.load(Ordering::Relaxed) {
+            LT_TILE_CALLS.fetch_add(1, Ordering::Relaxed);
+            LT_TILE_I_COUNT.fetch_add(tile_size as u64, Ordering::Relaxed);
+        }
+
+        let start = node.leaf_start as usize;
+        let len = node.leaf_count as usize;
+        let result = self.leaf_soa.accel_range_4xi(pos, start, len, g, eps2, tile_size);
+        for k in 0..tile_size {
+            acc[k] += result[k];
+        }
     }
 }
 

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "crate_version": "checkpoint",
+    "git_commit": null,
+    "build_profile": "release",
+    "enabled_features": [],
+    "command_line": [],
+    "config_hash": "214658da867a334e3c15d880c94db03599487c530b6dec542a7b1fbb17d890b3"
+  },
+  "particle_count": 2000,
+  "time": 0.0,
+  "redshift": 0.0,
+  "box_size": 1.0
+}

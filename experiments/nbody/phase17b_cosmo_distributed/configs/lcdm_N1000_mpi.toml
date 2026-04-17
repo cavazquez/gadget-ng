@@ -1,0 +1,30 @@
+# ── ΛCDM N=1000, solver=barnes_hut — Fase 17b ────────────────────────────────
+#
+# ΛCDM estándar para validación distribuida.
+
+[simulation]
+particle_count      = 1000
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 20
+softening           = 0.015
+gravitational_constant = 1.0
+seed                = 99999
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+omega_m       = 0.3
+omega_lambda  = 0.7
+h0            = 0.1
+a_init        = 1.0
+
+[gravity]
+solver   = "barnes_hut"
+theta    = 0.5
+
+[performance]
+deterministic             = false
+sfc_rebalance_interval    = 5

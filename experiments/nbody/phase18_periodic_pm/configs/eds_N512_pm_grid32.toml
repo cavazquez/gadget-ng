@@ -1,0 +1,27 @@
+# ── EdS N=512, PM periódico malla 32³ — Fase 18 ──────────────────────────────
+#
+# Mayor resolución de malla para comparar convergencia PM vs PM-fino.
+
+[simulation]
+particle_count      = 512
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 20
+softening           = 0.0
+gravitational_constant = 1.0
+seed                = 12345
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+periodic      = true
+omega_m       = 1.0
+omega_lambda  = 0.0
+h0            = 0.1
+a_init        = 1.0
+
+[gravity]
+solver        = "pm"
+pm_grid_size  = 32

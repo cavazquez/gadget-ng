@@ -1,0 +1,31 @@
+# ── EdS N=2000 — Fase 17b (scaling test) ─────────────────────────────────────
+#
+# N más grande para ver scaling de wall time con P=1,2,4.
+# N=2000 ≈ ⌈12.6⌉³ = 13³ = 2197; se usa 2000 (con ⌈2000^{1/3}⌉ = 13³ OK).
+
+[simulation]
+particle_count      = 2000
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 10
+softening           = 0.01
+gravitational_constant = 1.0
+seed                = 77777
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+omega_m       = 1.0
+omega_lambda  = 0.0
+h0            = 0.1
+a_init        = 1.0
+
+[gravity]
+solver   = "barnes_hut"
+theta    = 0.5
+
+[performance]
+deterministic             = false
+sfc_rebalance_interval    = 5

@@ -15,3 +15,6 @@ gadget-ng-core        = { path = "../gadget-ng-core" }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 gadget-ng-tree        = { path = "../gadget-ng-tree" }
 gadget-ng-sph         = { path = "../gadget-ng-sph" }
+gadget-ng-parallel    = { path = "../gadget-ng-parallel" }
+gadget-ng-pm          = { path = "../gadget-ng-pm" }
+gadget-ng-treepm      = { path = "../gadget-ng-treepm" }

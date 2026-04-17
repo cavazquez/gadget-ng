@@ -150,6 +150,111 @@ impl CosmologyParams {
     }
 }
 
+// ── Diagnósticos cosmológicos ─────────────────────────────────────────────────
+
+use crate::particle::Particle;
+
+/// Velocidad peculiar RMS a partir del momentum canónico almacenado en `velocity`.
+///
+/// `v_peculiar_rms = sqrt(⟨|p/a|²⟩)` donde `p = a² dx_c/dt` → `v_pec = p/a`.
+///
+/// Devuelve 0.0 si `particles` está vacío.
+pub fn peculiar_vrms(particles: &[Particle], a: f64) -> f64 {
+    if particles.is_empty() || a <= 0.0 {
+        return 0.0;
+    }
+    let sum: f64 = particles
+        .iter()
+        .map(|p| {
+            let v = p.velocity * (1.0 / a);
+            v.dot(v)
+        })
+        .sum();
+    (sum / particles.len() as f64).sqrt()
+}
+
+/// Contraste de densidad RMS sobre una malla cúbica de `n_grid³` celdas.
+///
+/// Divide `[0, box_size]³` en `n_grid³` celdas y cuenta partículas por celda.
+/// La densidad media por celda es `n_particles / n_grid³`.
+/// Devuelve `sqrt(⟨(δρ/ρ̄)²⟩)` donde `δρ = ρ_celda - ρ̄`.
+///
+/// Devuelve 0.0 si `particles` está vacío o `n_grid == 0`.
+pub fn density_contrast_rms(particles: &[Particle], box_size: f64, n_grid: usize) -> f64 {
+    if particles.is_empty() || n_grid == 0 || box_size <= 0.0 {
+        return 0.0;
+    }
+    let ng = n_grid;
+    let inv_cell = ng as f64 / box_size;
+    let mut counts = vec![0u32; ng * ng * ng];
+
+    for p in particles {
+        // Coordenadas periódicas módulo box_size.
+        let xi = (p.position.x.rem_euclid(box_size) * inv_cell) as usize;
+        let yi = (p.position.y.rem_euclid(box_size) * inv_cell) as usize;
+        let zi = (p.position.z.rem_euclid(box_size) * inv_cell) as usize;
+        let xi = xi.min(ng - 1);
+        let yi = yi.min(ng - 1);
+        let zi = zi.min(ng - 1);
+        counts[xi * ng * ng + yi * ng + zi] += 1;
+    }
+
+    let mean = particles.len() as f64 / (ng * ng * ng) as f64;
+    if mean <= 0.0 {
+        return 0.0;
+    }
+    let sum_sq: f64 = counts
+        .iter()
+        .map(|&c| {
+            let delta = (c as f64 - mean) / mean;
+            delta * delta
+        })
+        .sum();
+    (sum_sq / (ng * ng * ng) as f64).sqrt()
+}
+
+/// H(a) = H₀ · √(Ω_m·a⁻³ + Ω_Λ) — parámetro de Hubble en unidades internas.
+pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
+    let h_sq = params.omega_m / (a * a * a) + params.omega_lambda;
+    params.h0 * h_sq.max(0.0).sqrt()
+}
+
+// ── Utilidades periódicas (Fase 18) ──────────────────────────────────────────
+
+/// Diferencia periódica mínima imagen en 1D: resultado en `[-L/2, L/2]`.
+///
+/// Dado el desplazamiento `dx = x_i - x_j` y la longitud de caja `l`,
+/// devuelve el desplazamiento equivalente más corto bajo condiciones periódicas.
+///
+/// Invariante: `|minimum_image(dx, l)| ≤ l/2`.
+#[inline]
+pub fn minimum_image(dx: f64, l: f64) -> f64 {
+    dx - l * (dx / l).round()
+}
+
+/// Envuelve una coordenada escalar a `[0, l)` con condiciones periódicas.
+#[inline]
+pub fn wrap_coord(x: f64, l: f64) -> f64 {
+    x.rem_euclid(l)
+}
+
+/// Envuelve la posición de una partícula a `[0, box_size)³` con condiciones periódicas.
+///
+/// Se debe llamar tras cada paso de drift en simulaciones periódicas para mantener
+/// todas las posiciones dentro del cubo de simulación. El PM/CIC trabaja
+/// internamente con `rem_euclid`, pero el wrap explícito es necesario para:
+/// - diagnósticos correctos (`delta_rms`, snapshots)
+/// - evitar deriva numérica acumulada
+/// - consistencia con la lógica SFC si se usa en el futuro
+#[inline]
+pub fn wrap_position(pos: crate::vec3::Vec3, box_size: f64) -> crate::vec3::Vec3 {
+    crate::vec3::Vec3::new(
+        wrap_coord(pos.x, box_size),
+        wrap_coord(pos.y, box_size),
+        wrap_coord(pos.z, box_size),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

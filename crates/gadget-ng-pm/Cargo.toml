@@ -11,6 +11,7 @@ rayon = ["dep:rayon"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
+gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 rustfft = "6.4.1"
 rayon = { version = "1.10", optional = true }
 

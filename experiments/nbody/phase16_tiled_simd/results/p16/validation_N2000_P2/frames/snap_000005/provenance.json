@@ -1,0 +1,18 @@
+{
+  "crate_version": "0.1.0",
+  "git_commit": "d594284499e1bc4cb9d5ba527a1cc222c65a5f89",
+  "build_profile": "release",
+  "enabled_features": [
+    "mpi",
+    "simd"
+  ],
+  "command_line": [
+    "gadget-ng-p16-tiled",
+    "stepping",
+    "--config",
+    "configs/validation_N2000_P2.toml",
+    "--out",
+    "results/p16/validation_N2000_P2"
+  ],
+  "config_hash": "214658da867a334e3c15d880c94db03599487c530b6dec542a7b1fbb17d890b3"
+}

@@ -1,0 +1,29 @@
+# ── EdS N=4000, PM Slab Distribuido (Fase 20) — grid 32³ ────────────────────
+#
+# N más grande para benchmark de escalado distribuido.
+# Comparar Phase 19 (allreduce nm³) vs Phase 20 (alltoall nm³/P).
+
+[simulation]
+particle_count      = 4000
+box_size            = 1.0
+dt                  = 0.003
+num_steps           = 20
+softening           = 0.0
+gravitational_constant = 1.0
+seed                = 99
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+periodic      = true
+omega_m       = 1.0
+omega_lambda  = 0.0
+h0            = 0.1
+a_init        = 1.0
+
+[gravity]
+solver          = "pm"
+pm_grid_size    = 32
+pm_slab         = true

@@ -79,6 +79,20 @@ impl ParallelRuntime for SerialRuntime {
         Vec::new()
     }
 
+    fn exchange_domain_by_z(&self, _local: &mut Vec<Particle>, _my_z_lo: f64, _my_z_hi: f64) {
+        // Serial: rango único, todas las partículas pertenecen al rango 0.
+    }
+
+    fn exchange_halos_by_z(
+        &self,
+        _local: &[Particle],
+        _my_z_lo: f64,
+        _my_z_hi: f64,
+        _halo_width: f64,
+    ) -> Vec<Particle> {
+        Vec::new()
+    }
+
     fn exchange_domain_sfc(&self, _local: &mut Vec<Particle>, _decomp: &SfcDecomposition) {
         // Serial: rango único, todas las partículas pertenecen al rango 0.
     }
@@ -90,6 +104,10 @@ impl ParallelRuntime for SerialRuntime {
         _halo_width: f64,
     ) -> Vec<Particle> {
         Vec::new()
+    }
+
+    fn allreduce_sum_f64_slice(&self, _buf: &mut [f64]) {
+        // Serial: rango único; el buffer ya contiene la suma global.
     }
 
     fn allgather_f64(&self, local: &[f64]) -> Vec<Vec<f64>> {

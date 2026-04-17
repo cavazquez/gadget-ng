@@ -1,0 +1,28 @@
+# ── EdS N=512, TreePM periódico — Fase 18 ────────────────────────────────────
+#
+# TreePM: largo alcance via PM filtrado + corto alcance via árbol erfc.
+# Permite comparar PM vs TreePM con la misma cosmología.
+
+[simulation]
+particle_count      = 512
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 20
+softening           = 0.02
+gravitational_constant = 1.0
+seed                = 12345
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+periodic      = true
+omega_m       = 1.0
+omega_lambda  = 0.0
+h0            = 0.1
+a_init        = 1.0
+
+[gravity]
+solver        = "tree_pm"
+pm_grid_size  = 16

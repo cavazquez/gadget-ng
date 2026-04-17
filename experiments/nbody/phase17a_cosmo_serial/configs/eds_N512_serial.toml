@@ -1,0 +1,38 @@
+# ── Universo Einstein–de Sitter, N=512, 100 pasos — Fase 17a ──────────────────
+#
+# Ω_m = 1, Ω_Λ = 0, H₀ = 0.1 (unidades internas: L=Mpc/h, V=km/s).
+# a_init = 1.0 (z=0), retícula perturbada con amplitud del 5%.
+#
+# Propósito:
+#   - Validar evolución de a(t) frente a solución analítica EdS.
+#   - Comprobar crecimiento de estructura (delta_rms > 0 y creciente).
+#   - Verificar estabilidad numérica durante 100 pasos.
+
+[simulation]
+particle_count      = 512       # 8³ retícula
+box_size            = 1.0       # Mpc/h (unidades internas normalizadas)
+dt                  = 0.005     # paso de tiempo
+num_steps           = 100       # t_total = 0.5
+softening           = 0.02      # suavizado Plummer (ε = 2% del box)
+gravitational_constant = 1.0
+seed                = 12345
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+omega_m       = 1.0    # Einstein–de Sitter
+omega_lambda  = 0.0
+h0            = 0.1    # H₀ en unidades internas
+a_init        = 1.0    # z = 0
+
+[gravity]
+solver   = "direct"    # N² directo para serial reproducible
+theta    = 0.5
+
+[output]
+# Los diagnósticos se registran en cada paso por defecto.
+
+[performance]
+deterministic = true  # comportamiento serial reproducible

@@ -3,8 +3,11 @@ use crate::error::CliError;
 #[cfg(feature = "simd")]
 use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
-    build_particles_for_gid_range, cosmology::CosmologyParams, DirectGravity, GravitySolver,
-    IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind, SolverKind, Vec3,
+    build_particles_for_gid_range,
+    cosmology::CosmologyParams,
+    density_contrast_rms, hubble_param, peculiar_vrms, wrap_position,
+    DirectGravity, GravitySolver, IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind,
+    SolverKind, Vec3,
 };
 use gadget_ng_integrators::{
     hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, yoshida4_cosmo_kdk_step,
@@ -16,6 +19,9 @@ use gadget_ng_io::{
     SnapshotWriter,
 };
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, SlabDecomposition};
+use gadget_ng_pm::distributed as pm_dist;
+use gadget_ng_pm::slab_pm;
+use gadget_ng_pm::slab_fft::SlabLayout;
 use gadget_ng_pm::PmSolver;
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
@@ -90,6 +96,10 @@ struct HpcStepStats {
     rmn_soa_pack_ns: u64,
     /// Tiempo en accel_from_let_soa (flat LET SoA path) (ns) — P14.
     accel_from_let_soa_ns: u64,
+    /// Número de llamadas a apply_leaf_soa_4xi (Fase 16).
+    apply_leaf_tile_calls: u64,
+    /// Suma de tile_size en cada llamada tileada (partículas-i procesadas en modo 4xi).
+    apply_leaf_tile_i_count: u64,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -146,6 +156,12 @@ struct HpcTimingsAggregate {
     mean_accel_from_let_soa_s: f64,
     /// Si el path SoA está activo (feature simd).
     soa_simd_active: bool,
+    /// Media de llamadas a apply_leaf_soa_4xi (Fase 16) por paso.
+    mean_apply_leaf_tile_calls: f64,
+    /// Media de partículas-i procesadas en modo 4xi por paso.
+    mean_apply_leaf_tile_i_count: f64,
+    /// Ratio de utilización de tiles: tile_i_count / (tile_calls * 4). Ideal = 1.0.
+    tile_utilization_ratio: f64,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -341,6 +357,20 @@ fn local_moments(parts: &[Particle]) -> LocalMoments {
     m
 }
 
+/// Datos de diagnóstico cosmológico opcionales para cada paso.
+struct CosmoDiag {
+    /// Factor de escala actual `a`.
+    pub a: f64,
+    /// Redshift `z = 1/a - 1`.
+    pub z: f64,
+    /// Velocidad peculiar RMS `sqrt(⟨|p/a|²⟩)` en unidades internas.
+    pub v_rms: f64,
+    /// Contraste de densidad RMS `sqrt(⟨(δρ/ρ̄)²⟩)` sobre malla 16³.
+    pub delta_rms: f64,
+    /// Parámetro de Hubble H(a) en unidades internas.
+    pub hubble: f64,
+}
+
 fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     rt: &R,
     step: u64,
@@ -349,6 +379,7 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     diag_file: &mut Option<File>,
     step_stats: Option<&StepStats>,
     hpc_stats: Option<&HpcStepStats>,
+    cosmo_diag: Option<&CosmoDiag>,
 ) -> Result<(), CliError> {
     let ke_loc = kinetic_local(local);
     let ke = rt.allreduce_sum_f64(ke_loc);
@@ -401,6 +432,15 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
                 "hpc_stats".into(),
                 serde_json::to_value(hs).unwrap_or(serde_json::Value::Null),
             );
+        }
+        // Campos cosmológicos opcionales.
+        if let Some(cd) = cosmo_diag {
+            let map = obj.as_object_mut().unwrap();
+            map.insert("a".into(), cd.a.into());
+            map.insert("z".into(), cd.z.into());
+            map.insert("v_rms".into(), cd.v_rms.into());
+            map.insert("delta_rms".into(), cd.delta_rms.into());
+            map.insert("hubble".into(), cd.hubble.into());
         }
         let line = obj.to_string();
         writeln!(f, "{line}").map_err(|e| CliError::io(diag_path, e))?;
@@ -617,7 +657,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     let sfc_rebalance = cfg.performance.sfc_rebalance_interval;
 
-    if use_sfc_let {
+    // Fase 17b: SFC+LET cosmológico.
+    // Activado cuando: BarnesHut + cosmología + aperiódico + multirank + sin force_allgather_fallback.
+    // No toca `is_barnes_hut_eligible` original (que exige `!cosmology.enabled` para el
+    // path newtoniano SFC+LET). La cosmología distribuida usa su propio flag y branch.
+    //
+    // Fase 18: se desactiva cuando `periodic = true`: las fuerzas de árbol no usan
+    // minimum_image; la cosmología periódica requiere PM o TreePM (allgather path).
+    let use_sfc_let_cosmo = cfg.gravity.solver == SolverKind::BarnesHut
+        && cfg.cosmology.enabled
+        && !cfg.cosmology.periodic
+        && !cfg.timestep.hierarchical
+        && rt.size() > 1
+        && !cfg.performance.force_allgather_fallback;
+
+    // Validación de consistencia Fase 18: periodicidad requiere PM o TreePM.
+    // BarnesHut + periodic es una combinación no soportada (fuerzas no periódicas).
+    if cfg.cosmology.enabled && cfg.cosmology.periodic {
+        if cfg.gravity.solver != SolverKind::Pm && cfg.gravity.solver != SolverKind::TreePm {
+            return Err(CliError::InvalidConfig(
+                "cosmology.periodic = true requiere gravity.solver = \"pm\" o \"tree_pm\".\n\
+                 El solver BarnesHut no implementa fuerzas periódicas (minimum_image en árbol).\n\
+                 Usa solver = \"pm\" para caja periódica con Fase 18."
+                    .into(),
+            ));
+        }
+        rt.root_eprintln(
+            "[gadget-ng] Cosmología PERIÓDICA activada: PM + G/a + wrap_position (Fase 18).",
+        );
+        if cfg.gravity.pm_slab && cfg.gravity.solver == SolverKind::Pm {
+            let nm = cfg.gravity.pm_grid_size;
+            let p = rt.size() as usize;
+            if nm % p != 0 {
+                return Err(CliError::InvalidConfig(
+                    format!("pm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0").into(),
+                ));
+            }
+            rt.root_eprintln(
+                "[gadget-ng] PM SLAB (Fase 20): FFT distribuida alltoall O(nm³/P) + slab decomposition.",
+            );
+        } else if cfg.gravity.pm_distributed && cfg.gravity.solver == SolverKind::Pm {
+            rt.root_eprintln(
+                "[gadget-ng] PM DISTRIBUIDO (Fase 19): allreduce O(nm³) reemplaza allgather O(N·P).",
+            );
+        }
+    }
+
+    if use_sfc_let_cosmo {
+        rt.root_eprintln(
+            "[gadget-ng] SFC+LET COSMOLÓGICO activado: G/a scaling + LET distribuido (Fase 17b).",
+        );
+    } else if use_sfc_let {
         rt.root_eprintln(
             "[gadget-ng] SFC+LET activado: árbol distribuido con Locally Essential Trees (Fase 8).",
         );
@@ -656,7 +746,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         None
     };
 
-    write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file, None, None)?;
+    write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file, None, None, None)?;
 
     // `h_state_opt` se mantiene vivo tras el bucle para poder guardarlo con el snapshot.
     let mut h_state_opt: Option<HierarchicalState> = None;
@@ -782,33 +872,320 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, Some(&step_stats), None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, Some(&step_stats), None, None)?;
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
         }
         h_state_opt = Some(h_state);
-    } else if let Some((ref cosmo_params, _)) = cosmo_state {
-        // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
+    } else if use_sfc_let_cosmo {
+        // ── SFC+LET + Cosmología: Fase 17b ─────────────────────────────────────────
+        //
+        // Integra la física comóvil (momentum canónico p = a² dx_c/dt) con el backend
+        // SFC+LET distribuido, aplicando la corrección G/a en cada evaluación de fuerza.
+        //
+        // Diferencias clave respecto al path allgather cosmológico (Fase 17a):
+        //   • Comunicación O(log N) via LET en lugar de O(N) via allgather global.
+        //   • Descomposición SFC con rebalanceo dinámico por partícula.
+        //   • Path bloqueante (sin overlap compute/comm) para máxima correctitud.
+        //
+        // Restricciones de esta fase:
+        //   • Caja no periódica (igual que Fase 17a).
+        //   • Soporta Leapfrog y Yoshida4; g_cosmo = g / a_inicio_paso para todos los
+        //     sub-pasos (correcto a primer orden en dt, consistente con Fase 17a).
+        use gadget_ng_parallel::sfc::global_bbox;
+
+        let (cosmo_params, _) = cosmo_state.unwrap();
+        let sfc_kind = cfg.performance.sfc_kind;
+        let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+        let all_pos_init: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+        let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+            &all_pos_init, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
+        );
+        let size = rt.size() as usize;
+        let my_rank = rt.rank() as usize;
+        let f_export = cfg.performance.let_theta_export_factor;
+        let theta_export = if f_export > 0.0 { theta * f_export } else { theta };
+
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
             let mut this_comm: u64 = 0;
             let mut this_grav: u64 = 0;
+
+            // ── Corrección comóvil: G/a al inicio del paso (correcto a O(dt)) ────
+            let g_cosmo = g / a_current;
+
+            // ── Rebalanceo SFC ────────────────────────────────────────────────────
+            let do_rebalance = sfc_rebalance == 0
+                || (step - start_step) % sfc_rebalance.max(1) == 0;
+            if do_rebalance {
+                let t_rb = Instant::now();
+                let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+                let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+                sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
+                );
+                this_comm += t_rb.elapsed().as_nanos() as u64;
+            }
+
+            // ── Migración de dominio SFC ──────────────────────────────────────────
+            let t_domain = Instant::now();
+            rt.exchange_domain_sfc(&mut local, &sfc_decomp);
+            this_comm += t_domain.elapsed().as_nanos() as u64;
+            scratch.resize(local.len(), Vec3::zero());
+
+            // ── Cierre de evaluación de fuerza con G/a (bloqueante) ───────────────
+            //
+            // Se captura `g_cosmo` fijo para este paso, consistente con el integrador:
+            // tanto Leapfrog como Yoshida4 cosmo usan g/a del inicio del paso.
+            let mut force_cosmo = |parts: &[Particle], acc: &mut [Vec3]| {
+                // 1. AABB allgather — para saber a qué rangos enviar nodos LET.
+                let my_aabb: Vec<f64> = if parts.is_empty() {
+                    vec![
+                        f64::INFINITY, f64::NEG_INFINITY,
+                        f64::INFINITY, f64::NEG_INFINITY,
+                        f64::INFINITY, f64::NEG_INFINITY,
+                    ]
+                } else {
+                    let xlo = parts.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
+                    let xhi = parts.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max);
+                    let ylo = parts.iter().map(|p| p.position.y).fold(f64::INFINITY, f64::min);
+                    let yhi = parts.iter().map(|p| p.position.y).fold(f64::NEG_INFINITY, f64::max);
+                    let zlo = parts.iter().map(|p| p.position.z).fold(f64::INFINITY, f64::min);
+                    let zhi = parts.iter().map(|p| p.position.z).fold(f64::NEG_INFINITY, f64::max);
+                    vec![xlo, xhi, ylo, yhi, zlo, zhi]
+                };
+                let t_aabb = Instant::now();
+                let all_aabbs = rt.allgather_f64(&my_aabb);
+                this_comm += t_aabb.elapsed().as_nanos() as u64;
+
+                // 2. Árbol local con partículas propias de este rango.
+                let t_build = Instant::now();
+                let all_pos_l: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                let all_mass_l: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                let tree = Octree::build(&all_pos_l, &all_mass_l);
+                this_grav += t_build.elapsed().as_nanos() as u64;
+
+                // 3. Exportar y empaquetar nodos LET hacia cada rango remoto.
+                let t_exp = Instant::now();
+                let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+                for r in 0..size {
+                    if r == my_rank { continue; }
+                    let ra = &all_aabbs[r];
+                    if ra.len() < 6 { continue; }
+                    let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
+                    let let_nodes = tree.export_let(target_aabb, theta_export);
+                    if !let_nodes.is_empty() {
+                        sends[r] = pack_let_nodes(&let_nodes);
+                    }
+                }
+                this_grav += t_exp.elapsed().as_nanos() as u64;
+
+                // 4. Intercambio bloqueante de nodos LET.
+                let t_comm2 = Instant::now();
+                let received = rt.alltoallv_f64(&sends);
+                this_comm += t_comm2.elapsed().as_nanos() as u64;
+
+                // 5. Calcular fuerzas locales + remotas usando g_cosmo = G/a.
+                //    `compute_forces_sfc_let` acepta `g` como parámetro explícito,
+                //    así que pasamos `g_cosmo` sin modificar la función auxiliar.
+                let t_grav = Instant::now();
+                compute_forces_sfc_let(parts, &received, theta, g_cosmo, eps2, acc);
+                this_grav += t_grav.elapsed().as_nanos() as u64;
+            };
+
+            // ── Integrador cosmológico KDK ────────────────────────────────────────
+            match integrator_kind {
+                IntegratorKind::Leapfrog => {
+                    let (drift, kick_half, kick_half2) =
+                        cosmo_params.drift_kick_factors(a_current, dt);
+                    let cf = CosmoFactors { drift, kick_half, kick_half2 };
+                    a_current = cosmo_params.advance_a(a_current, dt);
+                    leapfrog_cosmo_kdk_step(&mut local, cf, &mut scratch, |parts, acc| {
+                        force_cosmo(parts, acc);
+                    });
+                }
+                IntegratorKind::Yoshida4 => {
+                    // g_cosmo = g / a_inicio_paso, aplicado a los 3 sub-pasos.
+                    // Los CosmoFactors se pre-calculan avanzando a_current por sub-paso.
+                    let sub_dts = [YOSHIDA4_W1 * dt, YOSHIDA4_W0 * dt, YOSHIDA4_W1 * dt];
+                    let mut cfs = [CosmoFactors::flat(0.0); 3];
+                    for (i, &sub_dt) in sub_dts.iter().enumerate() {
+                        let (drift, kick_half, kick_half2) =
+                            cosmo_params.drift_kick_factors(a_current, sub_dt);
+                        cfs[i] = CosmoFactors { drift, kick_half, kick_half2 };
+                        a_current = cosmo_params.advance_a(a_current, sub_dt);
+                    }
+                    yoshida4_cosmo_kdk_step(&mut local, cfs, &mut scratch, |parts, acc| {
+                        force_cosmo(parts, acc);
+                    });
+                }
+            }
+
+            // ── Diagnósticos cosmológicos (p17b-diag) ────────────────────────────
+            // v_rms: suma local de |p/a|² → allreduce → sqrt(sum/total)
+            // Esto es correcto en MPI: cada rango contribuye su segmento de partículas.
+            let sum_v2_local: f64 = local
+                .iter()
+                .map(|p| {
+                    let v = p.velocity * (1.0 / a_current);
+                    v.dot(v)
+                })
+                .sum();
+            let sum_v2 = rt.allreduce_sum_f64(sum_v2_local);
+            let v_rms_dist = if total > 0 {
+                (sum_v2 / total as f64).sqrt()
+            } else {
+                0.0
+            };
+            // delta_rms: aproximación local (cada rango ve su subconjunto de partículas).
+            // En MPI, este valor es una estimación local; el reporte lo nota explícitamente.
+            let delta_rms_local =
+                density_contrast_rms(&local, cfg.simulation.box_size, 16);
+
+            let cd = CosmoDiag {
+                a: a_current,
+                z: 1.0 / a_current - 1.0,
+                v_rms: v_rms_dist,
+                delta_rms: delta_rms_local,
+                hubble: hubble_param(cosmo_params, a_current),
+            };
+            acc_step_ns += step_start.elapsed().as_nanos() as u64;
+            acc_comm_ns += this_comm;
+            acc_gravity_ns += this_grav;
+            steps_run += 1;
+            write_diagnostic_line(
+                rt, step, &local, &diag_path, &mut diag_file, None, None, Some(&cd),
+            )?;
+            maybe_checkpoint!(step, None);
+            maybe_snap_frame!(step);
+        }
+    } else if let Some((ref cosmo_params, _)) = cosmo_state {
+        // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
+        //
+        // Fase 18: si `cosmology.periodic = true` (y solver es PM/TreePM), tras el
+        // integrador se envuelven las posiciones a [0, box_size)³ con `wrap_position`.
+        // El solver PM ya usa `rem_euclid` internamente en CIC, pero el wrap explícito
+        // garantiza correctitud de diagnósticos y snapshots.
+        let cosmo_periodic = cfg.cosmology.periodic;
+        let box_size = cfg.simulation.box_size;
+
+        // Fase 19: PM distribuido. Activo cuando periodic=true, solver=PM y pm_distributed=true.
+        // En este path el allgather O(N·P) de partículas se reemplaza por un allreduce O(nm³)
+        // del grid de densidad, lo que elimina la dependencia de comunicación en N.
+        let use_pm_dist = cfg.gravity.pm_distributed
+            && !cfg.gravity.pm_slab  // pm_slab tiene prioridad
+            && cfg.cosmology.periodic
+            && cfg.gravity.solver == SolverKind::Pm;
+
+        // Fase 20: PM slab distribuido. FFT distribuida real mediante alltoall transposes.
+        // Cada rank posee nz_local = nm/P planos Z del grid; la FFT Z se distribuye.
+        let use_pm_slab = cfg.gravity.pm_slab
+            && cfg.cosmology.periodic
+            && cfg.gravity.solver == SolverKind::Pm;
+
+        let pm_nm = cfg.gravity.pm_grid_size;
+
+        // Precomputar límites de slab Z para Fase 20 (solo si pm_slab activo).
+        let slab_layout_opt: Option<SlabLayout> = if use_pm_slab {
+            Some(SlabLayout::new(pm_nm, rt.rank() as usize, rt.size() as usize))
+        } else {
+            None
+        };
+
+        for step in start_step..=cfg.simulation.num_steps {
+            let step_start = Instant::now();
+            let mut this_comm: u64 = 0;
+            let mut this_grav: u64 = 0;
+
+            // Fase 20: migrar partículas a su slab Z al inicio de cada paso.
+            // Necesario para que deposit_slab_extended reciba las partículas correctas.
+            if use_pm_slab && rt.size() > 1 {
+                if let Some(ref layout) = slab_layout_opt {
+                    let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                    let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                    rt.exchange_domain_by_z(&mut local, z_lo, z_hi);
+                }
+            }
+
+            // Corrección de fuerza comóvil: dp/dt = -(G/a) * F_newtoniana_comóvil.
+            // Se usa el factor de escala al inicio del paso (correcto a primer orden en dt).
+            let g_cosmo = g / a_current;
             let mut compute_acc =
                 |parts: &[Particle], acc: &mut [Vec3], this_comm: &mut u64, this_grav: &mut u64| {
-                    let t0 = Instant::now();
-                    rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
-                    *this_comm += t0.elapsed().as_nanos() as u64;
-                    let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
-                    let t1 = Instant::now();
-                    solver.accelerations_for_indices(
-                        &global_pos,
-                        &global_mass,
-                        eps2,
-                        g,
-                        &idx,
-                        acc,
-                    );
-                    *this_grav += t1.elapsed().as_nanos() as u64;
+                    if use_pm_slab {
+                        // ─ Fase 20: PM slab distribuido ──────────────────────────────────
+                        let layout = slab_layout_opt.as_ref().unwrap();
+                        let t0 = Instant::now();
+
+                        let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+
+                        // 1. Depósito CIC en slab extendido (con ghost right).
+                        let mut density_ext = slab_pm::deposit_slab_extended(
+                            &local_pos, &local_mass, layout, box_size,
+                        );
+                        // 2. Intercambio de halos de densidad Z (ring periódico).
+                        slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
+                        *this_comm += t0.elapsed().as_nanos() as u64;
+
+                        // 3. Solve de Poisson distribuido (alltoall transposes).
+                        let t1 = Instant::now();
+                        let mut forces = slab_pm::forces_from_slab(
+                            &density_ext, layout, g_cosmo, box_size, None, rt,
+                        );
+                        // 4. Intercambio de halos de fuerza Z (para CIC correcto en bordes).
+                        slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
+                        *this_comm += t1.elapsed().as_nanos() as u64;
+
+                        // 5. Interpolación CIC local.
+                        let t2 = Instant::now();
+                        let accels = slab_pm::interpolate_slab_local(
+                            &local_pos, &forces, layout, box_size,
+                        );
+                        for (a, v) in acc.iter_mut().zip(accels.iter()) {
+                            *a = *v;
+                        }
+                        *this_grav += t2.elapsed().as_nanos() as u64;
+                    } else if use_pm_dist {
+                        // ─ Fase 19: PM distribuido ────────────────────────────────────────
+                        // 1. Depósito CIC local (O(N/P) por rank).
+                        let t0 = Instant::now();
+                        let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                        let mut density =
+                            pm_dist::deposit_local(&local_pos, &local_mass, box_size, pm_nm);
+                        // 2. allreduce_sum del grid de densidad (O(nm³), no O(N·P)).
+                        rt.allreduce_sum_f64_slice(&mut density);
+                        *this_comm += t0.elapsed().as_nanos() as u64;
+                        // 3. Solve de Poisson (determinista, idéntico en todos los ranks).
+                        let t1 = Instant::now();
+                        let [fx, fy, fz] = pm_dist::forces_from_global_density(
+                            &density, g_cosmo, pm_nm, box_size,
+                        );
+                        // 4. Interpolación CIC local (O(N/P) por rank).
+                        let accels =
+                            pm_dist::interpolate_local(&local_pos, &fx, &fy, &fz, pm_nm, box_size);
+                        for (a, v) in acc.iter_mut().zip(accels.iter()) {
+                            *a = *v;
+                        }
+                        *this_grav += t1.elapsed().as_nanos() as u64;
+                    } else {
+                        // ─ Path clásico: allgather de partículas (Fase 18 y anteriores) ──
+                        let t0 = Instant::now();
+                        rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                        *this_comm += t0.elapsed().as_nanos() as u64;
+                        let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
+                        let t1 = Instant::now();
+                        solver.accelerations_for_indices(
+                            &global_pos,
+                            &global_mass,
+                            eps2,
+                            g_cosmo,
+                            &idx,
+                            acc,
+                        );
+                        *this_grav += t1.elapsed().as_nanos() as u64;
+                    }
                 };
             match integrator_kind {
                 IntegratorKind::Leapfrog => {
@@ -842,11 +1219,32 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     });
                 }
             }
+
+            // Fase 18: envolver posiciones periódicamente tras cada paso de drift.
+            // El wrap garantiza que todas las posiciones queden en [0, box_size)³,
+            // lo que es necesario para diagnósticos correctos y consistencia física.
+            if cosmo_periodic {
+                for p in local.iter_mut() {
+                    p.position = wrap_position(p.position, box_size);
+                }
+            }
+
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
+            let cd = CosmoDiag {
+                a: a_current,
+                z: 1.0 / a_current - 1.0,
+                v_rms: peculiar_vrms(&local, a_current),
+                delta_rms: density_contrast_rms(
+                    &local,
+                    cfg.simulation.box_size,
+                    16,
+                ),
+                hubble: hubble_param(*cosmo_params, a_current),
+            };
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, Some(&cd))?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -1073,11 +1471,26 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             let t_ltw = Instant::now();
                             #[cfg(feature = "simd")]
                             {
+                                use gadget_ng_core::Vec3;
                                 use rayon::prelude::*;
-                                acc.par_iter_mut().enumerate().for_each(|(li, a_out)| {
-                                    *a_out = local_accels[li]
-                                        + let_tree.walk_accel(parts[li].position, g, eps2, theta);
-                                });
+                                // Fase 16: loop tileado 4×N_i via par_chunks_mut(4).
+                                // Cada tile procesa 4 partículas simultáneamente con walk_accel_4xi.
+                                acc.par_chunks_mut(4)
+                                    .zip(local_accels.par_chunks(4))
+                                    .zip(parts.par_chunks(4))
+                                    .for_each(|((acc_tile, local_tile), parts_tile)| {
+                                        let tile_size = parts_tile.len();
+                                        let mut pos = [Vec3::zero(); 4];
+                                        for k in 0..tile_size {
+                                            pos[k] = parts_tile[k].position;
+                                        }
+                                        let result = let_tree.walk_accel_4xi(
+                                            pos, tile_size, g, eps2, theta,
+                                        );
+                                        for k in 0..tile_size {
+                                            acc_tile[k] = local_tile[k] + result[k];
+                                        }
+                                    });
                                 hpc.let_tree_parallel = true;
                             }
                             #[cfg(not(feature = "simd"))]
@@ -1093,6 +1506,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             let (leaf_calls, leaf_rmn) = gadget_ng_tree::let_tree_prof_end();
                             hpc.apply_leaf_calls += leaf_calls;
                             hpc.apply_leaf_rmn_count += leaf_rmn;
+                            let (tile_calls, tile_i) =
+                                gadget_ng_tree::let_tree_tile_prof_read();
+                            hpc.apply_leaf_tile_calls += tile_calls;
+                            hpc.apply_leaf_tile_i_count += tile_i;
                             this_grav += ltw_ns;
                         } else {
                             // Path flat LET: con feature "simd" usa RmnSoa para kernel fusionado.
@@ -1206,10 +1623,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_hpc.apply_leaf_calls += hpc.apply_leaf_calls;
             acc_hpc.rmn_soa_pack_ns += hpc.rmn_soa_pack_ns;
             acc_hpc.accel_from_let_soa_ns += hpc.accel_from_let_soa_ns;
+            acc_hpc.apply_leaf_tile_calls += hpc.apply_leaf_tile_calls;
+            acc_hpc.apply_leaf_tile_i_count += hpc.apply_leaf_tile_i_count;
             steps_run += 1;
 
             write_diagnostic_line(
-                rt, step, &local, &diag_path, &mut diag_file, None, Some(&hpc),
+                rt, step, &local, &diag_path, &mut diag_file, None, Some(&hpc), None,
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
@@ -1275,6 +1694,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 soa_simd_active: true,
                 #[cfg(not(feature = "simd"))]
                 soa_simd_active: false,
+                mean_apply_leaf_tile_calls: acc_hpc.apply_leaf_tile_calls as f64 / n,
+                mean_apply_leaf_tile_i_count: acc_hpc.apply_leaf_tile_i_count as f64 / n,
+                tile_utilization_ratio: {
+                    let calls = acc_hpc.apply_leaf_tile_calls as f64;
+                    if calls > 0.0 {
+                        acc_hpc.apply_leaf_tile_i_count as f64 / (calls * 4.0)
+                    } else {
+                        0.0
+                    }
+                },
             });
         }
     } else if use_sfc {
@@ -1331,7 +1760,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -1382,7 +1811,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -1413,7 +1842,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }

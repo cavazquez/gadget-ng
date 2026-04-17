@@ -137,6 +137,12 @@ impl ParallelRuntime for MpiRuntime {
         out
     }
 
+    fn allreduce_sum_f64_slice(&self, buf: &mut [f64]) {
+        let world = self.world();
+        let sendbuf = buf.to_vec();
+        world.all_reduce_into(&sendbuf[..], buf, SystemOperation::sum());
+    }
+
     fn exchange_domain_by_x(&self, local: &mut Vec<Particle>, my_x_lo: f64, my_x_hi: f64) {
         let world = self.world();
         let rank = world.rank();
@@ -183,6 +189,94 @@ impl ParallelRuntime for MpiRuntime {
         *local = stay;
         local.extend(recv_from_right.0);
         local.extend(recv_from_right.1);
+    }
+
+    fn exchange_domain_by_z(&self, local: &mut Vec<Particle>, my_z_lo: f64, my_z_hi: f64) {
+        let world = self.world();
+        let rank = world.rank();
+        let size = world.size();
+
+        let mut stay = Vec::new();
+        let mut go_left = Vec::new();
+        let mut go_right = Vec::new();
+        for p in local.drain(..) {
+            if p.position.z < my_z_lo && rank > 0 {
+                go_left.push(p);
+            } else if p.position.z >= my_z_hi && rank < size - 1 {
+                go_right.push(p);
+            } else {
+                stay.push(p);
+            }
+        }
+
+        let left = if rank > 0 {
+            Some(world.process_at_rank(rank - 1))
+        } else {
+            None
+        };
+        let right = if rank < size - 1 {
+            Some(world.process_at_rank(rank + 1))
+        } else {
+            None
+        };
+
+        let recv = point_to_point_exchange(
+            &world,
+            rank,
+            &right,
+            &left,
+            &pack::pack_halo(&go_right),
+            &pack::pack_halo(&go_left),
+        );
+        *local = stay;
+        local.extend(recv.0);
+        local.extend(recv.1);
+    }
+
+    fn exchange_halos_by_z(
+        &self,
+        local: &[Particle],
+        my_z_lo: f64,
+        my_z_hi: f64,
+        halo_width: f64,
+    ) -> Vec<Particle> {
+        let world = self.world();
+        let rank = world.rank();
+        let size = world.size();
+
+        let buf_left: Vec<Particle> = local
+            .iter()
+            .filter(|p| p.position.z < my_z_lo + halo_width && rank > 0)
+            .cloned()
+            .collect();
+        let buf_right: Vec<Particle> = local
+            .iter()
+            .filter(|p| p.position.z > my_z_hi - halo_width && rank < size - 1)
+            .cloned()
+            .collect();
+
+        let left = if rank > 0 {
+            Some(world.process_at_rank(rank - 1))
+        } else {
+            None
+        };
+        let right = if rank < size - 1 {
+            Some(world.process_at_rank(rank + 1))
+        } else {
+            None
+        };
+
+        let (from_left, from_right) = point_to_point_exchange(
+            &world,
+            rank,
+            &right,
+            &left,
+            &pack::pack_halo(&buf_right),
+            &pack::pack_halo(&buf_left),
+        );
+        let mut halos = from_left;
+        halos.extend(from_right);
+        halos
     }
 
     fn exchange_domain_sfc(

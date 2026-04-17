@@ -96,6 +96,28 @@ pub enum IcKind {
         #[serde(default = "default_sphere_r")]
         r: f64,
     },
+    /// Retícula cúbica con perturbaciones gaussianas de posición y velocidad.
+    ///
+    /// Diseñada para condiciones iniciales cosmológicas: las partículas se colocan
+    /// sobre una cuadrícula regular `⌈N^{1/3}⌉³` y reciben perturbaciones Gaussianas.
+    /// Con `velocity_amplitude = 0.0` las partículas están en reposo comóvil (p = 0),
+    /// adecuado para simulaciones de alta redshift.
+    ///
+    /// ```toml
+    /// [initial_conditions]
+    /// kind = { perturbed_lattice = { amplitude = 0.1, velocity_amplitude = 0.0 } }
+    /// ```
+    PerturbedLattice {
+        /// Amplitud de la perturbación de posición como fracción del espaciado de la retícula.
+        /// Ejemplo: `0.1` → perturbación de ±10% del spacing de la celda.
+        #[serde(default = "default_perturb_amplitude")]
+        amplitude: f64,
+        /// Amplitud de las velocidades peculiares iniciales en unidades de `H0 * box_size`.
+        /// `0.0` (default) = reposo comóvil completo.
+        /// Las velocidades se almacenan como momentum canónico `p = a_init * v_peculiar`.
+        #[serde(default)]
+        velocity_amplitude: f64,
+    },
 }
 
 fn default_plummer_a() -> f64 {
@@ -104,6 +126,10 @@ fn default_plummer_a() -> f64 {
 
 fn default_sphere_r() -> f64 {
     1.0
+}
+
+fn default_perturb_amplitude() -> f64 {
+    0.1
 }
 
 /// Parámetros del solver de gravedad (opcional en TOML; valores por defecto retrocompatibles).
@@ -160,6 +186,26 @@ pub struct GravitySection {
     /// Si es ≤ 0 se calcula automáticamente como `2.5 × (box_size / pm_grid_size)`.
     #[serde(default = "default_r_split")]
     pub r_split: f64,
+    /// `true` → usa el path PM distribuido (Fase 19): cada rank deposita su
+    /// contribución local al grid, un `allreduce_sum` sobre el grid nm³ reemplaza
+    /// el `allgather` O(N·P) de partículas, y todos los ranks resuelven Poisson
+    /// de forma independiente (resultado idéntico al ser determinista).
+    ///
+    /// Solo tiene efecto cuando `cosmology.periodic = true` y `solver = "pm"`.
+    /// En `P=1` (serial) el comportamiento es idéntico al path clásico.
+    #[serde(default)]
+    pub pm_distributed: bool,
+
+    /// Activa el path PM de Fase 20: slab decomposition real en Z con FFT
+    /// distribuida mediante alltoall transposes.
+    ///
+    /// Requisitos: `cosmology.periodic = true`, `solver = "pm"`,
+    /// `pm_grid_size % n_ranks == 0`.
+    ///
+    /// Para `P = 1` el resultado es bit-a-bit idéntico al solver serial.
+    /// Cada alltoall transfiere O(nm³/P) datos por rank (P× menos que `pm_distributed`).
+    #[serde(default)]
+    pub pm_slab: bool,
 }
 
 fn default_solver_kind() -> SolverKind {
@@ -202,6 +248,8 @@ impl Default for GravitySection {
             mac_softening: MacSoftening::default(),
             pm_grid_size: default_pm_grid_size(),
             r_split: default_r_split(),
+            pm_distributed: false,
+            pm_slab: false,
         }
     }
 }
@@ -555,6 +603,17 @@ pub struct CosmologySection {
     /// `true` → integrar Friedmann y usar factores drift/kick cosmológicos.
     #[serde(default)]
     pub enabled: bool,
+    /// Condiciones de contorno periódicas (Fase 18).
+    ///
+    /// `false` (default) → caja no periódica. Las fuerzas usan árbol Barnes-Hut o
+    ///   distancias euclídeas sin imagen mínima; las posiciones no se envuelven.
+    ///
+    /// `true` → caja periódica. Requiere `gravity.solver = "pm"` o `"tree_pm"`:
+    ///   el solver PM usa CIC+FFT periódica para calcular las fuerzas correctamente.
+    ///   Las posiciones se envuelven a `[0, box_size)` tras cada paso de drift.
+    ///   Las fuerzas de árbol (BarnesHut) NO son periódicas; usar PM o TreePM.
+    #[serde(default)]
+    pub periodic: bool,
     /// Fracción de densidad de materia (sin dimensiones). Default: 0.3.
     #[serde(default = "default_omega_m")]
     pub omega_m: f64,
@@ -590,6 +649,7 @@ impl Default for CosmologySection {
     fn default() -> Self {
         Self {
             enabled: false,
+            periodic: false,
             omega_m: default_omega_m(),
             omega_lambda: default_omega_lambda(),
             h0: default_h0(),

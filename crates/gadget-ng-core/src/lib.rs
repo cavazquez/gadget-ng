@@ -20,7 +20,10 @@ pub use config::{
     SfcKind, SimulationSection, SnapshotFormat, SolverKind, TimestepCriterion, TimestepSection,
     UnitsSection, G_KPC_MSUN_KMPS,
 };
-pub use cosmology::CosmologyParams;
+pub use cosmology::{
+    density_contrast_rms, hubble_param, minimum_image, peculiar_vrms, wrap_coord, wrap_position,
+    CosmologyParams,
+};
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;
 pub use gravity::{

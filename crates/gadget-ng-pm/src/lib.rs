@@ -12,7 +12,11 @@
 //! pm_grid_size = 64   # NM: grid NM³, potencia de 2 recomendada
 //! ```
 pub mod cic;
+pub mod distributed;
 pub mod fft_poisson;
+pub mod slab_fft;
+pub mod slab_pm;
 pub mod solver;
 
+pub use slab_fft::SlabLayout;
 pub use solver::PmSolver;

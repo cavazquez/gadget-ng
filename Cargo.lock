@@ -783,8 +783,11 @@ version = "0.1.0"
 dependencies = [
  "gadget-ng-core",
  "gadget-ng-integrators",
+ "gadget-ng-parallel",
+ "gadget-ng-pm",
  "gadget-ng-sph",
  "gadget-ng-tree",
+ "gadget-ng-treepm",
 ]
 
 [[package]]
@@ -793,6 +796,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "gadget-ng-core",
+ "gadget-ng-parallel",
  "rayon",
  "rustfft",
  "tempfile",
