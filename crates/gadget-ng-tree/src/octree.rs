@@ -180,7 +180,7 @@ impl OctNode {
 ///
 /// Resultado como `[Qxx, Qxy, Qxz, Qyy, Qyz, Qzz]`.
 #[inline]
-fn outer_traceless(s: Vec3, m: f64) -> [f64; 6] {
+pub(crate) fn outer_traceless(s: Vec3, m: f64) -> [f64; 6] {
     let s2 = s.dot(s);
     [
         m * (3.0 * s.x * s.x - s2),
@@ -235,7 +235,7 @@ fn quad_accel(r: Vec3, q: [f64; 6], g: f64) -> Vec3 {
 ///
 /// Fórmula: `a_α = G · [(Q·r)_α / (|r|²+ε²)^(5/2) − 5/2 · (r^T Q r) · r_α / (|r|²+ε²)^(7/2)]`
 #[inline]
-fn quad_accel_softened(r: Vec3, q: [f64; 6], g: f64, eps2: f64) -> Vec3 {
+pub(crate) fn quad_accel_softened(r: Vec3, q: [f64; 6], g: f64, eps2: f64) -> Vec3 {
     let r2 = r.dot(r) + eps2;  // Plummer softened
     if r2 < 1e-300 {
         return Vec3::zero();
@@ -265,7 +265,7 @@ fn quad_accel_softened(r: Vec3, q: [f64; 6], g: f64, eps2: f64) -> Vec3 {
 ///
 /// Fórmula: `a^(oct)_α = G · [−O_{αβγ} r_β r_γ / (2(r²+ε²)^(7/2)) + (7/6) O_{βγδ} r_β r_γ r_δ r_α / (r²+ε²)^(9/2)]`
 #[inline]
-fn oct_accel_softened(r: Vec3, o: [f64; 7], g: f64, eps2: f64) -> Vec3 {
+pub(crate) fn oct_accel_softened(r: Vec3, o: [f64; 7], g: f64, eps2: f64) -> Vec3 {
     let r2 = r.dot(r) + eps2;  // Plummer softened
     if r2 < 1e-300 {
         return Vec3::zero();
@@ -325,7 +325,7 @@ fn oct_accel_softened(r: Vec3, o: [f64; 7], g: f64, eps2: f64) -> Vec3 {
 ///
 /// Almacena los 7 componentes independientes `[O_xxx, O_xxy, O_xxz, O_xyy, O_xyz, O_yyy, O_yzz]`.
 #[inline]
-fn outer3_tf(s: Vec3, m: f64) -> [f64; 7] {
+pub(crate) fn outer3_tf(s: Vec3, m: f64) -> [f64; 7] {
     let (sx, sy, sz) = (s.x, s.y, s.z);
     let s2 = sx * sx + sy * sy + sz * sz;
     [

@@ -52,7 +52,7 @@ struct HpcStepStats {
     /// Tiempo del walk local del árbol (ns).
     /// En el path no-bloqueante, se solapa con `let_alltoallv_ns`.
     walk_local_ns: u64,
-    /// Tiempo de aplicación de las fuerzas de nodos LET remotos (ns).
+    /// Tiempo de aplicación de las fuerzas de nodos LET remotos (loop plano) (ns).
     apply_let_ns: u64,
     /// Nodos LET exportados a todos los rangos remotos en este paso.
     let_nodes_exported: usize,
@@ -62,6 +62,12 @@ struct HpcStepStats {
     bytes_sent: usize,
     /// Bytes recibidos en alltoallv LET.
     bytes_recv: usize,
+    /// Tiempo de construcción del `LetTree` (ns). 0 si el path plano está activo.
+    let_tree_build_ns: u64,
+    /// Tiempo del walk del `LetTree` (N_local recorridos) (ns). 0 si el path plano está activo.
+    let_tree_walk_ns: u64,
+    /// Número de nodos en el `LetTree` construido. 0 si el path plano está activo.
+    let_tree_nodes: usize,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -80,6 +86,12 @@ struct HpcTimingsAggregate {
     mean_bytes_recv: f64,
     /// Fracción del tiempo total de paso gastada esperando MPI (alltoallv − walk_local).
     wait_fraction: f64,
+    /// Tiempo medio de construcción del `LetTree` por paso (s). 0 si path plano activo.
+    mean_let_tree_build_s: f64,
+    /// Tiempo medio del walk del `LetTree` por paso (s). 0 si path plano activo.
+    mean_let_tree_walk_s: f64,
+    /// Media de nodos en el `LetTree` por paso. 0 si path plano activo.
+    mean_let_tree_nodes: f64,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -950,8 +962,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         this_comm += wait_ns;
                         this_grav += walk_ns_inner;
 
-                        // 5. Aplicar fuerzas LET remotas (cómputo → this_grav).
-                        let t_apply = Instant::now();
+                        // 5. Desempaquetar nodos LET remotos.
                         let mut remote_nodes = Vec::new();
                         let mut total_bytes_recv = 0usize;
                         for buf in &received {
@@ -962,14 +973,41 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         }
                         hpc.let_nodes_imported += remote_nodes.len();
                         hpc.bytes_recv += total_bytes_recv;
-                        for (li, a_out) in acc.iter_mut().enumerate() {
-                            let a_remote =
-                                accel_from_let(parts[li].position, &remote_nodes, g, eps2);
-                            *a_out = local_accels[li] + a_remote;
+
+                        // 6. Aplicar fuerzas LET remotas: LetTree o loop plano.
+                        let use_lt = cfg.performance.use_let_tree
+                            && remote_nodes.len() > cfg.performance.let_tree_threshold;
+                        let t_apply = Instant::now();
+                        if use_lt {
+                            let t_ltb = Instant::now();
+                            let let_tree = gadget_ng_tree::LetTree::build_with_leaf_max(
+                                &remote_nodes,
+                                cfg.performance.let_tree_leaf_max,
+                            );
+                            let ltb_ns = t_ltb.elapsed().as_nanos() as u64;
+                            hpc.let_tree_build_ns += ltb_ns;
+                            hpc.let_tree_nodes += let_tree.node_count();
+                            this_grav += ltb_ns;
+
+                            let t_ltw = Instant::now();
+                            for (li, a_out) in acc.iter_mut().enumerate() {
+                                let a_remote =
+                                    let_tree.walk_accel(parts[li].position, g, eps2, theta);
+                                *a_out = local_accels[li] + a_remote;
+                            }
+                            let ltw_ns = t_ltw.elapsed().as_nanos() as u64;
+                            hpc.let_tree_walk_ns += ltw_ns;
+                            this_grav += ltw_ns;
+                        } else {
+                            for (li, a_out) in acc.iter_mut().enumerate() {
+                                let a_remote =
+                                    accel_from_let(parts[li].position, &remote_nodes, g, eps2);
+                                *a_out = local_accels[li] + a_remote;
+                            }
                         }
                         let apply_ns = t_apply.elapsed().as_nanos() as u64;
                         hpc.apply_let_ns += apply_ns;
-                        this_grav += apply_ns;
+                        this_grav += if use_lt { 0 } else { apply_ns };
                     } else {
                         // ── Path bloqueante (Fase 8 original) ────────────────
                         let t_comm2 = Instant::now();
@@ -1037,6 +1075,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_hpc.let_nodes_imported += hpc.let_nodes_imported;
             acc_hpc.bytes_sent += hpc.bytes_sent;
             acc_hpc.bytes_recv += hpc.bytes_recv;
+            acc_hpc.let_tree_build_ns += hpc.let_tree_build_ns;
+            acc_hpc.let_tree_walk_ns += hpc.let_tree_walk_ns;
+            acc_hpc.let_tree_nodes += hpc.let_tree_nodes;
             steps_run += 1;
 
             write_diagnostic_line(
@@ -1071,6 +1112,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 } else {
                     0.0
                 },
+                mean_let_tree_build_s: acc_hpc.let_tree_build_ns as f64 * ns2s / n,
+                mean_let_tree_walk_s: acc_hpc.let_tree_walk_ns as f64 * ns2s / n,
+                mean_let_tree_nodes: acc_hpc.let_tree_nodes as f64 / n,
             });
         }
     } else if use_sfc {

@@ -302,4 +302,15 @@ El cuello de botella actual es `apply_let` O(N×N_LET). La solución es construi
 
 ---
 
+## Continuación: Fase 10 — LET-tree O(N log N) para apply_let
+
+La Fase 9 identificó `apply_let_ns` como el cuello de botella dominante tras eliminar
+la espera MPI mediante el path no-bloqueante. La **Fase 10** implementa un octree
+Barnes-Hut (`LetTree`) sobre los `RemoteMultipoleNode` importados, reduciendo
+`apply_let` de O(N_local × N_let) a O(N_local log N_let).
+
+Detalles: [2026-04-phase10-let-tree.md](2026-04-phase10-let-tree.md)
+
+---
+
 *Generado: Abril 2026 — gadget-ng Fase 9*

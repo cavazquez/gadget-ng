@@ -352,6 +352,29 @@ pub struct PerformanceSection {
     /// En modo serial el valor no tiene efecto: ambos caminos son equivalentes.
     #[serde(default = "default_let_nonblocking")]
     pub let_nonblocking: bool,
+
+    /// `true` (default) → construir un octree sobre los `RemoteMultipoleNode`
+    /// importados (`LetTree`) y aplicar fuerzas remotas en O(N_local log N_let).
+    /// `false` → loop plano O(N_local × N_let) (baseline Fase 9).
+    ///
+    /// Solo tiene efecto cuando `use_sfc = true` y el número de nodos LET
+    /// importados supera `let_tree_threshold`.
+    #[serde(default = "default_use_let_tree")]
+    pub use_let_tree: bool,
+
+    /// Umbral mínimo de nodos LET para activar el `LetTree`.
+    /// Si los nodos importados son `≤ let_tree_threshold`, se usa el loop plano
+    /// (el árbol no compensa su overhead de construcción con pocos nodos).
+    /// Default: 64.
+    #[serde(default = "default_let_tree_threshold")]
+    pub let_tree_threshold: usize,
+
+    /// Número máximo de `RemoteMultipoleNode`s por hoja del `LetTree`.
+    /// Valores menores → árbol más profundo, más llamadas MAC, mayor precisión.
+    /// Valores mayores → árbol más plano, menos overhead de build, menor precisión.
+    /// Default: 8.
+    #[serde(default = "default_let_tree_leaf_max")]
+    pub let_tree_leaf_max: usize,
 }
 
 fn default_deterministic() -> bool {
@@ -370,6 +393,18 @@ fn default_let_nonblocking() -> bool {
     true
 }
 
+fn default_use_let_tree() -> bool {
+    true
+}
+
+fn default_let_tree_threshold() -> usize {
+    64
+}
+
+fn default_let_tree_leaf_max() -> usize {
+    8
+}
+
 impl Default for PerformanceSection {
     fn default() -> Self {
         Self {
@@ -382,6 +417,9 @@ impl Default for PerformanceSection {
             sfc_rebalance_interval: default_sfc_rebalance(),
             force_allgather_fallback: false,
             let_nonblocking: default_let_nonblocking(),
+            use_let_tree: default_use_let_tree(),
+            let_tree_threshold: default_let_tree_threshold(),
+            let_tree_leaf_max: default_let_tree_leaf_max(),
         }
     }
 }
