@@ -249,4 +249,13 @@ El SFC+LET tiene mayor fracción de comunicación que Allgather para P=4 en esta
 
 ---
 
+## Continuación: Fase 9
+
+Las mejoras de Fase 9 abordan los bottlenecks identificados en este reporte:
+overlap compute/comm (Isend/Irecv no-bloqueante), paralelismo Rayon en el walk local, instrumentación HPC detallada con `HpcStepStats`, y rebalanceo dinámico basado en costo.
+
+Ver: [`docs/reports/2026-04-phase9-hpc-local.md`](2026-04-phase9-hpc-local.md)
+
+---
+
 *Generado: Abril 2026 — gadget-ng Fase 8 HPC*

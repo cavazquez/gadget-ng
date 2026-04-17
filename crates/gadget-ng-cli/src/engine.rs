@@ -30,6 +30,58 @@ use std::time::Instant;
 
 // ── Timing report ─────────────────────────────────────────────────────────────
 
+/// Estadísticas detalladas HPC por evaluación de fuerza en el path SFC+LET.
+///
+/// Se serializa como campo `hpc_stats` en cada línea de `diagnostics.jsonl`.
+/// Los tiempos son nanosegundos acumulados; se acumulan a lo largo de todas
+/// las evaluaciones de fuerza dentro del paso (1 para leapfrog, 3 para Yoshida4).
+#[derive(serde::Serialize, Default, Clone)]
+struct HpcStepStats {
+    /// Tiempo de construcción del octree local (ns).
+    tree_build_ns: u64,
+    /// Tiempo de exportación de nodos LET hacia todos los rangos remotos (ns).
+    let_export_ns: u64,
+    /// Tiempo de empaquetado de nodos LET — `pack_let_nodes` (ns).
+    let_pack_ns: u64,
+    /// Tiempo del allgather de AABBs (ns).
+    aabb_allgather_ns: u64,
+    /// Tiempo total del alltoallv LET (ns).
+    /// - Path no-bloqueante: incluye el trabajo de overlap; `wait_ns ≈ let_alltoallv_ns - walk_local_ns`.
+    /// - Path bloqueante: tiempo de espera puro de la colectiva.
+    let_alltoallv_ns: u64,
+    /// Tiempo del walk local del árbol (ns).
+    /// En el path no-bloqueante, se solapa con `let_alltoallv_ns`.
+    walk_local_ns: u64,
+    /// Tiempo de aplicación de las fuerzas de nodos LET remotos (ns).
+    apply_let_ns: u64,
+    /// Nodos LET exportados a todos los rangos remotos en este paso.
+    let_nodes_exported: usize,
+    /// Nodos LET importados de todos los rangos remotos en este paso.
+    let_nodes_imported: usize,
+    /// Bytes enviados en alltoallv LET.
+    bytes_sent: usize,
+    /// Bytes recibidos en alltoallv LET.
+    bytes_recv: usize,
+}
+
+/// Resumen HPC agregado incluido en `timings.json`.
+#[derive(serde::Serialize)]
+struct HpcTimingsAggregate {
+    mean_tree_build_s: f64,
+    mean_let_export_s: f64,
+    mean_let_pack_s: f64,
+    mean_aabb_allgather_s: f64,
+    mean_let_alltoallv_s: f64,
+    mean_walk_local_s: f64,
+    mean_apply_let_s: f64,
+    mean_let_nodes_exported: f64,
+    mean_let_nodes_imported: f64,
+    mean_bytes_sent: f64,
+    mean_bytes_recv: f64,
+    /// Fracción del tiempo total de paso gastada esperando MPI (alltoallv − walk_local).
+    wait_fraction: f64,
+}
+
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
 ///
 /// Permite medir el desglose entre comunicación MPI, cálculo de fuerzas e integración
@@ -58,6 +110,9 @@ struct TimingsReport {
     comm_fraction: f64,
     /// Fracción del tiempo total gastada en fuerzas.
     gravity_fraction: f64,
+    /// Resumen detallado HPC (solo para path SFC+LET).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hpc: Option<HpcTimingsAggregate>,
 }
 
 // ── Checkpoint ────────────────────────────────────────────────────────────────
@@ -227,6 +282,7 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     diag_path: &Path,
     diag_file: &mut Option<File>,
     step_stats: Option<&StepStats>,
+    hpc_stats: Option<&HpcStepStats>,
 ) -> Result<(), CliError> {
     let ke_loc = kinetic_local(local);
     let ke = rt.allreduce_sum_f64(ke_loc);
@@ -272,6 +328,13 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
             map.insert("force_evals".into(), ss.force_evals.into());
             map.insert("dt_min_effective".into(), ss.dt_min_effective.into());
             map.insert("dt_max_effective".into(), ss.dt_max_effective.into());
+        }
+        if let Some(hs) = hpc_stats {
+            let map = obj.as_object_mut().unwrap();
+            map.insert(
+                "hpc_stats".into(),
+                serde_json::to_value(hs).unwrap_or(serde_json::Value::Null),
+            );
         }
         let line = obj.to_string();
         writeln!(f, "{line}").map_err(|e| CliError::io(diag_path, e))?;
@@ -527,7 +590,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         None
     };
 
-    write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file, None)?;
+    write_diagnostic_line(rt, 0, &local, &diag_path, &mut diag_file, None, None)?;
 
     // `h_state_opt` se mantiene vivo tras el bucle para poder guardarlo con el snapshot.
     let mut h_state_opt: Option<HierarchicalState> = None;
@@ -578,6 +641,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let mut acc_step_ns: u64 = 0;
     let mut steps_run: u64 = 0;
     let wall_loop_start = Instant::now();
+    // Resumen HPC detallado; solo se puebla en el path SFC+LET.
+    let mut hpc_aggregate_opt: Option<HpcTimingsAggregate> = None;
 
     let integrator_kind = cfg.simulation.integrator;
     if cfg.timestep.hierarchical && integrator_kind != IntegratorKind::Leapfrog {
@@ -651,7 +716,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, Some(&step_stats))?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, Some(&step_stats), None)?;
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
         }
@@ -715,17 +780,19 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
     } else if use_sfc_let {
-        // ── SFC + LET: Fase 8 — comunicación selectiva sin Allgather ─────────
+        // ── SFC + LET: Fase 9 — overlap compute/comm + Rayon + HpcStepStats ──
         //
-        // Cada rango construye un árbol local y exporta nodos multipolares (LET)
-        // para los demás rangos usando el criterio MAC geométrico. Los nodos LET
-        // se intercambian por Alltoallv y se aplican como corrección remota a las
-        // fuerzas locales.
+        // Mejoras sobre Fase 8:
+        //   • `alltoallv_f64_overlap`: el walk local se solapa con la comm LET.
+        //   • Rayon (`#[cfg(feature = "simd")]`): walk paralelo intra-rango.
+        //   • HpcStepStats: desglose de tiempos por fase escrito en diagnostics.jsonl.
+        //   • Corrección de atribución: build/export/pack ahora son `this_grav` (no comm).
+        //   • Rebalanceo dinámico basado en costo: `allreduce max/min walk_local_ns`.
         use gadget_ng_parallel::sfc::global_bbox;
 
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
@@ -735,15 +802,23 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         );
         let size = rt.size() as usize;
         let my_rank = rt.rank() as usize;
+        let use_overlap = cfg.performance.let_nonblocking;
+
+        // Acumuladores HPC agregados para TimingsReport.
+        let mut acc_hpc = HpcStepStats::default();
+        // Umbral para rebalanceo por costo: si max/min walk_local_ns > 1.3 → rebalanceo inmediato.
+        let mut cost_rebalance_pending = false;
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
             let mut this_comm: u64 = 0;
             let mut this_grav: u64 = 0;
 
-            // Rebalanceo dinámico con bbox global consistente.
-            let do_rebalance =
-                sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+            // ── Rebalanceo SFC (por intervalo o por desequilibrio de costo) ────
+            let do_rebalance = cost_rebalance_pending
+                || sfc_rebalance == 0
+                || (step - start_step) % sfc_rebalance.max(1) == 0;
+            cost_rebalance_pending = false;
             if do_rebalance {
                 let t_rb = Instant::now();
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
@@ -754,97 +829,249 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 this_comm += t_rb.elapsed().as_nanos() as u64;
             }
 
-            // Migración de partículas al rango correcto.
+            // ── Migración de partículas ──────────────────────────────────────
             let t_domain = Instant::now();
             rt.exchange_domain_sfc(&mut local, &sfc_decomp);
             this_comm += t_domain.elapsed().as_nanos() as u64;
             scratch.resize(local.len(), Vec3::zero());
 
-            // Función de evaluación de fuerza SFC+LET.
+            // ── Función de evaluación de fuerza SFC+LET ─────────────────────
             let sfc_snap = sfc_decomp.clone();
-            let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
-                // Allgather de AABBs locales ajustadas (6 f64 × P, barato).
-                let t_comm = Instant::now();
-                let my_aabb: Vec<f64> = if parts.is_empty() {
-                    vec![
-                        f64::INFINITY,
-                        f64::NEG_INFINITY,
-                        f64::INFINITY,
-                        f64::NEG_INFINITY,
-                        f64::INFINITY,
-                        f64::NEG_INFINITY,
-                    ]
-                } else {
-                    let xlo = parts.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
-                    let xhi = parts
-                        .iter()
-                        .map(|p| p.position.x)
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    let ylo = parts.iter().map(|p| p.position.y).fold(f64::INFINITY, f64::min);
-                    let yhi = parts
-                        .iter()
-                        .map(|p| p.position.y)
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    let zlo = parts.iter().map(|p| p.position.z).fold(f64::INFINITY, f64::min);
-                    let zhi = parts
-                        .iter()
-                        .map(|p| p.position.z)
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    vec![xlo, xhi, ylo, yhi, zlo, zhi]
+            let mut hpc = HpcStepStats::default();
+
+            {
+                let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
+                    // 1. Allgather de AABBs (puro MPI → this_comm).
+                    let my_aabb: Vec<f64> = if parts.is_empty() {
+                        vec![
+                            f64::INFINITY, f64::NEG_INFINITY,
+                            f64::INFINITY, f64::NEG_INFINITY,
+                            f64::INFINITY, f64::NEG_INFINITY,
+                        ]
+                    } else {
+                        let xlo = parts.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
+                        let xhi = parts.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max);
+                        let ylo = parts.iter().map(|p| p.position.y).fold(f64::INFINITY, f64::min);
+                        let yhi = parts.iter().map(|p| p.position.y).fold(f64::NEG_INFINITY, f64::max);
+                        let zlo = parts.iter().map(|p| p.position.z).fold(f64::INFINITY, f64::min);
+                        let zhi = parts.iter().map(|p| p.position.z).fold(f64::NEG_INFINITY, f64::max);
+                        vec![xlo, xhi, ylo, yhi, zlo, zhi]
+                    };
+                    let t_aabb = Instant::now();
+                    let all_aabbs = rt.allgather_f64(&my_aabb);
+                    let aabb_ns = t_aabb.elapsed().as_nanos() as u64;
+                    hpc.aabb_allgather_ns += aabb_ns;
+                    this_comm += aabb_ns;
+
+                    // 2. Construir árbol local (cómputo → this_grav).
+                    let all_pos_l: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                    let all_mass_l: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                    let t_build = Instant::now();
+                    let tree = Octree::build(&all_pos_l, &all_mass_l);
+                    let build_ns = t_build.elapsed().as_nanos() as u64;
+                    hpc.tree_build_ns += build_ns;
+                    this_grav += build_ns;
+
+                    // 3. Exportar y empaquetar nodos LET (cómputo → this_grav).
+                    let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+                    let mut total_let_exported = 0usize;
+                    let mut total_bytes_sent = 0usize;
+                    let mut export_ns_eval = 0u64;
+                    let mut pack_ns_eval = 0u64;
+                    for r in 0..size {
+                        if r == my_rank { continue; }
+                        let ra = &all_aabbs[r];
+                        if ra.len() < 6 { continue; }
+                        let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
+                        let t_exp = Instant::now();
+                        let let_nodes = tree.export_let(target_aabb, theta);
+                        export_ns_eval += t_exp.elapsed().as_nanos() as u64;
+                        if !let_nodes.is_empty() {
+                            total_let_exported += let_nodes.len();
+                            let t_pack = Instant::now();
+                            sends[r] = pack_let_nodes(&let_nodes);
+                            pack_ns_eval += t_pack.elapsed().as_nanos() as u64;
+                            total_bytes_sent += sends[r].len() * std::mem::size_of::<f64>();
+                        }
+                    }
+                    hpc.let_export_ns += export_ns_eval;
+                    hpc.let_pack_ns += pack_ns_eval;
+                    this_grav += export_ns_eval + pack_ns_eval;
+                    hpc.let_nodes_exported += total_let_exported;
+                    hpc.bytes_sent += total_bytes_sent;
+
+                    // 4. Alltoallv LET + walk local (overlap o bloqueante).
+                    if use_overlap {
+                        // ── Path no-bloqueante: walk solapa con comm ──────────
+                        let mut local_accels: Vec<Vec3> = vec![Vec3::zero(); parts.len()];
+                        let mut walk_ns_inner = 0u64;
+
+                        let t_comm_total = Instant::now();
+                        let received = {
+                            let mut do_walk = || {
+                                let t_w = Instant::now();
+                                #[cfg(feature = "simd")]
+                                {
+                                    use rayon::prelude::*;
+                                    local_accels
+                                        .par_iter_mut()
+                                        .enumerate()
+                                        .for_each(|(li, a)| {
+                                            *a = tree.walk_accel(
+                                                parts[li].position,
+                                                li,
+                                                g, eps2, theta,
+                                                &all_pos_l,
+                                                &all_mass_l,
+                                            );
+                                        });
+                                }
+                                #[cfg(not(feature = "simd"))]
+                                {
+                                    for (li, a) in local_accels.iter_mut().enumerate() {
+                                        *a = tree.walk_accel(
+                                            parts[li].position,
+                                            li,
+                                            g, eps2, theta,
+                                            &all_pos_l,
+                                            &all_mass_l,
+                                        );
+                                    }
+                                }
+                                walk_ns_inner = t_w.elapsed().as_nanos() as u64;
+                            };
+                            rt.alltoallv_f64_overlap(sends, &mut do_walk)
+                        };
+                        let total_overlap_ns = t_comm_total.elapsed().as_nanos() as u64;
+                        hpc.let_alltoallv_ns += total_overlap_ns;
+                        hpc.walk_local_ns += walk_ns_inner;
+                        // Tiempo de espera MPI puro ≈ total_overlap - walk
+                        let wait_ns = total_overlap_ns.saturating_sub(walk_ns_inner);
+                        this_comm += wait_ns;
+                        this_grav += walk_ns_inner;
+
+                        // 5. Aplicar fuerzas LET remotas (cómputo → this_grav).
+                        let t_apply = Instant::now();
+                        let mut remote_nodes = Vec::new();
+                        let mut total_bytes_recv = 0usize;
+                        for buf in &received {
+                            if !buf.is_empty() {
+                                total_bytes_recv += buf.len() * std::mem::size_of::<f64>();
+                                remote_nodes.extend(unpack_let_nodes(buf));
+                            }
+                        }
+                        hpc.let_nodes_imported += remote_nodes.len();
+                        hpc.bytes_recv += total_bytes_recv;
+                        for (li, a_out) in acc.iter_mut().enumerate() {
+                            let a_remote =
+                                accel_from_let(parts[li].position, &remote_nodes, g, eps2);
+                            *a_out = local_accels[li] + a_remote;
+                        }
+                        let apply_ns = t_apply.elapsed().as_nanos() as u64;
+                        hpc.apply_let_ns += apply_ns;
+                        this_grav += apply_ns;
+                    } else {
+                        // ── Path bloqueante (Fase 8 original) ────────────────
+                        let t_comm2 = Instant::now();
+                        let received = rt.alltoallv_f64(&sends);
+                        let comm2_ns = t_comm2.elapsed().as_nanos() as u64;
+                        hpc.let_alltoallv_ns += comm2_ns;
+                        this_comm += comm2_ns;
+
+                        let t_grav = Instant::now();
+                        compute_forces_sfc_let(parts, &received, theta, g, eps2, acc);
+                        let grav_ns = t_grav.elapsed().as_nanos() as u64;
+                        hpc.walk_local_ns += grav_ns;
+                        this_grav += grav_ns;
+
+                        // Contabilizar nodos importados para stats.
+                        let mut total_bytes_recv = 0usize;
+                        let mut total_imported = 0usize;
+                        for buf in &received {
+                            if !buf.is_empty() {
+                                total_bytes_recv += buf.len() * std::mem::size_of::<f64>();
+                                total_imported +=
+                                    buf.len() / gadget_ng_tree::RMN_FLOATS;
+                            }
+                        }
+                        hpc.let_nodes_imported += total_imported;
+                        hpc.bytes_recv += total_bytes_recv;
+                    }
+
+                    let _ = sfc_snap.n_ranks(); // evitar unused warning
                 };
-                let all_aabbs = rt.allgather_f64(&my_aabb);
 
-                // Construir árbol local con partículas de este rango.
-                let all_pos_l: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-                let all_mass_l: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-                let tree = Octree::build(&all_pos_l, &all_mass_l);
-
-                // Exportar nodos LET para cada rango remoto y empaquetar.
-                let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
-                for r in 0..size {
-                    if r == my_rank {
-                        continue;
+                match integrator_kind {
+                    IntegratorKind::Leapfrog => {
+                        leapfrog_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
                     }
-                    let ra = &all_aabbs[r];
-                    if ra.len() < 6 {
-                        continue;
-                    }
-                    let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
-                    let let_nodes = tree.export_let(target_aabb, theta);
-                    if !let_nodes.is_empty() {
-                        sends[r] = pack_let_nodes(&let_nodes);
+                    IntegratorKind::Yoshida4 => {
+                        yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
                     }
                 }
-                this_comm += t_comm.elapsed().as_nanos() as u64;
+            } // force_eval dropped → borrows de hpc liberados
 
-                // Intercambio Alltoallv de nodos LET.
-                let t_comm2 = Instant::now();
-                let received = rt.alltoallv_f64(&sends);
-                this_comm += t_comm2.elapsed().as_nanos() as u64;
-
-                // Calcular fuerzas: árbol local + nodos remotos.
-                let t_grav = Instant::now();
-                compute_forces_sfc_let(parts, &received, theta, g, eps2, acc);
-                this_grav += t_grav.elapsed().as_nanos() as u64;
-
-                let _ = sfc_snap.n_ranks(); // evitar unused warning
-            };
-
-            match integrator_kind {
-                IntegratorKind::Leapfrog => {
-                    leapfrog_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
-                }
-                IntegratorKind::Yoshida4 => {
-                    yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
+            // ── Rebalanceo dinámico por costo ───────────────────────────────
+            // Si max/min walk_local > 1.3, forzar rebalanceo en el próximo paso.
+            if rt.size() > 1 && hpc.walk_local_ns > 0 {
+                let wl = hpc.walk_local_ns as f64;
+                let wl_max = rt.allreduce_max_f64(wl);
+                let wl_min = rt.allreduce_min_f64(wl).max(1.0);
+                if wl_max / wl_min > 1.3 {
+                    cost_rebalance_pending = true;
                 }
             }
+
+            // ── Actualizar acumuladores ─────────────────────────────────────
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
+            acc_hpc.tree_build_ns += hpc.tree_build_ns;
+            acc_hpc.let_export_ns += hpc.let_export_ns;
+            acc_hpc.let_pack_ns += hpc.let_pack_ns;
+            acc_hpc.aabb_allgather_ns += hpc.aabb_allgather_ns;
+            acc_hpc.let_alltoallv_ns += hpc.let_alltoallv_ns;
+            acc_hpc.walk_local_ns += hpc.walk_local_ns;
+            acc_hpc.apply_let_ns += hpc.apply_let_ns;
+            acc_hpc.let_nodes_exported += hpc.let_nodes_exported;
+            acc_hpc.let_nodes_imported += hpc.let_nodes_imported;
+            acc_hpc.bytes_sent += hpc.bytes_sent;
+            acc_hpc.bytes_recv += hpc.bytes_recv;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
+
+            write_diagnostic_line(
+                rt, step, &local, &diag_path, &mut diag_file, None, Some(&hpc),
+            )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+        }
+
+        // Construir resumen HPC que se pasará al bloque de timings.json genérico.
+        if steps_run > 0 {
+            let n = steps_run as f64;
+            let ns2s = 1e-9_f64;
+            let total_step_s = acc_step_ns as f64 * ns2s;
+            let wait_total_s = (acc_hpc.let_alltoallv_ns.saturating_sub(acc_hpc.walk_local_ns))
+                as f64
+                * ns2s;
+            hpc_aggregate_opt = Some(HpcTimingsAggregate {
+                mean_tree_build_s: acc_hpc.tree_build_ns as f64 * ns2s / n,
+                mean_let_export_s: acc_hpc.let_export_ns as f64 * ns2s / n,
+                mean_let_pack_s: acc_hpc.let_pack_ns as f64 * ns2s / n,
+                mean_aabb_allgather_s: acc_hpc.aabb_allgather_ns as f64 * ns2s / n,
+                mean_let_alltoallv_s: acc_hpc.let_alltoallv_ns as f64 * ns2s / n,
+                mean_walk_local_s: acc_hpc.walk_local_ns as f64 * ns2s / n,
+                mean_apply_let_s: acc_hpc.apply_let_ns as f64 * ns2s / n,
+                mean_let_nodes_exported: acc_hpc.let_nodes_exported as f64 / n,
+                mean_let_nodes_imported: acc_hpc.let_nodes_imported as f64 / n,
+                mean_bytes_sent: acc_hpc.bytes_sent as f64 / n,
+                mean_bytes_recv: acc_hpc.bytes_recv as f64 / n,
+                wait_fraction: if total_step_s > 0.0 {
+                    wait_total_s / total_step_s
+                } else {
+                    0.0
+                },
+            });
         }
     } else if use_sfc {
         // ── Árbol distribuido SFC legacy: Morton Z-order 3D, halos de partículas
@@ -899,7 +1126,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -950,7 +1177,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -981,7 +1208,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None)?;
+            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None)?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -1014,6 +1241,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             } else {
                 0.0
             },
+            hpc: hpc_aggregate_opt,
         };
         let timings_path = out_dir.join("timings.json");
         if let Ok(f) = fs::File::create(&timings_path) {

@@ -4,6 +4,7 @@ use gadget_ng_core::{Particle, Vec3};
 use mpi::collective::SystemOperation;
 use mpi::datatype::{Partition, PartitionMut};
 use mpi::environment::Universe;
+use mpi::request::WaitGuard;
 use mpi::traits::*;
 use mpi::Count;
 
@@ -340,6 +341,93 @@ impl ParallelRuntime for MpiRuntime {
             let n = c as usize;
             result.push(recvbuf[off..off + n].to_vec());
             off += n;
+        }
+        result
+    }
+
+    fn alltoallv_f64_overlap(
+        &self,
+        sends: Vec<Vec<f64>>,
+        overlap_work: &mut dyn FnMut(),
+    ) -> Vec<Vec<f64>> {
+        let world = self.world();
+        let size = world.size() as usize;
+        let rank = world.rank() as usize;
+        assert_eq!(
+            sends.len(),
+            size,
+            "alltoallv_f64_overlap: sends.len() debe ser igual a world.size()"
+        );
+
+        // Fase 1: intercambiar conteos (bloqueante, O(P) enteros, coste despreciable).
+        let send_counts: Vec<Count> = sends.iter().map(|v| v.len() as Count).collect();
+        let mut recv_counts = vec![0 as Count; size];
+        world.all_to_all_into(&send_counts[..], &mut recv_counts[..]);
+
+        // Fase 2: calcular offsets del buffer plano de recepción.
+        let mut recv_offsets = vec![0usize; size];
+        let mut roff = 0usize;
+        for r in 0..size {
+            recv_offsets[r] = roff;
+            roff += recv_counts[r] as usize;
+        }
+
+        // Buffer plano de recepción; debe vivir hasta después de que todas las
+        // requests terminen (antes de retornar).
+        let mut flat_recv = vec![0.0f64; roff];
+
+        // Fase 3: P2P no-bloqueante + overlap de cómputo.
+        //
+        // Usamos mpi::request::scope para gestión segura del lifetime de requests.
+        // Los slices de flat_recv se crean con raw pointers (SAFETY: offsets no
+        // solapados garantizados por la construcción del array recv_offsets).
+        mpi::request::scope(|scope| {
+            let mut guards: Vec<WaitGuard<[f64], _>> = Vec::new();
+
+            for r in 0..size {
+                if r == rank {
+                    continue;
+                }
+                // Irecv: porción del buffer plano de recepción para el rango r.
+                let rlen = recv_counts[r] as usize;
+                if rlen > 0 {
+                    // SAFETY: recv_offsets garantiza que cada rango ocupa una
+                    // región no solapada de flat_recv, que vive hasta el final
+                    // de la función.
+                    let slice: &mut [f64] = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            flat_recv.as_mut_ptr().add(recv_offsets[r]),
+                            rlen,
+                        )
+                    };
+                    let req = world
+                        .process_at_rank(r as i32)
+                        .immediate_receive_into(scope, slice);
+                    guards.push(WaitGuard::from(req));
+                }
+
+                // Isend: slice del buffer de envío para el rango r.
+                if !sends[r].is_empty() {
+                    let req = world
+                        .process_at_rank(r as i32)
+                        .immediate_send(scope, sends[r].as_slice());
+                    guards.push(WaitGuard::from(req));
+                }
+            }
+
+            // Ejecutar trabajo local mientras los mensajes están en vuelo.
+            overlap_work();
+
+            // Los WaitGuards se destruyen al final del scope → wait de todas las requests.
+            drop(guards);
+        });
+
+        // Reconstruir resultado por rango desde el buffer plano.
+        let mut result = Vec::with_capacity(size);
+        for r in 0..size {
+            let n = recv_counts[r] as usize;
+            let off = recv_offsets[r];
+            result.push(flat_recv[off..off + n].to_vec());
         }
         result
     }

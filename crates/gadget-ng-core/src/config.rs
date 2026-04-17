@@ -344,6 +344,14 @@ pub struct PerformanceSection {
     /// validación paper-grade del resultado serial.
     #[serde(default)]
     pub force_allgather_fallback: bool,
+
+    /// `true` (default) → usar alltoallv no-bloqueante (Isend/Irecv) para solapar
+    /// la evaluación de fuerzas locales con la comunicación LET.
+    /// `false` → alltoallv bloqueante (Fase 8 original); útil para comparación.
+    ///
+    /// En modo serial el valor no tiene efecto: ambos caminos son equivalentes.
+    #[serde(default = "default_let_nonblocking")]
+    pub let_nonblocking: bool,
 }
 
 fn default_deterministic() -> bool {
@@ -358,6 +366,10 @@ fn default_sfc_rebalance() -> u64 {
     10
 }
 
+fn default_let_nonblocking() -> bool {
+    true
+}
+
 impl Default for PerformanceSection {
     fn default() -> Self {
         Self {
@@ -369,6 +381,7 @@ impl Default for PerformanceSection {
             use_sfc: false,
             sfc_rebalance_interval: default_sfc_rebalance(),
             force_allgather_fallback: false,
+            let_nonblocking: default_let_nonblocking(),
         }
     }
 }

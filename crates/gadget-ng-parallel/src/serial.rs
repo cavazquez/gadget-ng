@@ -101,4 +101,15 @@ impl ParallelRuntime for SerialRuntime {
         // pero como no hay migración real, devolvemos un slot vacío.
         vec![Vec::new()]
     }
+
+    fn alltoallv_f64_overlap(
+        &self,
+        _sends: Vec<Vec<f64>>,
+        overlap_work: &mut dyn FnMut(),
+    ) -> Vec<Vec<f64>> {
+        // En serial: no hay comunicación real; ejecutar el trabajo de overlap
+        // de forma síncrona y devolver slot vacío.
+        overlap_work();
+        vec![Vec::new()]
+    }
 }

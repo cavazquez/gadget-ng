@@ -111,4 +111,23 @@ pub trait ParallelRuntime {
     ///
     /// En serial devuelve `vec![vec![]]` (ningún otro rango existe).
     fn alltoallv_f64(&self, sends: &[Vec<f64>]) -> Vec<Vec<f64>>;
+
+    /// Alltoallv no-bloqueante de `f64` con overlap de cómputo.
+    ///
+    /// Implementa el patrón:
+    /// 1. Intercambia conteos (bloqueante, O(P) enteros, coste despreciable).
+    /// 2. Emite todos los `Isend` + `Irecv` no-bloqueantes (P2P).
+    /// 3. Llama a `overlap_work()` mientras los mensajes están en vuelo.
+    /// 4. Espera todas las requests.
+    /// 5. Devuelve `received[r]` = datos recibidos del rango `r`.
+    ///
+    /// `sends` se pasa por valor para garantizar que los buffers viven
+    /// durante toda la duración de las requests no-bloqueantes.
+    ///
+    /// En serial llama a `overlap_work()` inmediatamente y devuelve `vec![vec![]]`.
+    fn alltoallv_f64_overlap(
+        &self,
+        sends: Vec<Vec<f64>>,
+        overlap_work: &mut dyn FnMut(),
+    ) -> Vec<Vec<f64>>;
 }
