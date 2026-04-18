@@ -26,7 +26,7 @@ use gadget_ng_pm::PmSolver;
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
 use gadget_ng_tree::{accel_from_let, pack_let_nodes, unpack_let_nodes, BarnesHutGravity, Octree};
-use gadget_ng_treepm::TreePmSolver;
+use gadget_ng_treepm::{distributed as treepm_dist, TreePmSolver};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -100,6 +100,29 @@ struct HpcStepStats {
     apply_leaf_tile_calls: u64,
     /// Suma de tile_size en cada llamada tileada (partículas-i procesadas en modo 4xi).
     apply_leaf_tile_i_count: u64,
+
+    // ── Diagnósticos TreePM distribuido (Fase 21) ─────────────────────────────
+    /// Partículas halo intercambiadas para corto alcance TreePM (suma de todos los pasos).
+    short_range_halo_particles: usize,
+    /// Bytes de partículas halo comunicados para corto alcance TreePM (suma de pasos).
+    short_range_halo_bytes: usize,
+    /// Tiempo acumulado en el árbol de corto alcance TreePM (ns).
+    tree_short_ns: u64,
+    /// Tiempo acumulado en el PM de largo alcance TreePM (ns).
+    pm_long_ns: u64,
+    /// Tiempo total acumulado en el pipeline TreePM distribuido (ns).
+    treepm_total_ns: u64,
+    /// Identificador del path activo: `"treepm_serial"` | `"treepm_allgather"` |
+    /// `"treepm_slab_1d"` | `"treepm_slab_3d"`.
+    path_active: String,
+
+    // ── Diagnósticos halo 3D periódico (Fase 22) ──────────────────────────────
+    /// Partículas halo recibidas por `exchange_halos_3d_periodic` en este paso.
+    halo_3d_particles: usize,
+    /// Bytes totales recibidos por `exchange_halos_3d_periodic` en este paso.
+    halo_3d_bytes: usize,
+    /// Tiempo acumulado en `exchange_halos_3d_periodic` (ns).
+    halo_3d_ns: u64,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -162,6 +185,33 @@ struct HpcTimingsAggregate {
     mean_apply_leaf_tile_i_count: f64,
     /// Ratio de utilización de tiles: tile_i_count / (tile_calls * 4). Ideal = 1.0.
     tile_utilization_ratio: f64,
+
+    // ── TreePM distribuido (Fase 21) ──────────────────────────────────────────
+    /// Media de partículas halo de corto alcance intercambiadas por paso.
+    mean_short_range_halo_particles: f64,
+    /// Media de bytes de halo de corto alcance por paso.
+    mean_short_range_halo_bytes: f64,
+    /// Tiempo medio del árbol de corto alcance TreePM por paso (s).
+    mean_tree_short_s: f64,
+    /// Tiempo medio del PM de largo alcance TreePM por paso (s).
+    mean_pm_long_s: f64,
+    /// Tiempo medio total del pipeline TreePM distribuido por paso (s).
+    mean_treepm_total_s: f64,
+    /// Fracción del tiempo TreePM gastada en el árbol de corto alcance.
+    tree_fraction: f64,
+    /// Fracción del tiempo TreePM gastada en el PM de largo alcance.
+    pm_fraction: f64,
+    /// Path activo del TreePM: `"treepm_serial"` | `"treepm_allgather"` |
+    /// `"treepm_slab_1d"` | `"treepm_slab_3d"`.
+    path_active: String,
+
+    // ── Halo 3D periódico (Fase 22) ───────────────────────────────────────────
+    /// Media de partículas halo 3D por paso (halo volumétrico periódico).
+    mean_halo_3d_particles: f64,
+    /// Media de bytes de halo 3D por paso.
+    mean_halo_3d_bytes: f64,
+    /// Tiempo medio de `exchange_halos_3d_periodic` por paso (s).
+    mean_halo_3d_s: f64,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -685,7 +735,18 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         rt.root_eprintln(
             "[gadget-ng] Cosmología PERIÓDICA activada: PM + G/a + wrap_position (Fase 18).",
         );
-        if cfg.gravity.pm_slab && cfg.gravity.solver == SolverKind::Pm {
+        if cfg.gravity.treepm_slab && cfg.gravity.solver == SolverKind::TreePm {
+            let r_s_log = if cfg.gravity.r_split > 0.0 {
+                cfg.gravity.r_split
+            } else {
+                2.5 * cfg.simulation.box_size / cfg.gravity.pm_grid_size as f64
+            };
+            rt.root_eprintln(&format!(
+                "[gadget-ng] TREEPM SLAB DISTRIBUIDO (Fase 21): PM largo alcance slab + \
+                 árbol corto alcance periódico. r_split={:.4} r_cut={:.4}",
+                r_s_log, 5.0 * r_s_log
+            ));
+        } else if cfg.gravity.pm_slab && cfg.gravity.solver == SolverKind::Pm {
             let nm = cfg.gravity.pm_grid_size;
             let p = rt.size() as usize;
             if nm % p != 0 {
@@ -1083,6 +1144,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             && cfg.cosmology.periodic
             && cfg.gravity.solver == SolverKind::Pm;
 
+        // Fase 21: TreePM slab distribuido.
+        // PM largo alcance: slab FFT con filtro Gaussiano (como Fase 20).
+        // Árbol corto alcance: árbol local + halos periódicos en z + minimum_image.
+        let use_treepm_slab = cfg.gravity.treepm_slab
+            && cfg.cosmology.periodic
+            && cfg.gravity.solver == SolverKind::TreePm;
+
+        // Fase 22: halo volumétrico 3D periódico para SR.
+        // Requiere treepm_slab=true. Usa AABBs reales + minimum_image 3D en vez de halo 1D-z.
+        let use_treepm_3d_halo = cfg.gravity.treepm_halo_3d && use_treepm_slab;
+
         let pm_nm = cfg.gravity.pm_grid_size;
 
         // Precomputar límites de slab Z para Fase 20 (solo si pm_slab activo).
@@ -1091,6 +1163,32 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         } else {
             None
         };
+
+        // Precomputar SlabLayout para Fase 21 TreePM distribuido.
+        let treepm_slab_layout_opt: Option<SlabLayout> = if use_treepm_slab {
+            let nm = pm_nm;
+            let p = rt.size() as usize;
+            if nm % p != 0 {
+                return Err(CliError::InvalidConfig(
+                    format!(
+                        "treepm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0"
+                    )
+                    .into(),
+                ));
+            }
+            Some(SlabLayout::new(nm, rt.rank() as usize, p))
+        } else {
+            None
+        };
+
+        // Radio de splitting efectivo para TreePM slab.
+        let treepm_r_split = if use_treepm_slab {
+            let r_s = cfg.gravity.r_split;
+            if r_s > 0.0 { r_s } else { 2.5 * box_size / pm_nm as f64 }
+        } else {
+            0.0
+        };
+        let treepm_r_cut = 5.0 * treepm_r_split;
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -1107,12 +1205,98 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 }
             }
 
+            // Fase 21: migrar partículas a su slab Z para TreePM distribuido.
+            if use_treepm_slab && rt.size() > 1 {
+                if let Some(ref layout) = treepm_slab_layout_opt {
+                    let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                    let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                    rt.exchange_domain_by_z(&mut local, z_lo, z_hi);
+                }
+            }
+
             // Corrección de fuerza comóvil: dp/dt = -(G/a) * F_newtoniana_comóvil.
             // Se usa el factor de escala al inicio del paso (correcto a primer orden en dt).
             let g_cosmo = g / a_current;
             let mut compute_acc =
                 |parts: &[Particle], acc: &mut [Vec3], this_comm: &mut u64, this_grav: &mut u64| {
-                    if use_pm_slab {
+                    if use_treepm_slab {
+                        // ─ Fase 21/22: TreePM slab distribuido ───────────────────────────
+                        //
+                        // F_total = F_lr (PM slab + filtro Gaussiano) + F_sr (árbol erfc + minimum_image)
+                        //
+                        // Fase 21: halo 1D en z.
+                        // Fase 22 (use_treepm_3d_halo): halo volumétrico 3D periódico.
+                        let layout = treepm_slab_layout_opt.as_ref().unwrap();
+                        let r_s  = treepm_r_split;
+                        let r_cut = treepm_r_cut;
+                        let t_tpm = Instant::now();
+
+                        // ── 1. Halos de corto alcance ────────────────────────────────────
+                        let t_comm_sr = Instant::now();
+                        let sr_halos = if use_treepm_3d_halo {
+                            // Fase 22: halo volumétrico 3D periódico (fix del bug de exchange_halos_sfc).
+                            rt.exchange_halos_3d_periodic(parts, box_size, r_cut)
+                        } else {
+                            // Fase 21: halo 1D-z periódico.
+                            let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                            let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                            rt.exchange_halos_by_z_periodic(parts, z_lo, z_hi, r_cut)
+                        };
+                        let halo_comm_ns = t_comm_sr.elapsed().as_nanos() as u64;
+                        *this_comm += halo_comm_ns;
+
+                        // ── 2. PM largo alcance (slab FFT con filtro Gaussiano) ──────────
+                        let t_pm = Instant::now();
+                        let local_pos: Vec<Vec3>  = parts.iter().map(|p| p.position).collect();
+                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+
+                        let mut density_ext = slab_pm::deposit_slab_extended(
+                            &local_pos, &local_mass, layout, box_size,
+                        );
+                        slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
+                        *this_comm += t_pm.elapsed().as_nanos() as u64;
+
+                        let t_pm2 = Instant::now();
+                        let mut forces = slab_pm::forces_from_slab(
+                            &density_ext, layout, g_cosmo, box_size, Some(r_s), rt,
+                        );
+                        slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
+                        *this_comm += t_pm2.elapsed().as_nanos() as u64;
+
+                        let t_interp = Instant::now();
+                        let acc_lr = slab_pm::interpolate_slab_local(
+                            &local_pos, &forces, layout, box_size,
+                        );
+                        let pm_ns = t_interp.elapsed().as_nanos() as u64;
+                        *this_grav += pm_ns;
+
+                        // ── 3. Árbol corto alcance (minimum_image periódico) ─────────────
+                        let t_sr = Instant::now();
+                        let sr_params = treepm_dist::SlabShortRangeParams {
+                            local_particles: parts,
+                            halo_particles: &sr_halos,
+                            eps2,
+                            g: g_cosmo,
+                            r_split: r_s,
+                            box_size,
+                        };
+                        let mut acc_sr = vec![Vec3::zero(); parts.len()];
+                        treepm_dist::short_range_accels_slab(&sr_params, &mut acc_sr);
+                        let tree_ns = t_sr.elapsed().as_nanos() as u64;
+                        *this_grav += tree_ns;
+
+                        // ── 4. Suma: F_total = F_lr + F_sr ──────────────────────────────
+                        for (k, a) in acc.iter_mut().enumerate() {
+                            *a = acc_lr[k] + acc_sr[k];
+                        }
+
+                        let tpm_total_ns = t_tpm.elapsed().as_nanos() as u64;
+                        // Estadísticas para diagnostics.jsonl (conservadas para evitar dead_code).
+                        let _sr_halo_n   = sr_halos.len();
+                        let _sr_halo_b   = sr_halos.len() * std::mem::size_of::<gadget_ng_core::Particle>();
+                        let _halo_ns_cap = halo_comm_ns;
+                        let _ = tpm_total_ns;
+                    } else if use_pm_slab {
                         // ─ Fase 20: PM slab distribuido ──────────────────────────────────
                         let layout = slab_layout_opt.as_ref().unwrap();
                         let t0 = Instant::now();
@@ -1704,6 +1888,19 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         0.0
                     }
                 },
+                // Campos TreePM: cero para el path SFC+LET.
+                mean_short_range_halo_particles: 0.0,
+                mean_short_range_halo_bytes: 0.0,
+                mean_tree_short_s: 0.0,
+                mean_pm_long_s: 0.0,
+                mean_treepm_total_s: 0.0,
+                tree_fraction: 0.0,
+                pm_fraction: 0.0,
+                path_active: "sfc_let".to_string(),
+                // Campos halo 3D: cero para path SFC+LET.
+                mean_halo_3d_particles: 0.0,
+                mean_halo_3d_bytes: 0.0,
+                mean_halo_3d_s: 0.0,
             });
         }
     } else if use_sfc {

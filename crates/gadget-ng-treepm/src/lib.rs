@@ -15,7 +15,9 @@
 //! pm_grid_size = 64
 //! r_split      = 0.0   # 0 → auto: 2.5 × cell_size
 //! ```
+pub mod distributed;
 pub mod short_range;
 pub mod solver;
 
+pub use distributed::{short_range_accels_slab, HaloStats, SlabShortRangeParams};
 pub use solver::TreePmSolver;

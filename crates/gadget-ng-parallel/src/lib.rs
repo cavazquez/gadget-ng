@@ -1,5 +1,6 @@
 mod decompose;
 pub mod domain;
+pub mod halo3d;
 pub mod pack;
 mod serial;
 pub mod sfc;
@@ -9,6 +10,10 @@ mod mpi_rt;
 
 pub use decompose::gid_block_range;
 pub use domain::SlabDecomposition;
+pub use halo3d::{
+    aabb_to_f64, compute_aabb_3d, f64_to_aabb, is_in_periodic_halo,
+    min_dist2_to_aabb_3d_periodic, minimum_image_scalar, Aabb3,
+};
 pub use serial::SerialRuntime;
 pub use sfc::{hilbert3, morton3, SfcDecomposition};
 
@@ -100,6 +105,61 @@ pub trait ParallelRuntime {
         local: &[Particle],
         my_z_lo: f64,
         my_z_hi: f64,
+        halo_width: f64,
+    ) -> Vec<Particle>;
+
+    /// Intercambia halos de corto alcance en z con **wrap periódico**.
+    ///
+    /// Versión periódica de [`exchange_halos_by_z`] para el path TreePM distribuido (Fase 21).
+    /// Garantiza que rank 0 reciba halos de rank P-1 y viceversa (borde periódico).
+    ///
+    /// - Cada rank envía a su vecino izquierdo las partículas con `z < z_lo + halo_width`.
+    /// - Cada rank envía a su vecino derecho las partículas con `z > z_hi - halo_width`.
+    /// - El vecino izquierdo de rank 0 es rank P-1 (periódico); ídem al revés.
+    ///
+    /// Las posiciones de las partículas halo **no se modifican** (el llamante aplica
+    /// `minimum_image` en el walk del árbol). En modo serial (P=1) retorna Vec vacío
+    /// ya que el árbol local ya contiene todas las partículas.
+    fn exchange_halos_by_z_periodic(
+        &self,
+        local: &[Particle],
+        my_z_lo: f64,
+        my_z_hi: f64,
+        halo_width: f64,
+    ) -> Vec<Particle>;
+
+    /// Halo volumétrico 3D periódico para el árbol de corto alcance (Fase 22).
+    ///
+    /// Para cada rank r, calcula el AABB real de sus partículas locales y determina
+    /// qué partículas de otros ranks están dentro de `halo_width` de ese AABB,
+    /// usando `minimum_image` periódico en las tres dimensiones.
+    ///
+    /// ## Protocolo
+    ///
+    /// 1. Calcula el AABB real de `local` (no los límites del slab).
+    /// 2. `allgather_f64` de todas las AABBs (6 f64 por rank).
+    /// 3. Para cada rank r: envía partículas locales con
+    ///    `min_dist2_to_aabb_3d_periodic(p, aabb_r, box_size) < halo_width²`.
+    /// 4. `alltoallv_f64` y desempaqueta halos recibidos.
+    ///
+    /// ## Correctitud periódica
+    ///
+    /// Cubre todos los casos: bordes en x, y, z e interacciones diagonales periódicas
+    /// (x+y, x+z, y+z, x+y+z). Correcto para cualquier descomposición de dominio
+    /// (Z-slab, SFC, octantes), a diferencia de `exchange_halos_sfc` que usa
+    /// coordenadas absolutas sin wrap.
+    ///
+    /// ## Equivalencia con halo 1D para Z-slab uniforme
+    ///
+    /// Para Z-slab con partículas uniformes, las AABBs abarcan [0,L)×[0,L)×[z_lo,z_hi).
+    /// Expandidas por r_cut en los tres ejes producen el mismo conjunto de vecinos
+    /// que el halo 1D-z. La diferencia aparece con descomposiciones no-Z-slab.
+    ///
+    /// En modo serial (P=1) retorna `Vec::new()`.
+    fn exchange_halos_3d_periodic(
+        &self,
+        local: &[Particle],
+        box_size: f64,
         halo_width: f64,
     ) -> Vec<Particle>;
 

@@ -206,6 +206,39 @@ pub struct GravitySection {
     /// Cada alltoall transfiere O(nm³/P) datos por rank (P× menos que `pm_distributed`).
     #[serde(default)]
     pub pm_slab: bool,
+
+    /// Activa el path TreePM distribuido mínimo viable (Fase 21).
+    ///
+    /// Combina:
+    /// - **Largo alcance**: PM slab distribuido (Fase 20) con filtro Gaussiano.
+    /// - **Corto alcance**: árbol local + halos de partículas en z, con `minimum_image`
+    ///   periódico y kernel `erfc(r / (√2·r_s))`.
+    ///
+    /// Requisitos: `solver = "tree_pm"`, `cosmology.periodic = true`,
+    /// `pm_grid_size % n_ranks == 0`.
+    ///
+    /// **Limitación documentada**: el halo de corto alcance es 1D en z. Las interacciones
+    /// que cruzan fronteras x,y entre slabs no están cubiertas. Para un TreePM completo
+    /// tipo GADGET se requeriría halo volumétrico SFC 3D.
+    ///
+    /// Para `P = 1`, el resultado es físicamente equivalente al path serial con allgather.
+    #[serde(default)]
+    pub treepm_slab: bool,
+
+    /// Activa el halo volumétrico 3D periódico para el árbol SR (Fase 22).
+    ///
+    /// Requiere `treepm_slab = true`. En lugar del halo 1D-z, calcula el AABB real
+    /// de las partículas de cada rank y usa `min_dist2_to_aabb_3d_periodic` para
+    /// decidir qué partículas enviar.
+    ///
+    /// **Para Z-slab uniforme**: produce el mismo conjunto de halos que el 1D-z,
+    /// con overhead mínimo. **Para descomposición en octantes o SFC**: cubre
+    /// interacciones diagonales periódicas que el halo 1D-z omitiría.
+    ///
+    /// Corrección del bug de `exchange_halos_sfc`: usa coordenadas con wrap
+    /// periódico explícito en vez de coordenadas absolutas.
+    #[serde(default)]
+    pub treepm_halo_3d: bool,
 }
 
 fn default_solver_kind() -> SolverKind {
@@ -250,6 +283,8 @@ impl Default for GravitySection {
             r_split: default_r_split(),
             pm_distributed: false,
             pm_slab: false,
+            treepm_slab: false,
+            treepm_halo_3d: false,
         }
     }
 }

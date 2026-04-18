@@ -526,6 +526,115 @@ impl ParallelRuntime for MpiRuntime {
         result
     }
 
+    fn exchange_halos_by_z_periodic(
+        &self,
+        local: &[Particle],
+        my_z_lo: f64,
+        my_z_hi: f64,
+        halo_width: f64,
+    ) -> Vec<Particle> {
+        let world = self.world();
+        let rank = world.rank() as usize;
+        let size = world.size() as usize;
+
+        if size == 1 {
+            return Vec::new();
+        }
+
+        // Vecinos en anillo periódico.
+        let left_rank  = ((rank as i64 - 1).rem_euclid(size as i64)) as usize;
+        let right_rank = (rank + 1) % size;
+
+        // Partículas que son halo para el vecino izquierdo (z ∈ [z_lo, z_lo + halo_width)).
+        let buf_left: Vec<Particle> = local
+            .iter()
+            .filter(|p| p.position.z < my_z_lo + halo_width)
+            .cloned()
+            .collect();
+
+        // Partículas que son halo para el vecino derecho (z ∈ (z_hi - halo_width, z_hi]).
+        let buf_right: Vec<Particle> = local
+            .iter()
+            .filter(|p| p.position.z > my_z_hi - halo_width)
+            .cloned()
+            .collect();
+
+        // Intercambio via alltoallv (maneja el anillo periódico sin restricción de vecinos lineales).
+        let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+        sends[left_rank]  = pack::pack_halo(&buf_left);
+        sends[right_rank] = pack::pack_halo(&buf_right);
+
+        let received = self.alltoallv_f64(&sends);
+
+        let mut halos: Vec<Particle> = Vec::new();
+        for (r, data) in received.iter().enumerate() {
+            if r != rank && !data.is_empty() {
+                halos.extend(pack::unpack_halo(data));
+            }
+        }
+        halos
+    }
+
+    fn exchange_halos_3d_periodic(
+        &self,
+        local: &[Particle],
+        box_size: f64,
+        halo_width: f64,
+    ) -> Vec<Particle> {
+        let world = self.world();
+        let rank = world.rank() as usize;
+        let size = world.size() as usize;
+
+        if size == 1 {
+            return Vec::new();
+        }
+
+        // Paso 1: AABB real de las partículas locales (6 f64).
+        let my_aabb = crate::halo3d::compute_aabb_3d(local);
+        let my_aabb_data = crate::halo3d::aabb_to_f64(&my_aabb);
+
+        // Paso 2: allgather de todas las AABBs (6 f64 × P).
+        let all_aabbs = self.allgather_f64(&my_aabb_data);
+
+        // Paso 3: para cada rank r, determinar qué partículas locales enviar.
+        // Criterio: distancia 3D periódica de la partícula al AABB del rank r < halo_width.
+        let halo_w2 = halo_width * halo_width;
+        let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
+
+        for r in 0..size {
+            if r == rank {
+                continue;
+            }
+            let a = &all_aabbs[r];
+            let aabb_r = match crate::halo3d::f64_to_aabb(a) {
+                Some(ab) if ab.is_valid() => ab,
+                _ => continue,
+            };
+            let candidates: Vec<Particle> = local
+                .iter()
+                .filter(|p| {
+                    let pos = [p.position.x, p.position.y, p.position.z];
+                    crate::halo3d::min_dist2_to_aabb_3d_periodic(pos, &aabb_r, box_size) < halo_w2
+                })
+                .cloned()
+                .collect();
+            if !candidates.is_empty() {
+                sends[r] = pack::pack_halo(&candidates);
+            }
+        }
+
+        // Paso 4: alltoallv + desempaquetado.
+        let received = self.alltoallv_f64(&sends);
+
+        let mut halos: Vec<Particle> = Vec::new();
+        for (r, data) in received.iter().enumerate() {
+            if r != rank && !data.is_empty() {
+                halos.extend(pack::unpack_halo(data));
+            }
+        }
+        halos
+    }
+
     fn exchange_halos_by_x(
         &self,
         local: &[Particle],

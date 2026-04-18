@@ -16,7 +16,8 @@ gadget-ng-pm   = { path = "../gadget-ng-pm" }
 rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]
-gadget-ng-core = { path = "../gadget-ng-core" }
+gadget-ng-core     = { path = "../gadget-ng-core" }
+gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 criterion.workspace = true
 
 [[bench]]

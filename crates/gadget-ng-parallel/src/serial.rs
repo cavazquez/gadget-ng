@@ -93,6 +93,27 @@ impl ParallelRuntime for SerialRuntime {
         Vec::new()
     }
 
+    fn exchange_halos_by_z_periodic(
+        &self,
+        _local: &[Particle],
+        _my_z_lo: f64,
+        _my_z_hi: f64,
+        _halo_width: f64,
+    ) -> Vec<Particle> {
+        // P=1: árbol local ya tiene todas las partículas; no hay vecinos periódicos.
+        Vec::new()
+    }
+
+    fn exchange_halos_3d_periodic(
+        &self,
+        _local: &[Particle],
+        _box_size: f64,
+        _halo_width: f64,
+    ) -> Vec<Particle> {
+        // P=1: árbol local ya tiene todas las partículas; no hay vecinos.
+        Vec::new()
+    }
+
     fn exchange_domain_sfc(&self, _local: &mut Vec<Particle>, _decomp: &SfcDecomposition) {
         // Serial: rango único, todas las partículas pertenecen al rango 0.
     }
