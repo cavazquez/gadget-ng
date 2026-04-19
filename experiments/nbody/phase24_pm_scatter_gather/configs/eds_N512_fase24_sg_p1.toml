@@ -1,0 +1,34 @@
+# ── EdS N=512, TreePM Fase 24 (scatter/gather PM) — P=1 ──────────────────────
+#
+# Path de Fase 24: scatter (gid+pos+mass) → PM slab → gather (gid+acc)
+# Las partículas permanecen en dominio SFC. El PM actúa como servicio de campo.
+#
+# path_active = "treepm_sr_sfc_scatter"
+
+[simulation]
+particle_count         = 512
+box_size               = 1.0
+dt                     = 0.005
+num_steps              = 20
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 1.0
+omega_lambda = 0.0
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver                  = "tree_pm"
+pm_grid_size            = 32
+treepm_slab             = true
+treepm_halo_3d          = true
+treepm_sr_sfc           = true
+treepm_pm_scatter_gather = true

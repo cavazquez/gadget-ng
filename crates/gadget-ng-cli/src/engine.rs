@@ -123,6 +123,28 @@ struct HpcStepStats {
     halo_3d_bytes: usize,
     /// Tiempo acumulado en `exchange_halos_3d_periodic` (ns).
     halo_3d_ns: u64,
+
+    // ── Diagnósticos dominio 3D/SFC para SR (Fase 23) ─────────────────────────
+    /// Partículas locales en el dominio SFC SR al inicio de la evaluación de fuerza.
+    sr_domain_particle_count: usize,
+    /// Partículas halo vecinas recibidas para el SR (via `exchange_halos_3d_periodic`).
+    sr_halo_3d_neighbors: usize,
+    /// Tiempo acumulado en sincronización PM↔SR (clone + migraciones z↔SFC + lookup) (ns).
+    sr_sync_ns: u64,
+
+    // ── Diagnósticos scatter/gather PM (Fase 24) ──────────────────────────────
+    /// Partículas enviadas al scatter PM (= partículas locales SFC) por paso.
+    pm_scatter_particles: usize,
+    /// Bytes totales enviados en el scatter PM (5 × f64 × scatter_particles).
+    pm_scatter_bytes: usize,
+    /// Tiempo del scatter alltoallv PM (ns).
+    pm_scatter_ns: u64,
+    /// Partículas recibidas en el gather PM por paso.
+    pm_gather_particles: usize,
+    /// Bytes totales recibidos en el gather PM (4 × f64 × gather_particles).
+    pm_gather_bytes: usize,
+    /// Tiempo del gather alltoallv PM (ns).
+    pm_gather_ns: u64,
 }
 
 /// Resumen HPC agregado incluido en `timings.json`.
@@ -212,6 +234,63 @@ struct HpcTimingsAggregate {
     mean_halo_3d_bytes: f64,
     /// Tiempo medio de `exchange_halos_3d_periodic` por paso (s).
     mean_halo_3d_s: f64,
+
+    // ── Dominio 3D/SFC SR (Fase 23) ───────────────────────────────────────────
+    /// Media de partículas en dominio SFC SR por paso.
+    mean_sr_domain_particle_count: f64,
+    /// Media de partículas halo SR vecinas (via halo 3D periódico) por paso.
+    mean_sr_halo_3d_neighbors: f64,
+    /// Tiempo medio de sincronización PM↔SR por paso (s).
+    mean_sr_sync_s: f64,
+    /// Fracción del tiempo TreePM gastada en sincronización PM↔SR.
+    sr_sync_fraction: f64,
+
+    // ── Scatter/Gather PM (Fase 24) ───────────────────────────────────────────
+    /// Media de partículas enviadas en el scatter PM por paso.
+    mean_pm_scatter_particles: f64,
+    /// Media de bytes enviados en el scatter PM por paso.
+    mean_pm_scatter_bytes: f64,
+    /// Tiempo medio del scatter PM alltoallv por paso (s).
+    mean_pm_scatter_s: f64,
+    /// Media de partículas recibidas en el gather PM por paso.
+    mean_pm_gather_particles: f64,
+    /// Media de bytes recibidos en el gather PM por paso.
+    mean_pm_gather_bytes: f64,
+    /// Tiempo medio del gather PM alltoallv por paso (s).
+    mean_pm_gather_s: f64,
+    /// Fracción del tiempo TreePM gastada en scatter+gather PM (Fase 24 vs Fase 23 sr_sync).
+    pm_sync_fraction: f64,
+}
+
+/// Resumen HPC agregado para el path TreePM SR-SFC (Fases 23/24).
+///
+/// Escrito como campo `"treepm_hpc"` en `timings.json` al final del run.
+/// Solo se emite si el path `use_treepm_sr_sfc` estuvo activo.
+#[derive(serde::Serialize)]
+struct TreePmAggregate {
+    /// Tiempo medio de scatter alltoallv PM (o clone+migrate) por paso (segundos).
+    mean_scatter_s: f64,
+    /// Tiempo medio de gather alltoallv PM por paso (segundos). 0 en Fase 23.
+    mean_gather_s: f64,
+    /// Tiempo medio de resolución PM (FFT + interpolación) por paso (segundos).
+    mean_pm_solve_s: f64,
+    /// Tiempo medio de intercambio de halos SR 3D por paso (segundos).
+    mean_sr_halo_s: f64,
+    /// Tiempo medio del árbol corto alcance por paso (segundos).
+    mean_tree_sr_s: f64,
+    /// Media de partículas enviadas en scatter PM (o clonadas) por paso.
+    mean_scatter_particles: f64,
+    /// Media de bytes enviados en scatter por paso.
+    mean_scatter_bytes: f64,
+    /// Media de bytes recibidos en gather por paso.
+    mean_gather_bytes: f64,
+    /// Fracción del tiempo TreePM gastada en scatter+gather (sincronización PM↔SR).
+    /// `(scatter_ns + gather_ns) / (scatter_ns + gather_ns + pm_solve_ns + sr_halo_ns + tree_sr_ns)`
+    pm_sync_fraction: f64,
+    /// Tiempo medio total del path TreePM SR-SFC por paso (segundos).
+    mean_treepm_total_s: f64,
+    /// Path activo: `"scatter_gather"` (Fase 24) o `"clone_migrate"` (Fase 23).
+    path_active: &'static str,
 }
 
 /// Resumen de tiempos por fase, escrito en `<out>/timings.json` al final del run.
@@ -245,6 +324,9 @@ struct TimingsReport {
     /// Resumen detallado HPC (solo para path SFC+LET).
     #[serde(skip_serializing_if = "Option::is_none")]
     hpc: Option<HpcTimingsAggregate>,
+    /// Resumen HPC del path TreePM SR-SFC (Fases 23/24). Solo se emite si estuvo activo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    treepm_hpc: Option<TreePmAggregate>,
 }
 
 // ── Checkpoint ────────────────────────────────────────────────────────────────
@@ -407,6 +489,49 @@ fn local_moments(parts: &[Particle]) -> LocalMoments {
     m
 }
 
+/// Diagnóstico por llamada a compute_acc en el path TreePM SR-SFC (Fases 23/24).
+///
+/// Se acumula sobre todas las sub-llamadas de un paso (1 para leapfrog, 3 para Yoshida4)
+/// y se serializa como campo `"treepm"` en cada línea de `diagnostics.jsonl`.
+#[derive(serde::Serialize, Default, Clone, Copy)]
+struct TreePmStepDiag {
+    /// Tiempo total de scatter alltoallv PM (Fase 24) o clone+migrate (Fase 23), en ns.
+    scatter_ns: u64,
+    /// Tiempo total de gather alltoallv PM (Fase 24), en ns. 0 para Fase 23.
+    gather_ns: u64,
+    /// Tiempo total de resolución PM (FFT + interpolación) en el slab, en ns.
+    pm_solve_ns: u64,
+    /// Tiempo total de intercambio de halos SR 3D periódico, en ns.
+    sr_halo_ns: u64,
+    /// Tiempo total del árbol corto alcance (SFC domain), en ns.
+    tree_sr_ns: u64,
+    /// Número de partículas enviadas en scatter PM (Fase 24) o clonadas (Fase 23).
+    scatter_particles: usize,
+    /// Bytes enviados en scatter PM por este rank (Fase 24). 0 para Fase 23.
+    scatter_bytes: usize,
+    /// Bytes recibidos en gather PM por este rank (Fase 24). 0 para Fase 23.
+    gather_bytes: usize,
+    /// Path activo: `"sg"` (Fase 24 scatter/gather) o `"clone"` (Fase 23 clone+migrate).
+    path: &'static str,
+}
+
+impl TreePmStepDiag {
+    /// Acumula otro `TreePmStepDiag` (suma campos numéricos; preserva `path` del `other`).
+    fn add(self, other: Self) -> Self {
+        Self {
+            scatter_ns: self.scatter_ns + other.scatter_ns,
+            gather_ns: self.gather_ns + other.gather_ns,
+            pm_solve_ns: self.pm_solve_ns + other.pm_solve_ns,
+            sr_halo_ns: self.sr_halo_ns + other.sr_halo_ns,
+            tree_sr_ns: self.tree_sr_ns + other.tree_sr_ns,
+            scatter_particles: self.scatter_particles + other.scatter_particles,
+            scatter_bytes: self.scatter_bytes + other.scatter_bytes,
+            gather_bytes: self.gather_bytes + other.gather_bytes,
+            path: other.path,
+        }
+    }
+}
+
 /// Datos de diagnóstico cosmológico opcionales para cada paso.
 struct CosmoDiag {
     /// Factor de escala actual `a`.
@@ -419,6 +544,8 @@ struct CosmoDiag {
     pub delta_rms: f64,
     /// Parámetro de Hubble H(a) en unidades internas.
     pub hubble: f64,
+    /// Diagnóstico TreePM SR-SFC por paso (Fases 23/24). `None` si no está activo.
+    pub treepm: Option<TreePmStepDiag>,
 }
 
 fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
@@ -491,6 +618,13 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
             map.insert("v_rms".into(), cd.v_rms.into());
             map.insert("delta_rms".into(), cd.delta_rms.into());
             map.insert("hubble".into(), cd.hubble.into());
+            // Diagnóstico TreePM SR-SFC (Fases 23/24) si estuvo activo en este paso.
+            if let Some(td) = cd.treepm {
+                map.insert(
+                    "treepm".into(),
+                    serde_json::to_value(&td).unwrap_or(serde_json::Value::Null),
+                );
+            }
         }
         let line = obj.to_string();
         writeln!(f, "{line}").map_err(|e| CliError::io(diag_path, e))?;
@@ -860,6 +994,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let wall_loop_start = Instant::now();
     // Resumen HPC detallado; solo se puebla en el path SFC+LET.
     let mut hpc_aggregate_opt: Option<HpcTimingsAggregate> = None;
+    // Resumen HPC del path TreePM SR-SFC; se puebla al final si use_treepm_sr_sfc estuvo activo.
+    let mut treepm_hpc_opt: Option<TreePmAggregate> = None;
+    // Acumulador TreePM SR-SFC (Fases 23/24); se puebla si use_treepm_sr_sfc está activo.
+    let mut acc_tpm = TreePmStepDiag::default();
+    let mut tpm_step_count: u64 = 0;
 
     let integrator_kind = cfg.simulation.integrator;
     if cfg.timestep.hierarchical && integrator_kind != IntegratorKind::Leapfrog {
@@ -1109,6 +1248,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 v_rms: v_rms_dist,
                 delta_rms: delta_rms_local,
                 hubble: hubble_param(cosmo_params, a_current),
+                treepm: None,
             };
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
             acc_comm_ns += this_comm;
@@ -1155,6 +1295,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         // Requiere treepm_slab=true. Usa AABBs reales + minimum_image 3D en vez de halo 1D-z.
         let use_treepm_3d_halo = cfg.gravity.treepm_halo_3d && use_treepm_slab;
 
+        // Fase 23: dominio 3D/SFC para el árbol SR (desacoplado del slab-z PM).
+        // Requiere treepm_slab=true. El SR usa SfcDecomposition; el PM sigue en z-slab.
+        // Implica use_treepm_3d_halo (el halo 3D es necesario para SR-SFC correcto).
+        let use_treepm_sr_sfc = cfg.gravity.treepm_sr_sfc && use_treepm_slab;
+
+        // Fase 24: scatter/gather PM mínimo entre dominio SFC y slabs PM.
+        // Reemplaza el clone+migrate de Fase 23 por un alltoallv de datos mínimos.
+        // Solo activo si use_treepm_sr_sfc está habilitado.
+        let use_treepm_pm_scatter_gather =
+            cfg.gravity.treepm_pm_scatter_gather && use_treepm_sr_sfc;
+
         let pm_nm = cfg.gravity.pm_grid_size;
 
         // Precomputar límites de slab Z para Fase 20 (solo si pm_slab activo).
@@ -1190,10 +1341,31 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
         let treepm_r_cut = 5.0 * treepm_r_split;
 
+        // Fase 23: SfcDecomposition para el dominio SR.
+        // Se inicializa con la bbox global y se rebalanceará cada sfc_rebalance_interval pasos.
+        let sr_sfc_kind = cfg.performance.sfc_kind;
+        let sr_sfc_rebalance = cfg.performance.sfc_rebalance_interval;
+        let mut sr_sfc_decomp_opt: Option<gadget_ng_parallel::SfcDecomposition> =
+            if use_treepm_sr_sfc && rt.size() > 1 {
+                use gadget_ng_parallel::sfc::global_bbox;
+                let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+                let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+                Some(gadget_ng_parallel::SfcDecomposition::build_with_bbox_and_kind(
+                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sr_sfc_kind,
+                ))
+            } else {
+                None
+            };
+
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
             let mut this_comm: u64 = 0;
             let mut this_grav: u64 = 0;
+
+            // Celda de acumulación para diagnósticos TreePM del paso actual.
+            // Se resetea cada paso; el closure compute_acc acumula en ella (puede llamarse
+            // múltiples veces por paso en Yoshida4). Cell<T> permite interior mutability sin &mut.
+            let tpm_diag_cell = std::cell::Cell::new(TreePmStepDiag::default());
 
             // Fase 20: migrar partículas a su slab Z al inicio de cada paso.
             // Necesario para que deposit_slab_extended reciba las partículas correctas.
@@ -1206,7 +1378,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             }
 
             // Fase 21: migrar partículas a su slab Z para TreePM distribuido.
-            if use_treepm_slab && rt.size() > 1 {
+            // Fase 23 (use_treepm_sr_sfc): este path usa SFC en su lugar (ver abajo).
+            if use_treepm_slab && !use_treepm_sr_sfc && rt.size() > 1 {
                 if let Some(ref layout) = treepm_slab_layout_opt {
                     let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
                     let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
@@ -1214,12 +1387,170 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 }
             }
 
+            // Fase 23: rebalanceo y migración SFC para el dominio SR.
+            // Las partículas viven en SFC domain; el PM las clonará temporalmente a z-slab.
+            if use_treepm_sr_sfc && rt.size() > 1 {
+                use gadget_ng_parallel::sfc::global_bbox;
+                let do_rebalance = sr_sfc_rebalance == 0
+                    || (step - start_step) % sr_sfc_rebalance.max(1) == 0;
+                if do_rebalance {
+                    let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+                    let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+                    sr_sfc_decomp_opt = Some(
+                        gadget_ng_parallel::SfcDecomposition::build_with_bbox_and_kind(
+                            &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi,
+                            rt.size(), sr_sfc_kind,
+                        )
+                    );
+                }
+                if let Some(ref sfc_d) = sr_sfc_decomp_opt {
+                    rt.exchange_domain_sfc(&mut local, sfc_d);
+                }
+            }
+
+            // Redimensionar scratch tras posible migración SFC (Fase 23: exchange_domain_sfc
+            // puede cambiar local.len(); leapfrog_cosmo_kdk_step requiere scratch.len() == local.len()).
+            scratch.resize(local.len(), Vec3::zero());
+
             // Corrección de fuerza comóvil: dp/dt = -(G/a) * F_newtoniana_comóvil.
             // Se usa el factor de escala al inicio del paso (correcto a primer orden en dt).
             let g_cosmo = g / a_current;
             let mut compute_acc =
                 |parts: &[Particle], acc: &mut [Vec3], this_comm: &mut u64, this_grav: &mut u64| {
-                    if use_treepm_slab {
+                    if use_treepm_sr_sfc {
+                        // ─ Fase 23: TreePM SR desacoplado del slab-z (dominio 3D/SFC) ────
+                        //
+                        // Arquitectura dual:
+                        //   • SR tree:  dominio SFC real (Morton/Hilbert). Halos 3D periódicos.
+                        //   • PM LR:    slab-z sin cambios (Fase 20/21). Sincronización explícita.
+                        //
+                        // F_total = F_lr (PM slab + erf) + F_sr (árbol erfc, dominio SFC)
+                        let layout = treepm_slab_layout_opt.as_ref().unwrap();
+                        let r_s   = treepm_r_split;
+                        let r_cut = treepm_r_cut;
+                        let _t_tpm = Instant::now();
+
+                        // ── 1. SR: halo volumétrico 3D periódico (path activo principal) ─
+                        let t_sr_halo = Instant::now();
+                        let sr_halos = rt.exchange_halos_3d_periodic(parts, box_size, r_cut);
+                        let sr_halo_comm_ns = t_sr_halo.elapsed().as_nanos() as u64;
+                        *this_comm += sr_halo_comm_ns;
+
+                        // ── 2. SR: árbol corto alcance sobre dominio SFC + halos 3D ──────
+                        let t_sr_tree = Instant::now();
+                        let sr_params = treepm_dist::SfcShortRangeParams {
+                            local_particles: parts,
+                            halo_particles: &sr_halos,
+                            eps2,
+                            g: g_cosmo,
+                            r_split: r_s,
+                            box_size,
+                        };
+                        let mut acc_sr = vec![Vec3::zero(); parts.len()];
+                        treepm_dist::short_range_accels_sfc(&sr_params, &mut acc_sr);
+                        let tree_sr_ns = t_sr_tree.elapsed().as_nanos() as u64;
+                        *this_grav += tree_sr_ns;
+
+                        // ── 3. PM LR: scatter/gather (Fase 24) o clone+migrate (Fase 23) ──
+                        let t_pm_sync = Instant::now();
+
+                        let (acc_lr, sg_stats_opt): (Vec<Vec3>, Option<treepm_dist::PmScatterStats>) =
+                            if use_treepm_pm_scatter_gather {
+                                // ── Fase 24: scatter/gather PM mínimo ───────────────────────
+                                //
+                                // Las partículas permanecen en SFC domain.
+                                // Se envía solo (gid, pos, mass) al slab PM destino.
+                                // El slab PM devuelve (gid, acc_pm) al source rank.
+                                // Sin clone, sin migración de Particle completo.
+                                let (acc_pm, sg_stats) = treepm_dist::pm_scatter_gather_accels(
+                                    parts, layout, g_cosmo, r_s, box_size, rt,
+                                );
+                                *this_comm += sg_stats.scatter_ns + sg_stats.gather_ns;
+                                *this_grav += sg_stats.pm_solve_ns;
+                                (acc_pm, Some(sg_stats))
+                            } else {
+                                // ── Fase 23: clone → z-slab → PM → back-SFC → HashMap ───────
+                                //
+                                // Conservado como fallback para comparación con Fase 24.
+
+                                // 3a. Clonar partículas locales y migrar a z-slab PM.
+                                let mut pm_parts = parts.to_vec();
+                                let pm_z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                                let pm_z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                                rt.exchange_domain_by_z(&mut pm_parts, pm_z_lo, pm_z_hi);
+                                *this_comm += t_pm_sync.elapsed().as_nanos() as u64;
+
+                                // 3b. PM pipeline sobre las partículas en z-slab.
+                                let t_pm = Instant::now();
+                                let pm_pos: Vec<Vec3> = pm_parts.iter().map(|p| p.position).collect();
+                                let pm_mass: Vec<f64> = pm_parts.iter().map(|p| p.mass).collect();
+                                let mut density_ext = slab_pm::deposit_slab_extended(
+                                    &pm_pos, &pm_mass, layout, box_size,
+                                );
+                                slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
+                                *this_comm += t_pm.elapsed().as_nanos() as u64;
+
+                                let t_pm2 = Instant::now();
+                                let mut forces = slab_pm::forces_from_slab(
+                                    &density_ext, layout, g_cosmo, box_size, Some(r_s), rt,
+                                );
+                                slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
+                                *this_comm += t_pm2.elapsed().as_nanos() as u64;
+
+                                let t_interp = Instant::now();
+                                let acc_lr_pm = slab_pm::interpolate_slab_local(
+                                    &pm_pos, &forces, layout, box_size,
+                                );
+                                *this_grav += t_interp.elapsed().as_nanos() as u64;
+
+                                // 3c. Embeber acc_lr en pm_parts.acceleration.
+                                for (p, a) in pm_parts.iter_mut().zip(acc_lr_pm.iter()) {
+                                    p.acceleration = *a;
+                                }
+
+                                // 3d. Retornar pm_parts al dominio SFC.
+                                let t_back = Instant::now();
+                                if let Some(ref sfc_d) = sr_sfc_decomp_opt {
+                                    rt.exchange_domain_sfc(&mut pm_parts, sfc_d);
+                                }
+                                *this_comm += t_back.elapsed().as_nanos() as u64;
+
+                                // 3e. Lookup de acc_lr por global_id.
+                                let lr_map: std::collections::HashMap<usize, Vec3> = pm_parts
+                                    .iter()
+                                    .map(|p| (p.global_id, p.acceleration))
+                                    .collect();
+                                let acc_lr: Vec<Vec3> = parts
+                                    .iter()
+                                    .map(|p| lr_map.get(&p.global_id).copied().unwrap_or(Vec3::zero()))
+                                    .collect();
+                                (acc_lr, None)
+                            };
+
+                        let sr_sync_elapsed = t_pm_sync.elapsed().as_nanos() as u64;
+
+                        // ── 4. Suma: F_total = F_lr + F_sr ──────────────────────────────
+                        for (k, a) in acc.iter_mut().enumerate() {
+                            *a = acc_lr[k] + acc_sr[k];
+                        }
+
+                        let _ = sr_sync_elapsed;
+                        // ── Diagnóstico TreePM SR-SFC: propagar stats al scope exterior ──
+                        // Se construye un TreePmStepDiag con los valores medidos en esta
+                        // sub-llamada y se acumula en tpm_diag_cell (interior mutability).
+                        let new_diag = TreePmStepDiag {
+                            scatter_ns:        sg_stats_opt.map_or(0, |s| s.scatter_ns),
+                            gather_ns:         sg_stats_opt.map_or(0, |s| s.gather_ns),
+                            pm_solve_ns:       sg_stats_opt.map_or(0, |s| s.pm_solve_ns),
+                            sr_halo_ns:        sr_halo_comm_ns,
+                            tree_sr_ns,
+                            scatter_particles: sg_stats_opt.map_or(parts.len(), |s| s.scatter_particles),
+                            scatter_bytes:     sg_stats_opt.map_or(0, |s| s.scatter_bytes),
+                            gather_bytes:      sg_stats_opt.map_or(0, |s| s.gather_bytes),
+                            path: if use_treepm_pm_scatter_gather { "sg" } else { "clone" },
+                        };
+                        tpm_diag_cell.set(tpm_diag_cell.get().add(new_diag));
+                    } else if use_treepm_slab {
                         // ─ Fase 21/22: TreePM slab distribuido ───────────────────────────
                         //
                         // F_total = F_lr (PM slab + filtro Gaussiano) + F_sr (árbol erfc + minimum_image)
@@ -1417,6 +1748,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
+
+            // Leer diagnóstico TreePM acumulado del paso (suma de todas las sub-llamadas).
+            let step_tpm = tpm_diag_cell.get();
+            if use_treepm_sr_sfc {
+                acc_tpm = acc_tpm.add(step_tpm);
+                tpm_step_count += 1;
+            }
+
             let cd = CosmoDiag {
                 a: a_current,
                 z: 1.0 / a_current - 1.0,
@@ -1427,6 +1766,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     16,
                 ),
                 hubble: hubble_param(*cosmo_params, a_current),
+                treepm: if use_treepm_sr_sfc { Some(step_tpm) } else { None },
             };
             write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, Some(&cd))?;
             maybe_checkpoint!(step, None);
@@ -1901,6 +2241,19 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 mean_halo_3d_particles: 0.0,
                 mean_halo_3d_bytes: 0.0,
                 mean_halo_3d_s: 0.0,
+                // Campos Fase 23: cero para path SFC+LET.
+                mean_sr_domain_particle_count: 0.0,
+                mean_sr_halo_3d_neighbors: 0.0,
+                mean_sr_sync_s: 0.0,
+                sr_sync_fraction: 0.0,
+                // Campos Fase 24: cero para path SFC+LET.
+                mean_pm_scatter_particles: 0.0,
+                mean_pm_scatter_bytes: 0.0,
+                mean_pm_scatter_s: 0.0,
+                mean_pm_gather_particles: 0.0,
+                mean_pm_gather_bytes: 0.0,
+                mean_pm_gather_s: 0.0,
+                pm_sync_fraction: 0.0,
             });
         }
     } else if use_sfc {
@@ -2045,6 +2398,36 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         }
     }
 
+    // ── Calcular TreePmAggregate si el path SR-SFC estuvo activo ─────────────
+    if tpm_step_count > 0 {
+        let n = tpm_step_count as f64;
+        let ns2s = 1e-9_f64;
+        let total_sync =
+            (acc_tpm.scatter_ns + acc_tpm.gather_ns) as f64;
+        let total_treepm = (acc_tpm.scatter_ns
+            + acc_tpm.gather_ns
+            + acc_tpm.pm_solve_ns
+            + acc_tpm.sr_halo_ns
+            + acc_tpm.tree_sr_ns) as f64;
+        treepm_hpc_opt = Some(TreePmAggregate {
+            mean_scatter_s: acc_tpm.scatter_ns as f64 * ns2s / n,
+            mean_gather_s: acc_tpm.gather_ns as f64 * ns2s / n,
+            mean_pm_solve_s: acc_tpm.pm_solve_ns as f64 * ns2s / n,
+            mean_sr_halo_s: acc_tpm.sr_halo_ns as f64 * ns2s / n,
+            mean_tree_sr_s: acc_tpm.tree_sr_ns as f64 * ns2s / n,
+            mean_scatter_particles: acc_tpm.scatter_particles as f64 / n,
+            mean_scatter_bytes: acc_tpm.scatter_bytes as f64 / n,
+            mean_gather_bytes: acc_tpm.gather_bytes as f64 / n,
+            pm_sync_fraction: if total_treepm > 0.0 {
+                total_sync / total_treepm
+            } else {
+                0.0
+            },
+            mean_treepm_total_s: total_treepm * ns2s / n,
+            path_active: acc_tpm.path,
+        });
+    }
+
     // ── Escribir timings.json ─────────────────────────────────────────────────
     if rt.rank() == 0 && steps_run > 0 {
         let total_wall_s = wall_loop_start.elapsed().as_secs_f64();
@@ -2073,6 +2456,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 0.0
             },
             hpc: hpc_aggregate_opt,
+            treepm_hpc: treepm_hpc_opt,
         };
         let timings_path = out_dir.join("timings.json");
         if let Ok(f) = fs::File::create(&timings_path) {

@@ -1,0 +1,9 @@
+{
+  "run_id":    "fase24_N512_P4",
+  "variante":  "fase24",
+  "N":         512,
+  "P":         4,
+  "config":    "eds_N512_fase24",
+  "mpi_mode":  true,
+  "wall_ms":   310
+}

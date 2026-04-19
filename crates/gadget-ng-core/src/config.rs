@@ -239,6 +239,46 @@ pub struct GravitySection {
     /// periódico explícito en vez de coordenadas absolutas.
     #[serde(default)]
     pub treepm_halo_3d: bool,
+
+    /// Activa el dominio 3D/SFC para el árbol de corto alcance (Fase 23).
+    ///
+    /// Desacopla el SR del slab-z del PM: las partículas se distribuyen por
+    /// `SfcDecomposition` (Morton/Hilbert) para el cálculo del árbol SR, mientras
+    /// el PM largo alcance sigue usando slab-z sin cambios.
+    ///
+    /// ## Arquitectura dual
+    ///
+    /// - **SR domain**: SFC (Morton/Hilbert). `exchange_halos_3d_periodic` es el
+    ///   mecanismo activo para cubrir interacciones de corto alcance.
+    /// - **PM domain**: z-slab (sin cambios respecto a Fase 20/21).
+    /// - **Sincronización PM↔SR**: por cada evaluación de fuerza, el PM clona las
+    ///   partículas, migra a z-slab, computa fuerzas y retorna al dominio SFC.
+    ///
+    /// Requiere `solver = "tree_pm"`, `cosmology.periodic = true`,
+    /// `pm_grid_size % n_ranks == 0`.
+    ///
+    /// Implica `treepm_halo_3d = true` (halo 3D periódico es necesario para SR-SFC).
+    #[serde(default)]
+    pub treepm_sr_sfc: bool,
+
+    /// Fase 24: scatter/gather PM mínimo entre dominio SFC y slabs.
+    ///
+    /// Reemplaza la sincronización PM↔SR de Fase 23 (`clone → migrate → PM → back-migrate
+    /// → HashMap`) por un protocolo scatter/gather explícito que envía solo los datos
+    /// mínimos necesarios:
+    ///
+    /// - **Scatter**: `(global_id, position, mass)` → 40 bytes/partícula
+    /// - **Gather**: `(global_id, acc_pm)` → 32 bytes/partícula
+    ///
+    /// Total round-trip: ~72 bytes/partícula vs ~176 bytes del path de Fase 23.
+    ///
+    /// Las partículas verdaderas permanecen en el dominio SFC sin ningún clone.
+    /// El PM slab actúa como servicio de campo: recibe contribuciones de densidad
+    /// y devuelve aceleraciones PM, sin poseer partículas.
+    ///
+    /// Solo activo si `treepm_sr_sfc = true`. Requiere `solver = "tree_pm"`.
+    #[serde(default)]
+    pub treepm_pm_scatter_gather: bool,
 }
 
 fn default_solver_kind() -> SolverKind {
@@ -285,6 +325,8 @@ impl Default for GravitySection {
             pm_slab: false,
             treepm_slab: false,
             treepm_halo_3d: false,
+            treepm_sr_sfc: false,
+            treepm_pm_scatter_gather: false,
         }
     }
 }

@@ -19,5 +19,8 @@ pub mod distributed;
 pub mod short_range;
 pub mod solver;
 
-pub use distributed::{short_range_accels_slab, HaloStats, SlabShortRangeParams};
+pub use distributed::{
+    halo_stats, pm_scatter_gather_accels, short_range_accels_sfc, short_range_accels_slab,
+    HaloStats, PmScatterStats, SfcShortRangeParams, SlabShortRangeParams,
+};
 pub use solver::TreePmSolver;

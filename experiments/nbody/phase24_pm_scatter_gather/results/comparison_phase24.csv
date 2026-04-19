@@ -1,0 +1,3 @@
+run,n_particles,steps,total_wall_s,mean_step_ms,comm_fraction,gravity_fraction,a_fin,v_rms,delta_rms
+fase23_clone_N512_p1,512,20,2.2279,111.28,0.4260,0.5692,0.068246,3.821074e+02,2.844952e+00
+fase24_sg_N512_p1,512,20,2.1741,108.60,0.0000,0.9981,0.068246,3.821074e+02,2.844952e+00

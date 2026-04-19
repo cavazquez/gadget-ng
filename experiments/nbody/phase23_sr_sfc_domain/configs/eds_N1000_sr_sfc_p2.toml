@@ -1,0 +1,38 @@
+# ── EdS N=1000, TreePM SR-SFC Dominio 3D (Fase 23) — P=2 ────────────────────
+#
+# Prueba distribuida mínima: 2 ranks con dominio SFC para SR.
+# El SR usa SfcDecomposition (Morton); el PM sigue en z-slab.
+# Requiere: mpirun -n 2 gadget-ng run ...
+#
+# path_active = "treepm_sr_sfc_3d"
+
+[simulation]
+particle_count      = 1000
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 20
+softening           = 0.01
+gravitational_constant = 1.0
+seed                = 42
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+periodic      = true
+omega_m       = 1.0
+omega_lambda  = 0.0
+h0            = 0.1
+a_init        = 0.02
+
+[gravity]
+solver          = "tree_pm"
+pm_grid_size    = 32
+treepm_slab     = true
+treepm_halo_3d  = true
+treepm_sr_sfc   = true
+
+[performance]
+sfc_kind                = "hilbert"
+sfc_rebalance_interval  = 5

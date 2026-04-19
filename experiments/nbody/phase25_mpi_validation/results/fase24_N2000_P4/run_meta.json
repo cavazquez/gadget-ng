@@ -1,0 +1,9 @@
+{
+  "run_id":    "fase24_N2000_P4",
+  "variante":  "fase24",
+  "N":         2000,
+  "P":         4,
+  "config":    "lcdm_N2000_fase24",
+  "mpi_mode":  true,
+  "wall_ms":   1004
+}

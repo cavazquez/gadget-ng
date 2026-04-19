@@ -1,0 +1,39 @@
+# ── ΛCDM N=2000, TreePM SR-SFC Dominio 3D (Fase 23) — P=4 ───────────────────
+#
+# Prueba distribuida P=4 con cosmología ΛCDM.
+# Compara con: lcdm_N2000_slab_p4 (Fase 21/22) para medir overhead de sincronización.
+# Requiere: mpirun -n 4 gadget-ng run ...
+# pm_grid_size=32 → 32%4=0 ✓
+#
+# path_active = "treepm_sr_sfc_3d"
+
+[simulation]
+particle_count      = 2000
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 20
+softening           = 0.01
+gravitational_constant = 1.0
+seed                = 42
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+periodic      = true
+omega_m       = 0.3
+omega_lambda  = 0.7
+h0            = 0.1
+a_init        = 0.02
+
+[gravity]
+solver          = "tree_pm"
+pm_grid_size    = 32
+treepm_slab     = true
+treepm_halo_3d  = true
+treepm_sr_sfc   = true
+
+[performance]
+sfc_kind                = "hilbert"
+sfc_rebalance_interval  = 5

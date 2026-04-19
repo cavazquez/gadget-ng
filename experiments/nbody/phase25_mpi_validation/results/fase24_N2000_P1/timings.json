@@ -1,0 +1,26 @@
+{
+  "steps": 10,
+  "total_particles": 2000,
+  "total_wall_s": 2.355200374,
+  "total_comm_s": 6.7430000000000005e-6,
+  "total_gravity_s": 2.3539444030000003,
+  "total_integration_s": 0.0007885839999999256,
+  "mean_step_wall_s": 0.23547397300000003,
+  "mean_comm_s": 6.743e-7,
+  "mean_gravity_s": 0.23539444030000004,
+  "comm_fraction": 2.8635861170100525e-6,
+  "gravity_fraction": 0.9996622442005512,
+  "treepm_hpc": {
+    "mean_scatter_s": 0.0,
+    "mean_gather_s": 0.0,
+    "mean_pm_solve_s": 0.0025332728000000003,
+    "mean_sr_halo_s": 6.743e-7,
+    "mean_tree_sr_s": 0.23286116750000002,
+    "mean_scatter_particles": 4000.0,
+    "mean_scatter_bytes": 160000.0,
+    "mean_gather_bytes": 128000.0,
+    "pm_sync_fraction": 0.0,
+    "mean_treepm_total_s": 0.2353951146,
+    "path_active": "sg"
+  }
+}

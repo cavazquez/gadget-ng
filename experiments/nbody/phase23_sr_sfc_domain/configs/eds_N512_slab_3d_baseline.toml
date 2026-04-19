@@ -1,0 +1,31 @@
+# ── EdS N=512, TreePM slab 3D (Fase 22) — baseline de comparación ────────────
+#
+# Baseline Fase 22 para comparar con SR-SFC Fase 23.
+# path_active = "treepm_slab_3d"
+
+[simulation]
+particle_count      = 512
+box_size            = 1.0
+dt                  = 0.005
+num_steps           = 20
+softening           = 0.01
+gravitational_constant = 1.0
+seed                = 42
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled       = true
+periodic      = true
+omega_m       = 1.0
+omega_lambda  = 0.0
+h0            = 0.1
+a_init        = 0.02
+
+[gravity]
+solver          = "tree_pm"
+pm_grid_size    = 32
+treepm_slab     = true
+treepm_halo_3d  = true
+treepm_sr_sfc   = false

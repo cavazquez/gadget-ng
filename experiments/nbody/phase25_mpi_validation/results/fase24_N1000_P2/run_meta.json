@@ -1,0 +1,9 @@
+{
+  "run_id":    "fase24_N1000_P2",
+  "variante":  "fase24",
+  "N":         1000,
+  "P":         2,
+  "config":    "eds_N1000_fase24",
+  "mpi_mode":  true,
+  "wall_ms":   610
+}

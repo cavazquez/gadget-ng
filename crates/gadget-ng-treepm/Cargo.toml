@@ -10,9 +10,10 @@ default = []
 rayon = ["dep:rayon", "gadget-ng-pm/rayon"]
 
 [dependencies]
-gadget-ng-core = { path = "../gadget-ng-core" }
-gadget-ng-tree = { path = "../gadget-ng-tree" }
-gadget-ng-pm   = { path = "../gadget-ng-pm" }
+gadget-ng-core     = { path = "../gadget-ng-core" }
+gadget-ng-tree     = { path = "../gadget-ng-tree" }
+gadget-ng-pm       = { path = "../gadget-ng-pm" }
+gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]

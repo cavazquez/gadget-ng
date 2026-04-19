@@ -1,0 +1,9 @@
+{
+  "run_id":    "fase23_N1000_P4",
+  "variante":  "fase23",
+  "N":         1000,
+  "P":         4,
+  "config":    "eds_N1000_fase23",
+  "mpi_mode":  true,
+  "wall_ms":   479
+}

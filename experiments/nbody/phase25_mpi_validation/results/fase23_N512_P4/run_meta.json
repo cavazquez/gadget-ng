@@ -1,0 +1,9 @@
+{
+  "run_id":    "fase23_N512_P4",
+  "variante":  "fase23",
+  "N":         512,
+  "P":         4,
+  "config":    "eds_N512_fase23",
+  "mpi_mode":  true,
+  "wall_ms":   301
+}

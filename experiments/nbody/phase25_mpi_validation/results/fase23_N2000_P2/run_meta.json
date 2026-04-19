@@ -1,0 +1,9 @@
+{
+  "run_id":    "fase23_N2000_P2",
+  "variante":  "fase23",
+  "N":         2000,
+  "P":         2,
+  "config":    "lcdm_N2000_fase23",
+  "mpi_mode":  true,
+  "wall_ms":   1593
+}

@@ -1,0 +1,34 @@
+# ── Phase 25: ΛCDM N=2000, Fase 23 (clone+migrate) — baseline MPI ─────────────
+#
+# Cosmología ΛCDM con N=2000: caso más exigente para demostrar beneficios de Fase 24.
+# pm_grid_size=32 asegura divisibilidad por P=4.
+# Ejecutar con: mpirun -n P gadget-ng stepping --config <este> --out <dir>
+# Matriz de runs: P = 1, 2, 4
+
+[simulation]
+particle_count         = 2000
+box_size               = 1.0
+dt                     = 0.005
+num_steps              = 10
+softening              = 0.008
+gravitational_constant = 1.0
+seed                   = 456
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.04, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.3
+omega_lambda = 0.7
+h0           = 0.7
+a_init       = 0.02
+
+[gravity]
+solver                   = "tree_pm"
+pm_grid_size             = 32
+treepm_slab              = true
+treepm_halo_3d           = true
+treepm_sr_sfc            = true
+treepm_pm_scatter_gather = false

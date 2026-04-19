@@ -1,0 +1,31 @@
+# ── EdS N=1000, TreePM Fase 24 (scatter/gather PM) — P=1 ─────────────────────
+#
+# Sistema más grande para benchmark de tiempo de scatter/gather PM.
+
+[simulation]
+particle_count         = 1000
+box_size               = 1.0
+dt                     = 0.005
+num_steps              = 10
+softening              = 0.008
+gravitational_constant = 1.0
+seed                   = 123
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.04, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 1.0
+omega_lambda = 0.0
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver                  = "tree_pm"
+pm_grid_size            = 32
+treepm_slab             = true
+treepm_halo_3d          = true
+treepm_sr_sfc           = true
+treepm_pm_scatter_gather = true
