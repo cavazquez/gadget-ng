@@ -1,0 +1,36 @@
+==============================================================================
+ Fase 33 — Derivación del factor de normalización A
+==============================================================================
+
+ Convenciones:
+   V_internal = 1.0³ = 1
+   BOX_MPC_H  = 100.0 Mpc/h
+   h (adim.)  = 0.674
+   k_int ↔ k_hmpc: k_hmpc = k_int · h / BOX_MPC_H
+
+ Cadena de factores (del estimador y del generador):
+   [generador] σ(k)² = P_cont(k_phys) / N³         (amplitud)
+   [generador] δ̂_k = σ · (g_r + i·g_i) → ⟨|δ̂|²⟩ = 2σ² = 2·P_cont/N³
+   [generador] IFFT · (1/N³) → δ(x) real
+   [CIC+FFT]   δ̂_DFT ≈ δ̂_generador (si partículas reproducen campo)
+   [estimador] P_m = ⟨|δ̂|²⟩ · (V_int/N³)² / W²(k)
+   ⇒ P_m ≈ 2·V² · P_cont(k_phys) / N⁹
+
+ Predicción mínima (sin factor 2):   A_pred = V² / N⁹
+ Con Hermitian (factor 2):           A_pred = 2·V²/N⁹
+ Con conversión a (Mpc/h)³:          A_pred = 2·V² · BOX_MPC_H³ / N⁹
+
+   N     A_min = V²/N⁹     A_herm = 2V²/N⁹     A_mpc = 2V²·B³/N⁹              N⁹
+--------------------------------------------------------------------------------
+   8        7.4506e-09          1.4901e-08            1.4901e-02       1.342e+08
+  16        1.4552e-11          2.9104e-11            2.9104e-05       6.872e+10
+  32        2.8422e-14          5.6843e-14            5.6843e-08       3.518e+13
+  64        5.5511e-17          1.1102e-16            1.1102e-10       1.801e+16
+
+ Contexto de los tests (reference Phase 32/33):
+   A_obs(N=16³, 4 seeds) ≈ 3.3e-12
+   A_obs(N=32³, 6 seeds) ≈ 1.66e-15
+   log₁₀(A_obs/A_min) a N=32 ≈ -1.23
+   ratio A(16)/A(32) observado ≈ 2000 vs predicho (32/16)⁹ = 512
+
+Tabla numérica guardada en: experiments/nbody/phase33_pk_normalization/output/derivation_table.json

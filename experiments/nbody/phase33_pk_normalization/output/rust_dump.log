@@ -1,0 +1,25 @@
+   Compiling gadget-ng-physics v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-physics)
+    Finished `release` profile [optimized] target(s) in 0.28s
+     Running tests/phase33_pk_normalization.rs (target/release/deps/phase33_pk_normalization-31ec9cbc7a8d62d4)
+
+running 1 test
+
+[phase33 dump] writing P(k) JSONs to /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N16_seed042.json  (8 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N16_seed137.json  (8 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N16_seed271.json  (8 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N16_seed314.json  (8 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N16_seed512.json  (8 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N16_seed999.json  (8 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed042.json  (16 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed137.json  (16 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed271.json  (16 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed314.json  (16 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed512.json  (16 bins)
+  wrote /home/cristian/repos/propios/gadget-ng/experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed999.json  (16 bins)
+
+[phase33 dump] done
+test dump_pk_jsons_for_phase33 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.05s
+

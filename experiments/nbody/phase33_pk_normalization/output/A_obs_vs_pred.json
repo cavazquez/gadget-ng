@@ -1,0 +1,30 @@
+{
+  "rows": [
+    {
+      "path": "experiments/nbody/phase33_pk_normalization/output/stats_N16.json",
+      "label": "N16_phase33",
+      "n": 16,
+      "n_seeds": 6,
+      "a_obs_hmpc": 3.208492716468036e-06,
+      "a_obs_internal": 3.2084927164680356e-12,
+      "cv_r": 0.21870579282555547,
+      "a_pred_hmpc": 1.4551915228366852e-05,
+      "a_pred_internal": 1.4551915228366852e-11,
+      "log10_obs_over_pred_hmpc": -0.6566190983511355,
+      "log10_obs_over_pred_internal": -0.6566190983511355
+    },
+    {
+      "path": "experiments/nbody/phase33_pk_normalization/output/stats_N32.json",
+      "label": "N32_phase33",
+      "n": 32,
+      "n_seeds": 6,
+      "a_obs_hmpc": 1.6748312287483355e-09,
+      "a_obs_internal": 1.6748312287483355e-15,
+      "cv_r": 0.2345513981697911,
+      "a_pred_hmpc": 2.8421709430404007e-08,
+      "a_pred_internal": 2.842170943040401e-14,
+      "log10_obs_over_pred_hmpc": -1.2296791450113764,
+      "log10_obs_over_pred_internal": -1.2296791450113764
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+==========================================================================================
+ Fase 33 — Comparación A_obs vs A_pred
+==========================================================================================
+
+  experiments/nbody/phase33_pk_normalization/output/stats_N16.json
+    label           = N16_phase33
+    N               = 16
+    n_seeds         = 6
+    A_obs (Mpc/h)³  = 3.2085e-06   (r_mean)
+    A_obs internal  = 3.2085e-12   (÷ BOX_MPC_H³)
+    A_pred (Mpc/h)³ = 1.4552e-05   (V²·B³/N⁹)
+    A_pred internal = 1.4552e-11   (V²/N⁹)
+    log10(obs/pred) (Mpc/h)³   = -0.6566
+    log10(obs/pred) internal  = -0.6566
+    CV(R(k))        = 0.2187
+
+  experiments/nbody/phase33_pk_normalization/output/stats_N32.json
+    label           = N32_phase33
+    N               = 32
+    n_seeds         = 6
+    A_obs (Mpc/h)³  = 1.6748e-09   (r_mean)
+    A_obs internal  = 1.6748e-15   (÷ BOX_MPC_H³)
+    A_pred (Mpc/h)³ = 2.8422e-08   (V²·B³/N⁹)
+    A_pred internal = 2.8422e-14   (V²/N⁹)
+    log10(obs/pred) (Mpc/h)³   = -1.2297
+    log10(obs/pred) internal  = -1.2297
+    CV(R(k))        = 0.2346
+
+  Scaling A(N_i) / A(N_j) vs predicción (N_j/N_i)⁹:
+      i   j       A_i/A_j      (N_j/N_i)⁹    log₁₀(ratio)
+     16  32     1.916e+03       5.120e+02          0.5731
+
+Comparación guardada en: experiments/nbody/phase33_pk_normalization/output/A_obs_vs_pred.json

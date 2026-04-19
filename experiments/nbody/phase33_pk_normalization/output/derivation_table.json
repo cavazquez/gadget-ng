@@ -1,0 +1,40 @@
+{
+  "box_internal": 1.0,
+  "box_mpc_h": 100.0,
+  "h_dimless": 0.674,
+  "formulas": {
+    "minimal": "V\u00b2 / N\u2079",
+    "hermitian": "2 \u00b7 V\u00b2 / N\u2079",
+    "mpc_h_cubed": "2 \u00b7 V\u00b2 \u00b7 BOX_MPC_H\u00b3 / N\u2079"
+  },
+  "rows": [
+    {
+      "n": 8,
+      "n9": 134217728,
+      "a_pred_minimal": 7.450580596923828e-09,
+      "a_pred_hermitian": 1.4901161193847656e-08,
+      "a_pred_mpc_h_cubed": 0.014901161193847656
+    },
+    {
+      "n": 16,
+      "n9": 68719476736,
+      "a_pred_minimal": 1.4551915228366852e-11,
+      "a_pred_hermitian": 2.9103830456733704e-11,
+      "a_pred_mpc_h_cubed": 2.9103830456733704e-05
+    },
+    {
+      "n": 32,
+      "n9": 35184372088832,
+      "a_pred_minimal": 2.842170943040401e-14,
+      "a_pred_hermitian": 5.684341886080802e-14,
+      "a_pred_mpc_h_cubed": 5.6843418860808015e-08
+    },
+    {
+      "n": 64,
+      "n9": 18014398509481984,
+      "a_pred_minimal": 5.551115123125783e-17,
+      "a_pred_hermitian": 1.1102230246251565e-16,
+      "a_pred_mpc_h_cubed": 1.1102230246251565e-10
+    }
+  ]
+}

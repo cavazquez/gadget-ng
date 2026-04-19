@@ -1,0 +1,33 @@
+  Cargado: experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed042.json (16 bins)
+  Cargado: experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed137.json (16 bins)
+  Cargado: experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed271.json (16 bins)
+  Cargado: experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed314.json (16 bins)
+  Cargado: experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed512.json (16 bins)
+  Cargado: experiments/nbody/phase33_pk_normalization/output/pk_data/pk_N32_seed999.json (16 bins)
+
+Seeds: 6  Bins: 16
+
+   k [h/Mpc]   P_mean [(Mpc/h)³]      stderr        CV        R(k)  n_modes
+--------------------------------------------------------------------------------
+      0.0423          2.5035e-05  3.5553e-06    0.3479  1.7789e-09  18
+      0.0847          1.2835e-05  7.0392e-07    0.1343  1.7240e-09  62
+      0.1270          7.8039e-06  4.5656e-07    0.1433  1.8519e-09  98
+      0.1694          5.2399e-06  2.1706e-07    0.1015  2.1116e-09  210
+      0.2117          3.5479e-06  4.5027e-08    0.0311  2.2363e-09  350
+      0.2541          2.3721e-06  8.1069e-08    0.0837  2.1449e-09  450
+      0.2964          1.6609e-06  2.4868e-08    0.0367  2.0224e-09  602
+      0.3388          1.2369e-06  2.3803e-08    0.0471  1.9428e-09  762
+      0.3811          9.3325e-07  1.5937e-08    0.0418  1.8349e-09  1142
+      0.4235          6.9809e-07  9.8451e-09    0.0345  1.6799e-09  1250
+      0.4658          5.4205e-07  6.4772e-09    0.0293  1.5688e-09  1458
+      0.5082          4.2480e-07  4.0218e-09    0.0232  1.4578e-09  1814
+      0.5505          3.3318e-07  1.6233e-09    0.0119  1.3397e-09  2178
+      0.5929          2.5798e-07  1.4720e-09    0.0140  1.2032e-09  2498
+      0.6352          2.0207e-07  2.1801e-09    0.0264  1.0836e-09  2622
+      0.6776          1.3349e-07  1.4600e-09    0.0268  8.1666e-10  3191
+--------------------------------------------------------------------------------
+  mean CV(P(k)) = 0.0708
+  R(k) = P_mean/P_EH: mean = 1.6748e-09, CV = 0.2346
+  N_seeds = 6
+
+Estadísticas guardadas en: experiments/nbody/phase33_pk_normalization/output/stats_N32.json
