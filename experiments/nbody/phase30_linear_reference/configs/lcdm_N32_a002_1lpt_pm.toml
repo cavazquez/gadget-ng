@@ -1,0 +1,53 @@
+# ── ΛCDM N=32³, EH+σ₈=0.8, 1LPT, PM, a_init=0.02 — Fase 30 ─────────────────
+#
+# CASO REFERENCIA 1LPT: inicio z≈49 (a_init=0.02), ICs Zel'dovich (1LPT).
+#
+# Usado para:
+#   - Generar el P(k) inicial de referencia 1LPT
+#   - Validar forma espectral vs EH analítico (ratios entre bins)
+#   - Comparar crecimiento P(k,a)/P(k,a_init) vs D1(a)²/D1(a_init)²
+#   - Establecer baseline para comparación 1LPT vs 2LPT
+#
+# Cosmología exacta de referencia (Planck 2018):
+#   Ω_m=0.315, Ω_b=0.049, h=0.674, n_s=0.965, σ₈=0.8, T_CMB=2.7255K
+#   z_init ≈ 49 (a_init=0.02)
+
+[simulation]
+particle_count         = 32768      # 32³ partículas
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 42,
+    grid_size       = 32,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = false         # 1LPT (Zel'dovich)
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02                 # z ≈ 49
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 32
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

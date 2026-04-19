@@ -18,3 +18,4 @@ gadget-ng-sph         = { path = "../gadget-ng-sph" }
 gadget-ng-parallel    = { path = "../gadget-ng-parallel" }
 gadget-ng-pm          = { path = "../gadget-ng-pm" }
 gadget-ng-treepm      = { path = "../gadget-ng-treepm" }
+gadget-ng-analysis    = { path = "../gadget-ng-analysis" }

@@ -1,0 +1,52 @@
+# ── ΛCDM N=32³, EH+σ₈=0.8, 2LPT, PM, a_init=0.05 — Fase 30 ─────────────────
+#
+# CASO INICIO INTERMEDIO: a_init=0.05 (z≈19), 2LPT.
+#
+# Permite estudiar cómo el inicio más tardío afecta:
+#   - La corrección 2LPT en velocidades (p = a²·f·H·Ψ → mayor a a=0.05)
+#   - El régimen de transitorios (mayor amplitud de velocidades iniciales)
+#   - La consistencia con D1(a) en el régimen temprano
+#
+# Comparación con a_init=0.02:
+#   - Posiciones: idénticas (σ₈ normaliza la amplitud independiente de a_init)
+#   - Velocidades: más grandes por factor (0.05/0.02)² × (H(0.05)f(0.05))/(H(0.02)f(0.02))
+
+[simulation]
+particle_count         = 32768
+box_size               = 1.0
+dt                     = 0.001
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 42,
+    grid_size       = 32,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = true
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.05                 # z ≈ 19 — inicio intermedio
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 32
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

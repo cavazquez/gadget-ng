@@ -13,6 +13,7 @@ gpu = ["dep:gadget-ng-gpu"]
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+rustfft = "6.4.1"
 rayon = { version = "1.10", optional = true }
 gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
 

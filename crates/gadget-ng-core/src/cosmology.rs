@@ -219,6 +219,33 @@ pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
     params.h0 * h_sq.max(0.0).sqrt()
 }
 
+/// Tasa de crecimiento lineal `f(a) = d ln D / d ln a`.
+///
+/// Usa la aproximación de Linder (2005): `f(a) ≈ Ω_m(a)^0.55`, donde
+/// `Ω_m(a) = Ω_m·a⁻³ / (H(a)/H₀)²`.
+///
+/// Para un universo Einstein–de Sitter (Ω_m=1, Ω_Λ=0): `f=1` exacto.
+/// Para ΛCDM estándar: `f ≈ Ω_m(a)^0.55` con error < 1% en z < 2.
+///
+/// ## Uso en Zel'dovich ICs
+///
+/// El momentum canónico de la 1LPT es `p = a²·f·H(a)·Ψ`, donde `Ψ` es el
+/// campo de desplazamiento a la escala `a`. Esta función devuelve `f` para
+/// ese cálculo.
+pub fn growth_rate_f(params: CosmologyParams, a: f64) -> f64 {
+    if a <= 0.0 {
+        return 1.0;
+    }
+    let h = hubble_param(params, a);
+    if h <= 0.0 || params.h0 <= 0.0 {
+        return 1.0;
+    }
+    // Ω_m(a) = Ω_m · a⁻³ / (H(a)/H₀)²
+    let h_ratio_sq = (h / params.h0) * (h / params.h0);
+    let omega_m_a = params.omega_m / (a * a * a) / h_ratio_sq;
+    omega_m_a.max(0.0).powf(0.55)
+}
+
 // ── Utilidades periódicas (Fase 18) ──────────────────────────────────────────
 
 /// Diferencia periódica mínima imagen en 1D: resultado en `[-L/2, L/2]`.

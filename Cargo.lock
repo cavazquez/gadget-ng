@@ -724,6 +724,7 @@ dependencies = [
  "criterion",
  "gadget-ng-gpu",
  "rayon",
+ "rustfft",
  "serde",
  "thiserror",
 ]
@@ -781,6 +782,7 @@ dependencies = [
 name = "gadget-ng-physics"
 version = "0.1.0"
 dependencies = [
+ "gadget-ng-analysis",
  "gadget-ng-core",
  "gadget-ng-integrators",
  "gadget-ng-parallel",

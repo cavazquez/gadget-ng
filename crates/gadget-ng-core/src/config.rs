@@ -118,6 +118,115 @@ pub enum IcKind {
         #[serde(default)]
         velocity_amplitude: f64,
     },
+    /// Condiciones iniciales de Zel'dovich (1LPT) a partir de un campo gaussiano en Fourier.
+    ///
+    /// Las partículas se desplazan desde una retícula regular usando la aproximación de
+    /// Zel'dovich: `x = q + Ψ(q)`, donde `Ψ` es el campo de desplazamiento generado
+    /// a partir de un espectro de potencia `P(k) ∝ |k|^spectral_index`.
+    ///
+    /// Los momenta se establecen para ser consistentes con el crecimiento lineal:
+    /// `p = a²·f(a)·H(a)·Ψ`, donde `f(a) ≈ Ω_m(a)^0.55`.
+    ///
+    /// Requiere `cosmology.enabled = true` para las velocidades físicas.
+    /// `particle_count` debe ser igual a `grid_size³`.
+    ///
+    /// ## Unidades y normalización
+    ///
+    /// Con `transfer = "power_law"` (default): `amplitude` es la amplitud adimensional
+    /// del espectro `P(k) = amplitude² · |n|^spectral_index` en unidades de grid.
+    ///
+    /// Con `transfer = "eisenstein_hu"` y `sigma8`: la amplitud se calcula para que
+    /// `σ(8 Mpc/h) = sigma8`. Requiere `box_size_mpc_h` para la conversión de k.
+    ///
+    /// ## Reproducibilidad
+    ///
+    /// El campo se genera de forma determinista a partir de `seed`. En MPI, todos los
+    /// rangos generan el campo completo y extraen su rango de `gid`.
+    ///
+    /// ## Configuración legacy (Fase 26, sigue funcionando sin cambios)
+    ///
+    /// ```toml
+    /// [initial_conditions]
+    /// kind = { zeldovich = { seed = 42, grid_size = 32, spectral_index = -2.0, amplitude = 1.0e-4 } }
+    /// ```
+    ///
+    /// ## Configuración con Eisenstein–Hu y σ₈ (Fase 27)
+    ///
+    /// ```toml
+    /// [initial_conditions]
+    /// kind = { zeldovich = { seed = 42, grid_size = 32, spectral_index = 0.965,
+    ///     transfer = "eisenstein_hu", sigma8 = 0.8,
+    ///     omega_b = 0.049, h = 0.674, t_cmb = 2.7255,
+    ///     box_size_mpc_h = 100.0 } }
+    /// ```
+    Zeldovich {
+        /// Semilla del generador de números aleatorios (reproducibilidad).
+        #[serde(default = "default_zel_seed")]
+        seed: u64,
+        /// Lado de la retícula: `grid_size³` debe coincidir con `particle_count`.
+        grid_size: usize,
+        /// Índice espectral primordial `n_s`: `P(k) ∝ k^n_s`.
+        /// Planck18: 0.965. Valores de prueba: −2, −1, 0 (Harrison–Zel'dovich = 1).
+        #[serde(default = "default_spectral_index")]
+        spectral_index: f64,
+        /// Amplitud adimensional del espectro (usada cuando `sigma8 = None` y `transfer = PowerLaw`).
+        /// Valores menores garantizan régimen lineal: p. ej. `1e-4` da `Ψ_rms/d ≈ 0.01–0.1`.
+        #[serde(default = "default_zel_amplitude")]
+        amplitude: f64,
+
+        // ── Campos Fase 27 (todos con default para retrocompatibilidad) ──
+
+        /// Tipo de función de transferencia a aplicar al espectro.
+        /// `"power_law"` (default) = comportamiento legacy; `"eisenstein_hu"` = EH98 no-wiggle.
+        #[serde(default)]
+        transfer: TransferKind,
+        /// Si `Some(sigma8_target)`, la amplitud se calcula para que `σ(8 Mpc/h) = sigma8_target`.
+        /// Sobreescribe `amplitude` cuando se usa con `transfer = "eisenstein_hu"`.
+        #[serde(default)]
+        sigma8: Option<f64>,
+        /// Densidad de bariones Ω_b para la función de transferencia E-H.
+        /// Default: 0.049 (Planck18).
+        #[serde(default = "default_omega_b")]
+        omega_b: f64,
+        /// Parámetro de Hubble adimensional h = H₀/(100 km/s/Mpc).
+        /// Distinto de `cosmology.h0` (que está en unidades internas de tiempo).
+        /// Default: 0.674 (Planck18).
+        #[serde(default = "default_h_dimless")]
+        h: f64,
+        /// Temperatura del CMB en Kelvin. Presente para completitud (no usada en no-wiggle).
+        /// Default: 2.7255 K.
+        #[serde(default = "default_t_cmb")]
+        t_cmb: f64,
+        /// Tamaño de la caja en Mpc/h. Requerido cuando `transfer = "eisenstein_hu"`.
+        /// No modifica el sistema de unidades interno de gadget-ng; solo se usa para
+        /// convertir los modos del grid a k [h/Mpc] para T(k) y σ₈.
+        #[serde(default)]
+        box_size_mpc_h: Option<f64>,
+        /// Si `true`, activa correcciones de segundo orden (2LPT).
+        ///
+        /// El desplazamiento total es `x = q + Ψ¹ + (D₂/D₁²)·Ψ²`, donde Ψ² se obtiene
+        /// resolviendo la ecuación de Poisson de segundo orden en k-space.
+        ///
+        /// Las velocidades incluyen la contribución de segundo orden:
+        /// `p = a²·H·[f₁·Ψ¹ + f₂·(D₂/D₁²)·Ψ²]`
+        ///
+        /// Default: `false` (comportamiento 1LPT legacy, retrocompatible).
+        #[serde(default)]
+        use_2lpt: bool,
+    },
+}
+
+/// Tipo de función de transferencia cosmológica para el espectro de potencia inicial.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferKind {
+    /// Ley de potencia pura `P(k) ∝ k^n_s` (sin función de transferencia).
+    /// Comportamiento legacy de Fase 26. T(k) = 1 para todos los modos.
+    #[default]
+    PowerLaw,
+    /// Eisenstein–Hu 1998, aproximación sin-wiggle (no-wiggle).
+    /// Requiere `box_size_mpc_h` para la conversión de k.
+    EisensteinHu,
 }
 
 fn default_plummer_a() -> f64 {
@@ -130,6 +239,30 @@ fn default_sphere_r() -> f64 {
 
 fn default_perturb_amplitude() -> f64 {
     0.1
+}
+
+fn default_zel_seed() -> u64 {
+    42
+}
+
+fn default_spectral_index() -> f64 {
+    -2.0
+}
+
+fn default_zel_amplitude() -> f64 {
+    1.0e-4
+}
+
+fn default_omega_b() -> f64 {
+    0.049 // Planck 2018
+}
+
+fn default_h_dimless() -> f64 {
+    0.674 // Planck 2018
+}
+
+fn default_t_cmb() -> f64 {
+    2.7255 // K
 }
 
 /// Parámetros del solver de gravedad (opcional en TOML; valores por defecto retrocompatibles).

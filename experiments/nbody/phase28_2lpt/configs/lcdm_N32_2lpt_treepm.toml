@@ -1,0 +1,55 @@
+# ── ΛCDM N=32³, 2LPT, TreePM periódico — Fase 28 ────────────────────────────
+#
+# Configuración 2LPT con TreePM como solucionador de gravedad.
+# Verifica la estabilidad con el solucionador más preciso.
+#
+# ICs de segundo orden (2LPT):
+#   x = q + D₁·Ψ¹ + D₂·Ψ²
+#   p = a²·H·[f₁·Ψ¹ + f₂·(D₂/D₁²)·Ψ²]
+#
+# Parámetros TreePM:
+#   theta = 0.5  (criterio de apertura Barnes-Hut)
+#   r_split = 0  (mezcla PM+tree en todas las escalas)
+#
+# Espectro de potencia y cosmología: idénticos a lcdm_N32_2lpt_pm.toml.
+
+[simulation]
+particle_count         = 32768     # 32³
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 42,
+    grid_size       = 32,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = true
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 32
+theta        = 0.5
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

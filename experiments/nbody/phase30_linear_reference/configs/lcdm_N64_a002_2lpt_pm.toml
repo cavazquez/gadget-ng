@@ -1,0 +1,55 @@
+# ── ΛCDM N=64³, EH+σ₈=0.8, 2LPT, PM, a_init=0.02 — Fase 30 ─────────────────
+#
+# CASO ALTA RESOLUCIÓN: N=64³ = 262144 partículas, para mejor resolución espectral.
+#
+# Con N=64³:
+#   k_fund = 2π × h / box_mpc_h ≈ 0.0424 h/Mpc  (idéntico a N=32³)
+#   k_Nyq  = π × 64 × h / box_mpc_h ≈ 1.36 h/Mpc (2× mayor que N=32³)
+#   N_bins ≈ 32 (vs 16 para N=32³) → estadística notablemente mejor
+#
+# Permite una comparación de forma espectral más robusta porque:
+#   - Más bins disponibles para detectar la pendiente n_eff(k)
+#   - Más modos por bin (N_modes ~ 6-20 × 8 = 50-160)
+#   - Mejor resolución de la supresión de T(k) a alto k
+#
+# ADVERTENCIA: requiere ~2GB de RAM y tiempo de ejecución > 10 min.
+
+[simulation]
+particle_count         = 262144     # 64³ partículas
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.005
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 42,
+    grid_size       = 64,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = true
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 64
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

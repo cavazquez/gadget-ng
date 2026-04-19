@@ -1,0 +1,35 @@
+# ── EdS N=32³, n_s=−2, TreePM periódico — Fase 26: Zel'dovich ICs ─────────────
+#
+# Caso TreePM: comparar con PM en régimen lineal.
+# El corto alcance (árbol erfc) + largo alcance (PM filtrado) debe reproducir
+# la misma física que PM solo en el régimen lineal.
+#
+# Parámetros del espectro: idénticos al caso PM (eds_N32_ns-2_pm.toml).
+
+[simulation]
+particle_count         = 32768     # 32³
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = { seed = 42, grid_size = 32, spectral_index = -2.0, amplitude = 1.0e-4 } }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 1.0
+omega_lambda = 0.0
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 32
+
+[output]
+snapshot_every = 10
+diagnostics_every = 1

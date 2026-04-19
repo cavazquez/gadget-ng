@@ -1,0 +1,52 @@
+# ── ΛCDM N=32³, EH+σ₈=0.8, 2LPT, PM, a_init=0.02 — Fase 29 ─────────────────
+#
+# CASO 2LPT TEMPRANO: inicio z≈49 (a_init=0.02), ICs de segundo orden (2LPT).
+#
+# Idéntico al caso 1LPT de referencia excepto use_2lpt = true.
+# Compara directamente el efecto de la corrección 2LPT en el régimen lineal
+# temprano donde se espera que la diferencia sea pequeña.
+#
+# Métricas esperadas vs caso 1LPT (mismo seed y a_init):
+#   - |Ψ²|_rms / |Ψ¹|_rms ≈ 1–5%  (corrección subleading)
+#   - P(k) inicial difiere < 5% en modos largos
+#   - delta_rms(a) ligeramente menos transitorio
+
+[simulation]
+particle_count         = 32768
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 12345
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 12345,
+    grid_size       = 32,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = true
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02             # z ≈ 49 — inicio temprano
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 32
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

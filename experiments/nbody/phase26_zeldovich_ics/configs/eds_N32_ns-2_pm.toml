@@ -1,0 +1,53 @@
+# ── EdS N=32³, n_s=−2, PM periódico — Fase 26: Zel'dovich ICs ─────────────────
+#
+# Caso de referencia para validación de ICs Zel'dovich con PM.
+#
+# Parámetros del espectro:
+#   P(k) ∝ k^n_s  con  n_s = −2 (espectro rojo suave)
+#   amplitude = 1e-4  (régimen lineal: Ψ_rms/d ≪ 1)
+#
+# Cosmología: Einstein–de Sitter (Ω_m=1, Ω_Λ=0)
+#   a_init = 0.02  (z ≈ 49, alta redshift)
+#   a_end  = 0.04  (~50 pasos de dt=0.0004)
+#
+# Unidades internas:
+#   L = 1  (box_size = 1 en unidades de simulación)
+#   G = 1
+#   h0 = 0.1  (H₀ en unidades internas, 1/t_sim)
+#
+# Espaciado de retícula: d = 1/32 ≈ 0.031
+# Modos excitados: k_fund = 2π ≈ 6.28  (k en unidades de 1/L)
+#                  k_Nyq  = 32π ≈ 100.5
+#
+# Métricas a medir (con validate_pk.py):
+#   - P(k) inicial vs P(k) ∝ k^{-2}
+#   - delta_rms(a) vs D(a)/D(a_init) = a/a_init (EdS)
+#   - v_rms inicial
+
+[simulation]
+particle_count         = 32768     # 32³
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = { seed = 42, grid_size = 32, spectral_index = -2.0, amplitude = 1.0e-4 } }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 1.0
+omega_lambda = 0.0
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 32
+
+[output]
+snapshot_every = 10
+diagnostics_every = 1

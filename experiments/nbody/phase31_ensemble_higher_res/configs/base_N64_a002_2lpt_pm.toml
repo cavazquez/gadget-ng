@@ -1,0 +1,51 @@
+# ── ΛCDM N=64³, EH+σ₈=0.8, 2LPT, PM, a_init=0.02 — Fase 31 ─────────────────
+#
+# TEMPLATE BASE (alta resolución): el script run_phase31.sh usa SOLO 2 seeds.
+#
+# Alta resolución N=64³ = 262144 partículas. Permite comparar forma espectral y
+# convergencia con N=32³. Con N=64³:
+#   k_Nyq  = π × 64 × 0.674 / 100 ≈ 1.35 h/Mpc (vs 0.677 con N=32³)
+#   N_bins ≈ 32 (vs 16 con N=32³) → estadística 4× mejor por bin
+#
+# ADVERTENCIA: requiere ~2 GB RAM y varios minutos de ejecución.
+# Solo se ejecutan 2 seeds (42, 137) por el costo computacional.
+
+[simulation]
+particle_count         = 262144    # 64³ partículas
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.005
+gravitational_constant = 1.0
+seed                   = 42        # sustituido por run_phase31.sh
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 42,          # sustituido por run_phase31.sh
+    grid_size       = 64,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = true
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 64
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

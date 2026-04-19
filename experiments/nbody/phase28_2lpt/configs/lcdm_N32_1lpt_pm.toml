@@ -1,0 +1,56 @@
+# ── ΛCDM N=32³, 1LPT (Zel'dovich) baseline, PM periódico — Fase 28 ──────────
+#
+# Configuración de referencia 1LPT para comparar con 2LPT.
+# Idéntica a la Fase 27 EH+PM pero con use_2lpt = false (explícito).
+#
+# Espectro de potencia:
+#   P(k) = A² · k^{n_s} · T²(k)    con T(k) = Eisenstein–Hu no-wiggle
+#   n_s = 0.965  (Planck18)
+#   σ₈  = 0.8    (normalización física)
+#
+# Cosmología base (Planck 2018):
+#   Ω_m = 0.315, Ω_Λ = 0.685, Ω_b = 0.049, h = 0.674, T_CMB = 2.7255 K
+#   a_init = 0.02  (z ≈ 49)
+#
+# Comparación con lcdm_N32_2lpt_pm.toml: misma seed, mismos parámetros,
+# solo difiere use_2lpt = false vs true.
+
+[simulation]
+particle_count         = 32768     # 32³
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 42,
+    grid_size       = 32,
+    spectral_index  = 0.965,
+    amplitude       = 1.0e-4,
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8,
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 100.0,
+    use_2lpt        = false
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 32
+
+[output]
+snapshot_every    = 10
+diagnostics_every = 1

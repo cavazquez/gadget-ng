@@ -1,4 +1,6 @@
 use crate::config::{IcKind, RunConfig};
+use crate::ic_2lpt::zeldovich_2lpt_ics;
+use crate::ic_zeldovich::zeldovich_ics;
 use crate::particle::Particle;
 use crate::vec3::Vec3;
 use thiserror::Error;
@@ -13,6 +15,14 @@ pub enum IcError {
     LatticeNotCube(usize),
     #[error("perturbed_lattice ic requires cosmology.enabled = true to use velocity_amplitude > 0")]
     PerturbedLatticeVelNoCosmo,
+    #[error(
+        "zeldovich ic requires particle_count == grid_size^3: got particle_count={particle_count}, grid_size={grid_size}, grid_size^3={grid_cube}"
+    )]
+    ZeldovichGridMismatch {
+        particle_count: usize,
+        grid_size: usize,
+        grid_cube: usize,
+    },
 }
 
 fn hash_u64(mut x: u64) -> u64 {
@@ -108,6 +118,61 @@ pub fn build_particles_for_gid_range(
             amplitude,
             velocity_amplitude,
         } => perturbed_lattice_ics(cfg, n, amplitude, velocity_amplitude, seed, lo, hi),
+        IcKind::Zeldovich {
+            seed: zel_seed,
+            grid_size,
+            spectral_index,
+            amplitude,
+            transfer,
+            sigma8,
+            omega_b,
+            h,
+            t_cmb,
+            box_size_mpc_h,
+            use_2lpt,
+        } => {
+            let grid_cube = grid_size * grid_size * grid_size;
+            if grid_cube != n {
+                return Err(IcError::ZeldovichGridMismatch {
+                    particle_count: n,
+                    grid_size,
+                    grid_cube,
+                });
+            }
+            if use_2lpt {
+                Ok(zeldovich_2lpt_ics(
+                    cfg,
+                    grid_size,
+                    zel_seed,
+                    amplitude,
+                    spectral_index,
+                    transfer,
+                    sigma8,
+                    omega_b,
+                    h,
+                    t_cmb,
+                    box_size_mpc_h,
+                    lo,
+                    hi,
+                ))
+            } else {
+                Ok(zeldovich_ics(
+                    cfg,
+                    grid_size,
+                    zel_seed,
+                    amplitude,
+                    spectral_index,
+                    transfer,
+                    sigma8,
+                    omega_b,
+                    h,
+                    t_cmb,
+                    box_size_mpc_h,
+                    lo,
+                    hi,
+                ))
+            }
+        }
     }
 }
 
