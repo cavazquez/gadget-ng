@@ -25,6 +25,7 @@
 
 pub mod catalog;
 pub mod fof;
+pub mod pk_correction;
 pub mod power_spectrum;
 
 pub use catalog::{
@@ -32,4 +33,5 @@ pub use catalog::{
     AnalysisParams, AnalysisResult,
 };
 pub use fof::FofHalo;
+pub use pk_correction::{a_grid, correct_pk, RnModel};
 pub use power_spectrum::PkBin;

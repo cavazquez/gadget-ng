@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "crate_version": "0.1.0",
+    "git_commit": "43c44c227e91971e664c5087cb74b542525d233d",
+    "build_profile": "release",
+    "enabled_features": [],
+    "command_line": [
+      "/home/cristian/repos/propios/gadget-ng/target/release/gadget-ng",
+      "stepping",
+      "--config",
+      "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase36_pk_correction_validation/configs/lcdm_N32_2lpt_pm_phase36.toml",
+      "--out",
+      "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase36_pk_correction_validation/output/cli_run",
+      "--snapshot"
+    ],
+    "config_hash": "a5f9dc5f95dff4a3d544dd4297c7fb0a6fcc71cdbf0195458c7bc5f3243c0d1c"
+  },
+  "particle_count": 32768,
+  "time": 0.004,
+  "redshift": 45.38751378214113,
+  "box_size": 1.0
+}

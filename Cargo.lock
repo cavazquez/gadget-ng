@@ -790,6 +790,8 @@ dependencies = [
  "gadget-ng-sph",
  "gadget-ng-tree",
  "gadget-ng-treepm",
+ "rustfft",
+ "serde_json",
 ]
 
 [[package]]

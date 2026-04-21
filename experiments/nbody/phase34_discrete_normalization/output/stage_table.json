@@ -1,0 +1,80 @@
+{
+  "stages": [
+    {
+      "stage": "continuo \u2192 \u03b4\u0302(k) discreto",
+      "observable": "\u27e8|\u03b4\u0302|\u00b2\u27e9 / (\u03c3\u00b2\u00b7N\u00b3)",
+      "expected": 1.0,
+      "measured": 0.9959455548461477,
+      "cv_shape": null,
+      "comment": "Test ruido blanco, N=32, \u03c3=0.1. Confirma `forward unnormalized \u21d2 Var(\u03b4\u0302) = \u03c3\u00b2\u00b7N\u00b3`."
+    },
+    {
+      "stage": "\u03b4\u0302(k) \u2192 \u03b4(x) \u2192 FFT",
+      "observable": "max |\u03b4_out - \u03b4_in|",
+      "expected": 0.0,
+      "measured": 8.881784197001252e-16,
+      "cv_shape": null,
+      "comment": "Roundtrip a precisi\u00f3n m\u00e1quina (N=16); modo \u00fanico recuperado con error 9.16e-16."
+    },
+    {
+      "stage": "grilla pura: P_grid / P_cont",
+      "observable": "A_grid = \u27e8P_grid / P_cont\u27e9",
+      "expected": "2\u00b7V\u00b2/N\u2079 (convenci\u00f3n del c\u00f3digo)",
+      "measured": 5.50782387450043e-14,
+      "cv_shape": 0.02345825525330218,
+      "comment": "N=32, 6 seeds. El factor 2 viene de \u03c3\u00b2\u2192\u27e8|\u03b4\u0302|\u00b2\u27e9=2\u03c3\u00b2. CV entre seeds: 0.023."
+    },
+    {
+      "stage": "grilla \u2192 part\u00edculas ZA + CIC + deconv",
+      "observable": "A_part / A_grid",
+      "expected": "\u2248 1 si part\u00edculas reproducen \u03b4\u0302 fielmente",
+      "measured": 0.030077323289022906,
+      "cv_shape": 0.006081187958852499,
+      "comment": "Factor multiplicativo exclusivo del paso a part\u00edculas: 0.0301 (CV 0.0061). Extremadamente determinista: 6 seeds."
+    },
+    {
+      "stage": "deconvoluci\u00f3n CIC",
+      "observable": "pendiente de log R(k) vs log k",
+      "expected": 0.0,
+      "measured": -0.09421022604332027,
+      "cv_shape": -0.18548223279977677,
+      "comment": "slope_raw=-0.1855 \u2192 slope_deconv=-0.0942 (reducci\u00f3n 49.2 %). El CIC introduce la \u00fanica dependencia en k residual."
+    },
+    {
+      "stage": "offset global aislado (sin solver)",
+      "observable": "CV(P_m/P_cont) en k \u2264 k_Nyq/2",
+      "expected": "< 0.15",
+      "measured": 0.11044773902542784,
+      "cv_shape": null,
+      "comment": "A_mean=1.985e-15, 8 bins. Confirma que la distorsi\u00f3n de forma es << 1 respecto al offset global."
+    },
+    {
+      "stage": "escalado con resoluci\u00f3n N",
+      "observable": "log\u2081\u2080(A\u2081\u2086/A\u2083\u2082)",
+      "expected": 2.709269960975831,
+      "measured": 3.2963890878186493,
+      "cv_shape": null,
+      "comment": "N\u2208{16,32}, 6 seeds. Observado 3.296 vs predicci\u00f3n 2.709; exceso \u2248 0.587 d\u00e9cadas."
+    },
+    {
+      "stage": "determinismo entre seeds",
+      "observable": "CV(A) sobre 6 seeds",
+      "expected": "< 0.10",
+      "measured": 0.05190169540507991,
+      "cv_shape": null,
+      "comment": "CV=0.0519 \u2192 A es determinista, no estad\u00edstico."
+    }
+  ],
+  "summary": {
+    "A_grid_mean_N32": 5.50782387450043e-14,
+    "ratio_part_over_grid_mean": 0.030077323289022906,
+    "ratio_part_over_grid_cv": 0.006081187958852499,
+    "CV_A_seeds_N32": 0.05190169540507991,
+    "slope_deconv": -0.09421022604332027,
+    "slope_raw": -0.18548223279977677,
+    "log10_A16_over_A32_observed": 3.2963890878186493,
+    "log10_A16_over_A32_expected": 2.709269960975831,
+    "roundtrip_max_error": 8.881784197001252e-16,
+    "white_noise_ratio": 0.9959455548461477
+  }
+}

@@ -110,7 +110,7 @@ impl Lcg {
 
 /// Convierte índice FFT `j ∈ [0, n)` al número de modo con signo `n ∈ [−n/2, n/2)`.
 #[inline]
-pub(crate) fn mode_int(j: usize, n: usize) -> i64 {
+pub fn mode_int(j: usize, n: usize) -> i64 {
     let half = (n / 2) as i64;
     let jj = j as i64;
     if jj <= half {
@@ -135,7 +135,7 @@ pub(crate) fn mode_int(j: usize, n: usize) -> i64 {
 /// Devuelve un array de longitud `n³` con los modos `δ̂`.
 ///
 /// Convención de almacenamiento: índice `ix*n*n + iy*n + iz`.
-pub(crate) fn generate_delta_kspace(
+pub fn generate_delta_kspace(
     n: usize,
     seed: u64,
     spectrum_fn: impl Fn(f64) -> f64,
@@ -225,7 +225,7 @@ pub(crate) fn generate_delta_kspace(
 ///
 /// La firma del closure retornado es `|n_abs: f64| -> f64`, compatible con
 /// `generate_delta_kspace`.
-pub(crate) fn build_spectrum_fn(
+pub fn build_spectrum_fn(
     n: usize,
     spectral_index: f64,
     amplitude: f64,
@@ -297,7 +297,7 @@ pub(crate) fn build_spectrum_fn(
 
 /// FFT 3D in-place sobre el array `buf` de tamaño `n³`.
 /// Convención: tres pasadas de FFT 1D (ejes z, y, x).
-pub(crate) fn fft3d(buf: &mut [Complex<f64>], n: usize, forward: bool) {
+pub fn fft3d(buf: &mut [Complex<f64>], n: usize, forward: bool) {
     let mut planner = FftPlanner::new();
     let plan = if forward {
         planner.plan_fft_forward(n)
@@ -347,7 +347,7 @@ pub(crate) fn fft3d(buf: &mut [Complex<f64>], n: usize, forward: bool) {
 /// El resultado se multiplica por `d = box_size/N` para obtener desplazamientos físicos.
 ///
 /// Devuelve `[Ψ_x, Ψ_y, Ψ_z]`, cada uno de longitud `n³`, en unidades de `box_size`.
-pub(crate) fn delta_to_displacement(
+pub fn delta_to_displacement(
     delta: &[Complex<f64>],
     n: usize,
     box_size: f64,
@@ -562,6 +562,26 @@ pub fn zeldovich_ics_power_law(
         lo,
         hi,
     )
+}
+
+// ── API interna para tests de normalización (Phase 34) ───────────────────────
+
+/// Internals expuestos únicamente para tests de normalización (Phase 34).
+///
+/// **No forman parte de la API estable.** El único propósito de este
+/// submódulo es permitir que los tests de caracterización decompongan el
+/// pipeline (`δ̂(k) → IFFT → δ(x) → FFT → P(k)`, `δ̂(k) → Ψ → partículas ZA`)
+/// sin duplicar las primitivas del generador de ICs ni arriesgar divergencia
+/// con el código de producción.
+///
+/// El consumo desde fuera del crate (por ejemplo desde
+/// `crates/gadget-ng-physics/tests/phase34_discrete_normalization.rs`) debe
+/// declararse explícitamente como "uso de internals" y estar acompañado de
+/// una referencia al reporte Phase 34.
+pub mod internals {
+    pub use super::{
+        build_spectrum_fn, delta_to_displacement, fft3d, generate_delta_kspace, mode_int,
+    };
 }
 
 // ── Tests unitarios ───────────────────────────────────────────────────────────

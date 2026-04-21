@@ -8,6 +8,33 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 36 — Validación práctica de `pk_correction` sobre corridas cosmológicas reales
+
+- Nuevo reporte [`docs/reports/2026-04-phase36-pk-correction-validation.md`](docs/reports/2026-04-phase36-pk-correction-validation.md) que valida la API congelada de Phase 35 (`pk_correction`) sobre la matriz (N × seed × ic_kind) completa: N=32³/64³, 3 seeds, 1LPT y 2LPT, 3 snapshots por corrida (a ∈ {0.02, 0.05, 0.10}).
+- Nuevos tests de integración en [`crates/gadget-ng-physics/tests/phase36_pk_correction_validation.rs`](crates/gadget-ng-physics/tests/phase36_pk_correction_validation.rs): 5 tests (reducción del error absoluto, preservación de forma espectral, consistencia entre seeds en el IC, consistencia entre resoluciones N=32 vs N=64, no NaN/Inf). La matriz de 27 snapshots se ejecuta una sola vez vía `OnceLock` y serializa a `target/phase36/*.json`. Pasan en release en ~191 s.
+- Nuevo experimento [`experiments/nbody/phase36_pk_correction_validation/`](experiments/nbody/phase36_pk_correction_validation/) con orquestador `run_phase36.sh` (tests Rust → pase CLI → figuras → copia a docs), config `lcdm_N32_2lpt_pm_phase36.toml`, scripts `apply_phase36_correction.py` (mirror Python de `correct_pk` + CPT92 + métricas) y `plot_phase36.py` (5 figuras obligatorias + `cli_evidence.png`).
+- Pase CLI real (`gadget-ng snapshot` + `analyse` + mirror Python): `median |log₁₀(P_m/P_ref)| = 14.67` → `median |log₁₀(P_c/P_ref)| = 0.053`, `mean(P_c/P_ref) = 1.049`, `CV = 0.134`. Coincide cuantitativamente con los tests in-process.
+- Hallazgo principal: la corrección reduce el error absoluto de amplitud de `median |log₁₀(P_m/P_ref)| ≈ 14–18` a `≈ 0.03` en el snapshot IC real de cualquier (N, seed, ic_kind) de la matriz — factor de mejora `~10¹⁴` reproducible end-to-end. **La amplitud absoluta queda cerrada "en la práctica"** en el régimen válido (`k ≤ k_Nyq/2`, `a = a_init`, `N ∈ {32, 64}`, CIC).
+- Limitación documentada: el proyecto aplica `σ₈=0.8` en `a_init` sin escalar por `D(a_init)/D(0)`, lo que pone las corridas en régimen no-lineal desde el paso 1 y hace que los snapshots a `a > a_init` queden fuera del dominio lineal de `pk_correction` (ortogonal a la corrección).
+
+### Phase 35 — Modelado de `R(N)` para corrección absoluta de `P(k)`
+
+- Nuevo reporte [`docs/reports/2026-04-phase35-rn-modeling.md`](docs/reports/2026-04-phase35-rn-modeling.md) que caracteriza el factor de muestreo discreto `R(N)` (partículas + CIC) identificado en Phase 34 como función de resolución, fitea dos modelos (potencia pura y potencia + offset), selecciona ganador por AIC y documenta el rango de validez.
+- Nuevo módulo público [`crates/gadget-ng-analysis/src/pk_correction.rs`](crates/gadget-ng-analysis/src/pk_correction.rs) con `RnModel`, `a_grid`, `correct_pk` y `RnModel::phase35_default` (valores congelados del fit: `C = 22.108`, `α = 1.8714`, tabla `N ∈ {8,16,32,64}`). API expuesta en `gadget_ng_analysis::{a_grid, correct_pk, RnModel}`.
+- Nuevos tests de caracterización en [`crates/gadget-ng-physics/tests/phase35_rn_modeling.rs`](crates/gadget-ng-physics/tests/phase35_rn_modeling.rs): 6 tests sobre la matriz `N × seed` (4×4) que validan determinismo entre seeds (CV < 0.10 para N≥32), flatness de `R(N,k)` en k bajo (CV_k < 0.25), fit log-log (R² = 0.997), reducción del error de amplitud (mediana de `|log₁₀|` de 17.9 → 0.037, factor ×485), consistencia interpolación-modelo a N=48 (< 2.5 %) y verificación CIC vs TSC a N=32.
+- 6 unit tests en `pk_correction` cubren `from_table`, interpolación log-log, preferencia tabla-sobre-fit y escalado lineal de `correct_pk`.
+- Nuevo experimento [`experiments/nbody/phase35_rn_modeling/`](experiments/nbody/phase35_rn_modeling/) con orquestador `run_phase35.sh`, `scripts/fit_r_n.py` (OLS log-log + `scipy.curve_fit` + AIC), `scripts/plot_r_n.py` (5 figuras) y `scripts/apply_correction.py` (demo de postproceso). Las 5 figuras obligatorias se copian a `docs/reports/figures/phase35/`.
+- Hallazgo: Modelo A (potencia pura) gana por ΔAIC = −11.45 frente a Modelo B (el offset asintótico sale *negativo*). Con `A_grid(N)` de Phase 34 + `R(N)` de Phase 35, la amplitud absoluta de `P(k)` se cierra al ~9 % en postproceso sin modificar el core.
+
+### Phase 34 — Cierre de la normalización discreta de `P(k)`
+
+- Nuevo reporte [`docs/reports/2026-04-phase34-discrete-normalization-closure.md`](docs/reports/2026-04-phase34-discrete-normalization-closure.md) que decompone el pipeline `P_cont → δ̂(k) → IFFT → δ(x) → FFT → P(k)` (con y sin partículas) en etapas independientes y aísla dónde nace el offset de amplitud absoluta reportado en Phase 30–33.
+- Nuevos tests de caracterización en [`crates/gadget-ng-physics/tests/phase34_discrete_normalization.rs`](crates/gadget-ng-physics/tests/phase34_discrete_normalization.rs): 8 tests que verifican roundtrip DFT (8.9e-16), modo único, ruido blanco (ratio 0.996), offset partícula/grilla (CV 0.6 %), efecto CIC, escalado con N y determinismo entre seeds.
+- Nuevo módulo `gadget_ng_core::ic_zeldovich::internals` (re-exportado como `ic_zeldovich_internals`) que expone `generate_delta_kspace`, `fft3d`, `delta_to_displacement`, `build_spectrum_fn` y `mode_int` como API testing-only documentada. Sin cambios de comportamiento en el core.
+- Nuevo experimento [`experiments/nbody/phase34_discrete_normalization/`](experiments/nbody/phase34_discrete_normalization/) con orquestador `run_phase34.sh`, `scripts/stage_table.py`, `scripts/plot_stages.py` y las 5 figuras obligatorias (`grid_ratio`, `particle_ratio`, `stage_breakdown`, `cic_effect`, `single_mode_amplitude`).
+- Hallazgo: el offset se descompone limpiamente en (i) un **factor de grilla cerrado** `A_grid = 2·V²/N⁹` verificado al 3 % (cierra el residuo de 17× de Phase 33) y (ii) un **factor partículas-CIC** `R(N)` determinista por resolución (CV < 1 %) pero dependiente de N.
+- Decisión: se mantiene la convención interna actual (Opción B). El factor de grilla queda documentado cerrado; `R(N)` queda congelado como regresión en los tests. Sin parches al core.
+
 ### Fase 2
 
 #### [Hito 15] — Sistema de unidades físicas

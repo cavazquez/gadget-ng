@@ -1,0 +1,15 @@
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running tests/phase34_discrete_normalization.rs (target/release/deps/phase34_discrete_normalization-9ad611234b978d88)
+
+running 8 tests
+test cic_deconvolution_reduces_shape_error ... ok
+test global_offset_isolated_before_solver ... ok
+test grid_roundtrip_preserves_amplitude_with_known_convention ... ok
+test offset_stable_across_resolutions ... ok
+test offset_stable_across_seeds ... ok
+test particle_sampling_introduces_quantified_offset ... ok
+test single_mode_recovered_with_correct_amplitude ... ok
+test white_noise_grid_matches_expected_variance ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
