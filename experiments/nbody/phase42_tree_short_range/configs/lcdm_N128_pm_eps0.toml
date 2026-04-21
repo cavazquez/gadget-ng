@@ -1,0 +1,48 @@
+# ── ΛCDM N=128³, 2LPT, PM puro — Fase 42 baseline ─────────────────────────
+#
+# Baseline de Phase 42: PM puro tal como lo usó Phase 41 a N=128³, Z0Sigma8.
+# `PmSolver` ignora `eps2` por diseño (PM es band-limited). Este archivo
+# documenta la configuración *de referencia* contra la que se comparan las
+# corridas TreePM del barrido de softening físico.
+#
+# Objetivo: reproducir el colapso temprano `δ_rms(a=0.10) ≈ 1` observado en
+# Phase 41 para contrastarlo con la regularización TreePM.
+
+[simulation]
+particle_count         = 2097152
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 200
+softening              = 0.0       # irrelevante: PM ignora eps2
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions.kind.zeldovich]
+seed               = 42
+grid_size          = 128
+spectral_index     = 0.965
+amplitude          = 1.0e-4
+transfer           = "eisenstein_hu"
+sigma8             = 0.8
+omega_b            = 0.049
+h                  = 0.674
+t_cmb              = 2.7255
+box_size_mpc_h     = 100.0
+use_2lpt           = true
+normalization_mode = "z0_sigma8"
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 128
+
+[output]
+snapshot_every    = 50
+diagnostics_every = 50

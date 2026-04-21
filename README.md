@@ -11,7 +11,8 @@
 > versiones distribuidas (allreduce, slab alltoall, scatter-gather) → análisis
 > in-situ (FoF, P(k)) → corrección absoluta de `P(k)` vía `pk_correction`
 > (Phase 34–36) → validación externa contra CLASS (Phase 38) → barrido de
-> resolución y transición shot-noise ↔ señal (Phase 41)**.
+> resolución y transición shot-noise ↔ señal (Phase 41) → regularización
+> física de fuerzas vía TreePM + softening absoluto `ε_phys` (Phase 42)**.
 
 ## 🧰 Herramientas y tecnologías
 
@@ -49,7 +50,7 @@
 7. [Arquitectura de comunicación PM](#arquitectura-de-comunicación-pm)
 8. [Condiciones iniciales y validación cosmológica](#condiciones-iniciales-y-validación-cosmológica)
 9. [Corrección absoluta de `P(k)` (`pk_correction`)](#corrección-absoluta-de-pk-pk_correction)
-10. [Convención de ICs y validación dinámica (Phase 37–41)](#convención-de-ics-y-validación-dinámica-phase-3741)
+10. [Convención de ICs y validación dinámica (Phase 37–42)](#convención-de-ics-y-validación-dinámica-phase-3742)
 11. [Tests automáticos](#tests-automáticos)
 12. [Reportes técnicos](#reportes-técnicos)
 13. [Features opcionales](#features-opcionales)
@@ -69,7 +70,7 @@
 | **PM periódico** | CIC + FFT Poisson 3D periódica; solver `pm` (Fase 18) |
 | **PM distribuido (allreduce)** | `allreduce_sum_f64_slice` O(nm³) — elimina `allgather` O(N·P) (Fase 19) |
 | **PM slab (alltoall)** | Slab decomposition Z: FFT 3D distribuida con `alltoall_transpose`, grid **no replicado** (Fase 20) |
-| **TreePM** | Barnes–Hut short-range + PM long-range; versión distribuida (Fase 21–25) con scatter-gather (Fase 24) |
+| **TreePM** | Barnes–Hut short-range + PM long-range; versión distribuida (Fase 21–25) con scatter-gather (Fase 24); softening Plummer absoluto `ε_phys` (Mpc/h) independiente de `N` (Phase 42) |
 | **Cosmología ΛCDM** | Friedmann ΛCDM, factor de escala `a(t)` por RK4, momentum canónico, diagnósticos `a/z/v_rms/δ_rms`; fallback EdS |
 | **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle** + normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
 | **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta, validado vs 🔭 CLASS (Phase 38) y en alta resolución hasta `N=128³` (Phase 41) |
@@ -340,6 +341,7 @@ gadget-ng/
 | **39** | Convergencia temporal del integrador (barrido `dt`) | ✅ |
 | **40** | Formalización de la convención física (`NormalizationMode`) | ✅ |
 | **41** | Validación de alta resolución y transición shot-noise↔señal | ✅ |
+| **42** | Regularización física vía TreePM + softening absoluto `ε_phys` | ✅ |
 
 ---
 
@@ -471,10 +473,11 @@ y
 
 ---
 
-## Convención de ICs y validación dinámica (Phase 37–41)
+## Convención de ICs y validación dinámica (Phase 37–42)
 
-Las Phases 37–41 formalizan la convención de normalización de ICs
-cosmológicas y exploran sus límites dinámicos:
+Las Phases 37–42 formalizan la convención de normalización de ICs
+cosmológicas, exploran sus límites dinámicos y prueban la
+regularización física de fuerzas:
 
 - **Phase 37** introduce el flag experimental `rescale_to_a_init` (luego
   renombrado a `NormalizationMode` en Phase 40): aplica `Ψ¹ ← s·Ψ¹` y
@@ -499,6 +502,16 @@ cosmológicas y exploran sus límites dinámicos:
   es ×16. Decisión: **cierre parcial** — el eje señal/ruido queda
   cerrado; el eje evolución lineal/no-lineal requiere softening físico y/o
   integrador adaptativo (trabajo futuro).
+- **Phase 42** ataca el eje dinámica lineal↔no-lineal abierto por
+  Phase 41 introduciendo softening físico absoluto `ε_phys ∈
+  {0.01, 0.02, 0.05} Mpc/h` (independiente de `N`) y `TreePmSolver` con
+  kernel `erfc` + Plummer. Matriz `{PM, TreePM × 3 ε}` a `N=32³` (smoke)
+  y `N=64³` (2h 18min wall / 22.3h CPU con rayon). Decisión: **A_partial
+  (softening confirmado como palanca correcta)** — `TreePM ε=0.01`
+  mejora el error de crecimiento lineal **×345** vs PM a `N=64³` (vs
+  ×3.5 a `N=32³`), con efecto que crece con `N`. La magnitud absoluta
+  del error sigue invalidando lectura lineal hasta `N=128³` (diferido
+  al pipeline TreePM distribuido).
 
 ```toml
 # Convención Phase 40+ — reemplaza `rescale_to_a_init = true/false`
@@ -512,7 +525,8 @@ Reportes: [Phase 37](docs/reports/2026-04-phase37-growth-rescaled-ics.md) ·
 [Phase 38](docs/reports/2026-04-phase38-class-camb-minimal-validation.md) ·
 [Phase 39](docs/reports/2026-04-phase39-dt-convergence.md) ·
 [Phase 40](docs/reports/2026-04-phase40-physical-ics-normalization.md) ·
-[Phase 41](docs/reports/2026-04-phase41-high-resolution-validation.md).
+[Phase 41](docs/reports/2026-04-phase41-high-resolution-validation.md) ·
+[Phase 42](docs/reports/2026-04-phase42-tree-short-range.md).
 
 ---
 
@@ -545,6 +559,13 @@ cargo test -p gadget-ng-physics --test phase41_high_resolution_validation --rele
 # Rerun rápido Phase 41 desde cache de disco (~0.7 s):
 PHASE41_USE_CACHE=1 PHASE41_SKIP_N256=1 cargo test -p gadget-ng-physics \
     --test phase41_high_resolution_validation --release
+cargo test -p gadget-ng-physics --test phase42_tree_short_range --release # Fase 42
+# Smoke N=32 (~8 min) y corrida completa N=64 (~2h 18min):
+PHASE42_QUICK=1 cargo test -p gadget-ng-physics --test phase42_tree_short_range --release
+PHASE42_N=64 cargo test -p gadget-ng-physics --test phase42_tree_short_range --release
+# Rerun rápido desde caché de disco:
+PHASE42_USE_CACHE=1 cargo test -p gadget-ng-physics \
+    --test phase42_tree_short_range --release
 ```
 
 Tests de validación cubiertos:
@@ -575,6 +596,11 @@ Tests de validación cubiertos:
 - **Alta resolución** (Fase 41): transición shot-noise ↔ señal a `N ≥ 64³`,
   cierre de `pk_correction` en IC hasta `N = 128³`, con caché JSON para
   rerun sub-segundo (`PHASE41_USE_CACHE=1`).
+- **TreePM + softening absoluto** (Fase 42): matriz `PM + 3 TreePM ε_phys`
+  a `N ∈ {32, 64}`, `δ_rms(a)`, `v_rms(a)`, error de crecimiento lineal
+  y espectral. A `N=64³`, TreePM mejora el error de crecimiento **×345**
+  vs PM; óptimo interior `ε_phys ≈ 0.01 Mpc/h`. Soporta `PHASE42_N=<N>`
+  (16–256, potencia de 2) y `PHASE42_USE_CACHE=1`.
 
 ---
 
@@ -638,6 +664,7 @@ con contexto, metodología, resultados y limitaciones.
 | [`phase39-dt-convergence`](docs/reports/2026-04-phase39-dt-convergence.md) | Barrido `dt` y diagnósticos dinámicos |
 | [`phase40-physical-ics-normalization`](docs/reports/2026-04-phase40-physical-ics-normalization.md) | `NormalizationMode { Legacy, Z0Sigma8 }` |
 | [`phase41-high-resolution-validation`](docs/reports/2026-04-phase41-high-resolution-validation.md) | 📈 Alta resolución y shot-noise↔señal |
+| [`phase42-tree-short-range`](docs/reports/2026-04-phase42-tree-short-range.md) | 🌲 TreePM + softening absoluto `ε_phys` |
 
 ### Meta
 
@@ -724,11 +751,16 @@ experiments/nbody/
 │   └── reference/               # JSON generado por classy 3.3.4.0
 ├── phase39_dt_convergence/      # Barrido dt ∈ {4e-4..5e-5}
 ├── phase40_physical_ics_normalization/ # Enum NormalizationMode
-└── phase41_high_resolution_validation/ # N ∈ {32, 64, 128}, shot-noise
-    ├── configs/lcdm_N{128,256}_2lpt_pm_{legacy,z0_sigma8}.toml
-    ├── scripts/apply_phase41_correction.py
-    ├── scripts/plot_phase41_resolution.py
-    └── run_phase41.sh           # PHASE41_SKIP_N256=1, PHASE41_USE_CACHE=1
+├── phase41_high_resolution_validation/ # N ∈ {32, 64, 128}, shot-noise
+│   ├── configs/lcdm_N{128,256}_2lpt_pm_{legacy,z0_sigma8}.toml
+│   ├── scripts/apply_phase41_correction.py
+│   ├── scripts/plot_phase41_resolution.py
+│   └── run_phase41.sh           # PHASE41_SKIP_N256=1, PHASE41_USE_CACHE=1
+└── phase42_tree_short_range/    # 🌲 TreePM + softening absoluto ε_phys
+    ├── configs/lcdm_N128_{pm_eps0,treepm_eps{001,002,005}}.toml
+    ├── scripts/apply_phase42_correction.py
+    ├── scripts/plot_phase42_short_range.py
+    └── run_phase42.sh           # PHASE42_N=<N>, PHASE42_QUICK, PHASE42_USE_CACHE
 ```
 
 ---
