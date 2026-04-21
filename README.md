@@ -1,39 +1,61 @@
-# gadget-ng
+# 🌌 gadget-ng
 
 > Simulador **N-body cosmológico** en Rust, inspirado conceptualmente en la
 > arquitectura y prácticas de [GADGET-4](https://wwwmpa.mpa-garching.mpg.de/gadget4/),
 > sin compartir código ni historial git con el proyecto original.
 >
 > Cubre el pipeline completo de una corrida cosmológica contemporánea:
-> **ICs 1LPT/2LPT con transferencia Eisenstein–Hu y normalización σ₈ →
-> integrador leapfrog/Yoshida4 con factores de drift/kick cosmológicos →
-> PM periódico / TreePM / Barnes–Hut / Direct, con versiones
-> distribuidas (allreduce, slab alltoall, scatter-gather) → análisis
+> **ICs 1LPT/2LPT con transferencia Eisenstein–Hu y normalización σ₈
+> (`Legacy`/`Z0Sigma8`) → integrador leapfrog/Yoshida4 con factores de
+> drift/kick cosmológicos → PM periódico / TreePM / Barnes–Hut / Direct, con
+> versiones distribuidas (allreduce, slab alltoall, scatter-gather) → análisis
 > in-situ (FoF, P(k)) → corrección absoluta de `P(k)` vía `pk_correction`
-> (Phase 34–36)**.
+> (Phase 34–36) → validación externa contra CLASS (Phase 38) → barrido de
+> resolución y transición shot-noise ↔ señal (Phase 41)**.
 
-![CI](https://github.com/cristian/gadget-ng/actions/workflows/ci.yml/badge.svg)
-![Rust](https://img.shields.io/badge/rust-1.74%2B-orange?logo=rust)
-![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+## 🧰 Herramientas y tecnologías
+
+[![🦀 Rust](https://img.shields.io/badge/🦀_Rust-1.74%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![🐍 Python](https://img.shields.io/badge/🐍_Python-3.10%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
+[![🔌 MPI](https://img.shields.io/badge/🔌_MPI-OpenMPI%2FMPICH-red)](https://www.open-mpi.org/)
+[![⚡ wgpu](https://img.shields.io/badge/⚡_wgpu-Vulkan%2FMetal%2FDX12-purple)](https://wgpu.rs/)
+[![🌐 HDF5](https://img.shields.io/badge/🌐_HDF5-1.10%2B-blue)](https://www.hdfgroup.org/solutions/hdf5/)
+[![📊 NumPy](https://img.shields.io/badge/📊_NumPy-SciPy%2FMatplotlib-blue?logo=numpy&logoColor=white)](https://numpy.org/)
+[![🔭 CLASS](https://img.shields.io/badge/🔭_CLASS-classy_3.3%2B-green)](https://lesgourg.github.io/class_public/class.html)
+[![🧪 GitHub_Actions](https://img.shields.io/badge/🧪_GitHub_Actions-CI-lightgrey?logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
+[![📜 License](https://img.shields.io/badge/📜_License-GPL--3.0-blue)](LICENSE)
+
+| Ámbito | Herramientas |
+|---|---|
+| 🦀 **Core** | Rust 1.74+, workspace multi-crate, `serde`, `toml`, `clap`, `rayon` |
+| 🔌 **Cómputo paralelo** | MPI (`OpenMPI` / `MPICH` vía `mpi` crate), SFC Hilbert 3D, LET, alltoall/allreduce/scatter-gather |
+| ⚡ **GPU** | `wgpu` con shaders WGSL (Vulkan / Metal / DX12 / WebGPU) |
+| 🗜️ **I/O** | JSONL, `bincode`, `hdf5` estilo GADGET, `msgpack`, `netcdf` |
+| 🔭 **Cosmología de referencia** | `classy` 3.3+ (CLASS) para validación externa (Phase 38), Eisenstein–Hu interno |
+| 📊 **Postproceso** | Python 3.10+, NumPy, SciPy, Matplotlib — mirrors de `pk_correction` y figuras por fase |
+| 🧪 **CI / calidad** | GitHub Actions, `cargo fmt`, `cargo clippy -D warnings`, `cargo test --release` |
+| 📁 **Experimentos** | TOML + orquestadores Bash + volcados JSON cacheables en `target/phaseNN/` |
 
 ---
 
 ## Tabla de contenidos
 
-1. [Características](#características)
-2. [Inicio rápido](#inicio-rápido)
-3. [Configuración TOML](#configuración-toml)
-4. [Crates del workspace](#crates-del-workspace)
-5. [Hitos de desarrollo](#hitos-de-desarrollo)
-6. [Arquitectura de comunicación PM](#arquitectura-de-comunicación-pm)
-7. [Condiciones iniciales y validación cosmológica](#condiciones-iniciales-y-validación-cosmológica)
-8. [Corrección absoluta de `P(k)` (`pk_correction`)](#corrección-absoluta-de-pk-pk_correction)
-9. [Tests automáticos](#tests-automáticos)
-10. [Reportes técnicos](#reportes-técnicos)
-11. [Features opcionales](#features-opcionales)
-12. [Calidad y CI](#calidad-y-ci)
-13. [Estructura de experimentos](#estructura-de-experimentos)
-14. [Licencia](#licencia)
+1. [🧰 Herramientas y tecnologías](#-herramientas-y-tecnologías)
+2. [Características](#características)
+3. [Inicio rápido](#inicio-rápido)
+4. [Configuración TOML](#configuración-toml)
+5. [Crates del workspace](#crates-del-workspace)
+6. [Hitos de desarrollo](#hitos-de-desarrollo)
+7. [Arquitectura de comunicación PM](#arquitectura-de-comunicación-pm)
+8. [Condiciones iniciales y validación cosmológica](#condiciones-iniciales-y-validación-cosmológica)
+9. [Corrección absoluta de `P(k)` (`pk_correction`)](#corrección-absoluta-de-pk-pk_correction)
+10. [Convención de ICs y validación dinámica (Phase 37–41)](#convención-de-ics-y-validación-dinámica-phase-3741)
+11. [Tests automáticos](#tests-automáticos)
+12. [Reportes técnicos](#reportes-técnicos)
+13. [Features opcionales](#features-opcionales)
+14. [Calidad y CI](#calidad-y-ci)
+15. [Estructura de experimentos](#estructura-de-experimentos)
+16. [Licencia](#licencia)
 
 ---
 
@@ -49,8 +71,8 @@
 | **PM slab (alltoall)** | Slab decomposition Z: FFT 3D distribuida con `alltoall_transpose`, grid **no replicado** (Fase 20) |
 | **TreePM** | Barnes–Hut short-range + PM long-range; versión distribuida (Fase 21–25) con scatter-gather (Fase 24) |
 | **Cosmología ΛCDM** | Friedmann ΛCDM, factor de escala `a(t)` por RK4, momentum canónico, diagnósticos `a/z/v_rms/δ_rms`; fallback EdS |
-| **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle** + normalización σ₈ |
-| **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta |
+| **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle** + normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
+| **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta, validado vs 🔭 CLASS (Phase 38) y en alta resolución hasta `N=128³` (Phase 41) |
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
 | **SPH** | Kernel Wendland C2, densidad adaptativa, viscosidad artificial Monaghan |
 | **GPU** | Compute shader WGSL vía `wgpu` (Vulkan/Metal/DX12/WebGPU); fallback CPU automático |
@@ -270,8 +292,8 @@ gadget-ng/
 │   └── gadget-ng-cli           # Binario gadget-ng (clap), subcomandos config/snapshot/
 │                               # stepping/analyse/visualize
 ├── examples/                   # Configuraciones TOML comentadas
-├── experiments/nbody/          # Benchmarks y resultados por fase (34+ experimentos)
-└── docs/reports/               # Reportes técnicos de cada fase (37 reportes)
+├── experiments/nbody/          # Benchmarks y resultados por fase (41+ experimentos)
+└── docs/reports/               # Reportes técnicos de cada fase (42 reportes)
 ```
 
 ---
@@ -313,6 +335,11 @@ gadget-ng/
 | **34** | Cierre analítico del factor de grilla `A_grid = 2·V²/N⁹` | ✅ |
 | **35** | Modelado del factor de muestreo `R(N) = C·N^(-α)` | ✅ |
 | **36** | Validación práctica de `pk_correction` en corridas reales | ✅ |
+| **37** | Reescalado físico opcional de ICs por `D(a_init)/D(1)` (exp.) | ✅ |
+| **38** | 🔭 Validación externa mínima vs CLASS (IC snapshot) | ✅ |
+| **39** | Convergencia temporal del integrador (barrido `dt`) | ✅ |
+| **40** | Formalización de la convención física (`NormalizationMode`) | ✅ |
+| **41** | Validación de alta resolución y transición shot-noise↔señal | ✅ |
 
 ---
 
@@ -416,8 +443,76 @@ IC — una mejora de factor `~10¹⁴`, con `mean(P_c/P_ref) = 1.00 ± 0.05`
 y `CV ≤ 0.15`. El mismo resultado se reproduce vía CLI real
 (`gadget-ng snapshot → analyse → apply_phase36_correction.py`).
 
+🔭 **Phase 38** cierra la validación externa contra CLASS (`classy 3.3.4.0`,
+referencia reproducible en
+[`experiments/nbody/phase38_class_validation/reference/`](experiments/nbody/phase38_class_validation/reference/)):
+`median|log10(P_c/P_CLASS)| ∈ [0.022, 0.046]` y `mean(P_c/P_CLASS) ∈ [0.95,
+1.04]` sobre 12 mediciones, factor de mejora **161× a N=32³** y **761× a
+N=64³** frente a `P_measured/P_CLASS`.
+
+📈 **Phase 41** extiende la validación a alta resolución (N ∈ {32, 64, 128})
+y demuestra empíricamente la transición **shot-noise ↔ señal**
+(`P_shot = V/N_p`):
+
+| `N`   | `P_shot` [(Mpc/h)³] | `S/N(k_min)` en IC (Z0Sigma8) |
+|-------|---------------------|-------------------------------|
+|  32   | 30.52               | 0.374 → shot-noise domina     |
+|  64   | 3.815               | 2.21  → transición            |
+| 128   | 0.4768              | 16.06 → señal limpia          |
+
+`pk_correction` cierra en IC a `median|log10(P_c/P_ref)| ≤ 0.049` para los
+tres N, confirmando que el resultado de Phase 38 se extiende a `N = 128³`.
+
 Para más detalles, ver
-[`docs/reports/2026-04-phase36-pk-correction-validation.md`](docs/reports/2026-04-phase36-pk-correction-validation.md).
+[`docs/reports/2026-04-phase36-pk-correction-validation.md`](docs/reports/2026-04-phase36-pk-correction-validation.md),
+[`docs/reports/2026-04-phase38-class-camb-minimal-validation.md`](docs/reports/2026-04-phase38-class-camb-minimal-validation.md)
+y
+[`docs/reports/2026-04-phase41-high-resolution-validation.md`](docs/reports/2026-04-phase41-high-resolution-validation.md).
+
+---
+
+## Convención de ICs y validación dinámica (Phase 37–41)
+
+Las Phases 37–41 formalizan la convención de normalización de ICs
+cosmológicas y exploran sus límites dinámicos:
+
+- **Phase 37** introduce el flag experimental `rescale_to_a_init` (luego
+  renombrado a `NormalizationMode` en Phase 40): aplica `Ψ¹ ← s·Ψ¹` y
+  `Ψ² ← s²·Ψ²` con `s = D(a_init)/D(1)` (CPT92). Decisión: **B** — la
+  implementación es exacta (residuo `< 2·10⁻⁶`) pero no mejora snapshots
+  evolucionados a `N=32³`, queda experimental.
+- **Phase 38** valida `pk_correction` contra 🔭 CLASS en ambas convenciones
+  (`legacy` vs `z=0`, `rescaled` vs `z=49`) — confirma que el cierre es
+  intrínseco a la corrección y no depende de la normalización.
+- **Phase 39** barre `dt ∈ {4·10⁻⁴, 2·10⁻⁴, 1·10⁻⁴, 5·10⁻⁵}` y demuestra
+  que reducir `dt` **no** reduce el error espectral (pendiente log-log
+  observada ≈ `−0.06` vs predicción `+2` para KDK). Decisión: mantener
+  `dt = 4·10⁻⁴` como default.
+- **Phase 40** reemplaza el booleano `rescale_to_a_init` por una enum
+  tipada `NormalizationMode { Legacy, Z0Sigma8 }` (⚠️ breaking change en
+  TOML), audita la implementación LPT (sin bugs) y verifica
+  empíricamente `σ₈(Z0Sigma8)/σ₈(Legacy) = s` a precisión de máquina.
+  Decisión: **B** — `Z0Sigma8` queda experimental por dominancia de
+  shot-noise a `N=32³`.
+- **Phase 41** resuelve Phase 40-B: a `N ≥ 64³` la señal supera el
+  shot-noise floor (`S/N(k_min) = 2.21` en IC) y a `N = 128³` el margen
+  es ×16. Decisión: **cierre parcial** — el eje señal/ruido queda
+  cerrado; el eje evolución lineal/no-lineal requiere softening físico y/o
+  integrador adaptativo (trabajo futuro).
+
+```toml
+# Convención Phase 40+ — reemplaza `rescale_to_a_init = true/false`
+[initial_conditions.kind.zeldovich]
+# ...
+normalization_mode = "legacy"     # default, bit-compatible con Phases 26–39
+# normalization_mode = "z0_sigma8" # σ₈ referido a a=1 (CAMB/CLASS), Phase 40+
+```
+
+Reportes: [Phase 37](docs/reports/2026-04-phase37-growth-rescaled-ics.md) ·
+[Phase 38](docs/reports/2026-04-phase38-class-camb-minimal-validation.md) ·
+[Phase 39](docs/reports/2026-04-phase39-dt-convergence.md) ·
+[Phase 40](docs/reports/2026-04-phase40-physical-ics-normalization.md) ·
+[Phase 41](docs/reports/2026-04-phase41-high-resolution-validation.md).
 
 ---
 
@@ -442,6 +537,14 @@ cargo test -p gadget-ng-physics --test phase33_pk_normalization  --release # Fas
 cargo test -p gadget-ng-physics --test phase34_discrete_normalization --release # Fase 34
 cargo test -p gadget-ng-physics --test phase35_rn_modeling       --release # Fase 35
 cargo test -p gadget-ng-physics --test phase36_pk_correction_validation --release # Fase 36
+cargo test -p gadget-ng-physics --test phase37_growth_rescaled_ics --release # Fase 37
+cargo test -p gadget-ng-physics --test phase38_class_validation  --release # Fase 38 (CLASS)
+cargo test -p gadget-ng-physics --test phase39_dt_convergence    --release # Fase 39
+cargo test -p gadget-ng-physics --test phase40_physical_ics_normalization --release # Fase 40
+cargo test -p gadget-ng-physics --test phase41_high_resolution_validation --release # Fase 41
+# Rerun rápido Phase 41 desde cache de disco (~0.7 s):
+PHASE41_USE_CACHE=1 PHASE41_SKIP_N256=1 cargo test -p gadget-ng-physics \
+    --test phase41_high_resolution_validation --release
 ```
 
 Tests de validación cubiertos:
@@ -461,6 +564,17 @@ Tests de validación cubiertos:
   crecimiento lineal, PM vs TreePM, reproducibilidad.
 - **`pk_correction`** (Fase 34–36): roundtrip DFT, `A_grid` cerrado,
   `R(N)` estable, corrección absoluta sobre snapshots reales.
+- **Reescalado físico de ICs** (Fase 37): `s = D(a_init)/D(1)` exacto a
+  `< 2·10⁻⁶`, crecimiento `D(a)` sensible a la convención.
+- **Validación externa vs CLASS** (Fase 38): factor de mejora ≥161× y
+  `median|log10(P_c/P_CLASS)| ≤ 0.046` en ambas convenciones.
+- **Convergencia temporal** (Fase 39): barrido `dt` + diagnósticos
+  `delta_rms(a)`, sin NaN/Inf.
+- **`NormalizationMode`** (Fase 40): enum tipado, equivalencia bit-idéntica
+  del modo `Legacy` y ratio `s` exacto del modo `Z0Sigma8`.
+- **Alta resolución** (Fase 41): transición shot-noise ↔ señal a `N ≥ 64³`,
+  cierre de `pk_correction` en IC hasta `N = 128³`, con caché JSON para
+  rerun sub-segundo (`PHASE41_USE_CACHE=1`).
 
 ---
 
@@ -519,6 +633,11 @@ con contexto, metodología, resultados y limitaciones.
 | [`phase34-discrete-normalization-closure`](docs/reports/2026-04-phase34-discrete-normalization-closure.md) | Cierre `A_grid = 2·V²/N⁹` |
 | [`phase35-rn-modeling`](docs/reports/2026-04-phase35-rn-modeling.md) | Modelado `R(N)` |
 | [`phase36-pk-correction-validation`](docs/reports/2026-04-phase36-pk-correction-validation.md) | Validación `pk_correction` |
+| [`phase37-growth-rescaled-ics`](docs/reports/2026-04-phase37-growth-rescaled-ics.md) | Reescalado físico `D(a)` experimental |
+| [`phase38-class-camb-minimal-validation`](docs/reports/2026-04-phase38-class-camb-minimal-validation.md) | 🔭 Validación externa vs CLASS |
+| [`phase39-dt-convergence`](docs/reports/2026-04-phase39-dt-convergence.md) | Barrido `dt` y diagnósticos dinámicos |
+| [`phase40-physical-ics-normalization`](docs/reports/2026-04-phase40-physical-ics-normalization.md) | `NormalizationMode { Legacy, Z0Sigma8 }` |
+| [`phase41-high-resolution-validation`](docs/reports/2026-04-phase41-high-resolution-validation.md) | 📈 Alta resolución y shot-noise↔señal |
 
 ### Meta
 
@@ -595,11 +714,21 @@ experiments/nbody/
 ├── phase33_pk_normalization/ # Caracterización del offset 17×
 ├── phase34_discrete_normalization/ # A_grid = 2·V²/N⁹
 ├── phase35_rn_modeling/      # Fit R(N), figuras, demo
-└── phase36_pk_correction_validation/ # Validación práctica end-to-end
-    ├── configs/lcdm_N32_2lpt_pm_phase36.toml
-    ├── scripts/apply_phase36_correction.py
-    ├── scripts/plot_phase36.py
-    └── run_phase36.sh
+├── phase36_pk_correction_validation/ # Validación práctica end-to-end
+│   ├── configs/lcdm_N32_2lpt_pm_phase36.toml
+│   ├── scripts/apply_phase36_correction.py
+│   ├── scripts/plot_phase36.py
+│   └── run_phase36.sh
+├── phase37_growth_rescaled_ics/ # Reescalado físico opcional de ICs
+├── phase38_class_validation/    # 🔭 Referencia CLASS + comparación por N
+│   └── reference/               # JSON generado por classy 3.3.4.0
+├── phase39_dt_convergence/      # Barrido dt ∈ {4e-4..5e-5}
+├── phase40_physical_ics_normalization/ # Enum NormalizationMode
+└── phase41_high_resolution_validation/ # N ∈ {32, 64, 128}, shot-noise
+    ├── configs/lcdm_N{128,256}_2lpt_pm_{legacy,z0_sigma8}.toml
+    ├── scripts/apply_phase41_correction.py
+    ├── scripts/plot_phase41_resolution.py
+    └── run_phase41.sh           # PHASE41_SKIP_N256=1, PHASE41_USE_CACHE=1
 ```
 
 ---

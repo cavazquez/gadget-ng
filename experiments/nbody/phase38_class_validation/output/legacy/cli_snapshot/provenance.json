@@ -1,0 +1,15 @@
+{
+  "crate_version": "0.1.0",
+  "git_commit": "1a425485f1fca51723f0593c7f00f64d29538684",
+  "build_profile": "release",
+  "enabled_features": [],
+  "command_line": [
+    "/home/cristian/repos/propios/gadget-ng/target/release/gadget-ng",
+    "snapshot",
+    "--config",
+    "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase38_class_validation/configs/lcdm_N32_2lpt_pm_legacy.toml",
+    "--out",
+    "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase38_class_validation/output/legacy/cli_snapshot"
+  ],
+  "config_hash": "f35cb7273063fa3f6effcf708238546a0bca30a8d2d88cd34019a8bc3dcff7c6"
+}

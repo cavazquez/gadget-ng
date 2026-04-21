@@ -213,7 +213,43 @@ pub enum IcKind {
         /// Default: `false` (comportamiento 1LPT legacy, retrocompatible).
         #[serde(default)]
         use_2lpt: bool,
+
+        // ── Campo Fase 40 (reemplaza rescale_to_a_init de Fase 37) ──
+
+        /// Convención física de normalización de amplitud del campo inicial.
+        ///
+        /// - **`Legacy` (default)**: `σ₈` se aplica directamente en
+        ///   `a_init`. La amplitud del campo queda referida al tiempo inicial.
+        ///   Compatible bit-a-bit con Fase 26–28/37 (`rescale_to_a_init=false`).
+        /// - **`Z0Sigma8` (Fase 40)**: `σ₈` queda referido a `a=1` (convención
+        ///   estándar CAMB/CLASS). Los desplazamientos se reducen por
+        ///   `s = D(a_init)/D(1)`; el 2LPT se reduce por `s²` (ya que crece
+        ///   como `D²`). Las velocidades heredan el factor porque son
+        ///   lineales en Ψ¹ y Ψ². Físicamente consistente con σ₈(z=0).
+        ///   Equivalente al viejo `rescale_to_a_init=true`.
+        ///
+        /// Consultar `docs/reports/2026-04-phase40-physical-ics-normalization.md`
+        /// para la derivación matemática, auditoría y recomendación final.
+        #[serde(default)]
+        normalization_mode: NormalizationMode,
     },
+}
+
+/// Convención de normalización de amplitud de las ICs cosmológicas.
+///
+/// Introducida en Fase 40 para reemplazar el flag experimental
+/// `rescale_to_a_init` de Fase 37 por una API explícita y tipada.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NormalizationMode {
+    /// `σ₈` aplicado directamente en `a_init`. Comportamiento histórico
+    /// de Fase 26–28. Bit-idéntico al viejo `rescale_to_a_init = false`.
+    #[default]
+    Legacy,
+    /// `σ₈` referido a `a=1` (convención CAMB/CLASS); los desplazamientos
+    /// y velocidades se reescalan por `s = D(a_init)/D(1)` (y `s²` para 2LPT).
+    /// Equivalente al viejo `rescale_to_a_init = true`.
+    Z0Sigma8,
 }
 
 /// Tipo de función de transferencia cosmológica para el espectro de potencia inicial.

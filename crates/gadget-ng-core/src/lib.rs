@@ -19,7 +19,7 @@ pub use gpu_bridge::GpuParticlesSoAExt;
 
 pub use config::{
     CosmologySection, GravitySection, IcKind, InitialConditionsSection, IntegratorKind,
-    MacSoftening, OpeningCriterion, OutputSection, PerformanceSection, RunConfig,
+    MacSoftening, NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, RunConfig,
     SfcKind, SimulationSection, SnapshotFormat, SolverKind, TimestepCriterion, TimestepSection,
     TransferKind, UnitsSection, G_KPC_MSUN_KMPS,
 };
@@ -28,8 +28,8 @@ pub use transfer_fn::{
     transfer_eh_nowiggle, EisensteinHuParams,
 };
 pub use cosmology::{
-    density_contrast_rms, growth_rate_f, hubble_param, minimum_image, peculiar_vrms, wrap_coord,
-    wrap_position, CosmologyParams,
+    density_contrast_rms, growth_factor_d, growth_factor_d_ratio, growth_rate_f, hubble_param,
+    minimum_image, peculiar_vrms, wrap_coord, wrap_position, CosmologyParams,
 };
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;

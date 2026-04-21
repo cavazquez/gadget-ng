@@ -78,6 +78,7 @@ fn lpt2_config(seed: u64) -> RunConfig {
                 t_cmb: 2.7255,
                 box_size_mpc_h: Some(100.0),
                 use_2lpt: true,
+                normalization_mode: gadget_ng_core::NormalizationMode::Legacy,
             },
         },
         output: OutputSection::default(),

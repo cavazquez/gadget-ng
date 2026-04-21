@@ -1,0 +1,44 @@
+# ── ΛCDM N=256³, EH+σ₈=0.8, 2LPT, PM, a_init=0.02 — Fase 41 (legacy) ──────
+#
+# Alta resolución (16.7M partículas). Baseline `legacy` para contrastar con
+# `z0_sigma8` a N=256³ — el régimen donde el shot-noise floor cae al menos
+# 512× respecto de N=32³ (`P_shot = V/N_p = 10⁶/N³`).
+
+[simulation]
+particle_count         = 16777216
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 200
+softening              = 0.00125
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions.kind.zeldovich]
+seed               = 42
+grid_size          = 256
+spectral_index     = 0.965
+amplitude          = 1.0e-4
+transfer           = "eisenstein_hu"
+sigma8             = 0.8
+omega_b            = 0.049
+h                  = 0.674
+t_cmb              = 2.7255
+box_size_mpc_h     = 100.0
+use_2lpt           = true
+normalization_mode = "legacy"
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 256
+
+[output]
+snapshot_every    = 50
+diagnostics_every = 50

@@ -1,0 +1,16 @@
+{
+  "crate_version": "0.1.0",
+  "git_commit": "1a425485f1fca51723f0593c7f00f64d29538684",
+  "build_profile": "release",
+  "enabled_features": [],
+  "command_line": [
+    "/home/cristian/repos/propios/gadget-ng/target/release/gadget-ng",
+    "stepping",
+    "--config",
+    "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase39_dt_convergence/configs/lcdm_N32_2lpt_pm_dt_4e4.toml",
+    "--out",
+    "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase39_dt_convergence/output/dt_4e4/cli_run",
+    "--snapshot"
+  ],
+  "config_hash": "7213e4ebc7dace46d9750e18e15bca05d7b5b03d42f2fa9da0cdee77c6bc965e"
+}

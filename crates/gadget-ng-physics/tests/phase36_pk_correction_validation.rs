@@ -92,6 +92,7 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
                 t_cmb: T_CMB,
                 box_size_mpc_h: Some(BOX_MPC_H),
                 use_2lpt,
+                normalization_mode: gadget_ng_core::NormalizationMode::Legacy,
             },
         },
         output: OutputSection::default(),

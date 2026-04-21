@@ -48,7 +48,7 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{growth_rate_f, hubble_param, CosmologyParams},
+    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
     particle::Particle,
     transfer_fn::{amplitude_for_sigma8, transfer_eh_nowiggle, EisensteinHuParams},
     vec3::Vec3,
@@ -446,6 +446,7 @@ pub fn zeldovich_ics(
     h_dimless: f64,
     t_cmb: f64,
     box_size_mpc_h: Option<f64>,
+    rescale_to_a_init: bool,
     lo: usize,
     hi: usize,
 ) -> Vec<Particle> {
@@ -473,6 +474,16 @@ pub fn zeldovich_ics(
     // Factor de velocidad: p = a²·f·H·Ψ
     let vel_factor = a_init * a_init * f_a * h_a;
 
+    // Fase 37: factor de reescalado físico s = D(a_init)/D(1).
+    // Cuando `rescale_to_a_init = false` (default) → s = 1 bit-idéntico al
+    // comportamiento de Fase 26/27. Solo se activa cuando cosmología está
+    // habilitada; en otros casos el factor carece de significado.
+    let scale = if rescale_to_a_init && cfg.cosmology.enabled {
+        growth_factor_d_ratio(cosmo, a_init, 1.0)
+    } else {
+        1.0
+    };
+
     // Espaciado de la retícula.
     let d = box_size / n as f64;
 
@@ -494,7 +505,20 @@ pub fn zeldovich_ics(
     let delta = generate_delta_kspace(n, seed, spectrum_fn);
 
     // ── Calcular campo de desplazamiento Ψ.
-    let [psi_x, psi_y, psi_z] = delta_to_displacement(&delta, n, box_size);
+    let [mut psi_x, mut psi_y, mut psi_z] = delta_to_displacement(&delta, n, box_size);
+
+    // Fase 37: aplicar reescalado físico opcional.
+    if scale != 1.0 {
+        for v in psi_x.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi_y.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi_z.iter_mut() {
+            *v *= scale;
+        }
+    }
 
     // ── Construir partículas para el rango [lo, hi).
     let mut out = Vec::with_capacity(hi.saturating_sub(lo));
@@ -559,6 +583,7 @@ pub fn zeldovich_ics_power_law(
         0.674,
         2.7255,
         None,
+        false, // rescale_to_a_init: mantener comportamiento legacy Fase 26
         lo,
         hi,
     )

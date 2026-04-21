@@ -1,4 +1,4 @@
-use crate::config::{IcKind, RunConfig};
+use crate::config::{IcKind, NormalizationMode, RunConfig};
 use crate::ic_2lpt::zeldovich_2lpt_ics;
 use crate::ic_zeldovich::zeldovich_ics;
 use crate::particle::Particle;
@@ -130,6 +130,7 @@ pub fn build_particles_for_gid_range(
             t_cmb,
             box_size_mpc_h,
             use_2lpt,
+            normalization_mode,
         } => {
             let grid_cube = grid_size * grid_size * grid_size;
             if grid_cube != n {
@@ -139,6 +140,10 @@ pub fn build_particles_for_gid_range(
                     grid_cube,
                 });
             }
+            // Mapeo enum → bool interno (detalle de implementación): el
+            // flag histórico `rescale_to_a_init` es equivalente a
+            // `normalization_mode == Z0Sigma8`.
+            let rescale_to_a_init = matches!(normalization_mode, NormalizationMode::Z0Sigma8);
             if use_2lpt {
                 Ok(zeldovich_2lpt_ics(
                     cfg,
@@ -152,6 +157,7 @@ pub fn build_particles_for_gid_range(
                     h,
                     t_cmb,
                     box_size_mpc_h,
+                    rescale_to_a_init,
                     lo,
                     hi,
                 ))
@@ -168,6 +174,7 @@ pub fn build_particles_for_gid_range(
                     h,
                     t_cmb,
                     box_size_mpc_h,
+                    rescale_to_a_init,
                     lo,
                     hi,
                 ))

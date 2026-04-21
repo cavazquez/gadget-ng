@@ -1,0 +1,15 @@
+   Compiling gadget-ng-physics v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-physics)
+    Finished `release` profile [optimized] target(s) in 0.65s
+     Running tests/phase37_growth_rescaled_ics.rs (target/release/deps/phase37_growth_rescaled_ics-2a28de3b1bb38e93)
+
+running 7 tests
+test legacy_mode_remains_bit_compatible ... ok
+test pk_correction_improves_early_snapshot_accuracy_under_rescaled_mode ... ok
+test pk_correction_still_works_on_ic_snapshot_with_rescaling ... ok
+test rescaled_mode_consistent_across_resolutions ... ok
+test rescaled_mode_no_nan_inf ... ok
+test rescaled_mode_reduces_early_nonlinearity ... ok
+test rescaled_mode_reduces_initial_displacement_amplitude ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 382.73s
+

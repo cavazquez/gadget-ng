@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "pk_jsonl": "/home/cristian/repos/propios/gadget-ng/experiments/nbody/phase39_dt_convergence/output/dt_5e5/cli_analysis/power_spectrum.jsonl",
+    "n": 32,
+    "box_internal": 1.0,
+    "box_mpc_h": 100.0,
+    "dt": 5e-05,
+    "a_snapshot": 0.1,
+    "a_init": 0.02,
+    "mode": "legacy",
+    "omega_m": 0.315,
+    "omega_lambda": 0.685,
+    "omega_b": 0.049,
+    "h": 0.674,
+    "n_s": 0.965,
+    "sigma8": 0.8,
+    "k_nyq_fraction": 0.5,
+    "amplitude": 2822.0601743373277
+  },
+  "metrics": {
+    "n_bins_linear_window": 8,
+    "median_abs_log10_err_raw": 8.24936440453708,
+    "median_abs_log10_err_corrected": 6.46765103527388,
+    "mean_r_corr": 14247853.25014712,
+    "stdev_r_corr": 24144280.41595164,
+    "cv_r_corr": 1.6945907563795501,
+    "a_grid": 5.684341886080802e-14,
+    "r_of_n": 0.033752377475223,
+    "d_ratio_label": "D(a)/D(a_init)",
+    "d_ratio_value": 4.998060497098754
+  },
+  "bins": [
+    {
+      "k_internal": 6.283185307179586,
+      "k_hmpc": 0.04234866897039041,
+      "n_modes": 18,
+      "pk_measured_internal": 0.06724842096638163,
+      "pk_corrected_mpc_h3": 35050767422302.152,
+      "pk_reference_mpc_h3": 494832.0685830655
+    },
+    {
+      "k_internal": 12.566370614359172,
+      "k_hmpc": 0.08469733794078083,
+      "n_modes": 62,
+      "pk_measured_internal": 0.008864668500319304,
+      "pk_corrected_mpc_h3": 4620382596579.177,
+      "pk_reference_mpc_h3": 195367.02366015146
+    },
+    {
+      "k_internal": 18.84955592153876,
+      "k_hmpc": 0.12704600691117124,
+      "n_modes": 98,
+      "pk_measured_internal": 0.0019266893328264984,
+      "pk_corrected_mpc_h3": 1004215990940.3999,
+      "pk_reference_mpc_h3": 99818.70152972976
+    },
+    {
+      "k_internal": 25.132741228718345,
+      "k_hmpc": 0.16939467588156165,
+      "n_modes": 210,
+      "pk_measured_internal": 0.0005031480478537282,
+      "pk_corrected_mpc_h3": 262247424562.1724,
+      "pk_reference_mpc_h3": 58851.40633043429
+    },
+    {
+      "k_internal": 31.41592653589793,
+      "k_hmpc": 0.21174334485195206,
+      "n_modes": 350,
+      "pk_measured_internal": 0.0001413089443799181,
+      "pk_corrected_mpc_h3": 73652092836.90993,
+      "pk_reference_mpc_h3": 38092.31858233242
+    },
+    {
+      "k_internal": 37.69911184307752,
+      "k_hmpc": 0.2540920138223425,
+      "n_modes": 450,
+      "pk_measured_internal": 5.0584227356349204e-05,
+      "pk_corrected_mpc_h3": 26365169067.547382,
+      "pk_reference_mpc_h3": 26324.184721422782
+    },
+    {
+      "k_internal": 43.982297150257104,
+      "k_hmpc": 0.2964406827927329,
+      "n_modes": 602,
+      "pk_measured_internal": 3.5047067148245994e-05,
+      "pk_corrected_mpc_h3": 18266995444.563423,
+      "pk_reference_mpc_h3": 19093.23402901447
+    },
+    {
+      "k_internal": 50.26548245743669,
+      "k_hmpc": 0.3387893517631233,
+      "n_modes": 762,
+      "pk_measured_internal": 3.0087871390803124e-05,
+      "pk_corrected_mpc_h3": 15682196952.674753,
+      "pk_reference_mpc_h3": 14372.634218925756
+    }
+  ]
+}

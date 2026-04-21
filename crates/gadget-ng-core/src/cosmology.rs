@@ -246,6 +246,68 @@ pub fn growth_rate_f(params: CosmologyParams, a: f64) -> f64 {
     omega_m_a.max(0.0).powf(0.55)
 }
 
+// ── Factor de crecimiento lineal D(a) (Fase 37) ──────────────────────────────
+
+/// Aproximación CPT92 (Carroll–Press–Turner 1992) del modo creciente `D(a)`
+/// en cosmología ΛCDM plana:
+///
+/// ```text
+/// D(a) = a · g(a)
+/// g(a) = (5/2) · Ω_m(a) /
+///        [ Ω_m(a)^(4/7) − Ω_Λ(a) + (1 + Ω_m(a)/2)·(1 + Ω_Λ(a)/70) ]
+///
+/// con    Ω_m(a) = Ω_m / (Ω_m + Ω_Λ·a³)
+///        Ω_Λ(a) = Ω_Λ·a³ / (Ω_m + Ω_Λ·a³)
+/// ```
+///
+/// **Normalización**: la función devuelve `D(a)` sin imponer `D(1)=1`.
+/// Para obtener el cociente físico `D(a₁)/D(a₂)` usar [`growth_factor_d_ratio`].
+///
+/// Para Einstein–de Sitter (Ω_m=1, Ω_Λ=0): `g(a)=1` exacto, `D(a)=a`.
+///
+/// ## Uso
+///
+/// En ICs cosmológicas, el factor `s = D(a_init)/D(1)` reescala las
+/// amplitudes LPT: `Ψ¹ ← s·Ψ¹`, `Ψ² ← s²·Ψ²`. Esto referencia σ₈ a
+/// `a=1` (convención estándar tipo CAMB/CLASS) en lugar de aplicarlo
+/// directamente en `a_init`.
+pub fn growth_factor_d(params: CosmologyParams, a: f64) -> f64 {
+    if a <= 0.0 {
+        return 0.0;
+    }
+    let a3 = a * a * a;
+    let denom = params.omega_m + params.omega_lambda * a3;
+    if denom <= 0.0 {
+        return a;
+    }
+    let om_a = params.omega_m / denom;
+    let ol_a = params.omega_lambda * a3 / denom;
+    let bracket =
+        om_a.max(0.0).powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0);
+    if bracket <= 0.0 {
+        return a;
+    }
+    let g = 2.5 * om_a / bracket;
+    a * g
+}
+
+/// Cociente del factor de crecimiento lineal `D(a_num)/D(a_den)` en CPT92.
+///
+/// Uso típico para reescalar ICs cosmológicas a la convención `D(1)=1`:
+///
+/// ```rust,ignore
+/// let s = growth_factor_d_ratio(cosmo, a_init, 1.0);
+/// psi1.iter_mut().for_each(|v| *v *= s);
+/// psi2.iter_mut().for_each(|v| *v *= s * s);  // 2LPT crece como D²
+/// ```
+pub fn growth_factor_d_ratio(params: CosmologyParams, a_num: f64, a_den: f64) -> f64 {
+    let d_den = growth_factor_d(params, a_den);
+    if d_den == 0.0 {
+        return 1.0;
+    }
+    growth_factor_d(params, a_num) / d_den
+}
+
 // ── Utilidades periódicas (Fase 18) ──────────────────────────────────────────
 
 /// Diferencia periódica mínima imagen en 1D: resultado en `[-L/2, L/2]`.
@@ -423,5 +485,60 @@ mod tests {
             kick_rel < 1e-3,
             "kick total vs drift_kick_factors: {kick_rel:.2e}"
         );
+    }
+
+    // ── Tests Fase 37: growth_factor_d / CPT92 ────────────────────────────
+
+    #[test]
+    fn growth_factor_d_eds_equals_a() {
+        // En EdS (Ω_m=1, Ω_Λ=0): Ω_m(a)=1, Ω_Λ(a)=0 → g(a) = 2.5/(1 − 0 + 1.5·1) = 1.
+        // Entonces D(a) = a · g(a) = a exacto.
+        let p = eds_params(1.0);
+        for &a in &[0.01, 0.1, 0.5, 1.0, 2.0] {
+            let d = growth_factor_d(p, a);
+            let rel = (d - a).abs() / a;
+            assert!(rel < 1e-12, "EdS D({a})={d} != a (rel={rel:.2e})");
+        }
+    }
+
+    #[test]
+    fn growth_factor_d_ratio_monotonic_lcdm() {
+        // En ΛCDM con Ω_m=0.3, D(a) crece monótonamente: D(a_init) < D(1).
+        let p = CosmologyParams::new(0.3, 0.7, 1.0);
+        for &a_init in &[0.01, 0.02, 0.05, 0.10, 0.5] {
+            let s = growth_factor_d_ratio(p, a_init, 1.0);
+            assert!(
+                (0.0..1.0).contains(&s),
+                "s=D({a_init})/D(1)={s} fuera de (0,1)"
+            );
+            // A mayor a_init, mayor s (monotonía del modo creciente).
+            let s_later = growth_factor_d_ratio(p, (a_init * 1.2).min(1.0), 1.0);
+            assert!(
+                s_later >= s - 1e-12,
+                "D no monotónico: s({a_init})={s}, s(1.2·{a_init})={s_later}"
+            );
+        }
+    }
+
+    #[test]
+    fn growth_factor_d_planck_at_a002() {
+        // ΛCDM Planck-like: Ω_m=0.3, Ω_Λ=0.7, a_init=0.02. Esperamos
+        // D(a_init)/D(1) ≈ 0.024 (crecimiento proporcional a a en régimen
+        // dominado por materia, con corrección O(1) del prefactor CPT92).
+        let p = CosmologyParams::new(0.3, 0.7, 1.0);
+        let s = growth_factor_d_ratio(p, 0.02, 1.0);
+        // Valor de referencia calculado con la misma fórmula CPT92: ≈ 0.02562
+        // (2.5·Ω_m(0.02)/bracket(0.02) ≈ 1.281; 2.5·Ω_m(1)/bracket(1) ≈ 0.78).
+        // D(0.02)/D(1) ≈ (0.02·1.281)/(1·0.780) ≈ 0.0328.
+        assert!(
+            (0.02..0.05).contains(&s),
+            "D(0.02)/D(1)={s} fuera del rango esperado [0.02, 0.05]"
+        );
+    }
+
+    #[test]
+    fn growth_factor_d_zero_at_a_zero() {
+        let p = CosmologyParams::new(0.3, 0.7, 1.0);
+        assert_eq!(growth_factor_d(p, 0.0), 0.0);
     }
 }

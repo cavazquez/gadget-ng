@@ -1,0 +1,46 @@
+# ── ΛCDM N=128³, EH+σ₈=0.8, 2LPT, PM, a_init=0.02 — Fase 41 (z0_sigma8) ──
+#
+# Modo físico `normalization_mode = "z0_sigma8"`: `σ₈ = 0.8` referido a `a=1`
+# (convención CAMB/CLASS). Los desplazamientos se escalan por
+# `s = D(a_init)/D(1) ≈ 0.0254` (1LPT) y `s²` (2LPT). Phase 41 verifica que
+# a N=128³ la señal física ya supera al shot-noise floor y `pk_correction`
+# extiende su validez a snapshots evolucionados tempranos.
+
+[simulation]
+particle_count         = 2097152
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 200
+softening              = 0.0025
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions.kind.zeldovich]
+seed               = 42
+grid_size          = 128
+spectral_index     = 0.965
+amplitude          = 1.0e-4
+transfer           = "eisenstein_hu"
+sigma8             = 0.8
+omega_b            = 0.049
+h                  = 0.674
+t_cmb              = 2.7255
+box_size_mpc_h     = 100.0
+use_2lpt           = true
+normalization_mode = "z0_sigma8"
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "pm"
+pm_grid_size = 128
+
+[output]
+snapshot_every    = 50
+diagnostics_every = 50

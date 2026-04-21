@@ -54,7 +54,7 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{growth_rate_f, hubble_param, CosmologyParams},
+    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
     ic_zeldovich::{
         build_spectrum_fn, delta_to_displacement, fft3d, generate_delta_kspace, mode_int,
     },
@@ -291,6 +291,7 @@ pub fn zeldovich_2lpt_ics(
     h_dimless: f64,
     t_cmb: f64,
     box_size_mpc_h: Option<f64>,
+    rescale_to_a_init: bool,
     lo: usize,
     hi: usize,
 ) -> Vec<Particle> {
@@ -334,6 +335,15 @@ pub fn zeldovich_2lpt_ics(
     // Factor de velocidad 2LPT: a²·H·f₂·(D₂/D₁²)
     let vel2_factor = a_init * a_init * f2 * h_a * d2_over_d1sq;
 
+    // Fase 37: factor de reescalado físico. Con `rescale_to_a_init = false`
+    // (default) → scale = 1, bit-idéntico a Fase 28.
+    let scale = if rescale_to_a_init && cfg.cosmology.enabled {
+        growth_factor_d_ratio(cosmo, a_init, 1.0)
+    } else {
+        1.0
+    };
+    let scale2 = scale * scale;
+
     // Espaciado de la retícula
     let d = box_size / n as f64;
 
@@ -355,7 +365,7 @@ pub fn zeldovich_2lpt_ics(
     let delta = generate_delta_kspace(n, seed, spectrum_fn);
 
     // ── Calcular Ψ¹ (primer orden)
-    let [psi1_x, psi1_y, psi1_z] = delta_to_displacement(&delta, n, box_size);
+    let [mut psi1_x, mut psi1_y, mut psi1_z] = delta_to_displacement(&delta, n, box_size);
 
     // ── Calcular Ψ² (segundo orden)
     //    Paso A: derivadas de segundo orden de φ¹
@@ -368,7 +378,30 @@ pub fn zeldovich_2lpt_ics(
     let phi2_k = solve_poisson_real_to_kspace(&source, n);
 
     //    Paso D: gradiente de φ² → Ψ²(x)
-    let [psi2_x, psi2_y, psi2_z] = phi2_to_psi2(&phi2_k, n, box_size);
+    let [mut psi2_x, mut psi2_y, mut psi2_z] = phi2_to_psi2(&phi2_k, n, box_size);
+
+    // Fase 37: aplicar reescalado físico opcional.
+    // Ψ¹ crece con D¹, Ψ² crece con D² → factores s y s² respectivamente.
+    if scale != 1.0 {
+        for v in psi1_x.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi1_y.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi1_z.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi2_x.iter_mut() {
+            *v *= scale2;
+        }
+        for v in psi2_y.iter_mut() {
+            *v *= scale2;
+        }
+        for v in psi2_z.iter_mut() {
+            *v *= scale2;
+        }
+    }
 
     // ── Construir partículas para el rango [lo, hi)
     let mut out = Vec::with_capacity(hi.saturating_sub(lo));

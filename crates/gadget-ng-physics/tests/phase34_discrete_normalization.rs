@@ -462,6 +462,7 @@ fn make_config(seed: u64, n: usize) -> RunConfig {
                 t_cmb: T_CMB,
                 box_size_mpc_h: Some(BOX_MPC_H),
                 use_2lpt: false,
+                normalization_mode: gadget_ng_core::NormalizationMode::Legacy,
             },
         },
         output: OutputSection::default(),
