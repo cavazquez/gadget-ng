@@ -1,0 +1,34 @@
+   Compiling gadget-ng-core v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-core)
+   Compiling gadget-ng-parallel v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-parallel)
+   Compiling gadget-ng-tree v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-tree)
+   Compiling gadget-ng-integrators v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-integrators)
+   Compiling gadget-ng-analysis v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-analysis)
+   Compiling gadget-ng-sph v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-sph)
+   Compiling gadget-ng-pm v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-pm)
+   Compiling gadget-ng-treepm v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-treepm)
+   Compiling gadget-ng-physics v0.1.0 (/home/cristian/repos/propios/gadget-ng/crates/gadget-ng-physics)
+    Finished `release` profile [optimized] target(s) in 9.18s
+     Running tests/phase44_2lpt_audit.rs (target/release/deps/phase44_2lpt_audit-d41f633d08e4317f)
+
+running 5 tests
+test fixed_variant_improves_growth_vs_legacy ... Phase 44 summary @ a=0.10
+  Fixed  : |log Pc/Pref|=8.619, growth_lowk=85269478.209 (err=85269477.209)
+  Legacy : |log Pc/Pref|=8.627, growth_lowk=80579515.688 (err=80579514.688)
+ok
+test fixed_variant_matches_legacy_psi1_component ... ok
+test fixed_variant_runs_stably ... ok
+test ic_amplitudes_changed_by_fix ... 
+thread 'ic_amplitudes_changed_by_fix' panicked at crates/gadget-ng-physics/tests/phase44_2lpt_audit.rs:546:5:
+max Δpos entre Fixed y LegacyBuggy = 1.144e-12; esperado > 1e-8 (el fix debe cambiar Ψ²)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test no_nan_inf_under_phase44_matrix ... ok
+
+failures:
+
+failures:
+    ic_amplitudes_changed_by_fix
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 844.29s
+
+error: test failed, to rerun pass `-p gadget-ng-physics --test phase44_2lpt_audit`

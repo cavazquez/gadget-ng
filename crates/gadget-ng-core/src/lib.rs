@@ -28,8 +28,9 @@ pub use transfer_fn::{
     transfer_eh_nowiggle, EisensteinHuParams,
 };
 pub use cosmology::{
-    density_contrast_rms, growth_factor_d, growth_factor_d_ratio, growth_rate_f, hubble_param,
-    minimum_image, peculiar_vrms, wrap_coord, wrap_position, CosmologyParams,
+    density_contrast_rms, gravity_coupling_qksl, growth_factor_d, growth_factor_d_ratio,
+    growth_rate_f, hubble_param, minimum_image, peculiar_vrms, wrap_coord, wrap_position,
+    CosmologyParams,
 };
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;
@@ -39,8 +40,9 @@ pub use gravity::{
 #[cfg(feature = "simd")]
 pub use gravity_simd::SimdDirectGravity;
 pub use ic::{build_particles, build_particles_for_gid_range, IcError};
-pub use ic_2lpt::zeldovich_2lpt_ics;
+pub use ic_2lpt::{zeldovich_2lpt_ics, zeldovich_2lpt_ics_with_variant, Psi2Variant};
 pub use ic_zeldovich::internals as ic_zeldovich_internals;
+pub use ic_zeldovich::{zeldovich_ics, zeldovich_ics_with_convention, IcMomentumConvention};
 pub use particle::Particle;
 pub use vec3::Vec3;
 
