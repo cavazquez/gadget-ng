@@ -241,6 +241,68 @@ pub fn gravity_coupling_qksl(g: f64, a: f64) -> f64 {
     g * a * a * a
 }
 
+/// **Phase 49 — Timestep adaptativo cosmológico.**
+///
+/// Calcula el paso de tiempo máximo compatible con la estabilidad numérica
+/// para un integrador KDK cosmológico. Usa dos criterios independientes:
+///
+/// ## Criterio gravitacional (Quinn et al. 1997)
+///
+/// ```text
+/// dt_grav = η · √(ε / |a_max|)
+/// ```
+///
+/// donde `ε` es el softening, `|a_max|` la aceleración máxima de las
+/// partículas y `η ≈ 0.025` la fracción de tolerancia. Este criterio limita
+/// el timestep para que ninguna partícula "salte" más de `ε` por unidad de
+/// velocidad en un paso.
+///
+/// ## Criterio de Hubble
+///
+/// ```text
+/// dt_hub = α_H / H(a)
+/// ```
+///
+/// donde `H(a)` es el parámetro de Hubble en unidades internas y
+/// `α_H ≈ 0.025` la fracción del tiempo de Hubble. Evita que el factor de
+/// escala varíe demasiado en un solo paso.
+///
+/// ## Resultado
+///
+/// ```text
+/// dt = min(dt_grav, dt_hub, dt_max)
+/// ```
+///
+/// Si `acc_max ≤ 0` (sin fuerzas aún), se omite el criterio gravitacional.
+///
+/// # Parámetros
+///
+/// - `params`: parámetros cosmológicos ΛCDM.
+/// - `a`: factor de escala actual.
+/// - `acc_max`: magnitud máxima de aceleración en unidades de código.
+/// - `softening`: longitud de suavizado en unidades de código.
+/// - `eta_grav`: fracción gravitacional (típicamente 0.025).
+/// - `alpha_h`: fracción del tiempo de Hubble (típicamente 0.025).
+/// - `dt_max`: límite superior explícito.
+pub fn adaptive_dt_cosmo(
+    params: CosmologyParams,
+    a: f64,
+    acc_max: f64,
+    softening: f64,
+    eta_grav: f64,
+    alpha_h: f64,
+    dt_max: f64,
+) -> f64 {
+    let dt_grav = if acc_max > 0.0 && softening > 0.0 {
+        eta_grav * (softening / acc_max).sqrt()
+    } else {
+        dt_max
+    };
+    let h_a = hubble_param(params, a);
+    let dt_hub = if h_a > 0.0 { alpha_h / h_a } else { dt_max };
+    dt_grav.min(dt_hub).min(dt_max)
+}
+
 /// H(a) = H₀ · √(Ω_m·a⁻³ + Ω_Λ) — parámetro de Hubble en unidades internas.
 pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
     let h_sq = params.omega_m / (a * a * a) + params.omega_lambda;

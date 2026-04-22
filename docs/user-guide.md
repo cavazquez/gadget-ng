@@ -482,6 +482,68 @@ for (bin, (k, p_hf)) in pk_corr.iter().zip(p_nl_pred.iter()) {
 
 ---
 
+## Integrador cosmológico: timestep adaptativo (Phase 49)
+
+El integrador cosmológico KDK usa la convención de momentum canónico QKSL:
+`p = a²ẋ_c`, drift = `∫dt/a²`, kick = `∫dt/a`. El coupling correcto al
+solver gravitacional es `g_cosmo = G·a³` (Phase 45). Para evoluciones largas
+(a > 0.1) con un timestep fijo se produce inestabilidad numérica. La solución
+es usar `adaptive_dt_cosmo`.
+
+### API
+
+```rust
+use gadget_ng_core::adaptive_dt_cosmo;
+use gadget_ng_core::cosmology::{gravity_coupling_qksl, CosmologyParams};
+use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+
+let c = CosmologyParams::new(omega_m, omega_lambda, h0);
+let softening = 0.005;
+let eta_grav   = 0.025;  // fracción gravitacional (Quinn+1997)
+let alpha_h    = 0.025;  // fracción del tiempo de Hubble
+let dt_max     = 0.005;  // límite superior explícito
+
+let mut a = a_init;
+// Calcular aceleración inicial (primer paso):
+let mut acc_scratch = vec![Vec3::zero(); n_particles];
+compute_accelerations(&particles, gravity_coupling_qksl(G, a), &mut acc_scratch);
+
+loop {
+    if a >= a_target { break; }
+    let acc_max = acc_scratch.iter().map(|v| v.norm()).fold(0.0_f64, f64::max);
+    let dt = adaptive_dt_cosmo(c, a, acc_max, softening, eta_grav, alpha_h, dt_max);
+    let g_cosmo = gravity_coupling_qksl(G, a);
+    let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
+    let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+    a = c.advance_a(a, dt);
+    leapfrog_cosmo_kdk_step(&mut particles, cf, &mut acc_scratch, |ps, out| {
+        compute_accelerations(ps, g_cosmo, out);
+    });
+}
+```
+
+### Criterios de timestep
+
+| Criterio | Fórmula | Parámetro típico |
+|----------|---------|------------------|
+| Gravitacional | `η·√(ε/|a_max|)` | `eta_grav = 0.025` |
+| Hubble | `α_H/H(a)` | `alpha_h = 0.025` |
+| Explícito | `dt_max` | depende del problema |
+
+El timestep efectivo es `min(dt_grav, dt_hub, dt_max)`.
+
+### Nota sobre consistencia de unidades
+
+En los tests de regresión (G=1, H₀=0.1, box=1, N=32), la condición de
+consistencia cosmológica `H₀ = √(8πGρ̄Ω_m/3)` NO se satisface. Esto implica
+que el P(k) de la simulación no sigue exactamente D²(a) para evoluciones
+largas — el streaming inicial (codificado en vel_factor = a²·f·H·Ψ) domina
+sobre la respuesta gravitacional. Para simulaciones físicas, usar unidades
+calibradas (`UnitsSection.enabled = true`) donde `G_KPC_MSUN_KMPS` asegura
+consistencia con los parámetros cosmológicos.
+
+---
+
 ## Benchmarks
 
 ```bash

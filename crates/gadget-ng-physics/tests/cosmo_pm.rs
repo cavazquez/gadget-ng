@@ -30,7 +30,7 @@
 
 use gadget_ng_core::{
     build_particles,
-    cosmology::CosmologyParams,
+    cosmology::{gravity_coupling_qksl, CosmologyParams},
     minimum_image, wrap_position,
     CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
     OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
@@ -313,7 +313,8 @@ fn pm_cosmo_no_explosion() {
     let pm = PmSolver { grid_size: NM, box_size: BOX };
 
     for _ in 0..n_steps {
-        let g_cosmo = G / a;
+        // Phase 49: coupling correcto QKSL (G·a³), reemplaza G/a histórico.
+        let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors { drift, kick_half, kick_half2 };
         a = cosmo.advance_a(a, dt);
