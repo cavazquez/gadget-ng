@@ -886,3 +886,97 @@ if let Some(fit) = result {
 }
 ```
 
+
+---
+
+## Validación cuantitativa D²(a) — Phase 54
+
+Phase 54 verifica que el crecimiento lineal del espectro de potencias satisface
+cuantitativamente `P(k,a)/P(k,a₀) = [D(a)/D(a₀)]²` cuando se usa G consistente.
+
+### Configuración
+
+```toml
+[cosmology]
+enabled       = true
+omega_m       = 0.315
+omega_lambda  = 0.685
+h0            = 0.1
+a_init        = 0.02
+auto_g        = true   # G = 3·Ω_m·H₀² / 8π ≈ 3.76e-4
+```
+
+### Ejecutar
+
+```bash
+# Correr todos los resolutions (N=64, 128, 256) en modo release
+./experiments/nbody/phase54_growth_factor_validation/run_phase54.sh
+
+# Omitir N=256 para prueba rápida (~30 s)
+PHASE54_SKIP_N256=1 ./experiments/nbody/phase54_growth_factor_validation/run_phase54.sh
+```
+
+### Tolerancias verificadas
+
+| N    | Error mediano D²(a) | Bins utilizados |
+|------|--------------------:|-----------------|
+| 64³  | < 30%               | k < k_nyq/2     |
+| 128³ | < 15%               | k < k_nyq/2     |
+| 256³ | < 10%               | k < k_nyq/2     |
+
+El error decrece monótonamente con N (test de convergencia).
+
+---
+
+## Comparación FoF vs HMF — Phase 55
+
+Phase 55 evoluciona a z=0 y compara el espectro de masas FoF con la HMF
+analítica Press-Schechter / Sheth-Tormen.
+
+### Parámetros físicos
+
+| Parámetro      | Valor                  |
+|----------------|------------------------|
+| BOX            | 300 Mpc/h              |
+| Cosmología     | Planck 2018 (σ₈=0.811) |
+| FoF b          | 0.2                    |
+| min_particles  | 20                     |
+| G              | G_consistent ≈ 3.76e-4 |
+
+### Masa de partícula por resolución
+
+```rust
+// m_part = Ω_m × ρ_crit_H2 × BOX_MPC_H³ / N_total
+// con RHO_CRIT_H2 = 2.775e11 (M_sun/h)/(Mpc/h)³
+
+use gadget_ng_analysis::{mass_function_table, HmfParams, RHO_CRIT_H2};
+let m_part_n64  = 0.315 * RHO_CRIT_H2 * 300.0_f64.powi(3) / 64.0_f64.powi(3); // 9.0e12 M_sun/h
+let m_part_n128 = 0.315 * RHO_CRIT_H2 * 300.0_f64.powi(3) / 128.0_f64.powi(3); // 1.1e12
+let m_part_n256 = 0.315 * RHO_CRIT_H2 * 300.0_f64.powi(3) / 256.0_f64.powi(3); // 1.4e11
+```
+
+### Ejecutar
+
+```bash
+./experiments/nbody/phase55_fof_vs_hmf/run_phase55.sh
+
+# Omitir N=256
+PHASE55_SKIP_N256=1 ./experiments/nbody/phase55_fof_vs_hmf/run_phase55.sh
+```
+
+### Comparación analítica
+
+```rust
+use gadget_ng_analysis::{mass_function_table, HmfParams};
+
+let params = HmfParams {
+    omega_m: 0.315, omega_lambda: 0.685, omega_b: 0.049,
+    h: 0.674, sigma8: 0.811, n_s: 0.965, t_cmb: 2.7255,
+};
+// dn/dlnM en h³/Mpc³ para 15 bins entre m_min y m_max
+let table = mass_function_table(&params, 1e12, 1e15, 15, 0.0);
+for bin in &table {
+    println!("M={:.2e}: ST={:.3e}  PS={:.3e}", bin.m_msun_h, bin.n_st, bin.n_ps);
+}
+```
+
