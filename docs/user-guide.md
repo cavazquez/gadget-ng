@@ -807,3 +807,82 @@ Para comparar cuantitativamente con la HMF analítica se recomienda:
 La comparación cualitativa (Test 7 de Phase 52) verifica que las masas FoF
 caen en el rango donde σ(M) < 10 (halos colapsados).
 
+---
+
+## Perfiles de halos NFW y relación c(M) (Phase 53)
+
+### Perfil NFW
+
+El perfil de densidad de Navarro, Frenk & White (1996/1997):
+
+```
+ρ(r) = ρ_s / [(r/r_s)(1 + r/r_s)²]
+```
+
+Propiedades analíticas:
+- `r ≪ r_s`: ρ ∝ r⁻¹ (interior plano)
+- `r = r_s`: ρ ∝ r⁻² (punto de inflexión)
+- `r ≫ r_s`: ρ ∝ r⁻³ (caída exterior)
+
+### API
+
+```rust
+use gadget_ng_analysis::nfw::{
+    NfwProfile, concentration_duffy2008, rho_crit_z, r200_from_m200,
+    measure_density_profile,
+};
+
+let omega_m = 0.315;
+let z = 0.0;
+let m200 = 1e14_f64; // M_sun/h
+
+// ρ_crit(z=0) en (M_sun/h)/(Mpc/h)³
+let rho_c = rho_crit_z(omega_m, 0.685, z);
+
+// Concentración Duffy+2008
+let c = concentration_duffy2008(m200, z);
+
+// Construir perfil NFW
+let profile = NfwProfile::from_m200_c(m200, c, rho_c);
+println!("r_s = {:.4} Mpc/h   ρ_s = {:.3e}", profile.r_s, profile.rho_s);
+
+// Propiedades
+let r200 = r200_from_m200(m200, rho_c);
+println!("M(<r_200) = {:.4e}", profile.mass_enclosed(r200));
+println!("ρ(r_s)   = {:.4e}", profile.density(profile.r_s));
+
+// Medir perfil desde radios de partículas
+let radii: Vec<f64> = vec![0.1, 0.3, 0.5, 0.8]; // Mpc/h
+let m_part = 1e10_f64; // M_sun/h
+let bins = measure_density_profile(&radii, m_part, 0.05*r200, r200, 10, Some(&profile));
+for bin in &bins {
+    println!("r={:.3}  n={}  ρ_med/ρ_NFW={:.2}", bin.r, bin.n_part, bin.rho/bin.rho_nfw.max(1e-99));
+}
+```
+
+### Relación c(M, z) — Duffy et al. (2008)
+
+```
+c_200(M, z) = 5.71 × (M / 2×10¹² M_sun/h)^{-0.084} × (1+z)^{-0.47}
+```
+
+| log₁₀(M [M_sun/h]) | c (z=0) | r₂₀₀ [Mpc/h] | r_s [Mpc/h] |
+|---------------------|---------|--------------|-------------|
+| 12.0 (Vía Láctea)   | 6.05    | 0.163        | 0.027       |
+| 14.0 (cúmulo)       | 4.11    | 0.755        | 0.184       |
+| 15.0 (super-cúmulo) | 3.39    | 1.626        | 0.480       |
+
+### Ajuste desde datos de partículas
+
+```rust
+use gadget_ng_analysis::nfw::fit_nfw_concentration;
+
+// bins: medidos con measure_density_profile
+// c_min, c_max: rango de búsqueda de concentración
+let result = fit_nfw_concentration(&bins, m200, rho_c, 1.0, 20.0, 50);
+if let Some(fit) = result {
+    let c_fit = r200 / fit.profile.r_s;
+    println!("c_fit = {c_fit:.2}  χ²_red = {:.4}", fit.chi2_red);
+}
+```
+
