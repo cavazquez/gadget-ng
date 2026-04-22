@@ -22,10 +22,13 @@ use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, Sla
 use gadget_ng_pm::distributed as pm_dist;
 use gadget_ng_pm::slab_pm;
 use gadget_ng_pm::slab_fft::SlabLayout;
-use gadget_ng_pm::PmSolver;
+use gadget_ng_pm::{solve_forces_pencil2d, PencilLayout2D, PmSolver};
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
-use gadget_ng_tree::{accel_from_let, pack_let_nodes, unpack_let_nodes, BarnesHutGravity, Octree};
+use gadget_ng_tree::{
+    accel_from_let, pack_let_nodes, unpack_let_nodes, walk_stats_begin, walk_stats_end,
+    BarnesHutGravity, Octree,
+};
 use gadget_ng_treepm::{distributed as treepm_dist, TreePmSolver};
 use std::fs;
 use std::fs::File;
@@ -664,6 +667,37 @@ fn compute_forces_local_tree(
     }
 }
 
+/// Variante de `compute_forces_local_tree` que además devuelve el coste de interacción
+/// (nodos abiertos del walk) por partícula local. Se usa para el balanceo SFC ponderado.
+fn compute_forces_local_tree_with_costs(
+    parts: &[Particle],
+    halos: &[Particle],
+    theta: f64,
+    g: f64,
+    eps2: f64,
+    out: &mut [Vec3],
+    costs: &mut Vec<u64>,
+) {
+    debug_assert_eq!(parts.len(), out.len());
+    costs.clear();
+    if parts.is_empty() {
+        return;
+    }
+    let all_pos: Vec<Vec3> = parts
+        .iter()
+        .chain(halos.iter())
+        .map(|p| p.position)
+        .collect();
+    let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
+    let tree = Octree::build(&all_pos, &all_mass);
+    for (li, acc_out) in out.iter_mut().enumerate() {
+        walk_stats_begin();
+        *acc_out = tree.walk_accel(parts[li].position, li, g, eps2, theta, &all_pos, &all_mass);
+        let stats = walk_stats_end();
+        costs.push(stats.opened_nodes);
+    }
+}
+
 /// Calcula aceleraciones para `parts` usando árbol local + nodos LET remotos.
 ///
 /// 1. Construye un árbol con solo las partículas locales.
@@ -883,14 +917,33 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         } else if cfg.gravity.pm_slab && cfg.gravity.solver == SolverKind::Pm {
             let nm = cfg.gravity.pm_grid_size;
             let p = rt.size() as usize;
-            if nm % p != 0 {
-                return Err(CliError::InvalidConfig(
-                    format!("pm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0").into(),
+            if p > nm {
+                // P > nm → slab 1D imposible; validar que pencil 2D sea factible.
+                let (py, pz) = PencilLayout2D::factorize(nm, p);
+                if py * pz != p || nm % py != 0 || nm % pz != 0 {
+                    return Err(CliError::InvalidConfig(
+                        format!(
+                            "pencil_2d (Fase 46): no existe factorización válida \
+                             para nm={nm} y P={p}. Se requiere P ≤ nm² con nm%py==0 y nm%pz==0."
+                        )
+                        .into(),
+                    ));
+                }
+                rt.root_eprintln(&format!(
+                    "[gadget-ng] PM PENCIL 2D (Fase 46): P={p} > nm={nm}; \
+                     grilla {py}×{pz}, escala hasta P≤nm²={}.",
+                    nm * nm
                 ));
+            } else {
+                if nm % p != 0 {
+                    return Err(CliError::InvalidConfig(
+                        format!("pm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0").into(),
+                    ));
+                }
+                rt.root_eprintln(
+                    "[gadget-ng] PM SLAB (Fase 20): FFT distribuida alltoall O(nm³/P) + slab decomposition.",
+                );
             }
-            rt.root_eprintln(
-                "[gadget-ng] PM SLAB (Fase 20): FFT distribuida alltoall O(nm³/P) + slab decomposition.",
-            );
         } else if cfg.gravity.pm_distributed && cfg.gravity.solver == SolverKind::Pm {
             rt.root_eprintln(
                 "[gadget-ng] PM DISTRIBUIDO (Fase 19): allreduce O(nm³) reemplaza allgather O(N·P).",
@@ -1013,17 +1066,28 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let eta = cfg.timestep.eta;
         let max_level = cfg.timestep.max_level;
         let criterion = cfg.timestep.criterion;
+        let kappa_h_hier = cfg.timestep.kappa_h;
+
+        // Acoplamiento gravitacional cosmológico: G_eff = G · a³ (convención QKSL/GADGET-4).
+        // Se usa para la aceleración inicial y para cada evaluación de fuerzas en el paso.
+        // Con cosmología desactivada, g_hier = g (comportamiento newtoniano).
+        let g_hier_init = if cosmo_state.is_some() {
+            gravity_coupling_qksl(g, a_current)
+        } else {
+            g
+        };
+
         // Reutilizar HierarchicalState del checkpoint, o crear uno nuevo.
         let mut h_state = h_state_resume.take().unwrap_or_else(|| {
             let mut hs = HierarchicalState::new(local.len());
-            // Aceleraciones iniciales para el primer kick.
+            // Aceleraciones iniciales para el primer kick con acoplamiento cosmológico.
             rt.allgatherv_state(&local, total, &mut global_pos, &mut global_mass);
             let init_idx: Vec<usize> = local.iter().map(|p| p.global_id).collect();
             solver.accelerations_for_indices(
                 &global_pos,
                 &global_mass,
                 eps2,
-                g,
+                g_hier_init,
                 &init_idx,
                 &mut scratch,
             );
@@ -1038,6 +1102,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let step_start = Instant::now();
             let mut this_comm: u64 = 0;
             let mut this_grav: u64 = 0;
+
+            // Acoplamiento G·a³ fijo al inicio del paso (mismo que el path leapfrog cosmo).
+            // El valor de 'a' se actualiza dentro de hierarchical_kdk_step al final del paso.
+            let g_step = if cosmo_state.is_some() {
+                gravity_coupling_qksl(g, a_current)
+            } else {
+                g
+            };
+
             let cosmo_arg = cosmo_state
                 .as_ref()
                 .map(|(params, _)| (params, &mut a_current));
@@ -1050,6 +1123,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 max_level,
                 criterion,
                 cosmo_arg,
+                kappa_h_hier,
                 |parts, active_local, acc| {
                     let t0 = Instant::now();
                     rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
@@ -1061,7 +1135,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         &global_pos,
                         &global_mass,
                         eps2,
-                        g,
+                        g_step,
                         &global_idx,
                         acc,
                     );
@@ -1072,7 +1146,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, Some(&step_stats), None, None)?;
+
+            // Diagnóstico cosmológico: a_current ya fue actualizado por hierarchical_kdk_step.
+            let hier_cosmo_diag = cosmo_state.as_ref().map(|(cp, _)| CosmoDiag {
+                a: a_current,
+                z: 1.0 / a_current - 1.0,
+                v_rms: peculiar_vrms(&local, a_current),
+                delta_rms: density_contrast_rms(&local, cfg.simulation.box_size, 16),
+                hubble: hubble_param(*cp, a_current),
+                treepm: None,
+            });
+            write_diagnostic_line(
+                rt, step, &local, &diag_path, &mut diag_file,
+                Some(&step_stats), None, hier_cosmo_diag.as_ref(),
+            )?;
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
         }
@@ -1273,6 +1360,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let cosmo_periodic = cfg.cosmology.periodic;
         let box_size = cfg.simulation.box_size;
 
+        let pm_nm = cfg.gravity.pm_grid_size;
+
         // Fase 19: PM distribuido. Activo cuando periodic=true, solver=PM y pm_distributed=true.
         // En este path el allgather O(N·P) de partículas se reemplaza por un allreduce O(nm³)
         // del grid de densidad, lo que elimina la dependencia de comunicación en N.
@@ -1283,9 +1372,19 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
         // Fase 20: PM slab distribuido. FFT distribuida real mediante alltoall transposes.
         // Cada rank posee nz_local = nm/P planos Z del grid; la FFT Z se distribuye.
+        // Solo activo cuando P ≤ nm; si P > nm la FFT slab 1D no tiene suficientes planos Z.
         let use_pm_slab = cfg.gravity.pm_slab
             && cfg.cosmology.periodic
-            && cfg.gravity.solver == SolverKind::Pm;
+            && cfg.gravity.solver == SolverKind::Pm
+            && (rt.size() as usize) <= pm_nm;
+
+        // Fase 46: PM pencil 2D. Activado automáticamente cuando pm_slab=true pero P > nm.
+        // La descomposición pencil 2D usa una malla Py × Pz de procesos (P ≤ nm²),
+        // eliminando la restricción P ≤ nm del slab 1D.
+        let use_pm_pencil2d = cfg.gravity.pm_slab
+            && cfg.cosmology.periodic
+            && cfg.gravity.solver == SolverKind::Pm
+            && (rt.size() as usize) > pm_nm;
 
         // Fase 21: TreePM slab distribuido.
         // PM largo alcance: slab FFT con filtro Gaussiano (como Fase 20).
@@ -1309,11 +1408,27 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let use_treepm_pm_scatter_gather =
             cfg.gravity.treepm_pm_scatter_gather && use_treepm_sr_sfc;
 
-        let pm_nm = cfg.gravity.pm_grid_size;
-
         // Precomputar límites de slab Z para Fase 20 (solo si pm_slab activo).
         let slab_layout_opt: Option<SlabLayout> = if use_pm_slab {
             Some(SlabLayout::new(pm_nm, rt.rank() as usize, rt.size() as usize))
+        } else {
+            None
+        };
+
+        // Fase 46: PencilLayout2D para PM pencil 2D (P > nm).
+        let pencil_layout_opt: Option<PencilLayout2D> = if use_pm_pencil2d {
+            let p = rt.size() as usize;
+            let (py, pz) = PencilLayout2D::factorize(pm_nm, p);
+            if py * pz != p || pm_nm % py != 0 || pm_nm % pz != 0 {
+                return Err(CliError::InvalidConfig(
+                    format!(
+                        "pencil_2d: no existe factorización válida para nm={pm_nm} y P={p}. \
+                         Se requiere P ≤ nm² con nm % py == 0 y nm % pz == 0."
+                    )
+                    .into(),
+                ));
+            }
+            Some(PencilLayout2D::new(pm_nm, rt.rank() as usize, py, pz))
         } else {
             None
         };
@@ -1667,6 +1782,96 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             *a = *v;
                         }
                         *this_grav += t2.elapsed().as_nanos() as u64;
+                    } else if use_pm_pencil2d {
+                        // ─ Fase 46: PM pencil 2D (P > nm) ────────────────────────────────
+                        // Usa descomposición pencil 2D (Py × Pz = P) para la FFT distribuida.
+                        // Permite escalar a P ≤ nm² ranks (vs P ≤ nm del slab 1D).
+                        //
+                        // Pipeline:
+                        //   1. Depósito CIC local → allreduce global nm³
+                        //   2. Extraer slab 2D local [ny_local × nz_local × nm]
+                        //   3. solve_forces_pencil2d → fuerzas slab 2D local
+                        //   4. Allgather fuerzas → reconstruir grid global nm³
+                        //   5. Interpolación CIC local
+                        let pencil_layout = pencil_layout_opt.as_ref().unwrap();
+                        let nm = pm_nm;
+                        let pz = pencil_layout.pz;
+                        let ny_local = pencil_layout.ny_local;
+                        let nz_local = pencil_layout.nz_local;
+                        let iy_lo = pencil_layout.rank_y * ny_local;
+                        let iz_lo = pencil_layout.rank_z * nz_local;
+                        let n_ranks = pencil_layout.n_ranks;
+
+                        // 1. Depósito CIC + allreduce global.
+                        let t0 = Instant::now();
+                        let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                        let mut density =
+                            pm_dist::deposit_local(&local_pos, &local_mass, box_size, nm);
+                        rt.allreduce_sum_f64_slice(&mut density);
+                        *this_comm += t0.elapsed().as_nanos() as u64;
+
+                        // 2. Extraer slab 2D del rank actual: density_2d[iy_local][iz_local][ix].
+                        // CIC usa density[iz * nm² + iy * nm + ix].
+                        let mut density_2d = vec![0.0f64; ny_local * nz_local * nm];
+                        for iy_local_i in 0..ny_local {
+                            let iy = iy_lo + iy_local_i;
+                            for iz_local_i in 0..nz_local {
+                                let iz = iz_lo + iz_local_i;
+                                for ix in 0..nm {
+                                    density_2d[iy_local_i * nz_local * nm + iz_local_i * nm + ix]
+                                        = density[iz * nm * nm + iy * nm + ix];
+                                }
+                            }
+                        }
+                        drop(density);
+
+                        // 3. Solve pencil FFT: alltoalls dentro de subcomunicadores Y/Z.
+                        let t1 = Instant::now();
+                        let [fx_2d, fy_2d, fz_2d] = solve_forces_pencil2d(
+                            &density_2d, pencil_layout, g_cosmo, box_size, None, rt,
+                        );
+                        *this_grav += t1.elapsed().as_nanos() as u64;
+
+                        // 4. Allgather slabs de fuerza → reconstruir grids nm³ globales.
+                        let t2 = Instant::now();
+                        let all_fx = rt.allgather_f64(&fx_2d);
+                        let all_fy = rt.allgather_f64(&fy_2d);
+                        let all_fz = rt.allgather_f64(&fz_2d);
+                        *this_comm += t2.elapsed().as_nanos() as u64;
+
+                        let mut fx_global = vec![0.0f64; nm * nm * nm];
+                        let mut fy_global = vec![0.0f64; nm * nm * nm];
+                        let mut fz_global = vec![0.0f64; nm * nm * nm];
+                        for r in 0..n_ranks {
+                            let ry_r = r / pz;
+                            let rz_r = r % pz;
+                            let iy_r_lo = ry_r * ny_local;
+                            let iz_r_lo = rz_r * nz_local;
+                            for iy_l in 0..ny_local {
+                                let iy = iy_r_lo + iy_l;
+                                for iz_l in 0..nz_local {
+                                    let iz = iz_r_lo + iz_l;
+                                    for ix in 0..nm {
+                                        let src = iy_l * nz_local * nm + iz_l * nm + ix;
+                                        let dst = iz * nm * nm + iy * nm + ix;
+                                        fx_global[dst] = all_fx[r][src];
+                                        fy_global[dst] = all_fy[r][src];
+                                        fz_global[dst] = all_fz[r][src];
+                                    }
+                                }
+                            }
+                        }
+
+                        // 5. Interpolación CIC local desde el grid global.
+                        let t3 = Instant::now();
+                        let accels = pm_dist::interpolate_local(
+                            &local_pos, &fx_global, &fy_global, &fz_global, nm, box_size,
+                        );
+                        for (a, v) in acc.iter_mut().zip(accels.iter()) {
+                            *a = *v;
+                        }
+                        *this_grav += t3.elapsed().as_nanos() as u64;
                     } else if use_pm_dist {
                         // ─ Fase 19: PM distribuido ────────────────────────────────────────
                         // 1. Depósito CIC local (O(N/P) por rank).
@@ -2267,11 +2472,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         use gadget_ng_parallel::sfc::global_bbox;
 
         let sfc_kind_legacy = cfg.performance.sfc_kind;
+        let cost_weighted = cfg.decomposition.cost_weighted;
+        let ema_alpha = cfg.decomposition.ema_alpha.clamp(0.0, 1.0);
+
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
         let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
             &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
         );
+
+        // Costes EMA por partícula (indexados por posición local). Inicializados a 1.0
+        // (coste uniforme) antes de recibir la primera medición real.
+        let mut local_particle_costs: Vec<f64> = vec![1.0; local.len()];
+        // Buffer de costes crudos de cada llamada de fuerza.
+        let mut raw_costs: Vec<u64> = Vec::new();
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -2283,9 +2497,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let t_rb = Instant::now();
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let all_pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-                    &all_pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
-                );
+                if cost_weighted && all_pos_loc.len() == local_particle_costs.len() {
+                    // Balanceo ponderado por coste de árbol acumulado (EMA).
+                    sfc_decomp = SfcDecomposition::build_weighted(
+                        &all_pos_loc,
+                        &local_particle_costs,
+                        gxlo, gxhi, gylo, gyhi, gzlo, gzhi,
+                        rt.size(),
+                        sfc_kind_legacy,
+                    );
+                } else {
+                    sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
+                        &all_pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
+                    );
+                }
                 this_comm += t_rb.elapsed().as_nanos() as u64;
             }
 
@@ -2293,15 +2518,25 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let t_domain = Instant::now();
             rt.exchange_domain_sfc(&mut local, &sfc_decomp);
             this_comm += t_domain.elapsed().as_nanos() as u64;
+            // Ajustar costes locales tras la migración (nuevas partículas reciben coste 1.0).
+            if local.len() != local_particle_costs.len() {
+                local_particle_costs.resize(local.len(), 1.0);
+            }
             scratch.resize(local.len(), Vec3::zero());
 
             let sfc_snap = sfc_decomp.clone();
+            // Flag para decidir si recoger costes en esta evaluación.
+            let collect_costs = cost_weighted;
             let mut force_eval = |parts: &[Particle], acc: &mut [Vec3]| {
                 let t0 = Instant::now();
                 let halos = rt.exchange_halos_sfc(parts, &sfc_snap, hw);
                 this_comm += t0.elapsed().as_nanos() as u64;
                 let t1 = Instant::now();
-                compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
+                if collect_costs {
+                    compute_forces_local_tree_with_costs(parts, &halos, theta, g, eps2, acc, &mut raw_costs);
+                } else {
+                    compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
+                }
                 this_grav += t1.elapsed().as_nanos() as u64;
             };
             match integrator_kind {
@@ -2312,6 +2547,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     yoshida4_kdk_step(&mut local, dt, &mut scratch, &mut force_eval);
                 }
             }
+
+            // Actualizar costes EMA con los valores del paso recién completado.
+            if cost_weighted && raw_costs.len() == local_particle_costs.len() {
+                for (ema, &raw) in local_particle_costs.iter_mut().zip(raw_costs.iter()) {
+                    let new_cost = (raw as f64).max(1.0);
+                    *ema = ema_alpha * new_cost + (1.0 - ema_alpha) * *ema;
+                }
+            }
+
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;

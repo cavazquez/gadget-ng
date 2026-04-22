@@ -98,6 +98,7 @@ fn lpt2_config(seed: u64) -> RunConfig {
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

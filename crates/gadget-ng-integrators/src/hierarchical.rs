@@ -46,7 +46,7 @@
 //! La corrección `Δx_j` es el predictor de Störmer para partículas inactivas:
 //! sus posiciones se mejoran de O(Δt²) a O(Δt³) para la evaluación de fuerzas,
 //! sin modificar la integración simpléctica de las partículas activas.
-use gadget_ng_core::{cosmology::CosmologyParams, TimestepCriterion, Particle, Vec3};
+use gadget_ng_core::{cosmology::{CosmologyParams, hubble_param}, TimestepCriterion, Particle, Vec3};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -245,6 +245,8 @@ pub struct StepStats {
 /// - `max_level` — máximo nivel de subdivisión.
 /// - `criterion` — criterio de asignación de bin por partícula.
 /// - `cosmo` — parámetros cosmológicos y factor de escala actual (opcional).
+/// - `kappa_h` — cota cosmológica del timestep por partícula: `dt_i ≤ κ_h · a / H(a)`.
+///   Solo se aplica cuando `cosmo` también está presente. `None` deshabilita la cota.
 /// - `compute` — cierre `FnMut(&[Particle], &[usize], &mut [Vec3])`.
 ///   Rellena `out[j]` con la aceleración de `particles[active_local[j]]`.
 ///   Los índices son **locales** (posición en `particles`), no `global_id`.
@@ -261,6 +263,7 @@ pub fn hierarchical_kdk_step(
     max_level: u32,
     criterion: TimestepCriterion,
     cosmo: Option<(&CosmologyParams, &mut f64)>,
+    kappa_h: Option<f64>,
     mut compute: impl FnMut(&[Particle], &[usize], &mut [Vec3]),
 ) -> StepStats {
     assert_eq!(particles.len(), state.levels.len());
@@ -278,6 +281,19 @@ pub fn hierarchical_kdk_step(
         force_evals: 0,
         dt_min_effective: f64::MAX,
         dt_max_effective: f64::MIN,
+    };
+
+    // Pre-computar cota cosmológica del timestep: dt_i ≤ kappa_h · a / H(a).
+    // Se calcula una vez al inicio del paso con el 'a' del comienzo (conservador).
+    let cosmo_dt_max: Option<f64> = if let (Some(kh), Some((cp, a_ref))) = (kappa_h, cosmo.as_ref()) {
+        let h = hubble_param(**cp, **a_ref);
+        if h > 0.0 && kh > 0.0 {
+            Some(kh * **a_ref / h)
+        } else {
+            None
+        }
+    } else {
+        None
     };
 
     // Pre-computar sumas prefijas de factores drift/kick cosmológicos si aplica.
@@ -395,7 +411,7 @@ pub fn hierarchical_kdk_step(
                 }
 
                 // Reasignar bin según el criterio configurado.
-                let new_level = match criterion {
+                let mut new_level = match criterion {
                     TimestepCriterion::Acceleration => {
                         let acc_mag = a_new.dot(a_new).sqrt();
                         aarseth_bin(acc_mag, eps2, dt_base, eta, max_level)
@@ -404,6 +420,17 @@ pub fn hierarchical_kdk_step(
                         aarseth_bin_jerk(a_new, state.prev_acc[i], dt_prev, eps2, dt_base, eta, max_level)
                     }
                 };
+
+                // Aplicar cota cosmológica: dt_i ≤ dt_cosmo_max → nivel mínimo.
+                // dt_i = dt_base / 2^level, así que dt_i ≤ dt_cosmo_max
+                // equivale a 2^level ≥ dt_base / dt_cosmo_max.
+                if let Some(dt_cosmo_max) = cosmo_dt_max {
+                    if dt_cosmo_max > 0.0 && dt_cosmo_max < dt_base {
+                        let min_level_cosmo =
+                            ((dt_base / dt_cosmo_max).log2().ceil() as u32).min(max_level);
+                        new_level = new_level.max(min_level_cosmo);
+                    }
+                }
 
                 // Guardar aceleración actual como referencia para el próximo ciclo.
                 state.prev_acc[i] = a_new;
@@ -586,6 +613,7 @@ mod tests {
                 eta_large,
                 max_level,
                 TimestepCriterion::Acceleration,
+                None,
                 None,
                 |ps, _idx, out| {
                     out[0] = -k_spring * ps[0].position;

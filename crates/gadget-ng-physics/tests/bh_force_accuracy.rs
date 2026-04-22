@@ -63,6 +63,7 @@ fn make_config_uniform_sphere() -> RunConfig {
         timestep: TimestepSection::default(),
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 
@@ -87,6 +88,7 @@ fn make_config_plummer() -> RunConfig {
         timestep: TimestepSection::default(),
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 
@@ -808,6 +810,7 @@ fn make_config_plummer_a(a: f64, seed: u64) -> RunConfig {
         timestep: TimestepSection::default(),
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

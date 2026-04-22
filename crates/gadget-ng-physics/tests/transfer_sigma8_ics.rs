@@ -110,6 +110,7 @@ fn eh_config(seed: u64) -> RunConfig {
             a_init: 0.02,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 
@@ -159,6 +160,7 @@ fn legacy_config(seed: u64) -> RunConfig {
             a_init: 0.02,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

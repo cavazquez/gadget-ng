@@ -73,6 +73,7 @@ fn eds_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCon
             a_init,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 
@@ -108,6 +109,7 @@ fn lcdm_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCo
             a_init,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

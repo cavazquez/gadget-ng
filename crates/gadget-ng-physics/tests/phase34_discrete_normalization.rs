@@ -478,6 +478,7 @@ fn make_config(seed: u64, n: usize) -> RunConfig {
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

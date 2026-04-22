@@ -26,6 +26,7 @@ fn root_mass_and_com_match_particles() {
         timestep: Default::default(),
         cosmology: Default::default(),
         units: Default::default(),
+        decomposition: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();

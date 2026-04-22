@@ -113,6 +113,7 @@ fn run_hierarchical(steps: u64, dt: f64, eta: f64, max_level: u32) -> f64 {
             max_level,
             TimestepCriterion::Acceleration,
             None,
+            None,
             gravity_two_body,
         );
     }
@@ -289,6 +290,7 @@ fn hierarchical_jerk_criterion_energy_conserved() {
             eta,
             max_level,
             TimestepCriterion::Jerk,
+            None,
             None,
             gravity_two_body,
         );

@@ -25,6 +25,7 @@ fn small_lattice_cfg() -> RunConfig {
         timestep: Default::default(),
         cosmology: Default::default(),
         units: Default::default(),
+        decomposition: Default::default(),
     }
 }
 

@@ -211,6 +211,7 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

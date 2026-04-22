@@ -155,6 +155,7 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

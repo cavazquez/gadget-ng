@@ -17,6 +17,9 @@ pub struct RunConfig {
     /// Sistema de unidades físicas (opcional; `enabled = false` por defecto).
     #[serde(default)]
     pub units: UnitsSection,
+    /// Configuración de descomposición de dominio (opcional; balanceo por coste de árbol).
+    #[serde(default)]
+    pub decomposition: DecompositionConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -809,6 +812,12 @@ pub struct TimestepSection {
     /// `None` (default) → usar `dt_base` como máximo.
     #[serde(default)]
     pub dt_max: Option<f64>,
+    /// Cota cosmológica del timestep por partícula: `dt_i ≤ κ_h · a / H(a)`.
+    /// Solo se aplica en el path jerárquico con cosmología activa.
+    /// `None` (default) → sin cota cosmológica en el rebinning jerárquico.
+    /// Valor típico: 0.02–0.05.
+    #[serde(default)]
+    pub kappa_h: Option<f64>,
 }
 
 fn default_eta() -> f64 {
@@ -828,6 +837,7 @@ impl Default for TimestepSection {
             criterion: TimestepCriterion::default(),
             dt_min: None,
             dt_max: None,
+            kappa_h: None,
         }
     }
 }
@@ -981,6 +991,42 @@ impl UnitsSection {
         // H₀ en unidades internas = h0_km_s_mpc × (velocity_in_km_s / (1000 × length_in_kpc))
         let h0_int = h0_km_s_mpc * self.velocity_in_km_s / (1000.0 * self.length_in_kpc);
         1.0 / h0_int
+    }
+}
+
+// ── DecompositionConfig ───────────────────────────────────────────────────────
+
+/// Configuración de la descomposición de dominio SFC y balanceo de carga.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecompositionConfig {
+    /// Si `true`, los cutpoints de la SFC se calculan por **prefix-sum de costes**
+    /// de árbol en lugar de por conteo uniforme de partículas.
+    ///
+    /// Requiere que el solver sea Barnes-Hut (o compatible con `accelerations_with_costs`).
+    /// En solvers que no devuelven costes, este flag se ignora silenciosamente.
+    ///
+    /// Default: `false` (compatible con comportamiento anterior).
+    #[serde(default)]
+    pub cost_weighted: bool,
+
+    /// Factor de suavizado exponencial (EMA) para los costes por partícula entre pasos.
+    /// `costs_new = alpha * costs_step + (1 - alpha) * costs_prev`.
+    ///
+    /// Valores típicos: 0.2–0.5. Default: `0.3`.
+    #[serde(default = "default_ema_alpha")]
+    pub ema_alpha: f64,
+}
+
+fn default_ema_alpha() -> f64 {
+    0.3
+}
+
+impl Default for DecompositionConfig {
+    fn default() -> Self {
+        Self {
+            cost_weighted: false,
+            ema_alpha: default_ema_alpha(),
+        }
     }
 }
 

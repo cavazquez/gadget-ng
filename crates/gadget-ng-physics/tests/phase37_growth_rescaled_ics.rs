@@ -167,6 +167,7 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool, mode: Mode) -> RunConfi
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

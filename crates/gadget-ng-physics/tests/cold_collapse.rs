@@ -78,6 +78,7 @@ fn collapse_config() -> RunConfig {
         timestep: TimestepSection::default(),
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

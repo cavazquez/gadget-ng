@@ -1,5 +1,5 @@
 //! Solver Barnes-Hut: implementa [`gadget_ng_core::GravitySolver`].
-use crate::octree::Octree;
+use crate::octree::{walk_stats_begin, walk_stats_end, Octree};
 use gadget_ng_core::{GravitySolver, MacSoftening, Vec3};
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +34,34 @@ impl Default for BarnesHutGravity {
     }
 }
 
+impl BarnesHutGravity {
+    fn walk_one(
+        &self,
+        tree: &Octree,
+        xi: Vec3,
+        gi: usize,
+        g: f64,
+        eps2: f64,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+    ) -> Vec3 {
+        tree.walk_accel_multipole(
+            xi,
+            gi,
+            g,
+            eps2,
+            self.theta,
+            global_positions,
+            global_masses,
+            self.multipole_order,
+            self.use_relative_criterion,
+            self.err_tol_force_acc,
+            self.softened_multipoles,
+            self.mac_softening,
+        )
+    }
+}
+
 impl GravitySolver for BarnesHutGravity {
     fn accelerations_for_indices(
         &self,
@@ -52,20 +80,38 @@ impl GravitySolver for BarnesHutGravity {
         let tree = Octree::build(global_positions, global_masses);
         for (k, &gi) in global_indices.iter().enumerate() {
             let xi = global_positions[gi];
-            out[k] = tree.walk_accel_multipole(
-                xi,
-                gi,
-                g,
-                eps2,
-                self.theta,
-                global_positions,
-                global_masses,
-                self.multipole_order,
-                self.use_relative_criterion,
-                self.err_tol_force_acc,
-                self.softened_multipoles,
-                self.mac_softening,
-            );
+            out[k] = self.walk_one(&tree, xi, gi, g, eps2, global_positions, global_masses);
+        }
+    }
+
+    /// Variante con rastreo de coste por partícula.
+    ///
+    /// Rellena `costs[k]` con el número de nodos abiertos (`opened_nodes`) durante el
+    /// walk de la partícula `global_indices[k]`. Este coste es una medida del trabajo
+    /// del árbol y se usa para el balanceo de carga ponderado en la SFC.
+    fn accelerations_with_costs(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+        costs: &mut Vec<u64>,
+    ) {
+        assert_eq!(global_positions.len(), global_masses.len());
+        assert_eq!(global_indices.len(), out.len());
+        costs.clear();
+        if global_positions.is_empty() {
+            return;
+        }
+        let tree = Octree::build(global_positions, global_masses);
+        for (k, &gi) in global_indices.iter().enumerate() {
+            let xi = global_positions[gi];
+            walk_stats_begin();
+            out[k] = self.walk_one(&tree, xi, gi, g, eps2, global_positions, global_masses);
+            let stats = walk_stats_end();
+            costs.push(stats.opened_nodes);
         }
     }
 }

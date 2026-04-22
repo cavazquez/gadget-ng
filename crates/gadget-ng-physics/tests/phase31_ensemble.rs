@@ -148,6 +148,7 @@ fn make_config(
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

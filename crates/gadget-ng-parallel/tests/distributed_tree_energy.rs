@@ -61,6 +61,7 @@ fn distributed_tree_serial_kinetic_bounded() {
         timestep: Default::default(),
         cosmology: Default::default(),
         units: Default::default(),
+        decomposition: Default::default(),
     };
 
     let rt = SerialRuntime;
@@ -147,6 +148,7 @@ fn halo_exchange_serial_returns_empty() {
         timestep: Default::default(),
         cosmology: Default::default(),
         units: Default::default(),
+        decomposition: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let rt = SerialRuntime;

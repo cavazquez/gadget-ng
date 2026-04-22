@@ -14,9 +14,11 @@
 pub mod cic;
 pub mod distributed;
 pub mod fft_poisson;
+pub mod pencil_fft;
 pub mod slab_fft;
 pub mod slab_pm;
 pub mod solver;
 
+pub use pencil_fft::{solve_forces_pencil2d, PencilLayout2D};
 pub use slab_fft::SlabLayout;
 pub use solver::PmSolver;

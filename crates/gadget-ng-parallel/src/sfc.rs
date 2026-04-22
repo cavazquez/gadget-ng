@@ -390,6 +390,107 @@ impl SfcDecomposition {
         }
     }
 
+    /// Construye la descomposición SFC con **balanceo por coste ponderado**.
+    ///
+    /// En lugar de dividir el dominio en segmentos de igual número de partículas
+    /// (cuantiles de conteo), divide en segmentos de **igual suma de pesos** acumulados
+    /// a lo largo de la curva SFC (cuantiles de prefix-sum).
+    ///
+    /// ## Parámetros
+    /// - `positions` — posiciones locales (todas las partículas del rank local).
+    /// - `weights` — coste por partícula (p. ej. `opened_nodes` del walk BH).
+    ///   Debe tener la misma longitud que `positions`. Valores ≤ 0 se tratan como 1.
+    /// - Los demás parámetros tienen el mismo significado que en [`build_with_bbox_and_kind`].
+    ///
+    /// ## Invariante MPI
+    /// Todos los ranks deben ver exactamente la **misma** lista ordenada de
+    /// `(key, weight)` globales. El caller es responsable de pasar los datos globales
+    /// (ya reunidos con allgather o equivalente) en `positions` y `weights`.
+    pub fn build_weighted(
+        positions: &[Vec3],
+        weights: &[f64],
+        x_lo: f64,
+        x_hi: f64,
+        y_lo: f64,
+        y_hi: f64,
+        z_lo: f64,
+        z_hi: f64,
+        n_ranks: i32,
+        kind: SfcKind,
+    ) -> Self {
+        assert_eq!(
+            positions.len(),
+            weights.len(),
+            "build_weighted: positions.len() != weights.len()"
+        );
+        let n_ranks = n_ranks.max(1);
+        let n = positions.len();
+        if n == 0 {
+            return Self {
+                x_lo,
+                x_hi,
+                y_lo,
+                y_hi,
+                z_lo,
+                z_hi,
+                cutpoints: vec![u64::MAX / n_ranks as u64; (n_ranks - 1) as usize],
+                n_ranks,
+                kind,
+            };
+        }
+
+        let key_fn: Box<dyn Fn(Vec3) -> u64> = match kind {
+            SfcKind::Morton => Box::new(move |p: Vec3| {
+                particle_morton(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
+            }),
+            SfcKind::Hilbert => Box::new(move |p: Vec3| {
+                particle_hilbert(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
+            }),
+        };
+
+        // Generar pares (clave, peso) y ordenar por clave SFC.
+        let mut kw: Vec<(u64, f64)> = positions
+            .iter()
+            .zip(weights.iter())
+            .map(|(&p, &w)| (key_fn(p), w.max(1.0)))
+            .collect();
+        kw.sort_unstable_by_key(|&(k, _)| k);
+
+        let total_weight: f64 = kw.iter().map(|&(_, w)| w).sum();
+        let target_per_rank = total_weight / n_ranks as f64;
+
+        // Calcular cutpoints por prefix-sum de pesos.
+        let mut cutpoints = Vec::with_capacity((n_ranks - 1) as usize);
+        let mut acc = 0.0_f64;
+        let mut rank_idx = 1_i32;
+        for i in 0..n {
+            acc += kw[i].1;
+            if acc >= target_per_rank * rank_idx as f64 && rank_idx < n_ranks {
+                cutpoints.push(kw[i.min(n - 1)].0);
+                rank_idx += 1;
+                if rank_idx >= n_ranks {
+                    break;
+                }
+            }
+        }
+        // Rellenar cutpoints faltantes si no se alcanzaron todos los umbrales.
+        while cutpoints.len() < (n_ranks - 1) as usize {
+            cutpoints.push(kw[n - 1].0);
+        }
+
+        Self {
+            x_lo,
+            x_hi,
+            y_lo,
+            y_hi,
+            z_lo,
+            z_hi,
+            cutpoints,
+            n_ranks,
+            kind,
+        }
+    }
+
     /// Devuelve el rango propietario de una clave SFC dada.
     #[inline]
     pub fn rank_for(&self, key: u64) -> i32 {

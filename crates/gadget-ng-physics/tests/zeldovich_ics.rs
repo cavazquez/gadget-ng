@@ -97,6 +97,7 @@ fn zel_config(seed: u64, spectral_index: f64, amplitude: f64) -> RunConfig {
             a_init: 0.02,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 
@@ -326,6 +327,7 @@ fn zel_pk_follows_power_law() {
             a_init: 0.02,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     };
 
     let parts = build_particles(&cfg).expect("IC build N16");

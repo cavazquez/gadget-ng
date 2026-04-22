@@ -28,6 +28,7 @@ fn lattice_cfg(n: usize) -> RunConfig {
         timestep: TimestepSection::default(),
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

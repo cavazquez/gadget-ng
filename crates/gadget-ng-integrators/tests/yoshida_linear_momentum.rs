@@ -32,6 +32,7 @@ fn lattice_config() -> RunConfig {
         timestep: Default::default(),
         cosmology: Default::default(),
         units: Default::default(),
+        decomposition: Default::default(),
     }
 }
 

@@ -151,4 +151,15 @@ impl ParallelRuntime for SerialRuntime {
         overlap_work();
         vec![Vec::new()]
     }
+
+    fn alltoallv_f64_subgroup(&self, sends: &[Vec<f64>], _color: i32) -> Vec<Vec<f64>> {
+        // En serial el subgrupo tiene un solo miembro (self).
+        // self-comunicación: devolvemos lo que enviamos a nosotros mismos.
+        assert_eq!(
+            sends.len(),
+            1,
+            "serial: subgrupo debe tener exactamente 1 miembro"
+        );
+        vec![sends[0].clone()]
+    }
 }

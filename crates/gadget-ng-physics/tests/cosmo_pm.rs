@@ -80,6 +80,7 @@ fn eds_pm_config(n: usize) -> RunConfig {
             a_init: 1.0,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

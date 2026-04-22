@@ -526,6 +526,65 @@ impl ParallelRuntime for MpiRuntime {
         result
     }
 
+    fn alltoallv_f64_subgroup(&self, sends: &[Vec<f64>], color: i32) -> Vec<Vec<f64>> {
+        use mpi::topology::Color;
+
+        let world = self.world();
+        let sub_comm = world
+            .split_by_color(Color::with_value(color))
+            .expect("alltoallv_f64_subgroup: split_by_color devolvió None");
+
+        let size = sub_comm.size() as usize;
+        assert_eq!(
+            sends.len(),
+            size,
+            "alltoallv_f64_subgroup: sends.len() ({}) debe ser igual al tamaño del subgrupo ({})",
+            sends.len(),
+            size
+        );
+
+        // Intercambiar conteos via Alltoall dentro del subcomunicador.
+        let send_counts: Vec<Count> = sends.iter().map(|v| v.len() as Count).collect();
+        let mut recv_counts = vec![0 as Count; size];
+        sub_comm.all_to_all_into(&send_counts[..], &mut recv_counts[..]);
+
+        // Construir sendbuf y displacements.
+        let mut sendbuf: Vec<f64> = Vec::new();
+        let mut send_displs: Vec<Count> = Vec::with_capacity(size);
+        let mut sdisp: Count = 0;
+        for v in sends.iter() {
+            send_displs.push(sdisp);
+            sendbuf.extend_from_slice(v);
+            sdisp += v.len() as Count;
+        }
+
+        // Construir recvbuf y displacements.
+        let mut recv_displs: Vec<Count> = Vec::with_capacity(size);
+        let mut rdisp: Count = 0;
+        for &c in &recv_counts {
+            recv_displs.push(rdisp);
+            rdisp += c;
+        }
+        let mut recvbuf = vec![0.0f64; rdisp as usize];
+
+        {
+            let send_part = Partition::new(&sendbuf[..], send_counts, &send_displs[..]);
+            let mut recv_part =
+                PartitionMut::new(&mut recvbuf[..], recv_counts.clone(), &recv_displs[..]);
+            sub_comm.all_to_all_varcount_into(&send_part, &mut recv_part);
+        }
+
+        // Dividir buffer recibido en subvectores por rango dentro del subgrupo.
+        let mut result = Vec::with_capacity(size);
+        let mut off = 0usize;
+        for &c in &recv_counts {
+            let n = c as usize;
+            result.push(recvbuf[off..off + n].to_vec());
+            off += n;
+        }
+        result
+    }
+
     fn exchange_halos_by_z_periodic(
         &self,
         local: &[Particle],

@@ -145,6 +145,7 @@ fn config_2lpt(seed: u64) -> RunConfig {
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 
@@ -197,6 +198,7 @@ fn config_sigma_test(seed: u64, use_2lpt: bool) -> RunConfig {
             a_init: A_INIT,
         },
         units: UnitsSection::default(),
+        decomposition: Default::default(),
     }
 }
 

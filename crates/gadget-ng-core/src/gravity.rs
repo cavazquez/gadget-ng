@@ -22,6 +22,29 @@ pub trait GravitySolver: Send + Sync {
         global_indices: &[usize],
         out: &mut [Vec3],
     );
+
+    /// Como [`accelerations_for_indices`] pero también devuelve el coste de interacción
+    /// estimado (p. ej. nodos abiertos del árbol) para cada partícula en `global_indices`.
+    ///
+    /// El vector `costs` se rellena con un valor `u64` por entrada de `global_indices`.
+    /// La implementación por defecto llama a [`accelerations_for_indices`] y deja `costs`
+    /// vacío (coste cero implícito), compatible con solvers que no rastrean costes.
+    ///
+    /// Implementaciones que soporten rastreo de coste deben rellenar `costs` con la
+    /// métrica de trabajo por partícula (p. ej. `opened_nodes` del walk Barnes-Hut).
+    fn accelerations_with_costs(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+        costs: &mut Vec<u64>,
+    ) {
+        costs.clear();
+        self.accelerations_for_indices(global_positions, global_masses, eps2, g, global_indices, out);
+    }
 }
 
 /// Gravedad directa O(N²) globalmente consistente: mismo orden de suma j=0..N-1 que serial.

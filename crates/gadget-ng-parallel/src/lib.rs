@@ -218,4 +218,21 @@ pub trait ParallelRuntime {
         sends: Vec<Vec<f64>>,
         overlap_work: &mut dyn FnMut(),
     ) -> Vec<Vec<f64>>;
+
+    // ── Subcomunicadores (Pencil FFT 2D) ─────────────────────────────────────
+
+    /// Alltoall dentro de un subgrupo identificado por `color`.
+    ///
+    /// Todos los ranks que comparten el mismo `color` forman un subgrupo.
+    /// `sends[i]` = datos a enviar al i-ésimo miembro del subgrupo (rank local 0, 1, …).
+    /// Devuelve `received[i]` = datos recibidos del i-ésimo miembro.
+    ///
+    /// Se usa en la FFT pencil 2D para intercambiar datos dentro de filas (Y-group)
+    /// o columnas (Z-group) de la malla 2D de procesos, evitando la sobrecarga
+    /// de un alltoall con todos P ranks cuando solo se necesita comunicar con Py o Pz.
+    ///
+    /// En MPI: usa `MPI_Comm_split(color)` para crear un subcomunicador temporal
+    /// y realiza un alltoallv dentro de él.
+    /// En serial (P=1): el subgrupo tiene un único miembro; devuelve `vec![sends[0].clone()]`.
+    fn alltoallv_f64_subgroup(&self, sends: &[Vec<f64>], color: i32) -> Vec<Vec<f64>>;
 }

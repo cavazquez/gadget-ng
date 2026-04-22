@@ -99,6 +99,7 @@ fn run_kepler(criterion: TimestepCriterion, steps: u64, dt: f64, eta: f64, max_l
             max_level,
             criterion,
             None,
+            None,
             gravity_two_body,
         );
     }
@@ -213,9 +214,10 @@ fn step_stats_levels_not_degenerate() {
             EPS2,
             eta,
             max_level,
-            TimestepCriterion::Acceleration,
-            None,
-            gravity_two_body,
+        TimestepCriterion::Acceleration,
+        None,
+        None,
+        gravity_two_body,
         );
         all_stats.push(stats);
     }
