@@ -9,7 +9,7 @@ description = "Visualizador de partículas N-body: renderer wgpu + export PNG"
 gadget-ng-core = { path = "../gadget-ng-core" }
 wgpu = "29.0.1"
 pollster = "0.4.0"
-png = "0.17"
+png = "0.18"
 
 [dev-dependencies]
 tempfile = "3"
