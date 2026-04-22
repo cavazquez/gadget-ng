@@ -397,6 +397,91 @@ Fit log-log sobre {32,64,128}: `C=29.77, α=1.953`.
 
 ---
 
+## Espectro no-lineal: Halofit (Takahashi+2012)
+
+El módulo `gadget_ng_analysis::halofit` calcula el espectro de potencias
+**no-lineal** a partir del lineal, usando el modelo de ajuste de
+Takahashi et al. (2012) que mejora el Halofit original de Smith et al. (2003).
+
+### Uso básico
+
+```rust
+use gadget_ng_analysis::halofit::{halofit_pk, p_linear_eh, HalofitCosmo};
+use gadget_ng_core::{amplitude_for_sigma8, EisensteinHuParams};
+use gadget_ng_core::cosmology::{growth_factor_d_ratio, CosmologyParams};
+
+let cosmo = HalofitCosmo { omega_m0: 0.315, omega_de0: 0.685 };
+let e = EisensteinHuParams { omega_m: 0.315, omega_b: 0.049, h: 0.674, t_cmb: 2.7255 };
+let cp = CosmologyParams::new(0.315, 0.685, 0.1);
+let amp = amplitude_for_sigma8(0.8, 0.965, &e);
+
+// Espectro lineal a z=1 (a=0.5).
+let a = 0.5;
+let d = growth_factor_d_ratio(cp, a, 1.0);  // D(z=1)/D(z=0)
+let p_lin_z1 = |k: f64| p_linear_eh(k, amp, 0.965, d, &e);
+
+// Evaluar Halofit en varios k.
+let k_vals = vec![0.05, 0.1, 0.3, 1.0, 3.0, 10.0];
+let z = 1.0 / a - 1.0;  // z=1
+let p_nl = halofit_pk(&k_vals, &p_lin_z1, &cosmo, z);
+
+for (k, p) in &p_nl {
+    let ratio = p / p_lin_z1(*k);
+    println!("k={k:.2}: P_nl/P_lin = {ratio:.3}");
+}
+```
+
+### Salida esperada (Planck18, z=0)
+
+| k [h/Mpc] | P_nl/P_lin |
+|-----------|-----------|
+| 0.05      | 1.000     |
+| 0.10      | 1.000     |
+| 0.30      | 1.067     |
+| 1.00      | 4.021     |
+| 3.00      | 19.38     |
+| 10.0      | 127.9     |
+
+### Comparación con P_sim corregido
+
+Para comparar el espectro simulado con Halofit:
+
+```rust
+use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
+use gadget_ng_analysis::power_spectrum::power_spectrum;
+
+// 1. Medir P(k) en la simulación.
+let pk_raw = power_spectrum(&positions, &masses, box_internal, n_mesh);
+
+// 2. Corregir con R(N).
+let model = RnModel::phase47_default();
+let pk_corr = correct_pk(&pk_raw, box_internal, n_mesh, None, &model);
+
+// 3. Convertir k de código a h/Mpc.
+let h = 0.674;
+let box_mpc_h = 100.0;
+let k_hmpc: Vec<f64> = pk_corr.iter().map(|b| b.k * h / box_mpc_h).collect();
+
+// 4. Halofit a la misma z de la simulación.
+let p_nl_pred = halofit_pk(&k_hmpc, &p_lin_fn, &cosmo, z_sim);
+
+// 5. Comparar.
+for (bin, (k, p_hf)) in pk_corr.iter().zip(p_nl_pred.iter()) {
+    let ratio = bin.pk / p_hf;
+    println!("k={k:.3} h/Mpc: P_sim/P_halofit = {ratio:.3}");
+}
+```
+
+### Limitaciones
+
+- Solo ΛCDM plano (w = −1, Ω_k = 0).
+- Espectro de transferencia EH: el boost a k~0.3 h/Mpc puede estar
+  subestimado ~40 % respecto a CAMB. Para comparaciones con observaciones
+  usar CAMB/CLASS.
+- Válido para z ≤ 10 y k ∈ [0.01, 30] h/Mpc (rango de calibración).
+
+---
+
 ## Benchmarks
 
 ```bash
