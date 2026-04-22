@@ -690,3 +690,120 @@ cargo bench --workspace --no-run
 ```
 
 Los resultados HTML se generan en `target/criterion/`.
+
+---
+
+## Función de masa de halos: Press-Schechter y Sheth-Tormen (Phase 52)
+
+### Motivación
+
+La función de masa de halos (HMF) `dn/d ln M` es una de las predicciones más
+importantes de la cosmología: da el número comoving de halos por unidad de
+volumen y por intervalo logarítmico de masa. Es la base para comparar con
+catálogos de halos observacionales (cúmulos de galaxias, lentes gravitacionales,
+encuestas SZ) y para validar la formación de estructura de gadget-ng.
+
+### Física implementada
+
+**σ(M, z)** — varianza de fluctuaciones de densidad:
+
+```
+σ²(M, z) = [D(z)/D(0)]² × (1/2π²) ∫₀^∞ k³ P(k, z=0) W²(kR) dk
+```
+
+donde `R = (3M / 4πρ̄_m)^{1/3}` es el radio de Lagrange y `W(x)` el filtro
+top-hat esférico. La normalización usa `P(k) = amp² × k^n_s × T²_EH(k)` con
+`amp = sigma8 / sqrt(sigma_sq_unit)` (convenio del IC Zel'dovich).
+
+**Press-Schechter (1974)**:
+
+```
+dn/d ln M = (ρ̄_m/M) × |d ln σ⁻¹/d ln M| × f_PS(σ)
+f_PS(σ) = √(2/π) × (δ_c/σ) × exp(−δ_c²/(2σ²))        δ_c = 1.686
+```
+
+**Sheth-Tormen (1999)** (colapso elipsoidal):
+
+```
+f_ST(σ) = A × √(2a/π) × (δ_c/σ) × [1 + (σ²/(a δ_c²))^p] × exp(−a δ_c²/(2σ²))
+          a = 0.707,  p = 0.3,  A = 0.3222
+```
+
+ST predice más halos masivos que PS (~20–50% más a M > 10¹⁴ M_sun/h) y
+es un mejor ajuste a simulaciones N-body.
+
+### Unidades
+
+| Cantidad  | Unidad                        |
+|-----------|-------------------------------|
+| Masa      | M_sun/h                       |
+| Longitud  | Mpc/h                         |
+| ρ̄_m      | (M_sun/h)/(Mpc/h)³ = Ω_m × 2.775×10¹¹ |
+| dn/d ln M | h³/Mpc³                       |
+
+### API
+
+```rust
+use gadget_ng_analysis::halo_mass_function::{
+    HmfParams, mass_function_table, sigma_m, total_halo_density,
+};
+
+// Parámetros de Planck 2018 (preset)
+let params = HmfParams::planck2018();
+
+// σ(M = 10¹³ M_sun/h) a z = 1
+let sigma = sigma_m(1e13, &params, 1.0);
+println!("σ(10¹³ M_sun/h, z=1) = {sigma:.4}");
+
+// Tabla HMF (30 bins log-espaciados entre 10¹⁰ y 10¹⁵ M_sun/h a z=0)
+let table = mass_function_table(&params, 1e10, 1e15, 30, 0.0);
+for bin in &table {
+    println!(
+        "log10(M) = {:.2}  σ = {:.4}  dn/dlnM_PS = {:.3e}  dn/dlnM_ST = {:.3e}",
+        bin.log10_m, bin.sigma, bin.n_ps, bin.n_st
+    );
+}
+
+// Densidad total integrada
+let (n_ps, n_st) = total_halo_density(&table);
+println!("n_total: PS={n_ps:.3e}  ST={n_st:.3e}  [h³/Mpc³]");
+```
+
+### Cosmología personalizada
+
+```rust
+use gadget_ng_analysis::halo_mass_function::HmfParams;
+
+let params = HmfParams {
+    omega_m: 0.30,
+    omega_lambda: 0.70,
+    h: 0.70,
+    sigma8: 0.80,
+    n_s: 0.96,
+    omega_b: 0.046,
+    t_cmb: 2.7255,
+};
+```
+
+### Valores de referencia (Planck 2018, z=0)
+
+| log₁₀(M) | σ(M)   | dn/d ln M — PS | dn/d ln M — ST |
+|-----------|--------|----------------|----------------|
+| 10.0      | 3.74   | 3.0×10⁻¹       | 2.3×10⁻¹       |
+| 12.0      | 2.05   | 5.0×10⁻³       | 3.4×10⁻³       |
+| 14.0      | 0.86   | 3.0×10⁻⁵       | 2.5×10⁻⁵       |
+
+n(>10¹⁴ M_sun/h) ≈ 3×10⁻⁵ h³/Mpc³ — coherente con catálogos ACT/SPT/eROSITA.
+
+### Comparación con catálogos FoF
+
+El módulo `gadget_ng_analysis::fof` provee halos FoF con masa `M = N_part × m_part`.
+Para comparar cuantitativamente con la HMF analítica se recomienda:
+
+- Usar cajas de ≥100 Mpc/h con N ≥ 128³ partículas.
+- Resolver P(k) de la simulación con `gadget_ng_analysis::power_spectrum`.
+- Normalizar la HMF al mismo σ₈ y cosmología que la simulación.
+
+La comparación cualitativa (Test 7 de Phase 52) verifica que las masas FoF
+caen en el rango donde σ(M) < 10 (halos colapsados).
+

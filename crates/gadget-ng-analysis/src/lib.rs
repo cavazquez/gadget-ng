@@ -25,6 +25,7 @@
 
 pub mod catalog;
 pub mod fof;
+pub mod halo_mass_function;
 pub mod halofit;
 pub mod pk_correction;
 pub mod power_spectrum;
@@ -34,6 +35,11 @@ pub use catalog::{
     AnalysisParams, AnalysisResult,
 };
 pub use fof::FofHalo;
+pub use halo_mass_function::{
+    hmf_press_schechter, hmf_sheth_tormen, lagrange_radius, mass_function_table,
+    multiplicity_ps, multiplicity_st, sigma_m, total_halo_density, HmfBin, HmfParams,
+    DELTA_C, RHO_CRIT_H2,
+};
 pub use halofit::{halofit_pk, p_linear_eh, HalofitCosmo};
 pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_rn, RnModel};
 pub use power_spectrum::PkBin;
