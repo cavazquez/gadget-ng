@@ -33,5 +33,5 @@ pub use catalog::{
     AnalysisParams, AnalysisResult,
 };
 pub use fof::FofHalo;
-pub use pk_correction::{a_grid, correct_pk, RnModel};
+pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_rn, RnModel};
 pub use power_spectrum::PkBin;

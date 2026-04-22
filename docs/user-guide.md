@@ -310,6 +310,93 @@ Cada snapshot es un directorio con:
 
 ---
 
+## Análisis in-situ: P(k) corregido
+
+El crate `gadget-ng-analysis` calcula el espectro de potencias `P(k)` directamente
+sobre las posiciones de partículas con CIC + FFT 3D (deconvolución sinc).
+
+### Medición básica
+
+```rust
+use gadget_ng_analysis::power_spectrum::power_spectrum;
+
+let pk = power_spectrum(&positions, &masses, box_size, mesh);
+// pk: Vec<PkBin { k, pk, n_modes }> ordenado por k
+```
+
+### Corrección absoluta A_grid·R(N)
+
+El estimador interno `P_measured(k)` difiere del espectro físico por dos factores:
+
+```text
+P_measured(k) = A_grid(N) · R(N) · P_phys(k)
+
+  A_grid(N) = 2·V² / N⁹     (Phase 34 — analítico)
+  R(N)      = C · N^{-α}     (Phase 35/47 — calibrado numéricamente)
+```
+
+Para obtener `P_phys(k)` en (Mpc/h)³:
+
+```rust
+use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
+
+// R(N) calibrado para N ∈ {8, 16, 32, 64, 128}
+let model = RnModel::phase47_default();
+
+// IMPORTANTE: box_mpc_h = None porque R(N) ya absorbe el factor de volumen.
+let pk_phys = correct_pk(&pk_measured, box_internal, n_mesh, None, &model);
+```
+
+**Nota sobre unidades:** `R(N)` fue calibrado comparando `P_measured` (box interno = 1)
+contra `P_cont` en (Mpc/h)³. La conversión ya está absorbida en `R`. Pasar
+`box_mpc_h = Some(L)` aplicaría un factor `L³` adicional incorrecto.
+
+### Con sustracción de shot noise
+
+A alto k, el ruido de Poisson `P_shot = V/N_part` puede dominar la señal.
+Sustráelo antes de aplicar la corrección:
+
+```rust
+use gadget_ng_analysis::pk_correction::correct_pk_with_shot_noise;
+
+let pk_clean = correct_pk_with_shot_noise(
+    &pk_measured,
+    box_internal,
+    n_mesh,
+    None,           // box_mpc_h = None (misma razón que arriba)
+    n_particles,
+    &model,
+);
+// bins donde P_measured ≤ P_shot quedan en pk = 0.0
+```
+
+### Calibrar R(N) para un N personalizado
+
+```rust
+use gadget_ng_analysis::pk_correction::measure_rn;
+use gadget_ng_core::EisensteinHuParams;
+
+let eh = EisensteinHuParams::default();
+let (r256, cv) = measure_rn(256, &[42, 137, 271, 314], 1.0, 100.0, 0.8, 0.965, &eh);
+println!("R(256) = {r256:.6}  CV = {:.1}%", cv * 100.0);
+```
+
+La función genera ICs ZA in-process y mide P(k) sin necesitar una simulación completa.
+
+### Valores de referencia Phase 47
+
+| N | R(N) medido | CV | Fuente |
+|---|-------------|-----|--------|
+| 8 | 0.415382 | ~23% | Phase 35 |
+| 16 | 0.139629 | ~14% | Phase 35 |
+| 32 | 0.033752 | 3.6% | Phase 35/47 |
+| 64 | 0.008834 | 1.4% | Phase 35/47 |
+| 128 | **0.002252** | **1.0%** | **Phase 47** |
+
+Fit log-log sobre {32,64,128}: `C=29.77, α=1.953`.
+
+---
+
 ## Benchmarks
 
 ```bash
