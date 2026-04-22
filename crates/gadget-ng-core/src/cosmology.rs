@@ -303,6 +303,94 @@ pub fn adaptive_dt_cosmo(
     dt_grav.min(dt_hub).min(dt_max)
 }
 
+/// **Phase 50 — G auto-consistente para caja unitaria (ρ̄ = 1).**
+///
+/// Calcula la constante gravitacional `G` (en unidades de código) que satisface
+/// la ecuación de Friedmann para ΛCDM en una caja unitaria con densidad media
+/// de materia `ρ̄_m = 1`.
+///
+/// ## Condición de consistencia
+///
+/// La ecuación de Friedmann (componente de materia) a `a = a_init` es:
+///
+/// ```text
+/// H₀² = (8π·G·ρ̄_m) / 3 · Ω_m     (para ρ̄_total = ρ_crit)
+/// ```
+///
+/// Con `ρ̄_m = 1` (total_mass / box_volume en código):
+///
+/// ```text
+/// G_code = 3 · Ω_m · H₀² / (8π)
+/// ```
+///
+/// Esta condición garantiza que la ecuación del crecimiento lineal (Meszaros):
+///
+/// ```text
+/// δ'' + 2H δ' = 4πG ρ̄_m δ = (3/2) Ω_m H₀² / a³ · δ
+/// ```
+///
+/// produce el factor de crecimiento `D(a)` calculado por `growth_factor_d`.
+///
+/// ## Diagnóstico de inconsistencia
+///
+/// Si se usa `G = 1.0` con `H₀ = 0.1` y `Ω_m = 0.315`, el ratio efectivo
+/// es `(4πG·ρ̄_m)/H₀² = 4π/0.01 ≈ 1257`, mientras que la física correcta
+/// exige `(3/2)·Ω_m ≈ 0.47`. El coupling gravitacional está ~2660× sobreestimado
+/// (para evoluciones largas) o ~2660× subrepresentado (cuando se usa G·a³
+/// con G=1 muy pequeño relativo a H₀²), lo que impide reproducir D²(a).
+///
+/// ## Ejemplo de uso
+///
+/// ```rust,ignore
+/// use gadget_ng_core::cosmology::{g_code_consistent, gravity_coupling_qksl};
+///
+/// let omega_m = 0.315;
+/// let h0_code = 0.1;   // en unidades internas (1/t_sim)
+/// let g_phys = g_code_consistent(omega_m, h0_code);  // ≈ 3.76e-4
+///
+/// // En el loop de integración:
+/// let g_cosmo = gravity_coupling_qksl(g_phys, a);   // g_phys · a³
+/// ```
+///
+/// # Parámetros
+///
+/// - `omega_m`: fracción de materia Ω_m (sin dimensiones).
+/// - `h0`: H₀ en unidades internas (1/t_sim). Debe ser la **misma** H₀ usada
+///   en `CosmologyParams` para que la consistencia sea exacta.
+pub fn g_code_consistent(omega_m: f64, h0: f64) -> f64 {
+    3.0 * omega_m * h0 * h0 / (8.0 * std::f64::consts::PI)
+}
+
+/// Verifica la condición de consistencia cosmológica y devuelve el error relativo.
+///
+/// Comprueba que `G`, `H₀` y `ρ̄_m` satisfacen la ecuación de Friedmann:
+///
+/// ```text
+/// H₀² = 8π·G·ρ̄_m / 3  ·  1/Ω_m
+/// ```
+///
+/// Es decir, verifica `|G - G_consistente|/G_consistente` donde
+/// `G_consistente = 3·Ω_m·H₀²/(8π·ρ̄_m)`.
+///
+/// ## Uso
+///
+/// ```rust,ignore
+/// let err = cosmo_consistency_error(G, OMEGA_M, H0, rho_bar);
+/// assert!(err < 1e-10, "Parámetros inconsistentes: {err:.3e}");
+/// ```
+///
+/// # Retorno
+///
+/// Error relativo `|G - G_expect|/G_expect` en [0, ∞). Un valor < 1e-10
+/// indica consistencia numérica exacta.
+pub fn cosmo_consistency_error(g: f64, omega_m: f64, h0: f64, rho_bar: f64) -> f64 {
+    if rho_bar <= 0.0 || omega_m <= 0.0 || h0 <= 0.0 {
+        return f64::INFINITY;
+    }
+    let g_expect = 3.0 * omega_m * h0 * h0 / (8.0 * std::f64::consts::PI * rho_bar);
+    (g - g_expect).abs() / g_expect
+}
+
 /// H(a) = H₀ · √(Ω_m·a⁻³ + Ω_Λ) — parámetro de Hubble en unidades internas.
 pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
     let h_sq = params.omega_m / (a * a * a) + params.omega_lambda;

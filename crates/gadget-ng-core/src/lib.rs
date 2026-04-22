@@ -28,9 +28,9 @@ pub use transfer_fn::{
     transfer_eh_nowiggle, EisensteinHuParams,
 };
 pub use cosmology::{
-    adaptive_dt_cosmo, density_contrast_rms, gravity_coupling_qksl, growth_factor_d,
-    growth_factor_d_ratio, growth_rate_f, hubble_param, minimum_image, peculiar_vrms,
-    wrap_coord, wrap_position, CosmologyParams,
+    adaptive_dt_cosmo, cosmo_consistency_error, density_contrast_rms, g_code_consistent,
+    gravity_coupling_qksl, growth_factor_d, growth_factor_d_ratio, growth_rate_f, hubble_param,
+    minimum_image, peculiar_vrms, wrap_coord, wrap_position, CosmologyParams,
 };
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;

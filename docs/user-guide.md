@@ -544,6 +544,78 @@ consistencia con los parámetros cosmológicos.
 
 ---
 
+## Unidades físicamente consistentes (Phase 50)
+
+### El problema de consistencia
+
+Los tests históricos usan `G = 1.0` y `H₀ = 0.1`, pero la ecuación de
+Friedmann requiere que para una caja unitaria (ρ̄_m = 1):
+
+```text
+H₀² = 8π·G·ρ̄_m·Ω_m / 3
+⟹  G_consistente = 3·Ω_m·H₀² / (8π)
+```
+
+Con `Ω_m = 0.315` y `H₀ = 0.1`:
+
+```text
+G_consistente ≈ 3.76×10⁻⁴     (no 1.0)
+```
+
+El ratio efectivo `(4πGρ̄)/H₀²` con `G=1` es **2660× mayor** que el valor
+correcto `(3/2)Ω_m = 0.4725`. Esto hace que para evoluciones largas la
+simulación no pueda reproducir el factor de crecimiento D(a) analítico.
+
+### API: `g_code_consistent` y `cosmo_consistency_error`
+
+```rust
+use gadget_ng_core::{g_code_consistent, cosmo_consistency_error};
+
+// G correcto para H₀=0.1, Ω_m=0.315, caja unitaria (ρ̄_m=1):
+let g = g_code_consistent(0.315, 0.1);   // ≈ 3.76e-4
+
+// Verificar consistencia de parámetros existentes:
+let err = cosmo_consistency_error(g, 0.315, 0.1, 1.0);
+assert!(err < 1e-10);   // consistencia exacta
+
+// Diagnóstico de parámetros legacy:
+let err_legacy = cosmo_consistency_error(1.0, 0.315, 0.1, 1.0);
+// err_legacy ≈ 2659.5 → G_legacy 2660× inconsistente
+```
+
+### Uso en la simulación
+
+```rust
+use gadget_ng_core::{g_code_consistent, cosmology::gravity_coupling_qksl};
+
+let omega_m = 0.315;
+let h0_code = 0.1;
+let g_phys = g_code_consistent(omega_m, h0_code);
+
+// En el loop de integración:
+let g_cosmo = gravity_coupling_qksl(g_phys, a);   // g_phys · a³
+// kick: Δp = g_cosmo × F_PM × kick_factor
+```
+
+### Relación con UnitsSection
+
+Cuando `UnitsSection.enabled = true`, `effective_g()` calcula el G interno
+a partir de `G_KPC_MSUN_KMPS × mass_in_msun / length_in_kpc / velocity_in_km_s²`.
+La función `g_code_consistent` es el análogo directo para simualciones en
+unidades de código puras (sin conversión a kpc/Msun/km·s⁻¹).
+
+### Limitaciones de resolución
+
+Para una verificación cuantitativa de `P(k)/P₀(k) ≈ D²(a)` se necesita
+resolución suficiente (`N ≥ 64`) para reducir la varianza estadística del
+espectro de potencias. En debug con `N = 8`, el ratio mediano puede diferir
+hasta un 50 % de D²(a) solo por ruido de varianza cósmica con pocos modos.
+
+En modo `release` con `N ≥ 64` y múltiples semillas, el error en D²(a) cae
+por debajo del 10 %.
+
+---
+
 ## Benchmarks
 
 ```bash
