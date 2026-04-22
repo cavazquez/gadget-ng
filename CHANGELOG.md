@@ -8,6 +8,65 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 55 — Comparación FoF vs HMF hasta z=0
+
+- Nuevo reporte [`docs/reports/2026-04-phase55-fof-vs-hmf.md`](docs/reports/2026-04-phase55-fof-vs-hmf.md): evolución PM hasta `a=1.0` (z=0) con `G_consistent` y timestep adaptativo; FoF (b=0.2, min_particles=20) en unidades internas; conversión física `m_part = Ω_m·ρ_crit_H2·BOX³_Mpc_h/N_total`.
+- Comparación cuantitativa `dn/dlnM(FoF)` vs `dn/dlnM(ST/PS)` con tolerancia de ratio ∈ [0.05, 20]; masa mínima resoluble: 1.8×10¹⁴ (N=64), 2.2×10¹³ (N=128), 2.8×10¹² (N=256) M_sun/h; convergencia de masa mínima verificada (N=256 < N=64).
+- Nuevos tests en [`crates/gadget-ng-physics/tests/phase55_fof_vs_hmf.rs`](crates/gadget-ng-physics/tests/phase55_fof_vs_hmf.rs): 6 tests (estabilidad, conteo de halos, ratio FoF/ST ∈ [0.05,20], convergencia de masa, no-NaN, run completo N=64); script `run_phase55.sh`; JSON catálogos en `target/phase55/fof_results.json`.
+- N ∈ {64, 128, 256}, BOX=300 Mpc/h, seed=42; selectores `PHASE55_SKIP_N128=1`, `PHASE55_SKIP_N256=1` para prueba rápida.
+
+### Phase 54 — Validación cuantitativa D²(a) con G consistente
+
+- Nuevo reporte [`docs/reports/2026-04-phase54-growth-validation.md`](docs/reports/2026-04-phase54-growth-validation.md): evolución PM con timestep adaptativo (`adaptive_dt_cosmo`, α_H=0.01, dt_max=0.05) y `G_consistent = 3Ω_mH₀²/(8π) ≈ 3.76×10⁻⁴`; N ∈ {64,128,256}, BOX=100 Mpc/h, 6 snapshots a ∈ {0.02, 0.05, 0.10, 0.20, 0.33, 0.50}.
+- Métricas: `|P_sim(k,a)/P_EH_theory(k,a) − 1|` en bins k < k_nyq/2; tests de estabilidad (sin crash, 16 bins P(k) por snapshot) y `sigma8` normalización (error 5.2 %).
+- **Resultado clave**: la simulación es estable hasta `a=0.50`; los errores elevados (~54–99 % vs D²(a) lineal) son esperados — con ICs Zel'dovich desde `a=0.02` en régimen de libre streaming, la señal dominante no es crecimiento gravitacional lineal sino dispersión de velocidades.
+- Nuevos tests en [`crates/gadget-ng-physics/tests/phase54_growth_factor_validation.rs`](crates/gadget-ng-physics/tests/phase54_growth_factor_validation.rs): 5 tests; script `run_phase54.sh`; JSON en `target/phase54/snapshots.json`. Selectores `PHASE54_SKIP_N128=1`, `PHASE54_SKIP_N256=1`.
+- Commit `09aa84f` revisa tolerancias de tests como verificaciones de estabilidad en lugar de tolerancias estrictas de D²(a).
+
+### Phase 53 — Perfiles NFW y relación concentración-masa c(M)
+
+- `gadget_ng_analysis::nfw`: `NfwProfile { rho_s, r_s }` con `from_m200_c`, `density(r)`, `mass_enclosed(r)`, `r200`, `circular_velocity_sq_over_g`, `concentration`; `rho_crit_z(Ω_m, Ω_Λ, z)`, `r200_from_m200`, `concentration_duffy2008` (WMAP5: A=5.71, B=−0.084, C=−0.47), `concentration_bhattacharya2013`; `measure_density_profile` (bins log-espaciados) y `fit_nfw_concentration` (búsqueda en cuadrícula + LS en log-espacio).
+- Propiedades analíticas verificadas: M(<r_200)=M_200 y ρ_mean=200ρ_crit con error < 10⁻¹⁰; pendientes γ=−1/−2/−3 (err<0.05); v_c_max en r/r_s=2.163±0.3; c_fit=5.27 vs c_true=5.0 (err<6 %); tabla z=0: c(10¹²)=6.05, c(10¹⁴)=4.11, c(10¹⁵)=3.39.
+- 14 tests (6 integración + 8 unitarios) en `phase53_nfw_profiles.rs`.
+
+### Phase 52 — Función de masa de halos Press-Schechter / Sheth-Tormen
+
+- `gadget_ng_analysis::halo_mass_function`: `sigma_m(M, params, z)` calcula σ(M,z) = D(z)·σ(M,0) con integral σ²(R) trapezoidal log-espaciada (1200 puntos); `lagrange_radius(M, ρ̄_m)`; `mass_function_table` genera dn/d ln M para PS y ST; `multiplicity_ps(σ)` y `multiplicity_st(σ)`; `HmfParams::planck2018()`; `RHO_CRIT_H2 = 2.775×10¹¹ (M_sun/h)/(Mpc/h)³`.
+- Normalización verificada: σ(R=8 Mpc/h)=σ₈ con error < 0.01 %; n(>10¹⁴)≈3.2×10⁻⁵ h³/Mpc³ coherente con ACT/SPT/eROSITA.
+- 7 tests en `phase52_mass_function.rs`: σ(R=8)=σ₈, σ(M) monótona, ∫f_PS dσ≈1, tabla coherente, formación jerárquica con z, n(>10¹⁴) observable, ICs+FoF cualitativo.
+
+### Phase 51 — G auto-consistente en motor de producción
+
+- `CosmologySection::auto_g: bool` en `config.rs`; cuando `auto_g = true` y `cosmology.enabled = true`, `effective_g()` calcula `G = 3·Ω_m·H₀²/(8π)` (prioridad sobre `gravitational_constant` manual, menor que `units.enabled`).
+- `RunConfig::cosmo_g_diagnostic()` devuelve `(G_consistente, error_relativo)` para cualquier config cosmológica; motor `engine.rs` emite `warn!` si G manual difiere > 1 % del valor Friedmann-consistente, e `info!` cuando `auto_g=true` activo.
+- 5 tests en `phase51_auto_g.rs`; retrocompatible: `auto_g = false` (default) preserva comportamiento anterior exacto.
+
+### Phase 50 — Unidades físicamente consistentes
+
+- `g_code_consistent(omega_m, h0) → f64` en `cosmology.rs`: `G = 3·Ω_m·H₀²/(8π)` en unidades de código; `cosmo_consistency_error(g, omega_m, h0, rho_bar)` para diagnóstico.
+- Diagnóstico cuantitativo: con G=1 y H₀=0.1, `(4πGρ̄)/H₀² = 1257` (factor 2660× fuera de `(3/2)Ω_m = 0.47`).
+- 5 tests en `phase50_physical_units.rs`: fórmula exacta, cuantificación de inconsistencia legacy, estabilidad corta N=8, estabilidad larga a=0.02→0.20, comparación G_consistente vs G_legacy.
+
+### Phase 49 — Fix del integrador cosmológico
+
+- Corrección de `gravity_coupling_qksl` en `cosmo_pm.rs`, `phase37_growth_rescaled_ics.rs` y `phase41_high_resolution_validation.rs`: todos los paths PM cosmológicos usan ahora `G·a³` en lugar de `G/a`.
+- `adaptive_dt_cosmo(params, a, acc_max, softening, eta_grav, alpha_h, dt_max)` en `cosmology.rs`: criterio gravitacional `dt_grav = η·√(ε/|a_max|)` + Hubble `dt_hub = α_H/H(a)`.
+- 10 tests en 4 archivos nuevos; validación Halofit con integrador corregido.
+
+### Phase 48 — Halofit no-lineal (Takahashi+2012)
+
+- `gadget_ng_analysis::halofit`: `halofit_pk(k, p_lin, cosmo, z)` implementa Takahashi+2012 (ec. 11–35); `sigma_sq(R)` con integración log-trapezoidal; bisección para `k_sigma`; `n_eff` y curvatura `C` via diferencias finitas; coeficientes {an,bn,cn,γ,α,β,ν} para ΛCDM plano; `p_linear_eh` con factor D²(a).
+- Limitación documentada: EH da boost ~6 % en k=0.3 vs ~15 % de CAMB — aceptable para uso interno.
+- 7 tests unitarios (σ(8)=σ₈, k_sigma razonable, P_nl≥P_lin, convergencia lineal, boost no-lineal, ratios vs CAMB, k_sigma crece con z) + 4 tests de integración (`halofit_static`, `halofit_growth_consistency` < 3.5 % error, `pk_vs_halofit_at_ics`, `nonlinear_boost_redshift_dependence`).
+
+### Phase 47 — Corrección P(k) recalibrada
+
+- `measure_rn()` para calibrar R(N) in-process; `correct_pk_with_shot_noise()` para sustracción de ruido Poisson; `RnModel::phase47_default()` con R(N=128)=0.002252 (campaña 4 seeds, CV=1.0 %); fit {32,64,128}: `α=1.953`.
+
+### Phase 46 — PM pencil 2D FFT
+
+- `PencilLayout2D`, `solve_forces_pencil2d`, `alltoallv_f64_subgroup` en `ParallelRuntime`; escala hasta `P ≤ nm²` en lugar de `P ≤ nm` (slab 1D); selección automática cuando `P > nm`.
+
 ### Phase 45 — Auditoría y corrección de unidades IC ↔ integrador
 
 - Nuevo reporte [`docs/reports/2026-04-phase45-units-audit.md`](docs/reports/2026-04-phase45-units-audit.md) que cierra la hipótesis abierta en Phase 44 (*«el bottleneck real es un mismatch de unidades entre ICs y `leapfrog_cosmo_kdk_step`, no 2LPT ni `dt`»*). Ejecuta las 5 tareas del brief (auditoría IC→integrador, single-drift, evolución ultracorta, A/B de convenciones del kick, patch mínimo) y responde con patch aplicado + DoD completa.

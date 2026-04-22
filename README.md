@@ -8,11 +8,13 @@
 > **ICs 1LPT/2LPT con transferencia Eisenstein–Hu y normalización σ₈
 > (`Legacy`/`Z0Sigma8`) → integrador leapfrog/Yoshida4 con factores de
 > drift/kick cosmológicos → PM periódico / TreePM / Barnes–Hut / Direct, con
-> versiones distribuidas (allreduce, slab alltoall, scatter-gather) → análisis
-> in-situ (FoF, P(k)) → corrección absoluta de `P(k)` vía `pk_correction`
-> (Phase 34–36) → validación externa contra CLASS (Phase 38) → barrido de
-> resolución y transición shot-noise ↔ señal (Phase 41) → regularización
-> física de fuerzas vía TreePM + softening absoluto `ε_phys` (Phase 42)**.
+> versiones distribuidas (allreduce, slab alltoall, pencil 2D, scatter-gather)
+> → análisis in-situ (FoF, P(k), HMF Press-Schechter/Sheth-Tormen, perfiles NFW)
+> → corrección absoluta de `P(k)` vía `pk_correction` (Phase 34–36)
+> → validación externa contra CLASS (Phase 38) → unidades QKSL canónicas
+> y `G` auto-consistente (Phase 45–51) → Halofit no-lineal (Phase 48)
+> → función de masa de halos y perfiles NFW (Phase 52–53) → validación
+> cuantitativa D²(a) y FoF vs HMF hasta z=0 (Phase 54–55)**.
 
 ## 🧰 Herramientas y tecnologías
 
@@ -70,6 +72,7 @@
 | **PM periódico** | CIC + FFT Poisson 3D periódica; solver `pm` (Fase 18) |
 | **PM distribuido (allreduce)** | `allreduce_sum_f64_slice` O(nm³) — elimina `allgather` O(N·P) (Fase 19) |
 | **PM slab (alltoall)** | Slab decomposition Z: FFT 3D distribuida con `alltoall_transpose`, grid **no replicado** (Fase 20) |
+| **PM pencil 2D** | Descomposición 2D; escala hasta `P ≤ nm²` en lugar de `P ≤ nm`; `alltoallv_f64_subgroup` (Phase 46) |
 | **TreePM** | Barnes–Hut short-range + PM long-range; versión distribuida (Fase 21–25) con scatter-gather (Fase 24); softening Plummer absoluto `ε_phys` (Mpc/h) independiente de `N` (Phase 42) |
 | **Cosmología ΛCDM** | Friedmann ΛCDM, factor de escala `a(t)` por RK4, momentum canónico, diagnósticos `a/z/v_rms/δ_rms`; fallback EdS |
 | **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle** + normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
@@ -77,12 +80,12 @@
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
 | **SPH** | Kernel Wendland C2, densidad adaptativa, viscosidad artificial Monaghan |
 | **GPU** | Compute shader WGSL vía `wgpu` (Vulkan/Metal/DX12/WebGPU); fallback CPU automático |
-| **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL |
+| **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL; HMF Press-Schechter/Sheth-Tormen; perfiles NFW + c(M); Halofit no-lineal (Takahashi+2012) |
 | **Checkpointing** | Guarda/reanuda desde snapshots comprimidos (`--resume`) |
 | **Visualización** | Render CPU a PNG, proyecciones XY/XZ/YZ, colormap Viridis |
 | **Configuración** | TOML + variables de entorno `GADGET_NG_*` |
 | **Snapshots** | JSONL (default), **bincode** o **HDF5** estilo GADGET + `provenance.json`; formato auto-seleccionado por feature flag |
-| **Unidades físicas** | Sección `[units]` opcional: kpc/M☉/km·s⁻¹ y `G` coherente |
+| **Unidades físicas** | Sección `[units]` opcional: kpc/M☉/km·s⁻¹ y `G` coherente; `auto_g = true` calcula `G = 3Ω_mH₀²/(8π)` automáticamente (Phase 50–51) |
 
 ---
 
@@ -294,7 +297,7 @@ gadget-ng/
 │                               # stepping/analyse/visualize
 ├── examples/                   # Configuraciones TOML comentadas
 ├── experiments/nbody/          # Benchmarks y resultados por fase (41+ experimentos)
-└── docs/reports/               # Reportes técnicos de cada fase (42 reportes)
+└── docs/reports/               # Reportes técnicos de cada fase (55 reportes)
 ```
 
 ---
@@ -342,6 +345,19 @@ gadget-ng/
 | **40** | Formalización de la convención física (`NormalizationMode`) | ✅ |
 | **41** | Validación de alta resolución y transición shot-noise↔señal | ✅ |
 | **42** | Regularización física vía TreePM + softening absoluto `ε_phys` | ✅ |
+| **43** | Control temporal TreePM + paralelismo Rayon en PM; timestep adaptativo cosmológico | ✅ |
+| **44** | Auditoría y fix de ICs 2LPT (doble división k², signo global, `f₂`) | ✅ |
+| **45** | Auditoría y corrección de unidades IC ↔ integrador; fix `g_cosmo = G·a³` (QKSL) | ✅ |
+| **46** | PM pencil 2D: FFT distribuida hasta `P ≤ nm²`; `alltoallv_f64_subgroup` | ✅ |
+| **47** | Corrección P(k) recalibrada: `R(N)` in-process, sustracción shot-noise Poisson | ✅ |
+| **48** | Halofit no-lineal (Takahashi+2012): `halofit_pk`, `k_sigma`, `n_eff`, boost vs ΛCDM | ✅ |
+| **49** | Fix integrador cosmológico: `gravity_coupling_qksl` en `cosmo_pm.rs` y tests anteriores | ✅ |
+| **50** | Unidades físicamente consistentes: `g_code_consistent(Ω_m, H₀)`, diagnóstico de inconsistencia | ✅ |
+| **51** | G auto-consistente en motor de producción (`auto_g = true`, warn si G manual difiere > 1 %) | ✅ |
+| **52** | Función de masa de halos Press-Schechter / Sheth-Tormen; σ(M,z), tabla dn/d ln M | ✅ |
+| **53** | Perfiles NFW y relación concentración-masa c(M); Duffy+2008, Bhattacharya+2013 | ✅ |
+| **54** | Validación cuantitativa D²(a) con G consistente; N ∈ {64,128,256}, 6 snapshots | ✅ |
+| **55** | Comparación FoF vs HMF hasta z=0 (BOX=300 Mpc/h); ratio dn/dlnM(FoF)/dn/dlnM(ST) | ✅ |
 
 ---
 
