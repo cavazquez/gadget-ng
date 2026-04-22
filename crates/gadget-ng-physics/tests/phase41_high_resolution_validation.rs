@@ -162,6 +162,7 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
+                auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),

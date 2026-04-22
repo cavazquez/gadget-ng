@@ -816,6 +816,27 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let (lo, hi) = gid_block_range(total, rt.rank(), rt.size());
 
     let g = cfg.effective_g();
+
+    // ── Diagnóstico de consistencia cosmológica de G (Phase 51) ──────────────
+    if let Some((g_consistent, rel_err)) = cfg.cosmo_g_diagnostic() {
+        if cfg.cosmology.auto_g {
+            // auto_g activo: G fue calculado por g_code_consistent, informar.
+            rt.root_eprintln(&format!(
+                "[gadget-ng] cosmology.auto_g=true → G auto-consistente: {g:.4e} \
+                 (3·Ω_m·H₀²/8π, condición de Friedmann satisfecha)"
+            ));
+        } else if rel_err > 0.01 {
+            // G manual está >1% fuera de la condición de Friedmann.
+            rt.root_eprintln(&format!(
+                "[gadget-ng] ADVERTENCIA: G ({g:.4e}) inconsistente con cosmología \
+                 ({:.1}% fuera de G_consistente={g_consistent:.4e}). \
+                 Usa [cosmology] auto_g = true para corregir automáticamente.",
+                rel_err * 100.0
+            ));
+        }
+        // Si rel_err ≤ 1% y auto_g = false: G manual ya es consistente, no se avisa.
+    }
+
     let eps2 = cfg.softening_squared();
     let theta = cfg.gravity.theta;
     let solver = make_solver(cfg);

@@ -121,6 +121,7 @@ fn make_config(seed: u64, grid: usize, nm: usize) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
+                auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),

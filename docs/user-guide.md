@@ -601,8 +601,62 @@ let g_cosmo = gravity_coupling_qksl(g_phys, a);   // g_phys · a³
 
 Cuando `UnitsSection.enabled = true`, `effective_g()` calcula el G interno
 a partir de `G_KPC_MSUN_KMPS × mass_in_msun / length_in_kpc / velocity_in_km_s²`.
-La función `g_code_consistent` es el análogo directo para simualciones en
+La función `g_code_consistent` es el análogo directo para simulaciones en
 unidades de código puras (sin conversión a kpc/Msun/km·s⁻¹).
+
+---
+
+## G auto-consistente en el motor de producción (Phase 51)
+
+### Activar con `auto_g = true`
+
+```toml
+[cosmology]
+enabled      = true
+auto_g       = true      # ← nuevo en Phase 51
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+```
+
+Con `auto_g = true`, el motor calcula automáticamente:
+
+```
+G = 3 × Ω_m × H₀² / (8π) ≈ 3.76×10⁻⁴
+```
+
+y lo usa en toda la integración. El campo `simulation.gravitational_constant`
+se ignora para el modo cosmológico.
+
+### Advertencia automática de inconsistencia
+
+Sin `auto_g`, si `simulation.gravitational_constant` difiere más de 1 % del
+valor Friedmann-consistente, el motor emite en stderr:
+
+```
+[gadget-ng] ADVERTENCIA: G (1.0000e0) inconsistente con cosmología
+(265854.9% fuera de G_consistente=3.7600e-4).
+Usa [cosmology] auto_g = true para corregir automáticamente.
+```
+
+### Jerarquía de prioridad de G
+
+| Prioridad | Condición | G efectiva |
+|-----------|-----------|-----------|
+| 1 (máxima) | `units.enabled = true` | `G_KPC_MSUN_KMPS × mass/length/v²` |
+| 2 | `cosmology.auto_g = true` | `3·Ω_m·H₀²/(8π)` |
+| 3 (fallback) | — | `simulation.gravitational_constant` |
+
+### Diagnóstico en código
+
+```rust
+if let Some((g_consistent, rel_err)) = cfg.cosmo_g_diagnostic() {
+    if rel_err > 0.01 {
+        eprintln!("G inconsistente: {:.1}%", rel_err * 100.0);
+    }
+}
+```
 
 ### Limitaciones de resolución
 

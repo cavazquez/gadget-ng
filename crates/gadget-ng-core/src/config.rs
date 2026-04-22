@@ -883,6 +883,29 @@ pub struct CosmologySection {
     /// Para simulaciones de alta redshift, p. ej. z=49 → `a_init = 0.02`.
     #[serde(default = "default_a_init")]
     pub a_init: f64,
+    /// Si `true`, el motor calcula automáticamente G a partir de `omega_m` y `h0`
+    /// usando la condición de Friedmann `G = 3·Ω_m·H₀²/(8π)` (ρ̄_m = 1).
+    ///
+    /// Requiere `enabled = true`. Cuando está activo, el campo
+    /// `simulation.gravitational_constant` se ignora para el modo cosmológico
+    /// y se emite un `info!` con el valor calculado. Si el campo
+    /// `simulation.gravitational_constant` difiere del G auto en más de 1 %,
+    /// también se emite un `warn!` de inconsistencia.
+    ///
+    /// Default: `false` (retrocompatible — se usa `simulation.gravitational_constant`).
+    ///
+    /// # Ejemplo TOML
+    /// ```toml
+    /// [cosmology]
+    /// enabled  = true
+    /// auto_g   = true
+    /// omega_m  = 0.315
+    /// omega_lambda = 0.685
+    /// h0       = 0.1
+    /// a_init   = 0.02
+    /// ```
+    #[serde(default)]
+    pub auto_g: bool,
 }
 
 fn default_omega_m() -> f64 {
@@ -910,6 +933,7 @@ impl Default for CosmologySection {
             omega_lambda: default_omega_lambda(),
             h0: default_h0(),
             a_init: default_a_init(),
+            auto_g: false,
         }
     }
 }
@@ -1038,13 +1062,45 @@ impl RunConfig {
         e * e
     }
 
-    /// Constante gravitacional efectiva: si `units.enabled = true` se calcula desde
-    /// las escalas de unidad; si no, se devuelve `simulation.gravitational_constant`.
+    /// Constante gravitacional efectiva en el modo de integración actual.
+    ///
+    /// Prioridad (de mayor a menor):
+    ///
+    /// 1. `units.enabled = true` → `G_int = G_KPC_MSUN_KMPS × mass/length/v²`
+    /// 2. `cosmology.enabled = true && cosmology.auto_g = true`
+    ///    → `G = 3·Ω_m·H₀²/(8π)` (condición de Friedmann para ρ̄_m=1)
+    /// 3. Fallback → `simulation.gravitational_constant`
+    ///
+    /// Para diagnosticar inconsistencias usa `cosmo_g_diagnostic`.
     pub fn effective_g(&self) -> f64 {
         if self.units.enabled {
             self.units.compute_g()
+        } else if self.cosmology.enabled && self.cosmology.auto_g {
+            crate::cosmology::g_code_consistent(self.cosmology.omega_m, self.cosmology.h0)
         } else {
             self.simulation.gravitational_constant
         }
+    }
+
+    /// Diagnóstico de consistencia cosmológica de G.
+    ///
+    /// Devuelve `Some((g_consistent, error_relativo))` cuando `cosmology.enabled = true`
+    /// y se puede calcular G auto-consistente a partir de `omega_m` y `h0`.
+    /// El error relativo mide cuánto difiere `effective_g()` del valor Friedmann-consistente.
+    ///
+    /// Devuelve `None` si la cosmología está desactivada.
+    pub fn cosmo_g_diagnostic(&self) -> Option<(f64, f64)> {
+        if !self.cosmology.enabled {
+            return None;
+        }
+        let g_consistent =
+            crate::cosmology::g_code_consistent(self.cosmology.omega_m, self.cosmology.h0);
+        let g_used = self.effective_g();
+        let rel_err = if g_consistent > 0.0 {
+            (g_used - g_consistent).abs() / g_consistent
+        } else {
+            f64::INFINITY
+        };
+        Some((g_consistent, rel_err))
     }
 }

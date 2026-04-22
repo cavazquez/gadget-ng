@@ -148,6 +148,7 @@ fn make_config_a(
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),

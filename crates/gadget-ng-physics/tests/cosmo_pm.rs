@@ -78,6 +78,7 @@ fn eds_pm_config(n: usize) -> RunConfig {
             omega_lambda: 0.0,
             h0: 0.1,
             a_init: 1.0,
+                auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
