@@ -213,6 +213,34 @@ pub fn density_contrast_rms(particles: &[Particle], box_size: f64, n_grid: usize
     (sum_sq / (ng * ng * ng) as f64).sqrt()
 }
 
+/// **Phase 45 — Acoplamiento gravitacional en la convención canónica QKSL.**
+///
+/// Devuelve el valor de `g` que debe pasarse al solver gravitacional
+/// (`fft_poisson::solve_forces*`, `GravitySolver::accelerations_for_indices`)
+/// para que, bajo la convención del integrador `leapfrog_cosmo_kdk_step`
+/// (`drift = ∫dt/a²`, `kick = ∫dt/a`, slot = `p = a²·ẋ_c`), la fuerza
+/// efectiva aplicada corresponda a `dp/dt = −∇Φ_pec` (GADGET/QKSL canónico).
+///
+/// ## Derivación
+///
+/// - Poisson peculiar comóvil:  `∇²_c Φ_pec = 4π·G·ρ̄·δ·a²`.
+/// - Solver retorna `-∇ · Φ̂_solver` con `Φ̂_solver = -4π·g_pass·ρ̂_comov/k²`.
+/// - Kick efectivo aplica `Δp = F_solver · ∫dt/a`, es decir `dp/dt = F/a`.
+/// - Para que `dp/dt · a = -∇Φ_pec`, se requiere `F_solver = a · (-∇Φ_pec)`
+///   y por tanto `g_pass = G · a³`.
+///
+/// El valor histórico `G/a` (pre-Phase 45) introducía un factor `a⁴`
+/// erróneo en la fuerza efectiva: con `a = 0.02` esto sobreestimaba
+/// `Δp` por ~6·10⁶, causando que `v_rms` pasara de ~10⁻⁹ a ~10² en
+/// decenas de pasos y que `δ_rms` saturase ≈ 1 antes de `a ≈ 0.05`.
+///
+/// Ver `docs/reports/2026-04-phase45-units-audit.md` para la auditoría
+/// empírica y la tabla A/B de convenciones.
+#[inline]
+pub fn gravity_coupling_qksl(g: f64, a: f64) -> f64 {
+    g * a * a * a
+}
+
 /// H(a) = H₀ · √(Ω_m·a⁻³ + Ω_Λ) — parámetro de Hubble en unidades internas.
 pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
     let h_sq = params.omega_m / (a * a * a) + params.omega_lambda;

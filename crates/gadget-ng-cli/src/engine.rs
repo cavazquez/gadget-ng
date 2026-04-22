@@ -5,7 +5,7 @@ use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
     build_particles_for_gid_range,
     cosmology::CosmologyParams,
-    density_contrast_rms, hubble_param, peculiar_vrms, wrap_position,
+    density_contrast_rms, gravity_coupling_qksl, hubble_param, peculiar_vrms, wrap_position,
     DirectGravity, GravitySolver, IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind,
     SolverKind, Vec3,
 };
@@ -1111,8 +1111,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let mut this_comm: u64 = 0;
             let mut this_grav: u64 = 0;
 
-            // ── Corrección comóvil: G/a al inicio del paso (correcto a O(dt)) ────
-            let g_cosmo = g / a_current;
+            // ── Corrección comóvil (Phase 45): `g · a³` al inicio del paso ───────
+            // Con la convención QKSL (`drift = ∫dt/a²`, `kick = ∫dt/a`), la fuerza
+            // que debe recibir el solver para que `dp/dt = −∇Φ_pec` es `g · a³`.
+            // El histórico `g/a` metía un factor `a⁴` de error. Ver Phase 45.
+            let g_cosmo = gravity_coupling_qksl(g, a_current);
 
             // ── Rebalanceo SFC ────────────────────────────────────────────────────
             let do_rebalance = sfc_rebalance == 0
@@ -1412,9 +1415,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             // puede cambiar local.len(); leapfrog_cosmo_kdk_step requiere scratch.len() == local.len()).
             scratch.resize(local.len(), Vec3::zero());
 
-            // Corrección de fuerza comóvil: dp/dt = -(G/a) * F_newtoniana_comóvil.
-            // Se usa el factor de escala al inicio del paso (correcto a primer orden en dt).
-            let g_cosmo = g / a_current;
+            // Corrección de fuerza comóvil (Phase 45): `g_cosmo = g · a³`.
+            // Con la convención canónica QKSL (`p = a²·ẋ_c`, `drift = ∫dt/a²`,
+            // `kick = ∫dt/a`), pasar `g · a³` al solver hace que `dp/dt = −∇Φ_pec`.
+            // El histórico `g/a` producía fuerzas ~6·10⁶× más grandes de lo
+            // correcto a `a = 0.02`, haciendo que `v_rms` explotara.
+            let g_cosmo = gravity_coupling_qksl(g, a_current);
             let mut compute_acc =
                 |parts: &[Particle], acc: &mut [Vec3], this_comm: &mut u64, this_grav: &mut u64| {
                     if use_treepm_sr_sfc {

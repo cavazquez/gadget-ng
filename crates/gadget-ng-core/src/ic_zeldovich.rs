@@ -558,6 +558,158 @@ pub fn zeldovich_ics(
     out
 }
 
+// ── Convenciones de momentum/velocidad para ICs (Phase 45) ────────────────────
+
+/// Convención usada para poblar `Particle::velocity` en los ICs de Zel'dovich.
+///
+/// En LPT, la velocidad comóvil lineal es `dx_c/dt = f·H·Ψ` donde `Ψ` es el
+/// campo de desplazamiento ya escalado por `D(a)`. Distintos integradores
+/// esperan distintos múltiplos de `a` en el slot de "velocity" del struct
+/// `Particle`:
+///
+/// | Variante           | `velocity` slot         | Drift consistente   |
+/// |--------------------|-------------------------|---------------------|
+/// | `DxDt`             | `f·H·Ψ` (= `dx_c/dt`)   | `x += v · dt`       |
+/// | `ADxDt`            | `a·f·H·Ψ`               | `x += v · dt/a`     |
+/// | `A2DxDt` / `GadgetCanonical` | `a²·f·H·Ψ` (= `p = a² ẋ_c`) | `x += v · dt/a²` |
+///
+/// Ante la convención del integrador `leapfrog_cosmo_kdk_step`
+/// (`drift = ∫ dt'/a²`), la única consistente es `A2DxDt`, que coincide
+/// con `GadgetCanonical`.
+///
+/// Se expone como enum para permitir **A/B tests de convenciones** en
+/// Phase 45 (audit de unidades IC↔integrador) sin reescribir el solver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IcMomentumConvention {
+    /// `velocity = f·H·Ψ` (velocidad comóvil pura `dx_c/dt`).
+    DxDt,
+    /// `velocity = a·f·H·Ψ` (peculiar velocity: `a · dx_c/dt`).
+    ADxDt,
+    /// `velocity = a²·f·H·Ψ` (momentum canónico GADGET-4: `p = a² · dx_c/dt`).
+    /// **Convención por defecto, usada por `zeldovich_ics`.**
+    A2DxDt,
+    /// Alias explícito de `A2DxDt` consistente con la documentación GADGET.
+    GadgetCanonical,
+}
+
+impl IcMomentumConvention {
+    /// Factor multiplicador aplicado a `Ψ` para obtener `velocity`:
+    /// `velocity = factor · Ψ` con `factor = {1, a, a²} · f · H`.
+    #[inline]
+    pub fn velocity_factor(self, a: f64, f: f64, h: f64) -> f64 {
+        match self {
+            Self::DxDt => f * h,
+            Self::ADxDt => a * f * h,
+            Self::A2DxDt | Self::GadgetCanonical => a * a * f * h,
+        }
+    }
+}
+
+/// Versión de `zeldovich_ics` que permite elegir explícitamente la
+/// [`IcMomentumConvention`]. Utilizada en auditorías de unidades (Phase 45)
+/// y en A/B tests.
+///
+/// Salvo por el factor de velocidad, el comportamiento es bit-idéntico a
+/// `zeldovich_ics` con la misma configuración. En particular:
+/// `zeldovich_ics(...) == zeldovich_ics_with_convention(..., IcMomentumConvention::A2DxDt)`.
+#[allow(clippy::too_many_arguments)]
+pub fn zeldovich_ics_with_convention(
+    cfg: &RunConfig,
+    n: usize,
+    seed: u64,
+    amplitude: f64,
+    spectral_index: f64,
+    transfer: TransferKind,
+    sigma8: Option<f64>,
+    omega_b: f64,
+    h_dimless: f64,
+    t_cmb: f64,
+    box_size_mpc_h: Option<f64>,
+    rescale_to_a_init: bool,
+    lo: usize,
+    hi: usize,
+    convention: IcMomentumConvention,
+) -> Vec<Particle> {
+    let box_size = cfg.simulation.box_size;
+    let n_part = cfg.simulation.particle_count;
+    let mass = 1.0 / n_part as f64;
+
+    let (a_init, cosmo) = if cfg.cosmology.enabled {
+        let a = cfg.cosmology.a_init;
+        let cp = CosmologyParams::new(
+            cfg.cosmology.omega_m,
+            cfg.cosmology.omega_lambda,
+            cfg.cosmology.h0,
+        );
+        (a, cp)
+    } else {
+        let cp = CosmologyParams::new(1.0, 0.0, cfg.cosmology.h0);
+        (1.0, cp)
+    };
+
+    let h_a = hubble_param(cosmo, a_init);
+    let f_a = growth_rate_f(cosmo, a_init);
+    let vel_factor = convention.velocity_factor(a_init, f_a, h_a);
+
+    let scale = if rescale_to_a_init && cfg.cosmology.enabled {
+        growth_factor_d_ratio(cosmo, a_init, 1.0)
+    } else {
+        1.0
+    };
+
+    let d = box_size / n as f64;
+
+    let spectrum_fn = build_spectrum_fn(
+        n,
+        spectral_index,
+        amplitude,
+        transfer,
+        sigma8,
+        cfg.cosmology.omega_m,
+        omega_b,
+        h_dimless,
+        t_cmb,
+        box_size_mpc_h,
+    );
+
+    let delta = generate_delta_kspace(n, seed, spectrum_fn);
+    let [mut psi_x, mut psi_y, mut psi_z] = delta_to_displacement(&delta, n, box_size);
+
+    if scale != 1.0 {
+        for v in psi_x.iter_mut() { *v *= scale; }
+        for v in psi_y.iter_mut() { *v *= scale; }
+        for v in psi_z.iter_mut() { *v *= scale; }
+    }
+
+    let mut out = Vec::with_capacity(hi.saturating_sub(lo));
+    for gid in lo..hi {
+        if gid >= n_part {
+            break;
+        }
+        let ix = gid / (n * n);
+        let rem = gid % (n * n);
+        let iy = rem / n;
+        let iz = rem % n;
+
+        let q_x = (ix as f64 + 0.5) * d;
+        let q_y = (iy as f64 + 0.5) * d;
+        let q_z = (iz as f64 + 0.5) * d;
+
+        let grid_idx = ix * n * n + iy * n + iz;
+        let psi_vec = Vec3::new(psi_x[grid_idx], psi_y[grid_idx], psi_z[grid_idx]);
+
+        let x = Vec3::new(
+            (q_x + psi_vec.x).rem_euclid(box_size),
+            (q_y + psi_vec.y).rem_euclid(box_size),
+            (q_z + psi_vec.z).rem_euclid(box_size),
+        );
+
+        let p = psi_vec * vel_factor;
+        out.push(Particle::new(gid, mass, x, p));
+    }
+    out
+}
+
 /// Versión conveniente para ICs de Fase 26 (ley de potencia sin parámetros E-H).
 ///
 /// Wrapper compatible con la firma original de Fase 26; construye los parámetros

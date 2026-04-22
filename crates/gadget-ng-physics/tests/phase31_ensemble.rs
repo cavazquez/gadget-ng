@@ -39,7 +39,7 @@
 use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
-    cosmology::CosmologyParams,
+    cosmology::{gravity_coupling_qksl, CosmologyParams},
     transfer_eh_nowiggle,
     wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
     InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
@@ -172,7 +172,7 @@ fn run_pm_n(
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
-        let g_cosmo = G / a;
+        let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors { drift, kick_half, kick_half2 };
         a = cosmo.advance_a(a, dt);
@@ -203,7 +203,7 @@ fn run_treepm_n(
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
-        let g_cosmo = G / a;
+        let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors { drift, kick_half, kick_half2 };
         a = cosmo.advance_a(a, dt);
