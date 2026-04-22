@@ -48,17 +48,22 @@ impl GravitySolver for PmSolver {
         let nm = self.grid_size;
 
         // ── 1. Asignar toda la masa al grid ───────────────────────────────────
+        #[cfg(feature = "rayon")]
+        let density = cic::assign_rayon(global_positions, global_masses, self.box_size, nm);
+        #[cfg(not(feature = "rayon"))]
         let density = cic::assign(global_positions, global_masses, self.box_size, nm);
 
         // ── 2. Resolver Poisson → fuerzas en el grid ──────────────────────────
         let [fx_grid, fy_grid, fz_grid] = fft_poisson::solve_forces(&density, g, nm, self.box_size);
 
         // ── 3. Interpolar fuerzas a las posiciones activas ────────────────────
-        // Seleccionamos solo las posiciones de las partículas activas.
         let active_pos: Vec<Vec3> = global_indices
             .iter()
             .map(|&i| global_positions[i])
             .collect();
+        #[cfg(feature = "rayon")]
+        let acc = cic::interpolate_rayon(&fx_grid, &fy_grid, &fz_grid, &active_pos, self.box_size, nm);
+        #[cfg(not(feature = "rayon"))]
         let acc = cic::interpolate(&fx_grid, &fy_grid, &fz_grid, &active_pos, self.box_size, nm);
 
         out.copy_from_slice(&acc);

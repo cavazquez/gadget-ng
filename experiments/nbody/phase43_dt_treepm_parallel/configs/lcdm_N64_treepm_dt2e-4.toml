@@ -1,0 +1,45 @@
+# ── Phase 43 — ΛCDM N=64³, TreePM + ε_phys = 0.01 Mpc/h, dt = 0.0002 ─────────
+#
+# Variante 2e-4 del barrido de Phase 43. `ε_phys = 0.01 Mpc/h` se mantiene
+# del óptimo de Phase 42. Número de pasos dimensionado para alcanzar a=0.10
+# desde a_init=0.02 con margen.
+
+[simulation]
+particle_count         = 262144
+box_size               = 1.0
+dt                     = 0.0002
+num_steps              = 400
+softening              = 1.0e-4
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions.kind.zeldovich]
+seed               = 42
+grid_size          = 64
+spectral_index     = 0.965
+amplitude          = 1.0e-4
+transfer           = "eisenstein_hu"
+sigma8             = 0.8
+omega_b            = 0.049
+h                  = 0.674
+t_cmb              = 2.7255
+box_size_mpc_h     = 100.0
+use_2lpt           = true
+normalization_mode = "z0_sigma8"
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 64
+r_split      = 0.0
+
+[output]
+snapshot_every    = 50
+diagnostics_every = 50

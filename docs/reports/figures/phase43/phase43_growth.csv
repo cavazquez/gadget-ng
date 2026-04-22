@@ -1,0 +1,4 @@
+variant,dt_nominal,is_adaptive,growth,n_steps
+adaptive_cosmo,,True,2083579354.123273,6838
+dt_2e-4,0.0002,False,2013701555.488229,1710
+dt_4e-4,0.0004,False,2212474988.2381563,855

@@ -1,7 +1,9 @@
+pub mod adaptive_dt;
 pub mod hierarchical;
 pub mod leapfrog;
 pub mod yoshida;
 
+pub use adaptive_dt::{compute_global_adaptive_dt, max_accel_magnitude, AdaptiveDtCriterion};
 pub use hierarchical::{
     aarseth_bin, aarseth_bin_jerk, hierarchical_kdk_step, HierarchicalState, StepStats,
 };
