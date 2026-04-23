@@ -698,6 +698,37 @@ fn compute_forces_local_tree_with_costs(
     }
 }
 
+/// Calcula aceleraciones solo para las partículas activas en `active_local`,
+/// usando árbol construido con `parts` + `halos` del rank vecino.
+///
+/// Variante jerárquica de `compute_forces_local_tree`: al integrador de block
+/// timesteps solo le interesan las fuerzas de las partículas activas en este
+/// subpaso; las inactivas usan el predictor de Störmer.
+///
+/// - `parts[active_local[j]]` → `acc[j]` (tamaño de `acc` = `active_local.len()`).
+/// - Índice de auto-exclusión: se pasa `active_local[j]` al walk para evitar la
+///   auto-interacción con la partícula evaluada dentro del árbol local.
+fn compute_forces_hierarchical_let(
+    parts: &[Particle],
+    halos: &[Particle],
+    active_local: &[usize],
+    theta: f64,
+    g: f64,
+    eps2: f64,
+    acc: &mut [Vec3],
+) {
+    debug_assert_eq!(acc.len(), active_local.len());
+    if parts.is_empty() || active_local.is_empty() {
+        return;
+    }
+    let all_pos: Vec<Vec3> = parts.iter().chain(halos.iter()).map(|p| p.position).collect();
+    let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
+    let tree = Octree::build(&all_pos, &all_mass);
+    for (j, &li) in active_local.iter().enumerate() {
+        acc[j] = tree.walk_accel(parts[li].position, li, g, eps2, theta, &all_pos, &all_mass);
+    }
+}
+
 /// Calcula aceleraciones para `parts` usando árbol local + nodos LET remotos.
 ///
 /// 1. Construye un árbol con solo las partículas locales.
@@ -890,6 +921,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let is_barnes_hut_eligible = cfg.gravity.solver == SolverKind::BarnesHut
         && !cfg.timestep.hierarchical
         && !cfg.cosmology.enabled;
+
+    // Phase 56: jerárquico + SFC (halos de partículas) en multirank.
+    // Reemplaza allgatherv O(N·P) por exchange_halos_sfc O(N_halo) dentro del closure de fuerzas.
+    // Solo disponible para BarnesHut, sin cosmología (cosmología jerárquica: fase futura).
+    // Con `force_allgather_fallback = true` o en rank-1 se usa el path allgather legacy.
+    let use_hierarchical_let = cfg.gravity.solver == SolverKind::BarnesHut
+        && cfg.timestep.hierarchical
+        && !cfg.cosmology.enabled
+        && rt.size() > 1
+        && !cfg.performance.force_allgather_fallback;
 
     // SFC+LET es el path por defecto para multirank + BarnesHut.
     // Se desactiva solo con `force_allgather_fallback = true` (legacy) o tamaño 1.
@@ -1104,20 +1145,58 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             g
         };
 
+        // ── Phase 56: infraestructura SFC para el path jerárquico+LET ─────────
+        // Solo se inicializa cuando use_hierarchical_let = true.
+        let sfc_kind_hier = cfg.performance.sfc_kind;
+        let halo_factor_hier = cfg.performance.halo_factor;
+        let mut sfc_decomp_hier = if use_hierarchical_let {
+            use gadget_ng_parallel::sfc::global_bbox;
+            let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+            let all_pos_init: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+            Some(SfcDecomposition::build_with_bbox_and_kind(
+                &all_pos_init,
+                gxlo,
+                gxhi,
+                gylo,
+                gyhi,
+                gzlo,
+                gzhi,
+                rt.size(),
+                sfc_kind_hier,
+            ))
+        } else {
+            None
+        };
+
         // Reutilizar HierarchicalState del checkpoint, o crear uno nuevo.
         let mut h_state = h_state_resume.take().unwrap_or_else(|| {
             let mut hs = HierarchicalState::new(local.len());
-            // Aceleraciones iniciales para el primer kick con acoplamiento cosmológico.
-            rt.allgatherv_state(&local, total, &mut global_pos, &mut global_mass);
-            let init_idx: Vec<usize> = local.iter().map(|p| p.global_id).collect();
-            solver.accelerations_for_indices(
-                &global_pos,
-                &global_mass,
-                eps2,
-                g_hier_init,
-                &init_idx,
-                &mut scratch,
-            );
+            // Aceleraciones iniciales: usa halos SFC si disponible, allgather si no.
+            if let Some(ref sfc_d) = sfc_decomp_hier {
+                let hw = sfc_d.halo_width(halo_factor_hier);
+                let halos_init = rt.exchange_halos_sfc(&local, sfc_d, hw);
+                let all_idx: Vec<usize> = (0..local.len()).collect();
+                compute_forces_hierarchical_let(
+                    &local,
+                    &halos_init,
+                    &all_idx,
+                    theta,
+                    g_hier_init,
+                    eps2,
+                    &mut scratch,
+                );
+            } else {
+                rt.allgatherv_state(&local, total, &mut global_pos, &mut global_mass);
+                let init_idx: Vec<usize> = local.iter().map(|p| p.global_id).collect();
+                solver.accelerations_for_indices(
+                    &global_pos,
+                    &global_mass,
+                    eps2,
+                    g_hier_init,
+                    &init_idx,
+                    &mut scratch,
+                );
+            }
             for (p, &a) in local.iter_mut().zip(scratch.iter()) {
                 p.acceleration = a;
             }
@@ -1140,6 +1219,39 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             // Softening físico: recalcular ε_com = ε_phys/a en cada paso.
             let eps2 = eps2_at(a_current);
 
+            // ── Phase 56: rebalanceo SFC + migración de dominio (base-steps) ──
+            // La migración se ejecuta una vez por base-step; dentro de
+            // hierarchical_kdk_step los 2^max_level subpasos finos usan el
+            // snapshot de la SFC tomado al inicio del paso.
+            if let Some(ref mut sfc_d) = sfc_decomp_hier {
+                use gadget_ng_parallel::sfc::global_bbox;
+                let do_rebalance =
+                    sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+                if do_rebalance {
+                    let t_rb = Instant::now();
+                    let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
+                    let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
+                    *sfc_d = SfcDecomposition::build_with_bbox_and_kind(
+                        &pos_loc,
+                        gxlo,
+                        gxhi,
+                        gylo,
+                        gyhi,
+                        gzlo,
+                        gzhi,
+                        rt.size(),
+                        sfc_kind_hier,
+                    );
+                    this_comm += t_rb.elapsed().as_nanos() as u64;
+                }
+                let t_domain = Instant::now();
+                rt.exchange_domain_sfc(&mut local, sfc_d);
+                this_comm += t_domain.elapsed().as_nanos() as u64;
+                scratch.resize(local.len(), Vec3::zero());
+            }
+            // Snapshot inmutable de la SFC para el closure de fuerzas (todos los subpasos finos).
+            let sfc_snap_hier = sfc_decomp_hier.clone();
+
             let cosmo_arg = cosmo_state
                 .as_ref()
                 .map(|(params, _)| (params, &mut a_current));
@@ -1154,21 +1266,41 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 cosmo_arg,
                 kappa_h_hier,
                 |parts, active_local, acc| {
-                    let t0 = Instant::now();
-                    rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
-                    this_comm += t0.elapsed().as_nanos() as u64;
-                    let global_idx: Vec<usize> =
-                        active_local.iter().map(|&li| parts[li].global_id).collect();
-                    let t1 = Instant::now();
-                    solver.accelerations_for_indices(
-                        &global_pos,
-                        &global_mass,
-                        eps2,
-                        g_step,
-                        &global_idx,
-                        acc,
-                    );
-                    this_grav += t1.elapsed().as_nanos() as u64;
+                    if let Some(ref sfc_snap) = sfc_snap_hier {
+                        // Path Phase 56: halos SFC + árbol local, solo activos.
+                        let hw = sfc_snap.halo_width(halo_factor_hier);
+                        let t0 = Instant::now();
+                        let halos = rt.exchange_halos_sfc(parts, sfc_snap, hw);
+                        this_comm += t0.elapsed().as_nanos() as u64;
+                        let t1 = Instant::now();
+                        compute_forces_hierarchical_let(
+                            parts,
+                            &halos,
+                            active_local,
+                            theta,
+                            g_step,
+                            eps2,
+                            acc,
+                        );
+                        this_grav += t1.elapsed().as_nanos() as u64;
+                    } else {
+                        // Path allgather legacy: envía todos los datos, evalúa para activos.
+                        let t0 = Instant::now();
+                        rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                        this_comm += t0.elapsed().as_nanos() as u64;
+                        let global_idx: Vec<usize> =
+                            active_local.iter().map(|&li| parts[li].global_id).collect();
+                        let t1 = Instant::now();
+                        solver.accelerations_for_indices(
+                            &global_pos,
+                            &global_mass,
+                            eps2,
+                            g_step,
+                            &global_idx,
+                            acc,
+                        );
+                        this_grav += t1.elapsed().as_nanos() as u64;
+                    }
                 },
             );
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
