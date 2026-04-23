@@ -9,12 +9,18 @@
 > (`Legacy`/`Z0Sigma8`) → integrador leapfrog/Yoshida4 con factores de
 > drift/kick cosmológicos → PM periódico / TreePM / Barnes–Hut / Direct, con
 > versiones distribuidas (allreduce, slab alltoall, pencil 2D, scatter-gather)
-> → análisis in-situ (FoF, P(k), HMF Press-Schechter/Sheth-Tormen, perfiles NFW)
+> → análisis in-situ (FoF, P(k), HMF Press-Schechter/Sheth-Tormen, perfiles NFW,
+> función de correlación ξ(r), relación c(M) Ludlow+2016)
 > → corrección absoluta de `P(k)` vía `pk_correction` (Phase 34–36)
 > → validación externa contra CLASS (Phase 38) → unidades QKSL canónicas
 > y `G` auto-consistente (Phase 45–51) → Halofit no-lineal (Phase 48)
 > → función de masa de halos y perfiles NFW (Phase 52–53) → validación
-> cuantitativa D²(a) y FoF vs HMF hasta z=0 (Phase 54–55)**.
+> cuantitativa D²(a) y FoF vs HMF hasta z=0 (Phase 54–55)
+> → block timesteps jerárquicos acoplados al árbol LET distribuido (Phase 56)
+> → solver PM GPU CUDA/HIP opcional (Phase 57)
+> → restart/checkpoint robusto bit-a-bit (Phase 59)
+> → domain decomposition adaptativa por costo (Phase 60)
+> → CLI `analyze` con pipeline completo FoF+P(k)+ξ(r)+c(M) y render PPM**.
 
 ## 🧰 Herramientas y tecnologías
 
@@ -22,6 +28,8 @@
 [![🐍 Python](https://img.shields.io/badge/🐍_Python-3.10%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
 [![🔌 MPI](https://img.shields.io/badge/🔌_MPI-OpenMPI%2FMPICH-red)](https://www.open-mpi.org/)
 [![⚡ wgpu](https://img.shields.io/badge/⚡_wgpu-Vulkan%2FMetal%2FDX12-purple)](https://wgpu.rs/)
+[![🟢 CUDA](https://img.shields.io/badge/🟢_CUDA-nvcc%2BcuFFT-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![🔴 HIP](https://img.shields.io/badge/🔴_HIP-ROCm%2BrocFFT-ED1C24?logo=amd&logoColor=white)](https://rocm.docs.amd.com/)
 [![🌐 HDF5](https://img.shields.io/badge/🌐_HDF5-1.10%2B-blue)](https://www.hdfgroup.org/solutions/hdf5/)
 [![📊 NumPy](https://img.shields.io/badge/📊_NumPy-SciPy%2FMatplotlib-blue?logo=numpy&logoColor=white)](https://numpy.org/)
 [![🔭 CLASS](https://img.shields.io/badge/🔭_CLASS-classy_3.3%2B-green)](https://lesgourg.github.io/class_public/class.html)
@@ -32,10 +40,13 @@
 |---|---|
 | 🦀 **Core** | Rust 1.74+, workspace multi-crate, `serde`, `toml`, `clap`, `rayon` |
 | 🔌 **Cómputo paralelo** | MPI (`OpenMPI` / `MPICH` vía `mpi` crate), SFC Hilbert 3D, LET, alltoall/allreduce/scatter-gather |
-| ⚡ **GPU** | `wgpu` con shaders WGSL (Vulkan / Metal / DX12 / WebGPU) |
+| ⚡ **GPU (wgpu)** | `wgpu` con shaders WGSL (Vulkan / Metal / DX12 / WebGPU) |
+| 🟢 **GPU CUDA** | Solver PM NVIDIA CUDA + cuFFT; kernels CIC + Poisson + FFT 3D; degradación elegante sin toolchain |
+| 🔴 **GPU HIP/ROCm** | Solver PM AMD HIP + rocFFT; misma arquitectura que CUDA; `CUDA_SKIP` / `HIP_SKIP` para CI |
 | 🗜️ **I/O** | JSONL, `bincode`, `hdf5` estilo GADGET, `msgpack`, `netcdf` |
 | 🔭 **Cosmología de referencia** | `classy` 3.3+ (CLASS) para validación externa (Phase 38), Eisenstein–Hu interno |
 | 📊 **Postproceso** | Python 3.10+, NumPy, SciPy, Matplotlib — mirrors de `pk_correction` y figuras por fase |
+| 🖼️ **Visualización PPM** | `render_ppm` + `write_ppm` sin dependencias externas; salida P6 legible por GIMP/ImageMagick |
 | 🧪 **CI / calidad** | GitHub Actions, `cargo fmt`, `cargo clippy -D warnings`, `cargo test --release` |
 | 📁 **Experimentos** | TOML + orquestadores Bash + volcados JSON cacheables en `target/phaseNN/` |
 
@@ -53,12 +64,13 @@
 8. [Condiciones iniciales y validación cosmológica](#condiciones-iniciales-y-validación-cosmológica)
 9. [Corrección absoluta de `P(k)` (`pk_correction`)](#corrección-absoluta-de-pk-pk_correction)
 10. [Convención de ICs y validación dinámica (Phase 37–42)](#convención-de-ics-y-validación-dinámica-phase-3742)
-11. [Tests automáticos](#tests-automáticos)
-12. [Reportes técnicos](#reportes-técnicos)
-13. [Features opcionales](#features-opcionales)
-14. [Calidad y CI](#calidad-y-ci)
-15. [Estructura de experimentos](#estructura-de-experimentos)
-16. [Licencia](#licencia)
+11. [Análisis post-procesamiento (Phase 56–60 + Rápidas)](#análisis-post-procesamiento-phase-5660--rápidas)
+12. [Tests automáticos](#tests-automáticos)
+13. [Reportes técnicos](#reportes-técnicos)
+14. [Features opcionales](#features-opcionales)
+15. [Calidad y CI](#calidad-y-ci)
+16. [Estructura de experimentos](#estructura-de-experimentos)
+17. [Licencia](#licencia)
 
 ---
 
@@ -80,9 +92,13 @@
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
 | **SPH** | Kernel Wendland C2, densidad adaptativa, viscosidad artificial Monaghan |
 | **GPU** | Compute shader WGSL vía `wgpu` (Vulkan/Metal/DX12/WebGPU); fallback CPU automático |
-| **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL; HMF Press-Schechter/Sheth-Tormen; perfiles NFW + c(M); Halofit no-lineal (Takahashi+2012) |
-| **Checkpointing** | Guarda/reanuda desde snapshots comprimidos (`--resume`) |
-| **Visualización** | Render CPU a PNG, proyecciones XY/XZ/YZ, colormap Viridis |
+| **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL; HMF Press-Schechter/Sheth-Tormen; perfiles NFW + c(M) Duffy/Bhattacharya/Ludlow+2016; Halofit no-lineal (Takahashi+2012); función de correlación ξ(r) FFT + pares |
+| **🟢🔴 GPU PM** | Solver PM CUDA/HIP opcional (cuFFT/rocFFT); CIC+Poisson+FFT 3D en GPU; degradación elegante automática si no hay toolchain |
+| **⏱️ Block timesteps** | Integrador jerárquico acoplado al árbol LET distribuido; evaluación de fuerzas solo para partículas activas (`active_local`), O(N_active) por subnivel |
+| **Checkpointing** | Guarda/reanuda desde snapshots comprimidos (`--resume`); continuidad bit-a-bit verificada; `SfcDecomposition` reconstruida automáticamente post-restart |
+| **🔀 Rebalanceo adaptativo** | `rebalance_imbalance_threshold` configurable: si `max/min(walk_ns) > threshold` → rebalanceo inmediato, independientemente del intervalo fijo |
+| **Visualización** | Render CPU a PNG, proyecciones XY/XZ/YZ, colormap Viridis; `render_ppm`/`write_ppm` PPM sin dependencias externas |
+| **📊 CLI `analyze`** | `gadget-ng analyze`: FoF + P(k) + ξ(r) + c(M) desde cualquier snapshot → `results.json` estructurado |
 | **Configuración** | TOML + variables de entorno `GADGET_NG_*` |
 | **Snapshots** | JSONL (default), **bincode** o **HDF5** estilo GADGET + `provenance.json`; formato auto-seleccionado por feature flag |
 | **Unidades físicas** | Sección `[units]` opcional: kpc/M☉/km·s⁻¹ y `G` coherente; `auto_g = true` calcula `G = 3Ω_mH₀²/(8π)` automáticamente (Phase 50–51) |
@@ -122,8 +138,9 @@ El binario queda en `target/release/gadget-ng`.
 |---|---|
 | `config` | Valida y muestra la configuración efectiva (TOML + env `GADGET_NG_*`) |
 | `snapshot` | Escribe un snapshot del estado IC resuelto (sin evolucionar) |
-| `stepping` | Integra `num_steps` pasos leapfrog KDK; opcional `--snapshot` final |
+| `stepping` | Integra `num_steps` pasos leapfrog KDK; opcional `--snapshot` y `--vis-snapshot` final |
 | `analyse` | FoF (halos) + espectro de potencia P(k) a partir de un snapshot |
+| `📊 analyze` | Pipeline completo: FoF + P(k) + ξ(r) + c(M) → `results.json` |
 | `visualize` | Renderiza un snapshot a PNG (proyección XY/XZ/YZ) |
 
 ### Ejecutar una simulación
@@ -277,27 +294,36 @@ gadget-ng/
 ├── crates/
 │   ├── gadget-ng-core          # Vec3, Particle, RunConfig, CosmologyParams,
 │   │                           # wrap_position, ic_zeldovich (1LPT+2LPT),
-│   │                           # transfer EH no-wiggle + amplitude_for_sigma8
+│   │                           # transfer EH no-wiggle + amplitude_for_sigma8;
+│   │                           # rebalance_imbalance_threshold (Phase 60)
 │   ├── gadget-ng-tree          # Octree + Barnes–Hut + FMM (cuadrupolo + octupolo STF),
 │   │                           # SoA + SIMD, Locally Essential Trees (LET)
 │   ├── gadget-ng-integrators   # leapfrog_kdk / yoshida4_kdk (newton + cosmológico),
-│   │                           # integrador jerárquico, Aarseth timestep
+│   │                           # integrador jerárquico + block timesteps LET (Phase 56),
+│   │                           # Aarseth timestep
 │   ├── gadget-ng-parallel      # SerialRuntime / MpiRuntime, SFC Hilbert 3D,
 │   │                           # alltoallv, allreduce, exchange_domain_{x,z}, halos
-│   ├── gadget-ng-io            # Snapshots JSONL / Bincode / HDF5 + Provenance
+│   ├── gadget-ng-io            # Snapshots JSONL / Bincode / HDF5 estilo GADGET + Provenance
 │   ├── gadget-ng-pm            # PM: CIC, FFT Poisson periódica, slab_fft, slab_pm
 │   ├── gadget-ng-treepm        # TreePM: BH short-range + PM long-range (serial + dist)
-│   ├── gadget-ng-gpu           # Compute shaders WGSL vía wgpu
-│   ├── gadget-ng-analysis      # FoF halos + P(k) + pk_correction (Phase 34–36)
+│   ├── gadget-ng-gpu           # Compute shaders WGSL vía wgpu (Vulkan/Metal/DX12)
+│   ├── gadget-ng-cuda          # 🟢 Solver PM NVIDIA CUDA + cuFFT (Phase 57); CIC+Poisson+FFT 3D
+│   ├── gadget-ng-hip           # 🔴 Solver PM AMD HIP + rocFFT (Phase 57); misma API que CUDA
+│   ├── gadget-ng-analysis      # FoF halos + P(k) + pk_correction (Phase 34–36);
+│   │                           # NFW + c(M) Duffy/Bhattacharya/Ludlow+2016 (Phase 53/58);
+│   │                           # ξ(r) FFT + pares Davis-Peebles (Phase 58)
 │   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan
-│   ├── gadget-ng-vis           # Visualización CPU: proyecciones, Viridis, PNG
+│   ├── gadget-ng-vis           # Visualización CPU: proyecciones, Viridis, PNG;
+│   │                           # 🖼️ render_ppm / write_ppm PPM sin dependencias (Phase Rápidas)
 │   ├── gadget-ng-physics       # Tests de validación física/cosmológica (Kepler,
-│   │                           # Plummer, PM, TreePM, ICs, ensembles, pk_correction)
+│   │                           # Plummer, PM, TreePM, ICs, ensembles, pk_correction,
+│   │                           # checkpoint Phase 59, rebalanceo adaptativo Phase 60)
 │   └── gadget-ng-cli           # Binario gadget-ng (clap), subcomandos config/snapshot/
-│                               # stepping/analyse/visualize
+│                               # stepping/analyse/analyze/visualize;
+│                               # checkpoint robuste + should_rebalance (Phase 59/60)
 ├── examples/                   # Configuraciones TOML comentadas
-├── experiments/nbody/          # Benchmarks y resultados por fase (41+ experimentos)
-└── docs/reports/               # Reportes técnicos de cada fase (55 reportes)
+├── experiments/nbody/          # Benchmarks y resultados por fase (60+ experimentos)
+└── docs/reports/               # Reportes técnicos de cada fase (60+ reportes)
 ```
 
 ---
@@ -358,6 +384,12 @@ gadget-ng/
 | **53** | Perfiles NFW y relación concentración-masa c(M); Duffy+2008, Bhattacharya+2013 | ✅ |
 | **54** | Validación cuantitativa D²(a) con G consistente; N ∈ {64,128,256}, 6 snapshots | ✅ |
 | **55** | Comparación FoF vs HMF hasta z=0 (BOX=300 Mpc/h); ratio dn/dlnM(FoF)/dn/dlnM(ST) | ✅ |
+| **56** | ⏱️ Block timesteps jerárquicos acoplados al árbol LET distribuido; `active_local` O(N_active) | ✅ |
+| **57** | 🟢🔴 PM solver CUDA/HIP: segunda cadena de compilación; cuFFT/rocFFT; degradación elegante | ✅ |
+| **58** | 📐 c(M) y perfiles NFW desde N-body: fit NFW → FoF halos, c(M) vs Duffy/Ludlow; ξ(r) FFT+pares | ✅ |
+| **59** | 💾 Restart/checkpoint bit-a-bit: guarda/restaura estado completo (pos, vel, paso, SFC) | ✅ |
+| **60** | 🔀 Domain decomposition adaptativa por costo: `should_rebalance` + `rebalance_imbalance_threshold` | ✅ |
+| **Rápidas** | 📊 CLI `gadget-ng analyze` (FoF+P(k)+ξ(r)+c(M)→JSON); 🖼️ `gadget-ng-vis` render PPM sin deps | ✅ |
 
 ---
 
@@ -546,6 +578,97 @@ Reportes: [Phase 37](docs/reports/2026-04-phase37-growth-rescaled-ics.md) ·
 
 ---
 
+## Análisis post-procesamiento (Phase 56–60 + Rápidas)
+
+### ⏱️ Block timesteps jerárquicos (Phase 56)
+
+Los block timesteps jerárquicos acoplan el árbol LET distribuido con el integrador de pasos múltiples. En cada nivel de bloque solo se evalúan fuerzas para las partículas activas (`active_local`), reduciendo el costo por subnivel a O(N_active):
+
+```toml
+[simulation]
+hierarchical_timesteps = true
+n_levels               = 4     # 2^4 = 16 subniveles de dt
+```
+
+### 🟢🔴 GPU PM CUDA/HIP (Phase 57)
+
+Solver PM opcional que usa la GPU para CIC + FFT Poisson 3D. Compilado en crates separados (`gadget-ng-cuda`, `gadget-ng-hip`) para no contaminar el árbol de compilación principal:
+
+```bash
+# NVIDIA (requiere CUDA toolkit + nvcc):
+cargo build --release -p gadget-ng-cuda
+
+# AMD (requiere ROCm + hipcc):
+cargo build --release -p gadget-ng-hip
+
+# CI sin GPU disponible:
+CUDA_SKIP=1 cargo test -p gadget-ng-cuda
+HIP_SKIP=1  cargo test -p gadget-ng-hip
+```
+
+### 📐 c(M) y ξ(r) desde N-body (Phase 58)
+
+```rust
+use gadget_ng_analysis::{
+    nfw::{fit_nfw_concentration, concentration_ludlow2016},
+    correlation::{two_point_correlation_fft, two_point_correlation_pairs},
+};
+
+// Concentración c(M) — Ludlow et al. (2016) calibrada en Planck 2015 ΛCDM
+let c = concentration_ludlow2016(m200_msun_h, z);
+
+// ξ(r) desde P(k) medido (transformada de Hankel discreta)
+let xi = two_point_correlation_fft(&pk_bins, box_size, n_r_bins);
+
+// ξ(r) por conteo de pares Davis-Peebles
+let xi = two_point_correlation_pairs(&positions, box_size, &r_edges);
+```
+
+### 💾 Checkpoint robusto (Phase 59)
+
+El checkpoint guarda posiciones, velocidades, paso actual, factor de escala y el estado de la SFC. Al reanudar, se reconstruye `SfcDecomposition` automáticamente — la continuidad bit-a-bit está verificada por test de integración:
+
+```bash
+./gadget-ng stepping --config run.toml --out runs/cosmo --resume runs/cosmo
+```
+
+### 🔀 Rebalanceo adaptativo por costo (Phase 60)
+
+Configura un umbral de desequilibrio de carga basado en el tiempo de caminata del árbol por partícula:
+
+```toml
+[performance]
+rebalance_interval          = 50     # fijo: cada 50 pasos
+rebalance_imbalance_threshold = 0.3  # también si max/min(walk_ns) > 1.3
+```
+
+Si `threshold = 0.0` (default) se desactiva el rebalanceo por costo y solo aplica el intervalo fijo.
+
+### 📊 CLI `gadget-ng analyze` (Rápidas)
+
+```bash
+./gadget-ng analyze \
+  --snapshot runs/cosmo/snapshot \
+  --out runs/cosmo/analysis \
+  --fof-linking-length 0.2 \
+  --pk-mesh 32 \
+  --xi-bins 20 \
+  --box-mpc-h 300.0
+# Produce: runs/cosmo/analysis/results.json
+# Campos: n_halos, pk[], xi[], halos[]{mass, c_duffy, c_ludlow}
+```
+
+### 🖼️ Render PPM sin dependencias (Rápidas)
+
+```rust
+use gadget_ng_vis::ppm::{render_ppm, write_ppm};
+
+let pixels = render_ppm(&positions, box_size, 512, 512);
+write_ppm(Path::new("snapshot.ppm"), &pixels, 512, 512)?;
+```
+
+---
+
 ## Tests automáticos
 
 ```bash
@@ -582,6 +705,23 @@ PHASE42_N=64 cargo test -p gadget-ng-physics --test phase42_tree_short_range --r
 # Rerun rápido desde caché de disco:
 PHASE42_USE_CACHE=1 cargo test -p gadget-ng-physics \
     --test phase42_tree_short_range --release
+
+# Phase 58 — c(M) + ξ(r) (FoF → NFW → Ludlow vs Duffy + correlación)
+cargo test -p gadget-ng-physics --test phase58_nfw_concentration --release
+PHASE58_SKIP=1 cargo test -p gadget-ng-physics --test phase58_nfw_concentration --release
+
+# Phase 59 — Checkpoint bit-a-bit (20 pasos → checkpoint a 10 → restart)
+cargo test -p gadget-ng-physics --test phase59_checkpoint_continuity --release
+
+# Phase 60 — Rebalanceo adaptativo (should_rebalance + imbalance_threshold)
+cargo test -p gadget-ng-physics --test phase60_adaptive_rebalance --release
+
+# GPU PM CUDA/HIP (requieren toolchain; SKIP=1 para CI sin GPU)
+CUDA_SKIP=1 cargo test -p gadget-ng-cuda --release
+HIP_SKIP=1  cargo test -p gadget-ng-hip  --release
+
+# Analysis: ξ(r) FFT + pares, c(M) Ludlow+2016
+cargo test -p gadget-ng-analysis --release
 ```
 
 Tests de validación cubiertos:
@@ -617,6 +757,19 @@ Tests de validación cubiertos:
   y espectral. A `N=64³`, TreePM mejora el error de crecimiento **×345**
   vs PM; óptimo interior `ε_phys ≈ 0.01 Mpc/h`. Soporta `PHASE42_N=<N>`
   (16–256, potencia de 2) y `PHASE42_USE_CACHE=1`.
+- **⏱️ Block timesteps + LET distribuido** (Phase 56): integrador jerárquico acoplado
+  a árbol LET; fuerzas evaluadas solo para `active_local` partículas; validado
+  contra integrador de paso único en corrida cosmológica de referencia.
+- **🟢 GPU CUDA PM** (Phase 57): `gadget-ng-cuda` compila kernels CIC + FFT 3D en NVIDIA GPU;
+  `CUDA_SKIP=1` permite CI sin toolchain; interfaz idéntica al solver CPU.
+- **🔴 GPU HIP PM** (Phase 57): `gadget-ng-hip` replica la cadena CUDA para AMD ROCm;
+  `HIP_SKIP=1` para CI; mismos tests que CUDA para paridad.
+- **📐 c(M) + ξ(r) desde N-body** (Phase 58): PM 64³ → FoF → fit NFW → concentración
+  medida vs Duffy+2008 y Ludlow+2016; ξ(r) FFT y pares validados en distribución uniforme.
+- **💾 Checkpoint bit-a-bit** (Phase 59): 20 pasos PM → guarda en paso 10 → restart →
+  partículas bit-idénticas en paso 20; `SfcDecomposition` reconstruida automáticamente.
+- **🔀 Rebalanceo adaptativo** (Phase 60): `should_rebalance` con `cost_pending` override;
+  `rebalance_imbalance_threshold = 0.0` desactiva el costo (solo intervalo fijo).
 
 ---
 
@@ -682,6 +835,17 @@ con contexto, metodología, resultados y limitaciones.
 | [`phase41-high-resolution-validation`](docs/reports/2026-04-phase41-high-resolution-validation.md) | 📈 Alta resolución y shot-noise↔señal |
 | [`phase42-tree-short-range`](docs/reports/2026-04-phase42-tree-short-range.md) | 🌲 TreePM + softening absoluto `ε_phys` |
 
+### HPC avanzado, GPU y análisis (Phase 56–60 + Rápidas)
+
+| Reporte | Tema |
+|---------|------|
+| [`phase56-hierarchical-let`](docs/reports/2026-04-phase56-hierarchical-let.md) | ⏱️ Block timesteps jerárquicos + árbol LET distribuido |
+| [`phase57-cuda-hip-pm`](docs/reports/2026-04-phase57-cuda-hip-pm.md) | 🟢🔴 PM solver CUDA/HIP: segunda cadena de compilación |
+| [`phase58-nfw-concentration-xi`](docs/reports/2026-04-phase58-nfw-concentration-xi.md) | 📐 c(M) desde N-body + ξ(r) FFT y pares |
+| [`phase59-checkpoint-continuity`](docs/reports/2026-04-phase59-checkpoint-continuity.md) | 💾 Checkpoint/restart bit-a-bit robusto |
+| [`phase60-adaptive-rebalance`](docs/reports/2026-04-phase60-adaptive-rebalance.md) | 🔀 Domain decomposition adaptativa por costo |
+| [`rapidas-analyze-vis`](docs/reports/2026-04-rapidas-analyze-vis.md) | 📊🖼️ CLI `analyze` + PPM rendering sin dependencias |
+
 ### Meta
 
 | Reporte | Tema |
@@ -697,9 +861,11 @@ con contexto, metodología, resultados y limitaciones.
 |---------|-------------|
 | `mpi` | Enlaza a MPI para `MpiRuntime` con descomposición SFC Hilbert |
 | `gpu` | Aceleración GPU vía `wgpu` (Vulkan/Metal/DX12/WebGPU) |
+| `🟢 cuda` | Solver PM NVIDIA CUDA + cuFFT (`gadget-ng-cuda`; requiere CUDA toolkit) |
+| `🔴 hip` | Solver PM AMD HIP + rocFFT (`gadget-ng-hip`; requiere ROCm) |
 | `simd` | Vectorización explícita con `rayon` + SIMD |
 | `bincode` | Snapshots binarios `particles.bin` |
-| `hdf5` | Snapshots `snapshot.hdf5` estilo GADGET (requiere `libhdf5-dev`) |
+| `hdf5` | Snapshots `snapshot.hdf5` estilo GADGET-4 (requiere `libhdf5-dev`) |
 | `msgpack` | Snapshots compactos MessagePack |
 | `netcdf` | Snapshots NetCDF4 (requiere `libnetcdf-dev`) |
 | `full` | Todas las anteriores activadas |
