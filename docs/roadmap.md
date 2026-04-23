@@ -1,5 +1,61 @@
 # Roadmap
 
+> **Estado al 23 de abril de 2026:** Phases 1–60 completadas + Rápidas (analyze + PPM).  
+> Siguiente bloque planificado: **Phases 61–65** (Medianas).  
+> Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).  
+> Plan detallado de Medianas: [`plan-medianas-phase61-65.md`](reports/2026-04-plan-medianas-phase61-65.md).
+
+---
+
+## Phases completadas (1–60 + Rápidas)
+
+| Rango | Descripción |
+|-------|-------------|
+| 1–9 | N-body directo, leapfrog, BH, FMM, PM, TreePM, SPH, GPU wgpu, MPI árbol |
+| 10–16 | HPC: SFC, LET, Hilbert 3D, SoA+SIMD, FMM octupolo, sistema unidades |
+| 17–25 | Cosmología ΛCDM, PM periódico, PM distribuido allreduce/slab/pencil, TreePM scatter-gather |
+| 26–36 | ICs ZA/1LPT/2LPT/EH/σ₈, P(k), pk_correction A_grid+R(N) |
+| 37–47 | Convención NormalizationMode, validación vs CLASS, Halofit, unidades QKSL |
+| 48–55 | HMF PS/ST, perfiles NFW, c(M) Duffy/Bhattacharya, D²(a), FoF vs HMF hasta z=0 |
+| 56 | ⏱️ Block timesteps jerárquicos acoplados al árbol LET distribuido |
+| 57 | 🟢🔴 PM solver CUDA/HIP (segunda cadena de compilación) |
+| 58 | 📐 c(M) + ξ(r) desde N-body (Ludlow+2016, FFT+pares) |
+| 59 | 💾 Checkpoint/restart bit-a-bit robusto |
+| 60 | 🔀 Domain decomposition adaptativa por costo |
+| Rápidas | 📊 CLI `analyze` + 🖼️ PPM render sin dependencias |
+
+---
+
+## Próximo bloque: Phases 61–65 (Medianas)
+
+Ver plan completo en [`plan-medianas-phase61-65.md`](reports/2026-04-plan-medianas-phase61-65.md).
+
+| Fase | Tarea | Sesiones |
+|------|-------|----------|
+| **61** | ⚡ FoF paralelo MPI | 1–2 |
+| **62** | 🌳 Merger trees (single-pass) | 1 |
+| **63** | 📈 Análisis in-situ en loop `stepping` | 1 |
+| **64** | 🖼️ Proyecciones adicionales + mapa de densidad | 1 |
+| **65** | 💾 HDF5 paralelo MPI-IO | 2 |
+
+---
+
+## Trabajos futuros Grandes (3–5 sesiones c/u)
+
+Ver [`future-grandes.md`](reports/2026-04-future-grandes.md) para especificaciones completas.
+
+| ID | Tarea | Prioridad |
+|----|-------|-----------|
+| G1 | SUBFIND / subestructura dentro de halos | Media |
+| G2 | SPH cosmológico integrado (bariones en ΛCDM) | Alta |
+| G3 | Corrida de producción N=256³ end-to-end | Alta |
+| G4 | AMR-PM (refinamiento adaptativo de malla) | Baja |
+| G5 | Merger trees completos con historia de ensamble | Media |
+
+---
+
+## Historial de fases (detalle técnico)
+
 ## Fase actual (MVP cerrado)
 
 - Workspace Rust, CLI (`config`, `stepping`, `snapshot`), TOML + env.
