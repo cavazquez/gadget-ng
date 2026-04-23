@@ -1154,6 +1154,25 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         None
     };
 
+    // ── Estados de química SPH acoplados a EoR (Phase 95) ──────────────────────────
+    // Vector paralelo a `local`: un ChemState por cada partícula de gas.
+    // Se inicializa en estado neutro y se actualiza en cada paso de reionización.
+    // Solo se usa si cfg.reionization.enabled; en caso contrario permanece vacío.
+    let mut sph_chem_states: Vec<gadget_ng_rt::ChemState> = if cfg.reionization.enabled {
+        local
+            .iter()
+            .map(|p| {
+                if p.internal_energy > 0.0 {
+                    gadget_ng_rt::ChemState::neutral()
+                } else {
+                    gadget_ng_rt::ChemState::neutral() // DM: también neutral (irrelevante)
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     // Macro local para guardar checkpoint cuando toca.
     macro_rules! maybe_checkpoint {
         ($step:expr, $hs:expr) => {
@@ -1189,7 +1208,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-    // Macro local para análisis in-situ (Phase 63).
+    // Macro local para análisis in-situ (Phase 63 + química acoplada Phase 95).
     macro_rules! maybe_insitu {
         ($step:expr) => {
             crate::insitu::maybe_run_insitu(
@@ -1199,6 +1218,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 a_current,
                 $step,
                 out_dir,
+                if sph_chem_states.is_empty() { None } else { Some(&sph_chem_states) },
             );
         };
     }
@@ -1306,9 +1326,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     }
 
     // Macro local para EoR completo z=6-12 (Phase 95).
-    // Integra reionización con fuentes UV puntuales distribuidas uniformemente.
-    // Solo actúa si `cfg.reionization.enabled` es true y z_end ≤ z ≤ z_start.
-    // Recibe el factor de escala `a_cur` para calcular z = 1/a - 1.
+    // Integra reionización con fuentes UV y química SPH acoplada (Phase 95 v2).
+    // Usa sph_chem_states (un ChemState por partícula, sincronizado con local[]).
     macro_rules! maybe_reionization {
         ($a_cur:expr) => {
             if cfg.reionization.enabled {
@@ -1322,6 +1341,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             kappa_scat: 0.0,
                             substeps: cfg.rt.substeps,
                         };
+                        // Sincronizar longitud: si local creció (ej. partículas cargadas)
+                        // extender sph_chem_states con estados neutros
+                        if sph_chem_states.len() < local.len() {
+                            let extra = local.len() - sph_chem_states.len();
+                            sph_chem_states.extend(
+                                std::iter::repeat(gadget_ng_rt::ChemState::neutral()).take(extra)
+                            );
+                        } else if sph_chem_states.len() > local.len() {
+                            sph_chem_states.truncate(local.len());
+                        }
+
                         // Fuentes UV: posiciones uniformes en la caja
                         let n_src = cfg.reionization.n_sources.max(1);
                         let lum = cfg.reionization.uv_luminosity;
@@ -1337,11 +1367,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                 }
                             })
                             .collect();
-                        // Scratch local para estados de química de reionización
-                        let mut _reion_chem: Vec<gadget_ng_rt::ChemState> = Vec::new();
+
+                        // Paso de reionización con química acoplada real
                         let _reion_state = gadget_ng_rt::reionization_step(
                             rf,
-                            &mut _reion_chem,
+                            &mut sph_chem_states,
                             &sources,
                             &m1p,
                             cfg.simulation.dt,

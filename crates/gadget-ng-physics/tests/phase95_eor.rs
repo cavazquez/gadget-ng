@@ -159,3 +159,64 @@ fn reionization_params_defaults() {
     assert_eq!(params.z_start, 12.0, "z_start default = 12");
     assert_eq!(params.z_end, 6.0, "z_end default = 6");
 }
+
+/// Verifica el acoplamiento química → 21cm:
+/// si los ChemState reales tienen x_HII > 0, la señal 21cm debe ser menor
+/// que con estado neutro puro.
+#[test]
+fn coupled_chem_reduces_21cm_signal() {
+    use gadget_ng_core::{Particle, Vec3};
+    use gadget_ng_rt::{compute_cm21_output, Cm21Params};
+
+    let box_size = 10.0;
+    let n_mesh = 8;
+    let dx = box_size / n_mesh as f64;
+    let n_part = n_mesh * n_mesh * n_mesh;
+
+    let mut particles = Vec::new();
+    for ix in 0..n_mesh {
+        for iy in 0..n_mesh {
+            for iz in 0..n_mesh {
+                let mut p = Particle::new(
+                    ix * n_mesh * n_mesh + iy * n_mesh + iz,
+                    1.0,
+                    Vec3::new((ix as f64 + 0.5) * dx, (iy as f64 + 0.5) * dx, (iz as f64 + 0.5) * dx),
+                    Vec3::zero(),
+                );
+                p.internal_energy = 100.0;
+                p.smoothing_length = 0.4 * dx;
+                particles.push(p);
+            }
+        }
+    }
+
+    let params = Cm21Params::default();
+    let z = 9.0;
+
+    // Caso 1: estados neutros (x_HII = 0) → señal máxima
+    let chem_neutral: Vec<ChemState> = (0..n_part).map(|_| ChemState {
+        x_hi: 1.0, x_hii: 0.0, x_hei: 1.0, x_heii: 0.0, x_heiii: 0.0, x_e: 0.0,
+    }).collect();
+    let out_neutral = compute_cm21_output(&particles, &chem_neutral, box_size, z, n_mesh, 4, &params);
+
+    // Caso 2: gas 50% ionizado (x_HII = 0.5) → señal reducida a la mitad
+    let chem_half: Vec<ChemState> = (0..n_part).map(|_| ChemState {
+        x_hi: 0.5, x_hii: 0.5, x_hei: 1.0, x_heii: 0.0, x_heiii: 0.0, x_e: 0.5,
+    }).collect();
+    let out_half = compute_cm21_output(&particles, &chem_half, box_size, z, n_mesh, 4, &params);
+
+    assert!(
+        out_half.delta_tb_mean < out_neutral.delta_tb_mean,
+        "señal 21cm con x_HII=0.5 ({:.3}) debe ser menor que con x_HII=0 ({:.3})",
+        out_half.delta_tb_mean,
+        out_neutral.delta_tb_mean
+    );
+
+    // La reducción debe ser aproximadamente del 50%
+    let ratio = out_half.delta_tb_mean / out_neutral.delta_tb_mean;
+    assert!(
+        (ratio - 0.5).abs() < 0.05,
+        "ratio δT_b(ionizado) / δT_b(neutro) debe ser ~0.5, got {:.3}",
+        ratio
+    );
+}

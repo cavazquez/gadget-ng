@@ -12,3 +12,8 @@ serde.workspace = true
 
 [dev-dependencies]
 approx = "0.5"
+criterion.workspace = true
+
+[[bench]]
+name = "agn_feedback"
+harness = false

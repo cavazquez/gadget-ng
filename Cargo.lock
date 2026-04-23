@@ -834,6 +834,7 @@ dependencies = [
  "gadget-ng-core",
  "gadget-ng-sph",
  "mpi",
+ "rustfft",
  "serde",
 ]
 
@@ -842,6 +843,7 @@ name = "gadget-ng-sph"
 version = "0.1.0"
 dependencies = [
  "approx",
+ "criterion",
  "gadget-ng-core",
  "gadget-ng-integrators",
  "rayon",

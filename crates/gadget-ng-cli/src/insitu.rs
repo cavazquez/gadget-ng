@@ -143,6 +143,7 @@ pub fn maybe_run_insitu(
     a: f64,
     step: u64,
     default_out_dir: &Path,
+    chem_states_opt: Option<&[gadget_ng_rt::ChemState]>,
 ) -> bool {
     if !cfg.enabled || cfg.interval == 0 || step % cfg.interval != 0 {
         return false;
@@ -278,25 +279,37 @@ pub fn maybe_run_insitu(
                 None
             };
 
-            // Estadísticas 21cm (Phase 94)
+            // Estadísticas 21cm (Phase 94 + química acoplada Phase 95)
             let cm21_out = if cfg.cm21_enabled {
-                let gas_particles: Vec<Particle> = particles
+                // Recolectar partículas de gas con sus índices para emparejar con chem_states
+                let gas_indices: Vec<usize> = particles
                     .iter()
-                    .filter(|p| p.internal_energy > 0.0)
-                    .cloned()
+                    .enumerate()
+                    .filter(|(_, p)| p.internal_energy > 0.0)
+                    .map(|(i, _)| i)
                     .collect();
-                if gas_particles.is_empty() {
+                if gas_indices.is_empty() {
                     None
                 } else {
-                    let chem_neutral = vec![
-                        gadget_ng_rt::ChemState::neutral();
-                        gas_particles.len()
-                    ];
+                    let gas_particles: Vec<Particle> = gas_indices.iter()
+                        .map(|&i| particles[i].clone())
+                        .collect();
+                    // Usar ChemState reales si están disponibles (EoR acoplado)
+                    let chem_for_21cm: Vec<gadget_ng_rt::ChemState> = if let Some(chem) = chem_states_opt {
+                        gas_indices.iter()
+                            .map(|&i| {
+                                if i < chem.len() { chem[i].clone() }
+                                else { gadget_ng_rt::ChemState::neutral() }
+                            })
+                            .collect()
+                    } else {
+                        vec![gadget_ng_rt::ChemState::neutral(); gas_particles.len()]
+                    };
                     let cm21_params = gadget_ng_rt::Cm21Params::default();
                     let n_mesh = cfg.pk_mesh.max(4);
                     Some(gadget_ng_rt::compute_cm21_output(
                         &gas_particles,
-                        &chem_neutral,
+                        &chem_for_21cm,
                         box_size,
                         z,
                         n_mesh,

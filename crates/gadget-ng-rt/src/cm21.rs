@@ -1,7 +1,7 @@
-//! Estadísticas de la línea de 21cm del hidrógeno neutro (Phase 94).
+//! Estadísticas de la línea de 21cm del hidrógeno neutro (Phase 94 + FFT real).
 //!
 //! Calcula la temperatura de brillo diferencial δT_b por partícula y el
-//! power spectrum P(k)₂₁cm usando deposición CIC + FFT.
+//! power spectrum P(k)₂₁cm usando deposición CIC trilineal + FFT 3D real (rustfft).
 //!
 //! ## Física
 //!
@@ -9,9 +9,18 @@
 //! $$\delta T_b \approx 27 x_{HI}(1+\delta)\left(\frac{1+z}{10}\right)^{1/2} \text{ mK}$$
 //!
 //! donde x_HI = 1 - x_HII es la fracción neutra, (1+δ) = ρ/ρ̄ es la sobredensidad.
+//!
+//! ## Power spectrum
+//!
+//! 1. Deposición CIC trilineal del campo δT_b en malla N³
+//! 2. Sustracción de la media (campo de contraste)
+//! 3. FFT 3D via 3 pasadas de FFT 1D complejas (separabilidad de la DFT)
+//! 4. Binning esférico de |δ̃(k)|² → P(k) [mK² (Mpc/h)³]
+//! 5. Varianza dimensional Δ²(k) = k³ P(k) / (2π²) [mK²]
 
 use crate::ChemState;
 use gadget_ng_core::Particle;
+use rustfft::{num_complex::Complex, FftPlanner};
 
 /// Parámetros para el cálculo de estadísticas 21cm.
 #[derive(Debug, Clone)]
@@ -112,14 +121,14 @@ pub fn compute_delta_tb_field(
 /// Calcula estadísticas 21cm completas: <δT_b>, σ, y P(k)₂₁cm.
 ///
 /// El power spectrum se calcula proyectando el campo δT_b en una malla CIC
-/// y aplicando FFT. Para N_mesh > 1 se usa FFT real 1D por simplicidad.
+/// trilineal y aplicando FFT 3D real via `rustfft`.
 ///
 /// # Argumentos
 /// - `particles`: partículas de gas
 /// - `chem_states`: estados de química por partícula
 /// - `box_size`: tamaño de la caja en Mpc/h
 /// - `z`: redshift
-/// - `n_mesh`: resolución del grid CIC (por lado)
+/// - `n_mesh`: resolución del grid CIC (por lado). Debe ser ≥ 4.
 /// - `n_pk_bins`: número de bins en P(k)
 /// - `params`: parámetros 21cm
 pub fn compute_cm21_output(
@@ -134,12 +143,7 @@ pub fn compute_cm21_output(
     let delta_tb = compute_delta_tb_field(particles, chem_states, z, params);
 
     if delta_tb.is_empty() {
-        return Cm21Output {
-            z,
-            delta_tb_mean: 0.0,
-            delta_tb_sigma: 0.0,
-            pk_21cm: Vec::new(),
-        };
+        return Cm21Output { z, delta_tb_mean: 0.0, delta_tb_sigma: 0.0, pk_21cm: Vec::new() };
     }
 
     let mean = delta_tb.iter().sum::<f64>() / delta_tb.len() as f64;
@@ -147,7 +151,7 @@ pub fn compute_cm21_output(
     let sigma = variance.sqrt();
 
     let pk_21cm = if n_mesh >= 4 && n_pk_bins >= 1 {
-        compute_pk_21cm_simple(&delta_tb, particles, box_size, n_mesh, n_pk_bins)
+        compute_pk_21cm_fft(&delta_tb, particles, box_size, n_mesh, n_pk_bins)
     } else {
         Vec::new()
     };
@@ -155,10 +159,118 @@ pub fn compute_cm21_output(
     Cm21Output { z, delta_tb_mean: mean, delta_tb_sigma: sigma, pk_21cm }
 }
 
-/// Calcula el power spectrum P(k)₂₁cm con deposición CIC y FFT 3D simplificada.
+/// Deposita el campo δT_b en una malla 3D usando CIC trilineal periódico.
 ///
-/// Para eficiencia, usa una FFT 1D por dimensión (aproximación para tests unitarios).
-fn compute_pk_21cm_simple(
+/// Cada partícula contribuye a las 8 celdas vecinas con peso proporcional
+/// a la fracción volumétrica dentro de cada celda.
+fn deposit_cic(
+    delta_tb: &[f64],
+    particles: &[Particle],
+    n_mesh: usize,
+    dx: f64,
+) -> Vec<f64> {
+    let n3 = n_mesh * n_mesh * n_mesh;
+    let mut grid = vec![0.0_f64; n3];
+    let n = particles.len().min(delta_tb.len());
+
+    for i in 0..n {
+        let p = &particles[i];
+        let dtb = delta_tb[i];
+
+        // Posición normalizada en unidades de celda
+        let xc = p.position.x / dx - 0.5;
+        let yc = p.position.y / dx - 0.5;
+        let zc = p.position.z / dx - 0.5;
+
+        let ix0 = xc.floor() as isize;
+        let iy0 = yc.floor() as isize;
+        let iz0 = zc.floor() as isize;
+
+        let tx = xc - ix0 as f64; // peso fraccionario [0,1)
+        let ty = yc - iy0 as f64;
+        let tz = zc - iz0 as f64;
+
+        // 8 vértices CIC con periodicidad
+        let nm = n_mesh as isize;
+        for (dx_i, wx) in [(0, 1.0 - tx), (1, tx)] {
+            for (dy_i, wy) in [(0, 1.0 - ty), (1, ty)] {
+                for (dz_i, wz) in [(0, 1.0 - tz), (1, tz)] {
+                    let ix = ((ix0 + dx_i).rem_euclid(nm)) as usize;
+                    let iy = ((iy0 + dy_i).rem_euclid(nm)) as usize;
+                    let iz = ((iz0 + dz_i).rem_euclid(nm)) as usize;
+                    grid[ix * n_mesh * n_mesh + iy * n_mesh + iz] += dtb * wx * wy * wz;
+                }
+            }
+        }
+    }
+    grid
+}
+
+/// Aplica FFT 3D a un grid real usando 3 pasadas de FFT 1D complejas (separabilidad DFT).
+///
+/// Retorna el grid en espacio de Fourier como Vec<Complex<f64>> de longitud N³.
+/// El layout es [ix][iy][iz] con stride n_mesh² / n_mesh / 1.
+fn fft3d_real(grid_real: &[f64], n_mesh: usize) -> Vec<Complex<f64>> {
+    let n3 = n_mesh * n_mesh * n_mesh;
+    let mut planner = FftPlanner::<f64>::new();
+    let fft = planner.plan_fft_forward(n_mesh);
+
+    // Convertir a complejo
+    let mut data: Vec<Complex<f64>> = grid_real
+        .iter()
+        .map(|&v| Complex::new(v, 0.0))
+        .collect();
+
+    // FFT sobre el eje Z (dim 2, stride 1, n_mesh elementos consecutivos)
+    for ix in 0..n_mesh {
+        for iy in 0..n_mesh {
+            let base = ix * n_mesh * n_mesh + iy * n_mesh;
+            let slice = &mut data[base..base + n_mesh];
+            fft.process(slice);
+        }
+    }
+
+    // FFT sobre el eje Y (dim 1, stride n_mesh)
+    let mut scratch_y = vec![Complex::new(0.0, 0.0); n_mesh];
+    for ix in 0..n_mesh {
+        for iz in 0..n_mesh {
+            for iy in 0..n_mesh {
+                scratch_y[iy] = data[ix * n_mesh * n_mesh + iy * n_mesh + iz];
+            }
+            fft.process(&mut scratch_y);
+            for iy in 0..n_mesh {
+                data[ix * n_mesh * n_mesh + iy * n_mesh + iz] = scratch_y[iy];
+            }
+        }
+    }
+
+    // FFT sobre el eje X (dim 0, stride n_mesh²)
+    let mut scratch_x = vec![Complex::new(0.0, 0.0); n_mesh];
+    for iy in 0..n_mesh {
+        for iz in 0..n_mesh {
+            for ix in 0..n_mesh {
+                scratch_x[ix] = data[ix * n_mesh * n_mesh + iy * n_mesh + iz];
+            }
+            fft.process(&mut scratch_x);
+            for ix in 0..n_mesh {
+                data[ix * n_mesh * n_mesh + iy * n_mesh + iz] = scratch_x[ix];
+            }
+        }
+    }
+
+    let _ = n3;
+    data
+}
+
+/// Calcula P(k)₂₁cm via CIC trilineal + FFT 3D real + binning esférico.
+///
+/// Pipeline:
+/// 1. CIC trilineal → malla δT_b(x) de N³ celdas
+/// 2. Substracción de la media → campo de contraste
+/// 3. FFT 3D (3 × FFT 1D complejas) → δ̃T_b(k)
+/// 4. |δ̃T_b(k)|² × V / N³ → estimador de P(k) [mK² (Mpc/h)³]
+/// 5. Binning esférico → Δ²(k) = k³ P(k) / (2π²) [mK²]
+fn compute_pk_21cm_fft(
     delta_tb: &[f64],
     particles: &[Particle],
     box_size: f64,
@@ -168,69 +280,50 @@ fn compute_pk_21cm_simple(
     let n3 = n_mesh * n_mesh * n_mesh;
     let dx = box_size / n_mesh as f64;
 
-    // Deposición CIC en malla 3D
-    let mut grid = vec![0.0_f64; n3];
-    let n = particles.len().min(delta_tb.len());
-    for i in 0..n {
-        let p = &particles[i];
-        let dtb = delta_tb[i];
-        let ix = ((p.position.x / dx) as usize).min(n_mesh - 1);
-        let iy = ((p.position.y / dx) as usize).min(n_mesh - 1);
-        let iz = ((p.position.z / dx) as usize).min(n_mesh - 1);
-        grid[ix * n_mesh * n_mesh + iy * n_mesh + iz] += dtb;
+    // 1. Deposición CIC
+    let mut grid = deposit_cic(delta_tb, particles, n_mesh, dx);
+
+    // 2. Substraer media (campo de contraste δ = T/T̄ - 1 en el grid)
+    let mean_grid = grid.iter().sum::<f64>() / n3 as f64;
+    for v in grid.iter_mut() {
+        *v -= mean_grid;
     }
 
-    // Normalizar
-    let n_part = n as f64;
-    if n_part > 0.0 {
-        for v in grid.iter_mut() {
-            *v /= n_part / n3 as f64;
-        }
-    }
+    // 3. FFT 3D
+    let fft_grid = fft3d_real(&grid, n_mesh);
 
-    // Power spectrum esférico por promedio de |grid|² en bins de k
-    // Usamos la varianza de la malla como proxy para el PS a distintas frecuencias
-    let k_min = 2.0 * std::f64::consts::PI / box_size;
-    let k_nyq = std::f64::consts::PI * n_mesh as f64 / box_size;
-    let dk = (k_nyq - k_min) / n_pk_bins as f64;
-
+    // 4. Binning esférico de |δ̃|² en k
+    let k_fund = 2.0 * std::f64::consts::PI / box_size; // k fundamental [h/Mpc]
+    let k_nyq = std::f64::consts::PI / dx;               // k Nyquist
+    let dk = (k_nyq - k_fund) / n_pk_bins as f64;
     let vol = box_size.powi(3);
+    let norm = vol / (n3 * n3) as f64; // factor de normalización de la DFT discreta
 
-    let mut pk_bins = vec![(0.0_f64, 0.0_f64, 0_usize); n_pk_bins];
+    let mut pk_bins: Vec<(f64, f64, usize)> = vec![(0.0, 0.0, 0); n_pk_bins];
 
     for ix in 0..n_mesh {
-        let kx = if ix <= n_mesh / 2 {
-            ix as f64 * k_min
-        } else {
-            (ix as f64 - n_mesh as f64) * k_min
-        };
+        let kx = freq_to_k(ix, n_mesh, k_fund);
         for iy in 0..n_mesh {
-            let ky = if iy <= n_mesh / 2 {
-                iy as f64 * k_min
-            } else {
-                (iy as f64 - n_mesh as f64) * k_min
-            };
+            let ky = freq_to_k(iy, n_mesh, k_fund);
             for iz in 0..n_mesh {
-                let kz = if iz <= n_mesh / 2 {
-                    iz as f64 * k_min
-                } else {
-                    (iz as f64 - n_mesh as f64) * k_min
-                };
+                let kz = freq_to_k(iz, n_mesh, k_fund);
                 let k_mag = (kx * kx + ky * ky + kz * kz).sqrt();
-                if k_mag < k_min * 0.5 {
-                    continue;
+                if k_mag < k_fund * 0.5 {
+                    continue; // excluir modo cero
                 }
-                let bin_idx = ((k_mag - k_min) / dk) as usize;
+                let bin_idx = ((k_mag - k_fund) / dk) as usize;
                 if bin_idx < n_pk_bins {
-                    let val = grid[ix * n_mesh * n_mesh + iy * n_mesh + iz];
+                    let c = fft_grid[ix * n_mesh * n_mesh + iy * n_mesh + iz];
+                    let pk = (c.re * c.re + c.im * c.im) * norm;
                     pk_bins[bin_idx].0 += k_mag;
-                    pk_bins[bin_idx].1 += val * val * vol / n3 as f64;
+                    pk_bins[bin_idx].1 += pk;
                     pk_bins[bin_idx].2 += 1;
                 }
             }
         }
     }
 
+    // 5. Calcular Δ²(k) = k³ P(k) / (2π²)
     let two_pi_sq = 2.0 * std::f64::consts::PI * std::f64::consts::PI;
     pk_bins
         .into_iter()
@@ -242,6 +335,14 @@ fn compute_pk_21cm_simple(
             Cm21PkBin { k: k_mean, delta_sq }
         })
         .collect()
+}
+
+/// Convierte índice FFT a frecuencia física k [h/Mpc] (convenio centrado).
+#[inline]
+fn freq_to_k(idx: usize, n: usize, k_fund: f64) -> f64 {
+    let i = idx as isize;
+    let n = n as isize;
+    if i <= n / 2 { i as f64 * k_fund } else { (i - n) as f64 * k_fund }
 }
 
 #[cfg(test)]
@@ -326,5 +427,136 @@ mod tests {
         let out = compute_cm21_output(&[], &[], 10.0, 8.0, 4, 3, &params);
         assert_eq!(out.delta_tb_mean, 0.0);
         assert!(out.pk_21cm.is_empty());
+    }
+
+    /// La FFT 3D de un campo constante (solo modo k=0) no debe producir
+    /// bins de P(k) en la parte de señal (todos los bins en k>0 deben ser ~0).
+    #[test]
+    fn pk_fft_uniform_field_zero_signal() {
+        let params = Cm21Params::default();
+        let box_size = 10.0;
+        let n_mesh = 8;
+        let n_part = n_mesh * n_mesh * n_mesh;
+
+        // Partículas en retícula regular, todas con el mismo δT_b (gas completamente neutro)
+        let dx = box_size / n_mesh as f64;
+        let mut particles = Vec::new();
+        let mut chem = Vec::new();
+        for ix in 0..n_mesh {
+            for iy in 0..n_mesh {
+                for iz in 0..n_mesh {
+                    let x = (ix as f64 + 0.5) * dx;
+                    let y = (iy as f64 + 0.5) * dx;
+                    let z = (iz as f64 + 0.5) * dx;
+                    particles.push(make_particle(x, y, z, 1.0, 0.5 * dx));
+                    chem.push(make_chem(0.0)); // x_HII=0 → δT_b uniforme
+                }
+            }
+        }
+
+        let out = compute_cm21_output(&particles, &chem, box_size, 9.0, n_mesh, 4, &params);
+
+        // Campo uniforme → δ̃(k) = 0 para k≠0 → todos los bins de P(k) deben ser ≈ 0
+        for bin in &out.pk_21cm {
+            assert!(
+                bin.delta_sq.abs() < 1e-6,
+                "campo uniforme debe tener Δ²(k)≈0 en k={:.3}, got {:.3e}",
+                bin.k,
+                bin.delta_sq
+            );
+        }
+        assert_eq!(out.pk_21cm.len(), 4, "deben haber 4 bins k");
+        assert!(out.delta_tb_mean > 0.0, "señal media debe ser positiva antes de reionización");
+        let _ = n_part;
+    }
+
+    /// El P(k) con una onda sinusoidal inyectada debe tener pico en el bin correcto.
+    #[test]
+    fn pk_fft_sinusoidal_signal_peak() {
+        let params = Cm21Params::default();
+        let box_size = 10.0;
+        let n_mesh = 8;
+        let dx = box_size / n_mesh as f64;
+        let k_fund = 2.0 * std::f64::consts::PI / box_size;
+
+        // Retícula regular con δT_b modulado por cos(k_fund x) en la dirección X
+        let mut particles = Vec::new();
+        let mut chem_base = Vec::new();
+        for ix in 0..n_mesh {
+            for iy in 0..n_mesh {
+                for iz in 0..n_mesh {
+                    let x = (ix as f64 + 0.5) * dx;
+                    let y = (iy as f64 + 0.5) * dx;
+                    let z = (iz as f64 + 0.5) * dx;
+                    let p = make_particle(x, y, z, 1.0, 0.4 * dx);
+                    particles.push(p);
+                    // Modulamos x_hii con una sinusoidal para crear variación en δT_b
+                    let x_hii = 0.5 + 0.3 * (k_fund * x).cos();
+                    chem_base.push(make_chem(x_hii.clamp(0.0, 1.0)));
+                }
+            }
+        }
+
+        let out = compute_cm21_output(&particles, &chem_base, box_size, 9.0, n_mesh, 4, &params);
+
+        // Debe haber señal en P(k) (campo no uniforme → FFT no nula)
+        let has_signal = out.pk_21cm.iter().any(|b| b.delta_sq > 1e-10);
+        assert!(has_signal, "campo modulado debe producir señal en P(k)");
+
+        // El bin de menor k debe tener la mayor potencia (modo fundamental)
+        let pk_vals: Vec<f64> = out.pk_21cm.iter().map(|b| b.delta_sq).collect();
+        if pk_vals.len() >= 2 {
+            assert!(
+                pk_vals[0] >= pk_vals[pk_vals.len() - 1],
+                "el modo fundamental debe dominar: Δ²(k_min)={:.3e} vs Δ²(k_max)={:.3e}",
+                pk_vals[0], pk_vals[pk_vals.len() - 1]
+            );
+        }
+    }
+
+    /// CIC trilineal debe conservar la masa total del campo.
+    #[test]
+    fn cic_deposit_conserves_total() {
+        let box_size = 10.0;
+        let n_mesh = 8;
+        let dx = box_size / n_mesh as f64;
+        let n = 64;
+
+        let mut particles = Vec::new();
+        let mut dtb = Vec::new();
+        for i in 0..n {
+            let x = (i as f64 + 0.5) * box_size / n as f64;
+            particles.push(make_particle(x % box_size, (x * 1.3) % box_size, (x * 0.7) % box_size, 1.0, 0.3));
+            dtb.push(1.0_f64); // δT_b = 1 para todos
+        }
+
+        let grid = deposit_cic(&dtb, &particles, n_mesh, dx);
+        let total: f64 = grid.iter().sum();
+        assert!(
+            (total - n as f64).abs() < 1e-10,
+            "CIC debe conservar la suma total: {} ≠ {}",
+            total, n
+        );
+    }
+
+    /// fft3d_real de un impulso unitario debe tener módulo constante = 1.
+    #[test]
+    fn fft3d_impulse_flat_spectrum() {
+        let n = 4;
+        let n3 = n * n * n;
+        let mut grid = vec![0.0_f64; n3];
+        grid[0] = 1.0; // impulso en el origen
+
+        let fft_out = fft3d_real(&grid, n);
+
+        // Para un impulso δ[0,0,0], la DFT debe ser plana: |F(k)| = 1 para todo k
+        for c in &fft_out {
+            let mag = (c.re * c.re + c.im * c.im).sqrt();
+            assert!(
+                (mag - 1.0).abs() < 1e-10,
+                "DFT de impulso debe ser plana, got |F| = {}",
+                mag
+            );
+        }
     }
 }
