@@ -106,6 +106,7 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
             dt: DT_PHYS,
             num_steps: 10,
             softening: EPS_PHYS_MPC_H / BOX_MPC_H,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: n * n * n,
             box_size: BOX,

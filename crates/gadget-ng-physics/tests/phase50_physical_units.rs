@@ -96,6 +96,7 @@ fn build_ic(n: usize, g_override: f64) -> RunConfig {
             dt: 1e-5,
             num_steps: 1,
             softening: 1.0 / (n as f64 * 20.0),
+            physical_softening: false,
             gravitational_constant: g_override,
             particle_count: n * n * n,
             box_size: BOX,

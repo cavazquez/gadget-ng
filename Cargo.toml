@@ -9,6 +9,8 @@ members = [
     "crates/gadget-ng-gpu",
     "crates/gadget-ng-pm",
     "crates/gadget-ng-treepm",
+    "crates/gadget-ng-cuda",
+    "crates/gadget-ng-hip",
     "crates/gadget-ng-cli",
     "crates/gadget-ng-analysis",
     "crates/gadget-ng-sph",

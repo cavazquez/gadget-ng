@@ -721,7 +721,11 @@ fn compute_forces_hierarchical_let(
     if parts.is_empty() || active_local.is_empty() {
         return;
     }
-    let all_pos: Vec<Vec3> = parts.iter().chain(halos.iter()).map(|p| p.position).collect();
+    let all_pos: Vec<Vec3> = parts
+        .iter()
+        .chain(halos.iter())
+        .map(|p| p.position)
+        .collect();
     let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
     for (j, &li) in active_local.iter().enumerate() {
@@ -779,6 +783,45 @@ fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             return Box::new(gpu);
         }
         eprintln!("[gadget-ng] ADVERTENCIA: use_gpu=true pero no hay GPU disponible; usando CPU.");
+    }
+
+    // Solver PM CUDA — activado con `[performance] use_gpu_cuda = true`.
+    // Requiere `--features cuda`. Si nvcc no estaba disponible en build time o no hay
+    // dispositivo CUDA, `try_new()` devuelve None y se continúa con el solver CPU.
+    #[cfg(feature = "cuda")]
+    if cfg.performance.use_gpu_cuda && cfg.gravity.solver == SolverKind::Pm {
+        if let Some(solver) =
+            gadget_ng_cuda::CudaPmSolver::try_new(cfg.gravity.pm_grid_size, cfg.simulation.box_size)
+        {
+            eprintln!(
+                "[gadget-ng] PM CUDA activado (grilla {}³).",
+                solver.grid_size()
+            );
+            return Box::new(solver);
+        }
+        eprintln!(
+            "[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible; usando CPU PM."
+        );
+    }
+
+    // Solver PM HIP — activado con `[performance] use_gpu_hip = true`.
+    // `use_gpu_cuda` tiene precedencia si ambos están en true.
+    // Requiere `--features hip`. Si hipcc no estaba disponible en build time o no hay
+    // dispositivo ROCm, `try_new()` devuelve None y se continúa con el solver CPU.
+    #[cfg(feature = "hip")]
+    if cfg.performance.use_gpu_hip && cfg.gravity.solver == SolverKind::Pm {
+        if let Some(solver) =
+            gadget_ng_hip::HipPmSolver::try_new(cfg.gravity.pm_grid_size, cfg.simulation.box_size)
+        {
+            eprintln!(
+                "[gadget-ng] PM HIP/ROCm activado (grilla {}³).",
+                solver.grid_size()
+            );
+            return Box::new(solver);
+        }
+        eprintln!(
+            "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP/ROCm no disponible; usando CPU PM."
+        );
     }
 
     // Los solvers PM y TreePM no usan Rayon; se enrutan antes del bloque SIMD.
@@ -3162,7 +3205,11 @@ fn snapshot_env_for(cfg: &RunConfig, time: f64, redshift: f64) -> SnapshotEnv {
     // (1/t_sim), así que no es equivalente. Se usa como mejor aproximación disponible;
     // para runs con unidades físicas el valor correcto es el `h` de las ICs Zeldovich.
     let (omega_m, omega_lambda, h_dimless) = if cfg.cosmology.enabled {
-        (cfg.cosmology.omega_m, cfg.cosmology.omega_lambda, cfg.cosmology.h0)
+        (
+            cfg.cosmology.omega_m,
+            cfg.cosmology.omega_lambda,
+            cfg.cosmology.h0,
+        )
     } else {
         (0.0, 0.0, 1.0)
     };

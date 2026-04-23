@@ -97,6 +97,7 @@ fn eds_config(n: usize) -> RunConfig {
             dt: 0.005,
             num_steps: 30,
             softening: 0.02,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: n,
             box_size: BOX,

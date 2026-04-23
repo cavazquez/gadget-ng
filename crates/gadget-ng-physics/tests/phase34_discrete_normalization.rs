@@ -437,6 +437,7 @@ fn make_config(seed: u64, n: usize) -> RunConfig {
             dt: 0.002,
             num_steps: 1,
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: n * n * n,
             box_size: BOX,

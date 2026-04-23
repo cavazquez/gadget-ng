@@ -339,6 +339,7 @@ fn phase53_density_profile_from_fof_halo() {
             dt: 1e-3,
             num_steps: 1,
             softening: box_size / (n_side as f64 * 20.0),
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: n_side.pow(3),
             box_size,

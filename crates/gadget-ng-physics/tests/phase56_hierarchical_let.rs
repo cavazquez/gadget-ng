@@ -111,7 +111,11 @@ fn force_active_let(
     if parts.is_empty() || active_local.is_empty() {
         return;
     }
-    let all_pos: Vec<Vec3> = parts.iter().chain(halos.iter()).map(|p| p.position).collect();
+    let all_pos: Vec<Vec3> = parts
+        .iter()
+        .chain(halos.iter())
+        .map(|p| p.position)
+        .collect();
     let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
     for (j, &li) in active_local.iter().enumerate() {
@@ -231,7 +235,14 @@ fn momentum_conservation_hierarchical() {
     }
 
     let mut h_state = HierarchicalState::new(n);
-    h_state.init_from_accels(&parts, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     // p₀ = 0 porque las velocidades iniciales son nulas.
     let p0 = total_momentum(&parts);
@@ -292,7 +303,14 @@ fn hierarchical_let_closure_stability() {
     }
 
     let mut h_state = HierarchicalState::new(n);
-    h_state.init_from_accels(&parts, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     // Energía potencial máxima como cota: E_kin ≤ |W| = G·M²/r_min.
     let max_accel = init_acc.iter().map(|a| a.norm()).fold(0.0_f64, f64::max);
@@ -351,9 +369,23 @@ fn hierarchical_let_vs_full_tree_one_step() {
     }
 
     let mut hs_a = HierarchicalState::new(n);
-    hs_a.init_from_accels(&parts_a, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    hs_a.init_from_accels(
+        &parts_a,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
     let mut hs_b = HierarchicalState::new(n);
-    hs_b.init_from_accels(&parts_b, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    hs_b.init_from_accels(
+        &parts_b,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     // Paso A: cierre active_only (replicas compute_forces_hierarchical_let).
     hierarchical_kdk_step(
@@ -432,7 +464,14 @@ fn active_only_skips_inactive() {
     }
 
     let mut h_state = HierarchicalState::new(n);
-    h_state.init_from_accels(&parts, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     let mut max_active_seen = 0usize;
     let mut min_active_seen = usize::MAX;

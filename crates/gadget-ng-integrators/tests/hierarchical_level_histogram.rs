@@ -43,6 +43,7 @@ fn make_config() -> RunConfig {
             dt: DT_BASE,
             num_steps: 0,
             softening: EPS,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: N,
             box_size: 10.0,

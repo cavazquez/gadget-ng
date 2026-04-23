@@ -129,6 +129,7 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
             dt: 4.0e-4,
             num_steps: 10,
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: n * n * n,
             box_size: BOX,
@@ -490,9 +491,7 @@ fn run_full_matrix() -> Vec<SnapshotResult> {
         .unwrap_or(false);
 
     if !run_n256 {
-        eprintln!(
-            "[phase41] N=256 omitido por defecto (~27 h). Para correrlo: PHASE41_RUN_N256=1"
-        );
+        eprintln!("[phase41] N=256 omitido por defecto (~27 h). Para correrlo: PHASE41_RUN_N256=1");
     }
 
     let mut all = Vec::new();

@@ -692,7 +692,9 @@ dependencies = [
  "figment",
  "gadget-ng-analysis",
  "gadget-ng-core",
+ "gadget-ng-cuda",
  "gadget-ng-gpu",
+ "gadget-ng-hip",
  "gadget-ng-integrators",
  "gadget-ng-io",
  "gadget-ng-parallel",
@@ -724,12 +726,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gadget-ng-cuda"
+version = "0.1.0"
+dependencies = [
+ "gadget-ng-core",
+]
+
+[[package]]
 name = "gadget-ng-gpu"
 version = "0.1.0"
 dependencies = [
  "pollster",
  "tempfile",
  "wgpu",
+]
+
+[[package]]
+name = "gadget-ng-hip"
+version = "0.1.0"
+dependencies = [
+ "gadget-ng-core",
 ]
 
 [[package]]

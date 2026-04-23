@@ -50,6 +50,7 @@ fn base_cfg(g_override: f64, auto_g: bool) -> RunConfig {
             dt: 1e-3,
             num_steps: 1,
             softening: 1.0 / (8.0 * 20.0),
+            physical_softening: false,
             gravitational_constant: g_override,
             particle_count: 8 * 8 * 8,
             box_size: BOX,

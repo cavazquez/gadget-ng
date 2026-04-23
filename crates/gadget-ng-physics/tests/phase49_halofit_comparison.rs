@@ -100,6 +100,7 @@ fn build_ic() -> RunConfig {
             dt: 1e-5,
             num_steps: 1,
             softening: 0.005,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: N_MESH * N_MESH * N_MESH,
             box_size: BOX,

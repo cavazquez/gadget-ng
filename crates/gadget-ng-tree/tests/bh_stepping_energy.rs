@@ -20,6 +20,7 @@ fn stepping_with_barnes_hut_kinetic_bounded() {
             dt: 0.0005,
             num_steps: 50,
             softening: 0.04,
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: 27,
             box_size: 1.0,

@@ -81,6 +81,7 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
             dt: 0.002,
             num_steps: 20,
             softening: 0.02,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: N_PART,
             box_size: BOX,

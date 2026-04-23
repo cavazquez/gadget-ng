@@ -72,6 +72,7 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
             dt: 0.002,
             num_steps: 10,
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: n * n * n,
             box_size: BOX,

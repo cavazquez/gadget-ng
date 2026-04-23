@@ -11,6 +11,7 @@ fn root_mass_and_com_match_particles() {
             dt: 0.01,
             num_steps: 1,
             softening: 0.02,
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: 8,
             box_size: 1.0,

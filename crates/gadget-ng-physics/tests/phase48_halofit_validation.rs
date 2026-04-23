@@ -96,6 +96,7 @@ fn build_ic_config(seed: u64) -> RunConfig {
             dt: 1.0e-3,
             num_steps: 0, // No evolucionar — solo generar ICs
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: N_MESH * N_MESH * N_MESH,
             box_size: BOX,

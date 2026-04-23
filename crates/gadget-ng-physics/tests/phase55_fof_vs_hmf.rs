@@ -74,6 +74,7 @@ fn build_run_config(n: usize) -> RunConfig {
             dt: 4.0e-4,
             num_steps: 1,
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: g_consistent(),
             particle_count: n * n * n,
             box_size: BOX,

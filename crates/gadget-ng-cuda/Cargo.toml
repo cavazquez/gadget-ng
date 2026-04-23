@@ -1,0 +1,16 @@
+[package]
+name = "gadget-ng-cuda"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Solver PM GPU con CUDA (nvcc + cuFFT). Requiere CUDA Toolkit instalado."
+
+# Sin dependencias de Rust en tiempo de compilación sobre CUDA:
+# el kernel C/CUDA se compila en build.rs con nvcc y se enlaza como librería estática.
+# Si nvcc no está disponible, build.rs emite cuda_unavailable y el crate provee stubs.
+[lib]
+
+[dependencies]
+gadget-ng-core = { path = "../gadget-ng-core" }
+
+[build-dependencies]

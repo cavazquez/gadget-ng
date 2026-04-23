@@ -74,8 +74,17 @@ impl SnapshotWriter for Hdf5Writer {
             .with_data(&arr1(&[1_i32]))
             .create("NumFilesPerSnapshot")?;
         let flags_zero = arr1(&[0_i32]);
-        for name in ["Flag_Sfr", "Flag_Feedback", "Flag_Cooling", "Flag_StellarAge", "Flag_Metals"] {
-            header.new_attr_builder().with_data(&flags_zero).create(name)?;
+        for name in [
+            "Flag_Sfr",
+            "Flag_Feedback",
+            "Flag_Cooling",
+            "Flag_StellarAge",
+            "Flag_Metals",
+        ] {
+            header
+                .new_attr_builder()
+                .with_data(&flags_zero)
+                .create(name)?;
         }
 
         // --- PartType1 = DM (N-body colisionless típico) ---

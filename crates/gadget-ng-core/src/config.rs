@@ -647,6 +647,21 @@ pub struct PerformanceSection {
     #[serde(default)]
     pub force_allgather_fallback: bool,
 
+    /// `true` → intentar usar el solver PM CUDA (requiere `--features cuda` y nvcc+cuFFT).
+    /// Si el dispositivo CUDA no está disponible en el host o el crate se compiló sin
+    /// toolchain CUDA, se cae automáticamente al solver CPU sin error fatal.
+    /// Solo tiene efecto cuando `[gravity] solver = "Pm"`.
+    /// Con `false` (default) siempre se usa el solver PM CPU.
+    #[serde(default)]
+    pub use_gpu_cuda: bool,
+
+    /// `true` → intentar usar el solver PM HIP/ROCm (requiere `--features hip` y hipcc+rocFFT).
+    /// Misma semántica de degradación elegante que `use_gpu_cuda`.
+    /// `use_gpu_cuda` tiene precedencia si ambos están en `true`.
+    /// Solo tiene efecto cuando `[gravity] solver = "Pm"`.
+    #[serde(default)]
+    pub use_gpu_hip: bool,
+
     /// `true` (default) → usar alltoallv no-bloqueante (Isend/Irecv) para solapar
     /// la evaluación de fuerzas locales con la comunicación LET.
     /// `false` → alltoallv bloqueante (Fase 8 original); útil para comparación.
@@ -767,6 +782,8 @@ impl Default for PerformanceSection {
             let_tree_leaf_max: default_let_tree_leaf_max(),
             let_theta_export_factor: 0.0,
             sfc_kind: SfcKind::Morton,
+            use_gpu_cuda: false,
+            use_gpu_hip: false,
         }
     }
 }

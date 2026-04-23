@@ -57,6 +57,7 @@ fn lpt2_config(seed: u64) -> RunConfig {
             dt: 0.002,
             num_steps: 10,
             softening: 0.02,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: N_PART,
             box_size: BOX,

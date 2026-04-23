@@ -11,6 +11,7 @@ fn lattice_config() -> RunConfig {
             dt: 0.001,
             num_steps: 30,
             softening: 0.02,
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: 8,
             box_size: 1.0,

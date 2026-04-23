@@ -15,6 +15,8 @@ mpi = ["gadget-ng-parallel/mpi"]
 bincode = ["gadget-ng-io/bincode"]
 hdf5 = ["gadget-ng-io/hdf5"]
 gpu = ["dep:gadget-ng-gpu", "gadget-ng-core/gpu"]
+cuda = ["dep:gadget-ng-cuda"]
+hip  = ["dep:gadget-ng-hip"]
 simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "dep:rayon"]
 pm-rayon = ["gadget-ng-pm/rayon", "gadget-ng-treepm/rayon"]
 msgpack = ["gadget-ng-io/msgpack"]
@@ -26,7 +28,9 @@ gadget-ng-core = { path = "../gadget-ng-core", features = [] }
 gadget-ng-tree = { path = "../gadget-ng-tree" }
 gadget-ng-pm = { path = "../gadget-ng-pm" }
 gadget-ng-treepm = { path = "../gadget-ng-treepm" }
-gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
+gadget-ng-gpu  = { path = "../gadget-ng-gpu",  optional = true }
+gadget-ng-cuda = { path = "../gadget-ng-cuda", optional = true }
+gadget-ng-hip  = { path = "../gadget-ng-hip",  optional = true }
 rayon = { version = "1.10", optional = true }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel" }

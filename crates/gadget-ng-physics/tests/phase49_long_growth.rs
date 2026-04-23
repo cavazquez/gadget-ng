@@ -70,6 +70,7 @@ fn build_ic(n: usize, seed: u64) -> RunConfig {
             dt: 1e-5,
             num_steps: 1,
             softening,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: n * n * n,
             box_size: BOX,

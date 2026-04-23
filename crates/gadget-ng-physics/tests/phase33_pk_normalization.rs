@@ -88,6 +88,7 @@ fn make_config(seed: u64, grid: usize, nm: usize) -> RunConfig {
             dt: 0.002,
             num_steps: 10,
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: grid * grid * grid,
             box_size: BOX,

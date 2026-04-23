@@ -1,0 +1,16 @@
+[package]
+name = "gadget-ng-hip"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Solver PM GPU con HIP/ROCm (hipcc + rocFFT). Requiere ROCm instalado."
+
+# Sin dependencias de Rust en tiempo de compilación sobre HIP:
+# el kernel se compila en build.rs con hipcc y se enlaza como librería estática.
+# Si hipcc no está disponible, build.rs emite hip_unavailable y el crate provee stubs.
+[lib]
+
+[dependencies]
+gadget-ng-core = { path = "../gadget-ng-core" }
+
+[build-dependencies]

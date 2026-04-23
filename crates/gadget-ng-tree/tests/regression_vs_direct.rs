@@ -34,6 +34,7 @@ fn lattice_cfg(n: usize, seed: u64) -> RunConfig {
             dt: 0.01,
             num_steps: 1,
             softening: 0.03,
+            physical_softening: false,
             gravitational_constant: 1.0,
             particle_count: n,
             box_size: 1.0,

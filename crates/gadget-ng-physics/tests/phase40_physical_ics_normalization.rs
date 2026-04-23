@@ -120,6 +120,7 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
             dt: 4.0e-4,
             num_steps: 10,
             softening: 0.01,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: n * n * n,
             box_size: BOX,

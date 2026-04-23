@@ -63,6 +63,7 @@ fn collapse_config() -> RunConfig {
             dt: 0.01,
             num_steps: 100,
             softening: EPS,
+            physical_softening: false,
             gravitational_constant: G,
             particle_count: N,
             box_size: 4.0 * R,
