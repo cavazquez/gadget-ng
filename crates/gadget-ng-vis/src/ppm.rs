@@ -1,4 +1,4 @@
-//! Renderizado PPM (Portable Pixel Map) sin dependencias externas.
+//! Renderizado PPM (Portable Pixel Map) y PNG sin dependencias pesadas.
 //!
 //! El formato PPM binario (P6) es trivial de escribir:
 //! ```text
@@ -8,23 +8,21 @@
 //! <raw RGB bytes en orden raster>
 //! ```
 //!
-//! Sin dependencias externas (`png`, `image`, etc.): ideal para entornos sin X11
-//! o donde el binario final debe ser mínimo.
+//! Para PNG se usa la crate `png` (ya dependencia de `gadget-ng-vis`).
 //!
-//! ## Uso
+//! ## Funciones disponibles
 //!
-//! ```rust
-//! use gadget_ng_vis::{render_ppm, write_ppm};
-//! use gadget_ng_core::Vec3;
-//!
-//! let positions = vec![Vec3::new(25.0, 25.0, 0.0), Vec3::new(75.0, 75.0, 0.0)];
-//! let pixels = render_ppm(&positions, 100.0, 128, 128);
-//! // write_ppm(std::path::Path::new("/tmp/frame.ppm"), &pixels, 128, 128).unwrap();
-//! ```
+//! - [`render_ppm`]: proyección XY, puntos blancos (retrocompatible).
+//! - [`render_ppm_projection`]: cualquier proyección (XY, XZ, YZ), puntos blancos.
+//! - [`render_density_ppm`]: mapa de densidad logarítmica + colormap Viridis.
+//! - [`write_ppm`]: escribe buffer RGB en formato PPM P6.
+//! - [`write_png`]: escribe buffer RGB en formato PNG.
 
 use gadget_ng_core::Vec3;
 use std::io::{self, Write};
 use std::path::Path;
+
+use crate::{color::viridis, projection::Projection};
 
 /// Renderiza partículas como imagen PPM (proyección ortográfica en el plano XY).
 ///
@@ -84,6 +82,130 @@ pub fn write_ppm(path: &Path, pixels: &[u8], width: usize, height: usize) -> io:
     write!(writer, "P6\n{width} {height}\n255\n")?;
     writer.write_all(pixels)?;
     writer.flush()
+}
+
+// ── Nuevas funciones Phase 64 ─────────────────────────────────────────────────
+
+/// Renderiza partículas como imagen PPM con proyección configurable.
+///
+/// Igual que [`render_ppm`] pero permite elegir el plano de proyección:
+/// - `Projection::XY`: usa coordenadas (x, y) — equivalente a `render_ppm`.
+/// - `Projection::XZ`: usa coordenadas (x, z).
+/// - `Projection::YZ`: usa coordenadas (y, z).
+///
+/// Las partículas fuera del rango `[0, box_size)` en ambos ejes se ignoran.
+pub fn render_ppm_projection(
+    positions: &[Vec3],
+    box_size: f64,
+    width: usize,
+    height: usize,
+    proj: Projection,
+) -> Vec<u8> {
+    let n_pixels = width * height;
+    let mut pixels = vec![0u8; n_pixels * 3];
+
+    if box_size <= 0.0 || width == 0 || height == 0 {
+        return pixels;
+    }
+
+    let scale_x = width as f64 / box_size;
+    let scale_y = height as f64 / box_size;
+
+    for p in positions {
+        let (px_world, py_world) = proj.project(*p);
+
+        let ix = (px_world * scale_x).floor() as isize;
+        // Y invertido: coordenada-mundo y=0 en la parte inferior; raster y=0 arriba.
+        let iy = (height as f64 - 1.0 - py_world * scale_y).floor() as isize;
+
+        if ix >= 0 && ix < width as isize && iy >= 0 && iy < height as isize {
+            let idx = (iy as usize * width + ix as usize) * 3;
+            pixels[idx] = 255;
+            pixels[idx + 1] = 255;
+            pixels[idx + 2] = 255;
+        }
+    }
+
+    pixels
+}
+
+/// Renderiza un mapa de densidad proyectada en escala logarítmica con colormap Viridis.
+///
+/// Cada pixel acumula el número de partículas proyectadas en él.
+/// El color se asigna según `log10(1 + count)` normalizado al máximo del frame,
+/// usando el colormap Viridis (azul=vacío → amarillo=denso).
+///
+/// Mismo sistema de proyección configurable que [`render_ppm_projection`].
+pub fn render_density_ppm(
+    positions: &[Vec3],
+    box_size: f64,
+    width: usize,
+    height: usize,
+    proj: Projection,
+) -> Vec<u8> {
+    let n_pixels = width * height;
+    let mut counts = vec![0u32; n_pixels];
+
+    if box_size > 0.0 && width > 0 && height > 0 {
+        let scale_x = width as f64 / box_size;
+        let scale_y = height as f64 / box_size;
+
+        for p in positions {
+            let (px_world, py_world) = proj.project(*p);
+            let ix = (px_world * scale_x).floor() as isize;
+            let iy = (height as f64 - 1.0 - py_world * scale_y).floor() as isize;
+
+            if ix >= 0 && ix < width as isize && iy >= 0 && iy < height as isize {
+                counts[iy as usize * width + ix as usize] += 1;
+            }
+        }
+    }
+
+    // Normalizar en escala log10.
+    let max_log = counts
+        .iter()
+        .map(|&c| (1.0 + c as f64).log10())
+        .fold(0.0f64, f64::max);
+
+    let mut pixels = vec![0u8; n_pixels * 3];
+    for (i, &c) in counts.iter().enumerate() {
+        let t = if max_log > 0.0 {
+            (1.0 + c as f64).log10() / max_log
+        } else {
+            0.0
+        };
+        let [r, g, b] = viridis(t.clamp(0.0, 1.0));
+        pixels[i * 3] = r;
+        pixels[i * 3 + 1] = g;
+        pixels[i * 3 + 2] = b;
+    }
+
+    pixels
+}
+
+/// Escribe un buffer RGB en formato PNG usando la crate `png`.
+///
+/// El buffer debe tener exactamente `width × height × 3` bytes.
+///
+/// # Errores
+/// Propaga errores de I/O. Si `png::Encoder` falla, convierte el error a `io::Error`.
+pub fn write_png(path: &Path, pixels: &[u8], width: usize, height: usize) -> io::Result<()> {
+    let file = std::fs::File::create(path)?;
+    let writer = io::BufWriter::new(file);
+
+    let mut encoder = png::Encoder::new(writer, width as u32, height as u32);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+
+    let mut png_writer = encoder
+        .write_header()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    png_writer
+        .write_image_data(pixels)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+    Ok(())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

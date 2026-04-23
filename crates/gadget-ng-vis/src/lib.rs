@@ -35,6 +35,6 @@ pub mod renderer;
 
 pub use color::ColorMode;
 pub use export::{frame_path, save_png};
-pub use ppm::{render_ppm, write_ppm};
+pub use ppm::{render_density_ppm, render_ppm, render_ppm_projection, write_png, write_ppm};
 pub use projection::Projection;
 pub use renderer::{Renderer, RendererConfig};

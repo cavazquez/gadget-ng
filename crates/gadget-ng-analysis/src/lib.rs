@@ -26,8 +26,11 @@
 pub mod catalog;
 pub mod correlation;
 pub mod fof;
+#[cfg(feature = "parallel")]
+pub mod fof_parallel;
 pub mod halo_mass_function;
 pub mod halofit;
+pub mod merger_tree;
 pub mod nfw;
 pub mod pk_correction;
 pub mod power_spectrum;
@@ -37,7 +40,9 @@ pub use catalog::{
     AnalysisParams, AnalysisResult,
 };
 pub use correlation::{two_point_correlation_fft, two_point_correlation_pairs, XiBin};
-pub use fof::FofHalo;
+pub use fof::{find_halos_combined, FofHalo};
+#[cfg(feature = "parallel")]
+pub use fof_parallel::find_halos_parallel;
 pub use halo_mass_function::{
     hmf_press_schechter, hmf_sheth_tormen, lagrange_radius, mass_function_table, multiplicity_ps,
     multiplicity_st, sigma_m, total_halo_density, HmfBin, HmfParams, DELTA_C, RHO_CRIT_H2,
@@ -48,5 +53,6 @@ pub use nfw::{
     fit_nfw_concentration, measure_density_profile, r200_from_m200, rho_crit_z, DensityBin,
     NfwFitResult, NfwProfile, DELTA_VIRIALIZED, RHO_CRIT0,
 };
+pub use merger_tree::{build_merger_forest, MergerForest, MergerTreeNode, ParticleSnapshot};
 pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_rn, RnModel};
 pub use power_spectrum::PkBin;

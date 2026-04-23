@@ -9,11 +9,16 @@ description = "Versioned snapshots and provenance"
 default = []
 bincode = ["dep:bincode"]
 hdf5 = ["dep:hdf5", "dep:ndarray"]
+# hdf5-parallel: habilita escritura/lectura HDF5 colectiva vía MPI-IO.
+# Requiere que HDF5 del sistema esté compilado con soporte MPI (--enable-parallel).
+# En modo serial (P=1) el comportamiento es idéntico al writer hdf5 estándar.
+hdf5-parallel = ["hdf5", "dep:gadget-ng-parallel"]
 msgpack = ["dep:rmp-serde"]
 netcdf = ["dep:netcdf"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
+gadget-ng-parallel = { path = "../gadget-ng-parallel", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

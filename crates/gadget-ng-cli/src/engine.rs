@@ -1179,6 +1179,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
+    // Macro local para análisis in-situ (Phase 63).
+    macro_rules! maybe_insitu {
+        ($step:expr) => {
+            crate::insitu::maybe_run_insitu(
+                &local,
+                &cfg.insitu_analysis,
+                cfg.simulation.box_size,
+                a_current,
+                $step,
+                out_dir,
+            );
+        };
+    }
+
     // ── Acumuladores de tiempos por fase ─────────────────────────────────────
     let mut acc_comm_ns: u64 = 0;
     let mut acc_gravity_ns: u64 = 0;
@@ -1415,6 +1429,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
         h_state_opt = Some(h_state);
     } else if use_sfc_let_cosmo {
@@ -1676,6 +1691,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
         // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
@@ -2359,6 +2375,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
     } else if use_sfc_let {
         // ── SFC + LET: Fase 9 — overlap compute/comm + Rayon + HpcStepStats ──
@@ -2796,6 +2813,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
 
         // Construir resumen HPC que se pasará al bloque de timings.json genérico.
@@ -3031,6 +3049,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
@@ -3091,6 +3110,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
     } else {
         // ── Leapfrog clásico: Allgather global ────────────────────────────────
@@ -3131,6 +3151,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
+            maybe_insitu!(step);
         }
     }
 

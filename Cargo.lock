@@ -677,6 +677,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "gadget-ng-core",
+ "gadget-ng-parallel",
  "rustfft",
  "serde",
  "serde_json",
@@ -766,6 +767,7 @@ dependencies = [
  "bincode",
  "chrono",
  "gadget-ng-core",
+ "gadget-ng-parallel",
  "hdf5-metno",
  "hex",
  "ndarray",
@@ -795,6 +797,7 @@ dependencies = [
  "gadget-ng-analysis",
  "gadget-ng-core",
  "gadget-ng-integrators",
+ "gadget-ng-io",
  "gadget-ng-parallel",
  "gadget-ng-pm",
  "gadget-ng-sph",

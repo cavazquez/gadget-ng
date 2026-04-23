@@ -241,6 +241,111 @@ pub fn find_halos(
     halos
 }
 
+/// Ejecuta FoF sobre el conjunto combinado `local + halos`, devolviendo solo los
+/// grupos cuya raíz Union-Find corresponde a una partícula local (índice < `n_local`).
+///
+/// Esto permite que cada rank MPI calcule su porción del catálogo sin duplicar halos:
+/// - `n_local`: número de partículas propias al inicio de `positions`.
+/// - Las partículas con índice `[n_local..)` son "halos" recibidos de vecinos y no
+///   generan halos propios (su raíz pertenece a otro rank).
+///
+/// # Uso
+///
+/// ```rust,no_run
+/// use gadget_ng_analysis::fof::{find_halos_combined, find_halos};
+/// use gadget_ng_core::Vec3;
+/// // Para P=1 con halos vacíos, produce el mismo resultado que find_halos.
+/// let pos = vec![Vec3::new(0.1, 0.1, 0.1), Vec3::new(0.9, 0.9, 0.9)];
+/// let vel = vec![Vec3::zero(); 2];
+/// let mass = vec![1.0f64; 2];
+/// let h1 = find_halos(&pos, &vel, &mass, 1.0, 0.2, 2, 0.0);
+/// let h2 = find_halos_combined(&pos, &vel, &mass, 2, 1.0, 0.2, 2, 0.0);
+/// assert_eq!(h1.len(), h2.len());
+/// ```
+pub fn find_halos_combined(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    n_local: usize,
+    box_size: f64,
+    b: f64,
+    min_particles: usize,
+    rho_crit: f64,
+) -> Vec<FofHalo> {
+    let n = positions.len();
+    if n == 0 || n_local == 0 {
+        return Vec::new();
+    }
+
+    let l_mean = (box_size * box_size * box_size / n as f64).cbrt();
+    let ll = b * l_mean;
+    let ll2 = ll * ll;
+
+    let cll = CellList::build(positions, ll, box_size);
+    let nc = cll.nc;
+
+    let mut uf = Uf::new(n);
+
+    for ix in 0..nc {
+        for iy in 0..nc {
+            for iz in 0..nc {
+                for i in cll.iter_cell(ix, iy, iz) {
+                    for dix in -1..=1i32 {
+                        for diy in -1..=1i32 {
+                            for diz in -1..=1i32 {
+                                for j in cll.iter_cell(ix + dix, iy + diy, iz + diz) {
+                                    if j <= i {
+                                        continue;
+                                    }
+                                    let dx =
+                                        periodic_diff(positions[i].x, positions[j].x, box_size);
+                                    let dy =
+                                        periodic_diff(positions[i].y, positions[j].y, box_size);
+                                    let dz =
+                                        periodic_diff(positions[i].z, positions[j].z, box_size);
+                                    if dx * dx + dy * dy + dz * dz < ll2 {
+                                        uf.union(i, j);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Solo groups cuya raíz es local (índice < n_local).
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        let root = uf.find(i);
+        if root < n_local {
+            groups.entry(root).or_default().push(i);
+        }
+    }
+
+    let mut halos: Vec<FofHalo> = groups
+        .values()
+        .filter(|g| {
+            // Al menos min_particles miembros locales.
+            let n_local_in_group = g.iter().filter(|&&idx| idx < n_local).count();
+            n_local_in_group >= min_particles
+        })
+        .enumerate()
+        .map(|(halo_id, members)| {
+            halo_props(
+                halo_id, members, positions, velocities, masses, box_size, rho_crit,
+            )
+        })
+        .collect();
+
+    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap());
+    for (i, h) in halos.iter_mut().enumerate() {
+        h.halo_id = i;
+    }
+    halos
+}
+
 /// Diferencia periódica en [-L/2, L/2].
 #[inline]
 fn periodic_diff(a: f64, b: f64, l: f64) -> f64 {

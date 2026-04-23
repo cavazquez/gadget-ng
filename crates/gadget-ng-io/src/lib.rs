@@ -3,6 +3,7 @@ mod bincode_writer;
 mod error;
 #[cfg(feature = "hdf5")]
 mod hdf5_writer;
+pub mod hdf5_parallel_writer;
 #[cfg(feature = "msgpack")]
 mod msgpack_writer;
 #[cfg(feature = "netcdf")]

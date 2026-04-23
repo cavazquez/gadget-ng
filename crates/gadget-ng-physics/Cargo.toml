@@ -18,7 +18,8 @@ gadget-ng-sph         = { path = "../gadget-ng-sph" }
 gadget-ng-parallel    = { path = "../gadget-ng-parallel" }
 gadget-ng-pm          = { path = "../gadget-ng-pm", features = ["rayon"] }
 gadget-ng-treepm      = { path = "../gadget-ng-treepm", features = ["rayon"] }
-gadget-ng-analysis    = { path = "../gadget-ng-analysis" }
+gadget-ng-analysis    = { path = "../gadget-ng-analysis", features = ["parallel"] }
+gadget-ng-io          = { path = "../gadget-ng-io" }
 
 [dev-dependencies]
 rustfft = "6.4.1"

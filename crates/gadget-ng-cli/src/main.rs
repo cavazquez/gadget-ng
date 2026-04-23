@@ -2,6 +2,8 @@ mod analyze_cmd;
 mod config_load;
 mod engine;
 mod error;
+mod insitu;
+mod merge_tree_cmd;
 
 use clap::{Parser, Subcommand};
 use error::CliError;
@@ -43,9 +45,18 @@ enum Commands {
         )]
         resume: Option<PathBuf>,
         /// Guardar imagen PPM del estado de partículas cada N pasos (0 = desactivado).
-        /// Los archivos se escriben como `<out>/snap_NNNNNN.ppm`.
+        /// Los archivos se escriben como `<out>/snap_NNNNNN.ppm` o `.png`.
         #[arg(long, default_value_t = 0)]
         vis_snapshot: u64,
+        /// Proyección para el render de snapshot: `xy`, `xz`, `yz`.
+        #[arg(long, default_value = "xy")]
+        vis_proj: String,
+        /// Modo de renderizado: `points` (puntos blancos) o `density` (mapa de densidad Viridis).
+        #[arg(long, default_value = "points")]
+        vis_mode: String,
+        /// Formato de salida: `ppm` o `png`.
+        #[arg(long, default_value = "ppm")]
+        vis_format: String,
     },
     /// Escribe un snapshot del estado inicial (IC) resuelto.
     Snapshot {
@@ -141,6 +152,30 @@ enum Commands {
         #[arg(long, default_value_t = 64)]
         pk_mesh: usize,
     },
+    /// Construye el merger tree conectando catálogos FoF de snapshots consecutivos.
+    ///
+    /// Sigue partículas entre snapshots para identificar progenitores y mergers.
+    /// Escribe `merger_tree.json` en el directorio de salida.
+    ///
+    /// Ejemplo:
+    ///   gadget-ng merge-tree \
+    ///     --catalogs "runs/cosmo/halos_000.jsonl,runs/cosmo/halos_001.jsonl" \
+    ///     --snapshots "runs/cosmo/snap_000,runs/cosmo/snap_001" \
+    ///     --out runs/cosmo/merger_tree.json
+    MergeTree {
+        /// Lista de directorios de snapshot separados por coma (orden cronológico).
+        #[arg(long)]
+        snapshots: String,
+        /// Lista de archivos de catálogo JSONL separados por coma (mismo orden).
+        #[arg(long)]
+        catalogs: String,
+        /// Archivo JSON de salida.
+        #[arg(long, default_value = "merger_tree.json")]
+        out: PathBuf,
+        /// Fracción mínima de partículas compartidas para registrar un progenitor.
+        #[arg(long, default_value_t = 0.1)]
+        min_shared: f64,
+    },
 }
 
 fn run_with_runtime<F>(f: F) -> Result<(), CliError>
@@ -169,28 +204,48 @@ fn main() -> Result<(), CliError> {
             snapshot,
             resume,
             vis_snapshot,
+            vis_proj,
+            vis_mode,
+            vis_format,
         } => {
             let cfg = config_load::load_run_config(&config)?;
             run_with_runtime(|rt| {
                 engine::run_stepping(rt, &cfg, &out, snapshot, resume.as_deref())
             })?;
-            // Si vis_snapshot > 0, renderizar el snapshot final como PPM.
+            // Si vis_snapshot > 0, renderizar el snapshot final.
             if vis_snapshot > 0 {
                 let snap_dir = out.join("snapshot_final");
                 if snap_dir.exists() {
                     use gadget_ng_core::SnapshotFormat;
+                    use gadget_ng_vis::Projection;
                     let data =
                         gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, &snap_dir);
                     if let Ok(data) = data {
                         let positions: Vec<gadget_ng_core::Vec3> =
                             data.particles.iter().map(|p| p.position).collect();
-                        let pixels =
-                            gadget_ng_vis::render_ppm(&positions, data.box_size, 1024, 1024);
-                        let ppm_path = out.join("snapshot_final.ppm");
-                        if let Err(e) = gadget_ng_vis::write_ppm(&ppm_path, &pixels, 1024, 1024) {
-                            eprintln!("[vis] Error escribiendo PPM: {e}");
+                        let proj = match vis_proj.to_lowercase().as_str() {
+                            "xz" => Projection::XZ,
+                            "yz" => Projection::YZ,
+                            _ => Projection::XY,
+                        };
+                        let pixels = match vis_mode.to_lowercase().as_str() {
+                            "density" => gadget_ng_vis::render_density_ppm(
+                                &positions, data.box_size, 1024, 1024, proj,
+                            ),
+                            _ => gadget_ng_vis::render_ppm_projection(
+                                &positions, data.box_size, 1024, 1024, proj,
+                            ),
+                        };
+                        let ext = if vis_format.to_lowercase() == "png" { "png" } else { "ppm" };
+                        let out_path = out.join(format!("snapshot_final.{ext}"));
+                        let result = if ext == "png" {
+                            gadget_ng_vis::write_png(&out_path, &pixels, 1024, 1024)
                         } else {
-                            eprintln!("[vis] PPM escrito en {:?}", ppm_path);
+                            gadget_ng_vis::write_ppm(&out_path, &pixels, 1024, 1024)
+                        };
+                        match result {
+                            Ok(()) => eprintln!("[vis] imagen escrita en {:?}", out_path),
+                            Err(e) => eprintln!("[vis] Error escribiendo imagen: {e}"),
                         }
                     }
                 }
@@ -241,6 +296,22 @@ fn main() -> Result<(), CliError> {
             pk_mesh,
         } => {
             engine::run_analyse(&snapshot, &out, linking_length, min_particles, pk_mesh)?;
+        }
+        Commands::MergeTree {
+            snapshots,
+            catalogs,
+            out,
+            min_shared,
+        } => {
+            let snap_dirs: Vec<std::path::PathBuf> = snapshots
+                .split(',')
+                .map(|s| std::path::PathBuf::from(s.trim()))
+                .collect();
+            let catalog_paths: Vec<std::path::PathBuf> = catalogs
+                .split(',')
+                .map(|s| std::path::PathBuf::from(s.trim()))
+                .collect();
+            merge_tree_cmd::run_merge_tree(&snap_dirs, &catalog_paths, &out, min_shared)?;
         }
     }
     Ok(())

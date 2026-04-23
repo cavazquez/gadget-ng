@@ -20,6 +20,9 @@ pub struct RunConfig {
     /// Configuración de descomposición de dominio (opcional; balanceo por coste de árbol).
     #[serde(default)]
     pub decomposition: DecompositionConfig,
+    /// Análisis in-situ durante el loop `stepping` (opcional; desactivado por defecto).
+    #[serde(default)]
+    pub insitu_analysis: InsituAnalysisSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1051,6 +1054,67 @@ impl UnitsSection {
         // H₀ en unidades internas = h0_km_s_mpc × (velocity_in_km_s / (1000 × length_in_kpc))
         let h0_int = h0_km_s_mpc * self.velocity_in_km_s / (1000.0 * self.length_in_kpc);
         1.0 / h0_int
+    }
+}
+
+// ── InsituAnalysisSection ─────────────────────────────────────────────────────
+
+/// Configuración del análisis in-situ ejecutado durante el loop `stepping` (Phase 63).
+///
+/// Se activa añadiendo `[insitu_analysis]` al TOML de configuración:
+///
+/// ```toml
+/// [insitu_analysis]
+/// enabled   = true
+/// interval  = 20       # cada 20 pasos
+/// pk_mesh   = 32
+/// fof_b     = 0.2
+/// fof_min_part = 20
+/// xi_bins   = 10       # 0 = desactivado
+/// output_dir = "runs/cosmo/insitu"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsituAnalysisSection {
+    /// Activa el análisis in-situ (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Ejecutar cada N pasos. `0` → desactivado aunque `enabled = true`.
+    #[serde(default = "default_insitu_interval")]
+    pub interval: u64,
+    /// Resolución del grid para P(k) (por lado). Default: 32.
+    #[serde(default = "default_pk_mesh")]
+    pub pk_mesh: usize,
+    /// Parámetro de enlace FoF. Default: 0.2.
+    #[serde(default = "default_fof_b")]
+    pub fof_b: f64,
+    /// Mínimo de partículas para un halo FoF. Default: 20.
+    #[serde(default = "default_fof_min_part")]
+    pub fof_min_part: usize,
+    /// Número de bins para ξ(r). `0` → no calcular ξ(r). Default: 0.
+    #[serde(default)]
+    pub xi_bins: usize,
+    /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
+    /// Si es `None` se usa `<out_dir>/insitu/`.
+    #[serde(default)]
+    pub output_dir: Option<std::path::PathBuf>,
+}
+
+fn default_insitu_interval() -> u64 { 0 }
+fn default_pk_mesh() -> usize { 32 }
+fn default_fof_b() -> f64 { 0.2 }
+fn default_fof_min_part() -> usize { 20 }
+
+impl Default for InsituAnalysisSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval: default_insitu_interval(),
+            pk_mesh: default_pk_mesh(),
+            fof_b: default_fof_b(),
+            fof_min_part: default_fof_min_part(),
+            xi_bins: 0,
+            output_dir: None,
+        }
     }
 }
 
