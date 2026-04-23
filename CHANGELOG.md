@@ -8,6 +8,50 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 96 — Feedback AGN (Agujeros Negros Supermasivos)
+
+- Nuevo módulo `crates/gadget-ng-sph/src/agn.rs`:
+  - `BlackHole { pos: Vec3, mass: f64, accretion_rate: f64 }`.
+  - `AgnParams { eps_feedback, m_seed, v_kick_agn, r_influence }`.
+  - `bondi_accretion_rate(bh, rho, c_s)` — Ṁ = 4πG²M²ρ/c_s³.
+  - `apply_agn_feedback(particles, bhs, params, dt)` — depósito térmico + kick radial.
+  - `grow_black_holes(bhs, particles, params, dt)` — actualiza Ṁ y masa del BH.
+- Nuevo struct `AgnSection` en `crates/gadget-ng-core/src/config.rs` embebido en `SphSection`.
+- Macro `maybe_agn!` en `engine.rs` con `agn_bhs` global al loop de stepping.
+- 6 tests unitarios: `bondi_rate_scales_with_mass`, `agn_energy_conservation`, etc.
+
+### Phase 95 — EoR completo z=6–12
+
+- Macro `maybe_reionization!(a_current)` en `engine.rs` agregada en los 7 paths de stepping.
+  Actúa si `cfg.reionization.enabled && z_end ≤ z ≤ z_start`.
+- Nuevo campo `uv_from_halos: bool` en `ReionizationSection` (`configs.rs`).
+- Nuevo `configs/eor_test.toml`: N=16³, box=10 Mpc/h, RT+reionización activados, z=12→6.
+- Nuevo test `crates/gadget-ng-physics/tests/phase95_eor.rs` (6 tests EoR).
+- `gadget-ng-rt` agregado como dependencia en `gadget-ng-physics`.
+
+### Phase 94 — Estadísticas de la línea de 21cm
+
+- Nuevo módulo `crates/gadget-ng-rt/src/cm21.rs`:
+  - `Cm21Params { t_s_kelvin, nu_21cm_mhz }`.
+  - `Cm21PkBin { k, delta_sq }` — Δ²₂₁(k) [mK²].
+  - `Cm21Output { z, delta_tb_mean, delta_tb_sigma, pk_21cm }`.
+  - `brightness_temperature(x_hii, overdensity, z, params)` — δT_b [mK].
+  - `compute_delta_tb_field(particles, chem_states, z, params)` — campo por partícula.
+  - `compute_cm21_output(...)` — media, σ, y P(k)₂₁cm via CIC + PS esférico.
+- Nuevo campo `cm21_enabled: bool` en `InsituAnalysisSection`.
+- Nuevo campo `cm21: Option<Cm21Output>` en `InsituResult`.
+- 5 tests unitarios en `cm21.rs`.
+
+### Phase 93 — README final + preparación JOSS
+
+- `README.md`: Tabla de hitos extendida con Phases 84–96; nuevas secciones
+  "Reionización y RT", "Estadísticas 21cm y EoR", "Feedback AGN".
+- Nuevo `docs/notebooks/generate_paper_figures.py`: genera Fig 1 (P(k)), Fig 2 (HMF),
+  Fig 3 (Strömgren) usando modelos analíticos, sin datos de simulación.
+- Nuevo `docs/paper/submission_checklist.md`: checklist completo para JOSS submission.
+- `docs/paper/paper.md`: referencias de figuras agregadas en secciones de validación.
+- Directorio `docs/paper/figures/` creado.
+
 ### Phase 92 — Benchmarks formales MPI scaling + P(k) vs GADGET-4
 
 - Nuevo script `scripts/bench_mpi_scaling.sh`: mide el tiempo de pared para simulaciones

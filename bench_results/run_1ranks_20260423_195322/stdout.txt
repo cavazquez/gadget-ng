@@ -1,0 +1,5 @@
+error: unrecognized subcommand 'run'
+
+Usage: gadget-ng <COMMAND>
+
+For more information, try '--help'.

@@ -1,7 +1,7 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–81 completadas.  
-> Phases 75–81: P(k,μ) RSD, assembly bias, catálogo HDF5, feedback SN, validación N=128³, AMR 3 niveles, RT M1.  
+> **Estado al 23 de abril de 2026:** Phases 1–96 completadas.  
+> Phases 93–96: README+JOSS, estadísticas 21cm, EoR z=6–12, feedback AGN.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -54,6 +54,10 @@
 | **Phase 90** | 🌡️ **IGM T(z)**: `IgmTempBin`, `compute_igm_temp_profile` + campo `igm_temp` en `InsituResult` |
 | **Phase 91** | 📄 **Paper JOSS**: `docs/paper/paper.md` + `paper.bib` en formato JOSS completo |
 | **Phase 92** | 📊 **Benchmarks formales**: `bench_mpi_scaling.sh`, `bench_pk_vs_gadget4.py`, verificación rsmpi completo |
+| **Phase 93** | 📝 **README+JOSS**: hitos 84–96, secciones RT/EoR/AGN, `generate_paper_figures.py`, `submission_checklist.md` |
+| **Phase 94** | 📡 **Estadísticas 21cm**: `cm21.rs`, `brightness_temperature`, P(k)₂₁cm, campo `cm21` en `InsituResult` |
+| **Phase 95** | 🌌 **EoR z=6–12**: macro `maybe_reionization!`, `uv_from_halos`, `configs/eor_test.toml`, `phase95_eor.rs` |
+| **Phase 96** | 🕳️ **Feedback AGN**: `agn.rs`, Bondi-Hoyle, `AgnSection`, macro `maybe_agn!` en engine |
 
 ---
 
@@ -63,10 +67,10 @@ Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
+| Submission JOSS | Generar figuras, DOI Zenodo, completar ORCIDs, compilar PDF | 1–2 sesiones |
 | Validación producción N=128³ | Corrida completa hasta z=0, HMF vs Tinker, P(k) formal | 2–3 sesiones |
-| Estadísticas 21cm | Temperatura de brillo δT_b, power spectrum 21cm | 3–4 sesiones |
-| Reionización UV con RT+química acoplados | Usar M1+química para simular EoR z=6–12 | 4–5 sesiones |
-| Submission JOSS | Figuras, DOI Zenodo, pre-submission inquiry | 1–2 sesiones |
+| AGN con halos FoF | Colocar BHs en centros de halos FoF identificados in-situ | 1 sesión |
+| Test EoR cosmológico real | Corrida N=32³ completa z=12→6 con RT+reionización+química | 2–3 sesiones |
 
 ---
 

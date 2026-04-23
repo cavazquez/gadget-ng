@@ -1119,6 +1119,9 @@ pub struct SphSection {
     /// Configuración del feedback estelar (Phase 78).
     #[serde(default)]
     pub feedback: FeedbackSection,
+    /// Configuración del feedback AGN (Phase 96).
+    #[serde(default)]
+    pub agn: AgnSection,
 }
 
 fn default_gamma() -> f64 { 5.0 / 3.0 }
@@ -1137,6 +1140,7 @@ impl Default for SphSection {
             t_floor_k: default_t_floor_k(),
             gas_fraction: 0.0,
             feedback: FeedbackSection::default(),
+            agn: AgnSection::default(),
         }
     }
 }
@@ -1174,6 +1178,54 @@ impl Default for FeedbackSection {
             eps_sn: default_eps_sn(),
             rho_sf: default_rho_sf(),
             sfr_min: default_sfr_min(),
+        }
+    }
+}
+
+/// Configuración del feedback de Agujeros Negros Supermasivos (AGN) (Phase 96).
+///
+/// Configura el modelo de acreción Bondi-Hoyle y feedback térmico/cinético.
+///
+/// ```toml
+/// [sph.agn]
+/// enabled      = true
+/// eps_feedback = 0.05
+/// m_seed       = 1e5
+/// v_kick_agn   = 500.0
+/// r_influence  = 1.0
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgnSection {
+    /// Activa el feedback AGN (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Eficiencia radiativa del feedback ε_feedback (default: 0.05).
+    #[serde(default = "default_eps_feedback")]
+    pub eps_feedback: f64,
+    /// Masa semilla del agujero negro [M_sol/h] (default: 1e5).
+    #[serde(default = "default_m_seed")]
+    pub m_seed: f64,
+    /// Velocidad de kick cinético AGN [km/s] (default: 500.0; 0 = solo térmico).
+    #[serde(default = "default_v_kick_agn")]
+    pub v_kick_agn: f64,
+    /// Radio de influencia máximo para depositar energía (default: 1.0).
+    #[serde(default = "default_r_influence")]
+    pub r_influence: f64,
+}
+
+fn default_eps_feedback() -> f64 { 0.05 }
+fn default_m_seed() -> f64 { 1e5 }
+fn default_v_kick_agn() -> f64 { 500.0 }
+fn default_r_influence() -> f64 { 1.0 }
+
+impl Default for AgnSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            eps_feedback: default_eps_feedback(),
+            m_seed: default_m_seed(),
+            v_kick_agn: default_v_kick_agn(),
+            r_influence: default_r_influence(),
         }
     }
 }
@@ -1244,6 +1296,10 @@ pub struct ReionizationSection {
     /// Redshift de fin de la reionización (default: 6.0).
     #[serde(default = "default_z_reion_end")]
     pub z_end: f64,
+    /// Si `true`, las fuentes UV se colocan en los halos FoF más masivos del análisis in-situ.
+    /// Requiere `insitu_analysis.enabled = true`. Default: false (fuentes uniformes).
+    #[serde(default)]
+    pub uv_from_halos: bool,
 }
 
 fn default_uv_luminosity() -> f64 { 1.0 }
@@ -1258,6 +1314,7 @@ impl Default for ReionizationSection {
             uv_luminosity: default_uv_luminosity(),
             z_start: default_z_reion_start(),
             z_end: default_z_reion_end(),
+            uv_from_halos: false,
         }
     }
 }
@@ -1313,6 +1370,9 @@ pub struct InsituAnalysisSection {
     /// Activar cálculo del perfil de temperatura del IGM T(z). Default: false.
     #[serde(default)]
     pub igm_temp_enabled: bool,
+    /// Activar estadísticas de la línea de 21cm (δT_b, P(k)₂₁cm). Default: false.
+    #[serde(default)]
+    pub cm21_enabled: bool,
     /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
     /// Si es `None` se usa `<out_dir>/insitu/`.
     #[serde(default)]
@@ -1339,6 +1399,7 @@ impl Default for InsituAnalysisSection {
             assembly_bias_enabled: false,
             assembly_bias_smooth_r: default_ab_smooth_r(),
             igm_temp_enabled: false,
+            cm21_enabled: false,
             output_dir: None,
         }
     }

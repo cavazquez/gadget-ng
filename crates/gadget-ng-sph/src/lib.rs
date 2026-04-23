@@ -10,6 +10,7 @@
 //!   **viscosidad artificial** de Monaghan (α = 1).
 //! - **EOS adiabática**: P = (γ−1) ρ u, γ = 5/3.
 //! - Integrador **leapfrog KDK** combinado (gravedad + SPH + energía interna).
+pub mod agn;
 pub mod cooling;
 pub mod density;
 pub mod feedback;
@@ -18,6 +19,7 @@ pub mod integrator;
 pub mod kernel;
 pub mod particle;
 
+pub use agn::{apply_agn_feedback, bondi_accretion_rate, grow_black_holes, AgnParams, BlackHole};
 pub use cooling::{apply_cooling, cooling_rate_atomic, temperature_to_u, u_to_temperature};
 pub use density::{compute_density, GAMMA};
 pub use feedback::{apply_sn_feedback, compute_sfr, total_sn_energy_injection};

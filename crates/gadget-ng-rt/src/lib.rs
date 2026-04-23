@@ -36,6 +36,7 @@
 //! - [`coupling`] — Acoplamiento rad-gas: fotoionización, fotocalentamiento, emisión.
 
 pub mod chemistry;
+pub mod cm21;
 pub mod coupling;
 pub mod igm_temp;
 pub mod m1;
@@ -68,4 +69,8 @@ pub use reionization::{
 pub use igm_temp::{
     compute_igm_temp_all, compute_igm_temp_profile, temperature_from_particle,
     IgmTempBin, IgmTempParams,
+};
+pub use cm21::{
+    brightness_temperature, compute_cm21_output, compute_delta_tb_field,
+    Cm21Output, Cm21PkBin, Cm21Params,
 };

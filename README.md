@@ -412,6 +412,19 @@ gadget-ng/
 | **81** | 🌅 Transferencia radiativa M1: solver HLL, cierre Levermore 1984, acoplamiento SPH | ✅ |
 | **82** | 🔁 Integración automática: `maybe_sph!`, `maybe_rt!`, bispectrum+assembly_bias in-situ, `--hdf5-catalog` | ✅ |
 | **83** | 📊 Post-procesamiento: `postprocess_insitu.py` — P(k), σ₈(z), multipoles, B(k) | ✅ |
+| **84** | 🌐 RT MPI slab: `RadiationFieldSlab`, `allreduce_radiation`, `exchange_radiation_halos` | ✅ |
+| **85** | 🌐 AMR MPI: `AmrPatchMessage`, `broadcast_patch_forces`, `amr_pm_accels_multilevel_mpi` | ✅ |
+| **86** | 🧪 Química no-equilibrio HII/HeII/HeIII: `ChemState`, solver implícito, `apply_chemistry` | ✅ |
+| **87** | 🌐 MPI real (rsmpi): `allreduce_radiation_mpi`, `exchange_radiation_halos_mpi`, `broadcast_patch_forces_mpi` | ✅ |
+| **88** | 📈 Benchmarks GPU vs CPU (Criterion) + CI `--release` con tests integración MPI | ✅ |
+| **89** | ☀️ Reionización del Universo: `UvSource`, `deposit_uv_sources`, `reionization_step`, R_Strömgren | ✅ |
+| **90** | 🌡️ Perfil de temperatura IGM T(z): `IgmTempBin`, filtrado por densidad SPH, percentiles 16/84 | ✅ |
+| **91** | 📄 Paper draft JOSS: `docs/paper/paper.md` + `paper.bib` (15 refs BibTeX) | ✅ |
+| **92** | 📊 Benchmarks formales: `bench_mpi_scaling.sh`, `bench_pk_vs_gadget4.py`, rsmpi verificado | ✅ |
+| **93** | 📝 README final + figuras JOSS (P(k), HMF, Strömgren) + submission checklist | ✅ |
+| **94** | 📡 Estadísticas 21cm: `brightness_temperature`, P(k)₂₁cm, `Cm21Output` in-situ | ✅ |
+| **95** | 🌌 EoR z=6–12: `maybe_reionization!` en engine, `uv_from_halos`, test fase completa | ✅ |
+| **96** | 🕳️ Feedback AGN: `BlackHole`, `bondi_accretion_rate`, `apply_agn_feedback`, `AgnSection` | ✅ |
 
 ---
 
@@ -1161,6 +1174,103 @@ experiments/nbody/
     ├── scripts/apply_phase42_correction.py
     ├── scripts/plot_phase42_short_range.py
     └── run_phase42.sh           # PHASE42_N=<N>, PHASE42_QUICK, PHASE42_USE_CACHE
+```
+
+---
+
+## Reionización y RT (Phases 87–92)
+
+Combinación completa de Transferencia Radiativa M1 + Química no-equilibrio + Reionización cósmica.
+
+### Configuración TOML completa
+
+```toml
+[rt]
+enabled      = true
+rt_mesh      = 32
+c_red_factor = 100.0
+kappa_abs    = 1.0
+substeps     = 5
+
+[reionization]
+enabled       = true
+n_sources     = 8
+uv_luminosity = 1.0
+z_start       = 12.0
+z_end         = 6.0
+
+[insitu_analysis]
+igm_temp_enabled = true
+cm21_enabled     = true
+```
+
+### Ejemplo de uso
+
+```rust
+use gadget_ng_rt::{reionization_step, ReionizationParams, UvSource};
+use gadget_ng_rt::{compute_igm_temp_profile, IgmTempParams};
+
+// Fuentes UV puntuales (halos FoF como fuentes de ionización)
+let sources = vec![
+    UvSource { pos: [25.0, 25.0, 25.0], luminosity: 1.0 },
+];
+let params = ReionizationParams::default();
+reionization_step(&mut rad_field, &mut chem_states, &sources, &m1_params, dt, box_size, z);
+
+// Perfil de temperatura IGM
+let igm_params = IgmTempParams { delta_max: 10.0 };
+let bins = compute_igm_temp_profile(&particles, &chem_states, &igm_params);
+// bins[i].z, bins[i].t_mean, bins[i].t_median, bins[i].t_sigma
+```
+
+### MPI real (rsmpi, Phases 87–88)
+
+Las funciones MPI para RT y AMR usan `rsmpi` real bajo `--features mpi`:
+
+```bash
+cargo test -p gadget-ng-rt --features mpi
+cargo test -p gadget-ng-pm --features mpi
+```
+
+---
+
+## Estadísticas 21cm y EoR (Phases 94–95)
+
+```toml
+[insitu_analysis]
+cm21_enabled = true
+
+[reionization]
+enabled      = true
+uv_from_halos = true   # Fuentes UV desde halos FoF
+z_start      = 12.0
+z_end        = 6.0
+```
+
+La señal de temperatura de brillo δT_b ≈ 27 x_HI (1+δ) √((1+z)/10) mK se calcula
+por partícula y se acumula en P(k)₂₁cm guardado en `insitu_*.json`.
+
+---
+
+## Feedback AGN (Phase 96)
+
+```toml
+[sph.agn]
+enabled      = true
+eps_feedback = 0.05
+m_seed       = 1e5
+v_kick_agn   = 500.0
+```
+
+Tasa de acreción de Bondi-Hoyle y depósito de energía térmica en partículas vecinas:
+
+```rust
+use gadget_ng_sph::agn::{BlackHole, AgnParams, bondi_accretion_rate, apply_agn_feedback};
+
+let bh = BlackHole { pos: [0.0; 3], mass: 1e8, accretion_rate: 0.0 };
+let params = AgnParams { eps_feedback: 0.05, m_seed: 1e5, v_kick_agn: 500.0 };
+let mdot = bondi_accretion_rate(&bh, rho_gas, c_sound);
+apply_agn_feedback(&mut particles, &[bh], &params, dt);
 ```
 
 ---

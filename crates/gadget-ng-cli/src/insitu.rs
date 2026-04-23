@@ -38,6 +38,9 @@ pub struct InsituResult {
     /// Perfil de temperatura del IGM T(z). None si `igm_temp_enabled == false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub igm_temp: Option<gadget_ng_rt::IgmTempBin>,
+    /// Estadísticas 21cm (δT_b, P(k)₂₁cm). None si `cm21_enabled == false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cm21: Option<gadget_ng_rt::Cm21Output>,
 }
 
 /// Salida de un bin del bispectrum.
@@ -275,6 +278,36 @@ pub fn maybe_run_insitu(
                 None
             };
 
+            // Estadísticas 21cm (Phase 94)
+            let cm21_out = if cfg.cm21_enabled {
+                let gas_particles: Vec<Particle> = particles
+                    .iter()
+                    .filter(|p| p.internal_energy > 0.0)
+                    .cloned()
+                    .collect();
+                if gas_particles.is_empty() {
+                    None
+                } else {
+                    let chem_neutral = vec![
+                        gadget_ng_rt::ChemState::neutral();
+                        gas_particles.len()
+                    ];
+                    let cm21_params = gadget_ng_rt::Cm21Params::default();
+                    let n_mesh = cfg.pk_mesh.max(4);
+                    Some(gadget_ng_rt::compute_cm21_output(
+                        &gas_particles,
+                        &chem_neutral,
+                        box_size,
+                        z,
+                        n_mesh,
+                        8,
+                        &cm21_params,
+                    ))
+                }
+            } else {
+                None
+            };
+
             let insitu = InsituResult {
                 step,
                 a,
@@ -288,6 +321,7 @@ pub fn maybe_run_insitu(
                 bk_equilateral: bk_equilateral_out,
                 assembly_bias: assembly_bias_out,
                 igm_temp: igm_temp_out,
+                cm21: cm21_out,
             };
 
             let path = out_dir.join(format!("insitu_{step:06}.json"));

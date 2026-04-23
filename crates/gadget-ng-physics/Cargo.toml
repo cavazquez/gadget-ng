@@ -20,6 +20,7 @@ gadget-ng-pm          = { path = "../gadget-ng-pm", features = ["rayon"] }
 gadget-ng-treepm      = { path = "../gadget-ng-treepm", features = ["rayon"] }
 gadget-ng-analysis    = { path = "../gadget-ng-analysis", features = ["parallel"] }
 gadget-ng-io          = { path = "../gadget-ng-io" }
+gadget-ng-rt          = { path = "../gadget-ng-rt" }
 
 [dev-dependencies]
 rustfft = "6.4.1"

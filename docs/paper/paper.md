@@ -152,11 +152,15 @@ formula [@eisenstein1998baryonic]. Simulations starting from 2LPT initial condit
 at $z=49$ and integrated to $z=0$ reproduce $\sigma_8$ to within 2% for
 $N=128^3$ particle runs in a $L=100\,h^{-1}\mathrm{Mpc}$ box (Phase 79 validation suite).
 
+![Fig. 1 — Comparison of gadget-ng P(k) against the Eisenstein-Hu analytical fit at $z=0$.](figures/pk_validation.png)
+
 ## Halo Mass Function
 
 The friends-of-friends (FoF) halo mass function is compared against the
 Tinker et al. (2008) analytic fit [@tinker2008toward], showing agreement within
 10% over two decades in mass for $N=128^3$ runs.
+
+![Fig. 2 — Halo mass function from gadget-ng FoF catalogs versus the Press-Schechter / Tinker 2008 reference.](figures/hmf_comparison.png)
 
 ## Strömgren Sphere
 
@@ -167,6 +171,8 @@ $$
 R_S = \left(\frac{3\dot{N}_\mathrm{ion}}{4\pi n_H^2 \alpha_B}\right)^{1/3}
 $$
 The code reproduces $R_S$ to better than 5% for typical simulation parameters.
+
+![Fig. 3 — Strömgren sphere radius $R_S$ as a function of hydrogen density $n_H$, comparing the gadget-ng M1 solver against the analytic solution.](figures/stromgren.png)
 
 ## NFW Profiles
 

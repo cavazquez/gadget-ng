@@ -1276,6 +1276,84 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     }
 
 
+    // Agujeros negros activos durante la simulación (uno semilla por defecto si AGN activado)
+    let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> = Vec::new();
+
+    // Macro local para feedback AGN (Phase 96).
+    // Aplica acreción Bondi-Hoyle y depósito de energía térmica si `cfg.sph.agn.enabled`.
+    macro_rules! maybe_agn {
+        ($sph_step_agn:expr) => {
+            if cfg.sph.agn.enabled {
+                let agn_params = gadget_ng_sph::AgnParams {
+                    eps_feedback: cfg.sph.agn.eps_feedback,
+                    m_seed: cfg.sph.agn.m_seed,
+                    v_kick_agn: cfg.sph.agn.v_kick_agn,
+                    r_influence: cfg.sph.agn.r_influence,
+                };
+                // Crear un BH semilla centrado si es el primer paso y no hay BHs
+                if agn_bhs.is_empty() {
+                    let center = cfg.simulation.box_size * 0.5;
+                    agn_bhs.push(gadget_ng_sph::BlackHole::new(
+                        gadget_ng_core::Vec3::new(center, center, center),
+                        agn_params.m_seed,
+                    ));
+                }
+                gadget_ng_sph::grow_black_holes(&mut agn_bhs, &local, &agn_params, cfg.simulation.dt);
+                gadget_ng_sph::apply_agn_feedback(&mut local, &agn_bhs, &agn_params, cfg.simulation.dt);
+                let _ = $sph_step_agn;
+            }
+        };
+    }
+
+    // Macro local para EoR completo z=6-12 (Phase 95).
+    // Integra reionización con fuentes UV puntuales distribuidas uniformemente.
+    // Solo actúa si `cfg.reionization.enabled` es true y z_end ≤ z ≤ z_start.
+    // Recibe el factor de escala `a_cur` para calcular z = 1/a - 1.
+    macro_rules! maybe_reionization {
+        ($a_cur:expr) => {
+            if cfg.reionization.enabled {
+                let _a_cur: f64 = $a_cur;
+                let _z_eor = if _a_cur > 0.0 { 1.0 / _a_cur - 1.0 } else { f64::INFINITY };
+                if _z_eor >= cfg.reionization.z_end && _z_eor <= cfg.reionization.z_start {
+                    if let Some(ref mut rf) = rt_field_opt {
+                        let m1p = gadget_ng_rt::M1Params {
+                            c_red_factor: cfg.rt.c_red_factor,
+                            kappa_abs: cfg.rt.kappa_abs,
+                            kappa_scat: 0.0,
+                            substeps: cfg.rt.substeps,
+                        };
+                        // Fuentes UV: posiciones uniformes en la caja
+                        let n_src = cfg.reionization.n_sources.max(1);
+                        let lum = cfg.reionization.uv_luminosity;
+                        let bsz = cfg.simulation.box_size;
+                        let sources: Vec<gadget_ng_rt::UvSource> = (0..n_src)
+                            .map(|i| {
+                                let frac = (i as f64 + 0.5) / n_src as f64;
+                                gadget_ng_rt::UvSource {
+                                    pos: gadget_ng_core::Vec3::new(
+                                        frac * bsz, frac * bsz, frac * bsz,
+                                    ),
+                                    luminosity: lum,
+                                }
+                            })
+                            .collect();
+                        // Scratch local para estados de química de reionización
+                        let mut _reion_chem: Vec<gadget_ng_rt::ChemState> = Vec::new();
+                        let _reion_state = gadget_ng_rt::reionization_step(
+                            rf,
+                            &mut _reion_chem,
+                            &sources,
+                            &m1p,
+                            cfg.simulation.dt,
+                            bsz,
+                            _z_eor,
+                        );
+                    }
+                }
+            }
+        };
+    }
+
     // ── Acumuladores de tiempos por fase ─────────────────────────────────────
     let mut acc_comm_ns: u64 = 0;
     let mut acc_gravity_ns: u64 = 0;
@@ -1514,7 +1592,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
         h_state_opt = Some(h_state);
     } else if use_sfc_let_cosmo {
@@ -1778,7 +1858,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
         // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
@@ -2464,7 +2546,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
     } else if use_sfc_let {
         // ── SFC + LET: Fase 9 — overlap compute/comm + Rayon + HpcStepStats ──
@@ -2904,7 +2988,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
 
         // Construir resumen HPC que se pasará al bloque de timings.json genérico.
@@ -3142,7 +3228,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
@@ -3205,7 +3293,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
     } else {
         // ── Leapfrog clásico: Allgather global ────────────────────────────────
@@ -3248,7 +3338,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_snap_frame!(step);
             maybe_insitu!(step);
             maybe_sph!(step);
+            maybe_agn!(step);
             maybe_rt!();
+            maybe_reionization!(a_current);
         }
     }
 
