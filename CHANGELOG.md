@@ -8,6 +8,35 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase G1 — SUBFIND: subestructura dentro de halos FoF
+
+- Nuevo módulo `crates/gadget-ng-analysis/src/subfind.rs` con `SubfindParams`, `SubhaloRecord`, `local_density_sph` y `find_subhalos`.
+- Algoritmo: estimación de densidad SPH local (kernel Wendland C2, k-vecinos), walk de densidad descendente con Union-Find, filtrado por energía de enlace gravitacional (suma directa O(N²)).
+- Flag `--subfind` y `--subfind-min-particles` en `gadget-ng analyze`; resultados escritos en campo `subfind` del `results.json`.
+- Exportados desde `gadget-ng-analysis`: `find_subhalos`, `local_density_sph`, `SubfindParams`, `SubhaloRecord`.
+- 6 tests en [`crates/gadget-ng-physics/tests/phase_g1_subfind.rs`](crates/gadget-ng-physics/tests/phase_g1_subfind.rs): cluster aislado, dos subclusters, conservación de masa, energía negativa, defaults, densidad concentrada.
+- Reporte: [`docs/reports/2026-04-phase-g1-subfind.md`](docs/reports/2026-04-phase-g1-subfind.md).
+
+### Phase G5 — Merger Trees: validación MAH (McBride+2009)
+
+- Nuevas funciones en `crates/gadget-ng-analysis/src/merger_tree.rs`: `MassAccretionHistory`, `mah_main_branch(forest, root_id, redshifts)`, `mah_mcbride2009(m0, z, alpha, beta)`.
+- Nuevo subcomando CLI `gadget-ng mah`: lee merger tree JSON, extrae MAH a lo largo de la rama principal, calcula ajuste analítico y escribe `mah.json`.
+- Nuevo archivo `crates/gadget-ng-cli/src/mah_cmd.rs`.
+- Exportados desde `gadget-ng-analysis`: `mah_main_branch`, `mah_mcbride2009`, `MassAccretionHistory`.
+- 6 tests en [`crates/gadget-ng-physics/tests/phase_g5_mah.rs`](crates/gadget-ng-physics/tests/phase_g5_mah.rs): MAH monótona, McBride en z=0, trivial, merge detectado, snapshot único, McBride decrece con z.
+- Reporte: [`docs/reports/2026-04-phase-g5-merger-tree-mah.md`](docs/reports/2026-04-phase-g5-merger-tree-mah.md).
+
+### Phase G2 — SPH Cosmológico integrado al motor
+
+- `gadget-ng-core/src/particle.rs`: nuevo enum `ParticleType { DarkMatter, Gas }` (default: DM); campos `ptype`, `internal_energy`, `smoothing_length` con `#[serde(default)]`; constructores `Particle::new_gas(...)` e `is_gas()`.
+- `gadget-ng-core/src/config.rs`: nuevos `CoolingKind { None, AtomicHHe }` y `SphSection { enabled, gamma, alpha_visc, n_neigh, cooling, t_floor_k, gas_fraction }`; campo `pub sph: SphSection` en `RunConfig`.
+- `crates/gadget-ng-sph/src/integrator.rs`: nueva función `sph_cosmo_kdk_step(particles, cf, gamma, alpha_visc, n_neigh, gravity_accel)` que integra Gas+DM con `CosmoFactors`.
+- `crates/gadget-ng-sph/src/cooling.rs` (nuevo): `cooling_rate_atomic`, `apply_cooling`, `u_to_temperature`, `temperature_to_u`.
+- `crates/gadget-ng-cli/src/engine.rs`: macro `maybe_sph!(cf)` disponible para inserción en loops de stepping.
+- `crates/gadget-ng-parallel/src/pack.rs`: actualizado para inicializar campos SPH en gather global.
+- 5 tests en [`crates/gadget-ng-physics/tests/phase_g2_sph_cosmo.rs`](crates/gadget-ng-physics/tests/phase_g2_sph_cosmo.rs): defaults, conservación energía 50 pasos, cooling monotóno, KDK acotado, ParticleType.
+- Reporte: [`docs/reports/2026-04-phase-g2-sph-cosmo.md`](docs/reports/2026-04-phase-g2-sph-cosmo.md).
+
 ### Phase 65 — HDF5 paralelo MPI-IO
 
 - Nuevo módulo `crates/gadget-ng-io/src/hdf5_parallel_writer.rs` con feature `hdf5-parallel`: `write_snapshot_hdf5_serial`, `read_snapshot_hdf5_serial` y módulo `parallel_impl` (requiere `libhdf5` con `--enable-parallel`).

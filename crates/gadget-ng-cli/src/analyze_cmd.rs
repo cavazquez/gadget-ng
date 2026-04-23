@@ -9,11 +9,11 @@
 
 use crate::error::CliError;
 use gadget_ng_analysis::{
-    analyse, concentration_duffy2008, concentration_ludlow2016, fit_nfw_concentration,
-    measure_density_profile, r200_from_m200, rho_crit_z, two_point_correlation_fft, AnalysisParams,
-    RHO_CRIT_H2,
+    analyse, concentration_duffy2008, concentration_ludlow2016, find_subhalos,
+    fit_nfw_concentration, measure_density_profile, r200_from_m200, rho_crit_z,
+    two_point_correlation_fft, AnalysisParams, SubfindParams, RHO_CRIT_H2,
 };
-use gadget_ng_core::SnapshotFormat;
+use gadget_ng_core::{SnapshotFormat, Vec3};
 use std::fs;
 use std::path::Path;
 
@@ -35,6 +35,10 @@ pub struct AnalyzeParams<'a> {
     pub cosmology: Option<(f64, f64, f64)>,
     /// Tamaño físico de la caja en Mpc/h (para unidades de c(M)).
     pub box_size_mpc_h: Option<f64>,
+    /// Ejecutar SUBFIND sobre cada halo (Phase G1). Desactivado por defecto.
+    pub subfind: bool,
+    /// Número mínimo de partículas de halo para correr SUBFIND.
+    pub subfind_min_particles: usize,
 }
 
 impl<'a> Default for AnalyzeParams<'a> {
@@ -49,6 +53,8 @@ impl<'a> Default for AnalyzeParams<'a> {
             nfw_min_part: 50,
             cosmology: None,
             box_size_mpc_h: None,
+            subfind: false,
+            subfind_min_particles: 50,
         }
     }
 }
@@ -184,6 +190,66 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
     }
     eprintln!("[analyze] c(M): {} halos con ajuste NFW", cm_table.len());
 
+    // ── SUBFIND (Phase G1) ────────────────────────────────────────────────────
+    let mut subfind_results: Vec<serde_json::Value> = Vec::new();
+    if params.subfind {
+        let sfparams = SubfindParams {
+            min_subhalo_particles: params.subfind_min_particles.max(5),
+            ..Default::default()
+        };
+        for halo in &result.halos {
+            if halo.n_particles < params.subfind_min_particles {
+                continue;
+            }
+            // Recolectar partículas miembro del halo (las más cercanas al CoM dentro de r_vir).
+            let cx = Vec3::new(halo.x_com, halo.y_com, halo.z_com);
+            let r_vir = halo.r_vir.max(1e-10);
+            let member_indices: Vec<usize> = data
+                .particles
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, p)| {
+                    let mut dx = p.position.x - halo.x_com;
+                    let mut dy = p.position.y - halo.y_com;
+                    let mut dz = p.position.z - halo.z_com;
+                    let _ = cx;
+                    let b2 = box_size * 0.5;
+                    if dx > b2 { dx -= box_size; } else if dx < -b2 { dx += box_size; }
+                    if dy > b2 { dy -= box_size; } else if dy < -b2 { dy += box_size; }
+                    if dz > b2 { dz -= box_size; } else if dz < -b2 { dz += box_size; }
+                    let r = (dx * dx + dy * dy + dz * dz).sqrt();
+                    if r < 2.0 * r_vir { Some(idx) } else { None }
+                })
+                .collect();
+
+            if member_indices.len() < params.subfind_min_particles {
+                continue;
+            }
+
+            let pos: Vec<Vec3> = member_indices.iter().map(|&i| data.particles[i].position).collect();
+            let vel: Vec<Vec3> = member_indices.iter().map(|&i| data.particles[i].velocity).collect();
+            let mass: Vec<f64> = member_indices.iter().map(|&i| data.particles[i].mass).collect();
+
+            let subhalos = find_subhalos(halo, &pos, &vel, &mass, &sfparams);
+            if !subhalos.is_empty() {
+                subfind_results.push(serde_json::json!({
+                    "halo_id": halo.halo_id,
+                    "n_subhalos": subhalos.len(),
+                    "subhalos": subhalos.iter().map(|s| serde_json::json!({
+                        "subhalo_id": s.subhalo_id,
+                        "n_particles": s.n_particles,
+                        "mass": s.mass,
+                        "x_com": s.x_com,
+                        "v_com": s.v_com,
+                        "v_disp": s.v_disp,
+                        "e_total": s.e_total,
+                    })).collect::<Vec<_>>(),
+                }));
+            }
+        }
+        eprintln!("[analyze] SUBFIND: {} halos con subhalos", subfind_results.len());
+    }
+
     // ── Serialización JSON ────────────────────────────────────────────────────
     let output = serde_json::json!({
         "snapshot": params.snapshot_dir.to_string_lossy(),
@@ -214,6 +280,7 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             "xi": b.xi,
         })).collect::<Vec<_>>(),
         "concentration_mass": cm_table,
+        "subfind": subfind_results,
     });
 
     if let Some(parent) = params.out_path.parent() {

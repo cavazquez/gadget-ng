@@ -3,6 +3,7 @@ mod config_load;
 mod engine;
 mod error;
 mod insitu;
+mod mah_cmd;
 mod merge_tree_cmd;
 
 use clap::{Parser, Subcommand};
@@ -128,6 +129,12 @@ enum Commands {
         /// Tamaño físico de la caja en Mpc/h (para unidades de c(M) y ξ(r)).
         #[arg(long)]
         box_size_mpc_h: Option<f64>,
+        /// Ejecutar SUBFIND sobre cada halo para identificar subestructura (Phase G1).
+        #[arg(long, default_value_t = false)]
+        subfind: bool,
+        /// Número mínimo de partículas de halo para ejecutar SUBFIND (default: 50).
+        #[arg(long, default_value_t = 50)]
+        subfind_min_particles: usize,
     },
     /// Analiza un snapshot: Friends-of-Friends (halos) + espectro de potencia P(k).
     ///
@@ -175,6 +182,37 @@ enum Commands {
         /// Fracción mínima de partículas compartidas para registrar un progenitor.
         #[arg(long, default_value_t = 0.1)]
         min_shared: f64,
+    },
+    /// Extrae la Historia de Acreción de Masa (MAH) a lo largo de la rama principal.
+    ///
+    /// Lee un merger tree JSON generado por `merge-tree` y extrae la MAH del halo raíz,
+    /// comparándola con el ajuste analítico de McBride+2009.
+    ///
+    /// Ejemplo:
+    ///   gadget-ng mah \
+    ///     --merger-tree runs/cosmo/merger_tree.json \
+    ///     --redshifts "49,10,5,2,1,0.5,0" \
+    ///     --root-id 0 \
+    ///     --out runs/cosmo/mah.json
+    Mah {
+        /// Ruta al archivo JSON del merger tree (salida de `merge-tree`).
+        #[arg(long)]
+        merger_tree: PathBuf,
+        /// Redshifts de cada snapshot separados por coma (orden cronológico, del más antiguo z_max al más reciente z=0).
+        #[arg(long)]
+        redshifts: String,
+        /// ID del halo raíz en el snapshot más reciente.
+        #[arg(long, default_value_t = 0)]
+        root_id: u64,
+        /// Parámetro α del ajuste McBride+2009 (default: 1.0).
+        #[arg(long, default_value_t = 1.0)]
+        alpha: f64,
+        /// Parámetro β del ajuste McBride+2009 (default: 0.0).
+        #[arg(long, default_value_t = 0.0)]
+        beta: f64,
+        /// Archivo JSON de salida.
+        #[arg(long, default_value = "mah.json")]
+        out: PathBuf,
     },
 }
 
@@ -274,6 +312,8 @@ fn main() -> Result<(), CliError> {
             xi_bins,
             nfw_min_part,
             box_size_mpc_h,
+            subfind,
+            subfind_min_particles,
         } => {
             let params = analyze_cmd::AnalyzeParams {
                 snapshot_dir: &snapshot,
@@ -285,6 +325,8 @@ fn main() -> Result<(), CliError> {
                 nfw_min_part,
                 cosmology: None,
                 box_size_mpc_h,
+                subfind,
+                subfind_min_particles,
             };
             analyze_cmd::run_analyze(&params)?;
         }
@@ -312,6 +354,20 @@ fn main() -> Result<(), CliError> {
                 .map(|s| std::path::PathBuf::from(s.trim()))
                 .collect();
             merge_tree_cmd::run_merge_tree(&snap_dirs, &catalog_paths, &out, min_shared)?;
+        }
+        Commands::Mah {
+            merger_tree,
+            redshifts,
+            root_id,
+            alpha,
+            beta,
+            out,
+        } => {
+            let zs: Vec<f64> = redshifts
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            mah_cmd::run_mah(&merger_tree, &zs, root_id, alpha, beta, &out)?;
         }
     }
     Ok(())

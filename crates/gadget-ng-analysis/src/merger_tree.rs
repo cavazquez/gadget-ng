@@ -195,6 +195,109 @@ pub fn build_merger_forest(
     }
 }
 
+// ── Historia de Acreción de Masa (MAH) — Phase G5 ────────────────────────────
+
+/// Historia de acreción de masa a lo largo de la rama principal de un halo.
+///
+/// La rama principal se define como la cadena de progenitores más masivos
+/// que lleva desde el halo raíz (z=0) hasta el snapshot más antiguo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MassAccretionHistory {
+    /// ID del halo raíz (en el snapshot más reciente / último).
+    pub halo_id: u64,
+    /// Índices de snapshot (0 = más antiguo, N = más reciente).
+    pub snapshots: Vec<usize>,
+    /// Redshift correspondiente a cada snapshot (`len == snapshots.len()`).
+    pub redshifts: Vec<f64>,
+    /// Masa del progenitor principal en cada snapshot.
+    pub masses: Vec<f64>,
+}
+
+/// Extrae la Historia de Acreción de Masa (MAH) a lo largo de la rama principal.
+///
+/// Recorre el árbol desde la raíz hacia atrás en el tiempo, siguiendo siempre
+/// el progenitor principal (`prog_main_id`).
+///
+/// # Parámetros
+/// - `forest`: bosque de merger trees construido con `build_merger_forest`.
+/// - `root_halo_id`: ID del halo raíz en el snapshot más reciente.
+/// - `redshifts`: `z[snap]` con el mismo orden que `catalogs` pasado a `build_merger_forest`.
+///
+/// # Retorna
+/// `MassAccretionHistory` con los puntos `(z, M)` a lo largo de la rama principal,
+/// ordenados del snapshot más reciente al más antiguo.
+pub fn mah_main_branch(
+    forest: &MergerForest,
+    root_halo_id: u64,
+    redshifts: &[f64],
+) -> MassAccretionHistory {
+    // Determinar el snapshot más reciente como punto de partida.
+    let max_snap = forest.nodes.iter().map(|n| n.snapshot).max().unwrap_or(0);
+
+    let mut snapshots = Vec::new();
+    let mut zs = Vec::new();
+    let mut masses = Vec::new();
+
+    // Comenzar en la raíz (snapshot más reciente).
+    let mut current_halo_id = root_halo_id;
+    let mut current_snap = max_snap;
+
+    loop {
+        // Buscar el nodo actual.
+        let node = forest.nodes.iter().find(|n| {
+            n.snapshot == current_snap && n.halo_id == current_halo_id
+        });
+        let node = match node {
+            Some(n) => n,
+            None => break,
+        };
+
+        snapshots.push(current_snap);
+        let z = redshifts.get(current_snap).copied().unwrap_or(0.0);
+        zs.push(z);
+        masses.push(node.mass_msun_h);
+
+        // Buscar el progenitor principal en el snapshot anterior.
+        // El progenitor es el nodo en snap `current_snap - 1` cuyo `prog_main_id == current_halo_id`.
+        if current_snap == 0 {
+            break;
+        }
+        let prev_snap = current_snap - 1;
+        let progenitor = forest.nodes.iter().find(|n| {
+            n.snapshot == prev_snap && n.prog_main_id == Some(current_halo_id)
+        });
+        match progenitor {
+            Some(prog) => {
+                current_halo_id = prog.halo_id;
+                current_snap = prev_snap;
+            }
+            None => break,
+        }
+    }
+
+    MassAccretionHistory {
+        halo_id: root_halo_id,
+        snapshots,
+        redshifts: zs,
+        masses,
+    }
+}
+
+/// Ajuste analítico de la MAH según McBride et al. (2009).
+///
+/// Modelo: `M(z) = M₀ · (1+z)^β · exp(−α · z)`
+///
+/// Parámetros Millennium (McBride+2009): `α ≈ 1.0`, `β ≈ 0.0`.
+///
+/// # Parámetros
+/// - `m0`: masa actual en z=0 [M_sun/h].
+/// - `z`: redshift al que evaluar M(z).
+/// - `alpha`: parámetro exponencial (default 1.0).
+/// - `beta`: exponente de potencia (default 0.0).
+pub fn mah_mcbride2009(m0: f64, z: f64, alpha: f64, beta: f64) -> f64 {
+    m0 * (1.0 + z).powf(beta) * (-alpha * z).exp()
+}
+
 /// Información de una partícula en un snapshot para el merger tree.
 ///
 /// Versión simplificada que solo requiere el ID único de la partícula y a qué

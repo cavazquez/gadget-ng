@@ -1,11 +1,11 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–65 completadas + Rápidas.  
+> **Estado al 23 de abril de 2026:** Phases 1–65 + Rápidas + Grandes G2/G5/G1 completadas.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
 
-## Phases completadas (1–65 + Rápidas)
+## Phases completadas (1–65 + Rápidas + G2/G5/G1)
 
 | Rango | Descripción |
 |-------|-------------|
@@ -26,20 +26,18 @@
 | 63 | 📈 Análisis in-situ en loop stepping |
 | 64 | 🖼️ Proyecciones adicionales + mapa de densidad Viridis + PNG |
 | 65 | 💾 HDF5 paralelo MPI-IO (colectivo, layout GADGET-4) |
+| **G2** | 💧 **SPH cosmológico integrado**: `ParticleType`, `internal_energy`, `smoothing_length` en `Particle`; `sph_cosmo_kdk_step`, enfriamiento atómico H+He, hook `maybe_sph!` en motor |
+| **G5** | 🌳 **MAH Merger Trees**: `MassAccretionHistory`, `mah_main_branch`, `mah_mcbride2009`, CLI `gadget-ng mah` |
+| **G1** | 🔍 **SUBFIND**: `local_density_sph`, `find_subhalos`, `SubhaloRecord`, flag `--subfind` en `gadget-ng analyze` |
 
 ---
 
-## Trabajos futuros Grandes (3–5 sesiones c/u)
+## Trabajos futuros Grandes pendientes
 
-Ver [`future-grandes.md`](reports/2026-04-future-grandes.md) para especificaciones completas.
-
-| ID | Tarea | Prioridad |
-|----|-------|-----------|
-| G1 | SUBFIND / subestructura dentro de halos | Media |
-| G2 | SPH cosmológico integrado (bariones en ΛCDM) | Alta |
-| G3 | Corrida de producción N=256³ end-to-end | Alta |
-| G4 | AMR-PM (refinamiento adaptativo de malla) | Baja |
-| G5 | Merger trees completos con historia de ensamble | Media |
+| ID | Tarea | Estado |
+|----|-------|--------|
+| G3 | Corrida de producción N=256³ end-to-end | Pendiente (~2 sesiones) |
+| G4 | AMR-PM (refinamiento adaptativo de malla) | Pendiente (~5 sesiones) |
 
 ---
 

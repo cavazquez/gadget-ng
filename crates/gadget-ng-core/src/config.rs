@@ -23,6 +23,9 @@ pub struct RunConfig {
     /// Análisis in-situ durante el loop `stepping` (opcional; desactivado por defecto).
     #[serde(default)]
     pub insitu_analysis: InsituAnalysisSection,
+    /// Módulo SPH cosmológico (Phase G2; opcional; desactivado por defecto).
+    #[serde(default)]
+    pub sph: SphSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1054,6 +1057,77 @@ impl UnitsSection {
         // H₀ en unidades internas = h0_km_s_mpc × (velocity_in_km_s / (1000 × length_in_kpc))
         let h0_int = h0_km_s_mpc * self.velocity_in_km_s / (1000.0 * self.length_in_kpc);
         1.0 / h0_int
+    }
+}
+
+// ── SphSection ───────────────────────────────────────────────────────────────
+
+/// Tipo de enfriamiento radiativo para partículas de gas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CoolingKind {
+    /// Sin enfriamiento (default).
+    #[default]
+    None,
+    /// Enfriamiento atómico H+He: `Λ(T) = Λ₀ · T^β` con floor en `t_floor_k`.
+    AtomicHHe,
+}
+
+/// Configuración del módulo SPH cosmológico (Phase G2).
+///
+/// Añadir `[sph]` al TOML:
+///
+/// ```toml
+/// [sph]
+/// enabled       = true
+/// gamma         = 1.6667
+/// alpha_visc    = 1.0
+/// n_neigh       = 32
+/// cooling       = "atomic_h_he"
+/// t_floor_k     = 1e4
+/// gas_fraction  = 0.1
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SphSection {
+    /// Activa el módulo SPH (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Índice adiabático γ (default: 5/3).
+    #[serde(default = "default_gamma")]
+    pub gamma: f64,
+    /// Parámetro de viscosidad artificial α (default: 1.0).
+    #[serde(default = "default_alpha_visc")]
+    pub alpha_visc: f64,
+    /// Número objetivo de vecinos SPH (default: 32).
+    #[serde(default = "default_n_neigh")]
+    pub n_neigh: usize,
+    /// Tipo de enfriamiento radiativo.
+    #[serde(default)]
+    pub cooling: CoolingKind,
+    /// Temperatura de floor en Kelvin (default: 10⁴ K).
+    #[serde(default = "default_t_floor_k")]
+    pub t_floor_k: f64,
+    /// Fracción de partículas inicializadas como gas (default: 0.0).
+    #[serde(default)]
+    pub gas_fraction: f64,
+}
+
+fn default_gamma() -> f64 { 5.0 / 3.0 }
+fn default_alpha_visc() -> f64 { 1.0 }
+fn default_n_neigh() -> usize { 32 }
+fn default_t_floor_k() -> f64 { 1e4 }
+
+impl Default for SphSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            gamma: default_gamma(),
+            alpha_visc: default_alpha_visc(),
+            n_neigh: default_n_neigh(),
+            cooling: CoolingKind::None,
+            t_floor_k: default_t_floor_k(),
+            gas_fraction: 0.0,
+        }
     }
 }
 

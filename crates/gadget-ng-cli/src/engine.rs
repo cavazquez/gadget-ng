@@ -1193,6 +1193,30 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
+    // Macro local para el paso SPH cosmológico (Phase G2).
+    // Solo actúa si `cfg.sph.enabled` es true; de lo contrario es un no-op.
+    macro_rules! maybe_sph {
+        ($cf:expr) => {
+            if cfg.sph.enabled {
+                let cf_sph = $cf;
+                let gamma = cfg.sph.gamma;
+                let alpha = cfg.sph.alpha_visc;
+                let n_neigh = cfg.sph.n_neigh as f64;
+                gadget_ng_sph::sph_cosmo_kdk_step(
+                    &mut local,
+                    cf_sph,
+                    gamma,
+                    alpha,
+                    n_neigh,
+                    |_parts| {},  // gravedad ya fue calculada por el solver principal
+                );
+                if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
+                    gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
+                }
+            }
+        };
+    }
+
     // ── Acumuladores de tiempos por fase ─────────────────────────────────────
     let mut acc_comm_ns: u64 = 0;
     let mut acc_gravity_ns: u64 = 0;

@@ -34,6 +34,7 @@ pub mod merger_tree;
 pub mod nfw;
 pub mod pk_correction;
 pub mod power_spectrum;
+pub mod subfind;
 
 pub use catalog::{
     analyse, read_halo_catalog, read_power_spectrum, write_halo_catalog, write_power_spectrum,
@@ -53,6 +54,10 @@ pub use nfw::{
     fit_nfw_concentration, measure_density_profile, r200_from_m200, rho_crit_z, DensityBin,
     NfwFitResult, NfwProfile, DELTA_VIRIALIZED, RHO_CRIT0,
 };
-pub use merger_tree::{build_merger_forest, MergerForest, MergerTreeNode, ParticleSnapshot};
+pub use merger_tree::{
+    build_merger_forest, mah_main_branch, mah_mcbride2009, MassAccretionHistory, MergerForest,
+    MergerTreeNode, ParticleSnapshot,
+};
 pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_rn, RnModel};
 pub use power_spectrum::PkBin;
+pub use subfind::{find_subhalos, local_density_sph, SubfindParams, SubhaloRecord};

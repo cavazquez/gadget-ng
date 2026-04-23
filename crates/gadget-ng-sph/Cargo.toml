@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
+gadget-ng-integrators = { path = "../gadget-ng-integrators" }
 rayon = "1.10"
 serde.workspace = true
 
