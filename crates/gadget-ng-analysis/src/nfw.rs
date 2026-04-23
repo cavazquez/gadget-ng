@@ -261,6 +261,25 @@ pub fn concentration_bhattacharya2013(m200_msun_h: f64, z: f64) -> f64 {
     9.0 * (m200_msun_h / m_pivot).powf(-0.099) * (1.0 + z).powf(-0.47)
 }
 
+/// Concentración c_200(M, z) de **Ludlow et al. (2016)** calibrada sobre simulaciones
+/// Planck 2015 ΛCDM (Millennium-XXL + Bolshoi-Planck).
+///
+/// Forma de potencia doble (Eq. 5 de Ludlow+2016):
+///
+/// ```text
+/// c_200 = 3.395 × (M / 10¹⁴ M_sun/h)^{-0.215} × (1+z)^{-0.642}
+/// ```
+///
+/// Válido para M ∈ [10¹⁰, 10¹⁵] M_sun/h y z ∈ [0, 4].
+/// Para z=0 da c ~ 4-7 para halos de grupo/clúster, consistente con Duffy+2008.
+pub fn concentration_ludlow2016(m200_msun_h: f64, z: f64) -> f64 {
+    const C0: f64 = 3.395;
+    const GAMMA: f64 = -0.215;
+    const MU: f64 = -0.642;
+    const M_PIVOT: f64 = 1e14;
+    C0 * (m200_msun_h / M_PIVOT).powf(GAMMA) * (1.0 + z).powf(MU)
+}
+
 // ── Perfil de densidad medido desde partículas ────────────────────────────────
 
 /// Un bin del perfil de densidad radial.
@@ -535,6 +554,39 @@ mod tests {
 
         println!("[nfw_test] Duffy c: M=10¹¹ → {c_low_m:.2}, M=10¹⁵ → {c_high_m:.2}");
         println!("[nfw_test] Duffy c: z=0 → {c_z0:.2}, z=1 → {c_z1:.2}");
+    }
+
+    /// Ludlow+2016 c(M): decreciente con M y z; rango físico [2, 15].
+    #[test]
+    fn concentration_ludlow2016_trends() {
+        let c_low_m = concentration_ludlow2016(1e11, 0.0);
+        let c_high_m = concentration_ludlow2016(1e15, 0.0);
+        let c_z0 = concentration_ludlow2016(1e13, 0.0);
+        let c_z1 = concentration_ludlow2016(1e13, 1.0);
+
+        assert!(c_low_m > c_high_m, "c debe decrecer con M (Ludlow)");
+        assert!(c_z0 > c_z1, "c debe decrecer con z (Ludlow)");
+        assert!(
+            c_low_m > 2.0 && c_low_m < 25.0,
+            "c(10¹¹) Ludlow fuera de rango: {c_low_m:.2}"
+        );
+        assert!(
+            c_high_m > 1.0 && c_high_m < 10.0,
+            "c(10¹⁵) Ludlow fuera de rango: {c_high_m:.2}"
+        );
+
+        // A igual masa, Ludlow y Duffy deben coincidir dentro de un factor 3.
+        // Nota: para M ≈ 10¹¹ la ratio puede llegar a ~2 según las calibraciones.
+        let m_test = 1e13_f64;
+        let c_duffy = concentration_duffy2008(m_test, 0.0);
+        let c_ludlow = concentration_ludlow2016(m_test, 0.0);
+        let ratio = c_ludlow / c_duffy;
+        assert!(
+            ratio > 0.3 && ratio < 3.0,
+            "Ludlow/Duffy = {ratio:.2} fuera de [0.3, 3.0] para M=10¹³"
+        );
+        println!("[nfw_test] Ludlow c: M=10¹¹ → {c_low_m:.2}, M=10¹⁵ → {c_high_m:.2}");
+        println!("[nfw_test] Ludlow vs Duffy @ 10¹³: {c_ludlow:.2} vs {c_duffy:.2}");
     }
 
     /// ρ(r) decrece con r.

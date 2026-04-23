@@ -719,6 +719,19 @@ pub struct PerformanceSection {
     /// Solo tiene efecto cuando `use_sfc = true` (path SFC+LET).
     #[serde(default)]
     pub sfc_kind: SfcKind,
+
+    /// Umbral de desbalance de carga para forzar un rebalanceo inmediato.
+    ///
+    /// Si `max(walk_ns) / min(walk_ns) > rebalance_imbalance_threshold`,
+    /// se fuerza un rebalanceo SFC en el siguiente paso, independientemente
+    /// de `sfc_rebalance_interval`.
+    ///
+    /// - `0.0` (default): criterio por coste desactivado; sólo se rebalancea
+    ///   cada `sfc_rebalance_interval` pasos.
+    /// - Valores típicos: `1.3` (30 % de desbalance relativo), `1.5`, `2.0`.
+    /// - Solo tiene efecto cuando `use_sfc = true`.
+    #[serde(default)]
+    pub rebalance_imbalance_threshold: f64,
 }
 
 fn default_deterministic() -> bool {
@@ -784,6 +797,7 @@ impl Default for PerformanceSection {
             sfc_kind: SfcKind::Morton,
             use_gpu_cuda: false,
             use_gpu_hip: false,
+            rebalance_imbalance_threshold: 0.0,
         }
     }
 }

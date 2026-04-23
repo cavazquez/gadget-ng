@@ -24,6 +24,7 @@
 //! ```
 
 pub mod catalog;
+pub mod correlation;
 pub mod fof;
 pub mod halo_mass_function;
 pub mod halofit;
@@ -35,6 +36,7 @@ pub use catalog::{
     analyse, read_halo_catalog, read_power_spectrum, write_halo_catalog, write_power_spectrum,
     AnalysisParams, AnalysisResult,
 };
+pub use correlation::{two_point_correlation_fft, two_point_correlation_pairs, XiBin};
 pub use fof::FofHalo;
 pub use halo_mass_function::{
     hmf_press_schechter, hmf_sheth_tormen, lagrange_radius, mass_function_table, multiplicity_ps,
@@ -42,9 +44,9 @@ pub use halo_mass_function::{
 };
 pub use halofit::{halofit_pk, p_linear_eh, HalofitCosmo};
 pub use nfw::{
-    concentration_bhattacharya2013, concentration_duffy2008, fit_nfw_concentration,
-    measure_density_profile, r200_from_m200, rho_crit_z, DensityBin, NfwFitResult, NfwProfile,
-    DELTA_VIRIALIZED, RHO_CRIT0,
+    concentration_bhattacharya2013, concentration_duffy2008, concentration_ludlow2016,
+    fit_nfw_concentration, measure_density_profile, r200_from_m200, rho_crit_z, DensityBin,
+    NfwFitResult, NfwProfile, DELTA_VIRIALIZED, RHO_CRIT0,
 };
 pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_rn, RnModel};
 pub use power_spectrum::PkBin;

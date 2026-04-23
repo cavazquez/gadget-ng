@@ -346,6 +346,10 @@ struct CheckpointMeta {
     total_particles: usize,
     /// `true` si también se guardó `hierarchical_state.json`.
     has_hierarchical_state: bool,
+    /// Informativo: el `SfcDecomposition` no se serializa; se reconstruye al reanudar
+    /// desde las posiciones restauradas.  Siempre `false` en el archivo.
+    #[serde(default)]
+    sfc_state_saved: bool,
 }
 
 /// Guarda estado de checkpoint en `<out_dir>/checkpoint/`.
@@ -383,6 +387,7 @@ fn save_checkpoint<R: ParallelRuntime + ?Sized>(
             config_hash: cfg_hash.to_owned(),
             total_particles: total,
             has_hierarchical_state: h_state.is_some(),
+            sfc_state_saved: false,
         };
         let meta_path = ck_dir.join("checkpoint.json");
         fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)
@@ -449,6 +454,30 @@ fn try_git_commit() -> Option<String> {
     } else {
         None
     }
+}
+
+/// Decide si rebalancear el dominio SFC en este paso.
+///
+/// Retorna `true` si se cumple cualquiera de:
+/// 1. `cost_pending` — el último paso midió un desbalance de carga que supera
+///    `rebalance_imbalance_threshold` (criterio dinámico).
+/// 2. El intervalo de rebalanceo fijo se cumple: `(step - start) % interval == 0`
+///    (cuando `interval > 0`).
+///
+/// # Parámetros
+/// - `step`: paso actual (comenzando en `start_step`).
+/// - `start_step`: primer paso de la corrida (puede ser > 0 después de un restart).
+/// - `interval`: `cfg.performance.sfc_rebalance_interval`.
+/// - `cost_pending`: bandera levantada cuando `max_ns/min_ns > threshold`.
+#[inline]
+fn should_rebalance(step: u64, start_step: u64, interval: u64, cost_pending: bool) -> bool {
+    if cost_pending {
+        return true;
+    }
+    if interval == 0 {
+        return true;
+    }
+    (step - start_step) % interval == 0
 }
 
 fn kinetic_local(parts: &[Particle]) -> f64 {
@@ -1247,6 +1276,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             hs
         });
 
+        // Seguimiento de desbalance de costo para el path jerárquico+LET.
+        let mut cost_rebalance_hier = false;
+        let imbalance_threshold_hier = cfg.performance.rebalance_imbalance_threshold;
+
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
             let mut this_comm: u64 = 0;
@@ -1269,7 +1302,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             if let Some(ref mut sfc_d) = sfc_decomp_hier {
                 use gadget_ng_parallel::sfc::global_bbox;
                 let do_rebalance =
-                    sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+                    should_rebalance(step, start_step, sfc_rebalance, cost_rebalance_hier);
+                cost_rebalance_hier = false;
                 if do_rebalance {
                     let t_rb = Instant::now();
                     let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
@@ -1346,6 +1380,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     }
                 },
             );
+            // ── Detección de desbalance de costo (path jerárquico+LET) ─────────
+            if rt.size() > 1 && this_grav > 0 && imbalance_threshold_hier > 1.0 {
+                let wl_max = rt.allreduce_max_f64(this_grav as f64);
+                let wl_min = rt.allreduce_min_f64(this_grav as f64).max(1.0);
+                if wl_max / wl_min > imbalance_threshold_hier {
+                    cost_rebalance_hier = true;
+                }
+            }
+
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
@@ -1414,6 +1457,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         } else {
             theta
         };
+        // Seguimiento de desbalance de costo para el path cosmológico SFC+LET.
+        let mut cost_rebalance_cosmo = false;
+        let imbalance_threshold_cosmo = cfg.performance.rebalance_imbalance_threshold;
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -1430,7 +1476,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
             // ── Rebalanceo SFC ────────────────────────────────────────────────────
             let do_rebalance =
-                sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
+                should_rebalance(step, start_step, sfc_rebalance, cost_rebalance_cosmo);
+            cost_rebalance_cosmo = false;
             if do_rebalance {
                 let t_rb = Instant::now();
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
@@ -1606,6 +1653,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             };
             acc_step_ns += step_start.elapsed().as_nanos() as u64;
             acc_comm_ns += this_comm;
+            // ── Detección de desbalance de costo (path cosmológico SFC+LET) ─────
+            if rt.size() > 1 && this_grav > 0 && imbalance_threshold_cosmo > 1.0 {
+                let wl_max = rt.allreduce_max_f64(this_grav as f64);
+                let wl_min = rt.allreduce_min_f64(this_grav as f64).max(1.0);
+                if wl_max / wl_min > imbalance_threshold_cosmo {
+                    cost_rebalance_cosmo = true;
+                }
+            }
+
             acc_gravity_ns += this_grav;
             steps_run += 1;
             write_diagnostic_line(
@@ -2347,9 +2403,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let mut this_grav: u64 = 0;
 
             // ── Rebalanceo SFC (por intervalo o por desequilibrio de costo) ────
-            let do_rebalance = cost_rebalance_pending
-                || sfc_rebalance == 0
-                || (step - start_step) % sfc_rebalance.max(1) == 0;
+            let do_rebalance =
+                should_rebalance(step, start_step, sfc_rebalance, cost_rebalance_pending);
             cost_rebalance_pending = false;
             if do_rebalance {
                 let t_rb = Instant::now();
@@ -2687,12 +2742,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             } // force_eval dropped → borrows de hpc liberados
 
             // ── Rebalanceo dinámico por costo ───────────────────────────────
-            // Si max/min walk_local > 1.3, forzar rebalanceo en el próximo paso.
-            if rt.size() > 1 && hpc.walk_local_ns > 0 {
+            // Si max/min walk_local > rebalance_imbalance_threshold, forzar
+            // rebalanceo en el próximo paso.
+            let imbalance_threshold = cfg.performance.rebalance_imbalance_threshold;
+            if rt.size() > 1 && hpc.walk_local_ns > 0 && imbalance_threshold > 1.0 {
                 let wl = hpc.walk_local_ns as f64;
                 let wl_max = rt.allreduce_max_f64(wl);
                 let wl_min = rt.allreduce_min_f64(wl).max(1.0);
-                if wl_max / wl_min > 1.3 {
+                if wl_max / wl_min > imbalance_threshold {
                     cost_rebalance_pending = true;
                 }
             }

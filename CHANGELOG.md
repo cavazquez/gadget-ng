@@ -8,6 +8,51 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Rápidas — `gadget-ng analyze` + `gadget-ng-vis` PPM
+
+- Nuevo subcomando `gadget-ng analyze` en [`crates/gadget-ng-cli/src/analyze_cmd.rs`](crates/gadget-ng-cli/src/analyze_cmd.rs): pipeline completo FoF + P(k) + ξ(r) + c(M) desde snapshot JSONL; escribe `results.json` con halos, espectro de potencia, función de correlación y tabla concentración-masa. Opciones: `--fof-b`, `--pk-mesh`, `--xi-bins`, `--nfw-min-part`, `--box-size-mpc-h`.
+- Nuevo módulo `crates/gadget-ng-vis/src/ppm.rs`: `render_ppm(positions, box_size, width, height) → Vec<u8>` (proyección XY, fondo negro, partículas blancas) y `write_ppm(path, pixels, w, h)` en formato PPM binario P6 sin dependencias externas. 5 tests unitarios.
+- CLI `gadget-ng stepping --vis-snapshot 1` genera `<out>/snapshot_final.ppm` después de la corrida.
+- Reporte: [`docs/reports/2026-04-rapidas-analyze-vis.md`](docs/reports/2026-04-rapidas-analyze-vis.md).
+
+### Phase 60 — Domain Decomposition Adaptativa
+
+- Nuevo campo `rebalance_imbalance_threshold: f64` en `PerformanceSection` (default 0.0 = desactivado). Si `max(walk_ns)/min(walk_ns) > threshold`, se fuerza rebalanceo inmediato independientemente de `sfc_rebalance_interval`. Valores típicos: 1.3, 1.5, 2.0.
+- Nueva función `should_rebalance(step, start_step, interval, cost_pending)` en `engine.rs`: centraliza la lógica de decisión de rebalanceo para todos los paths SFC.
+- Paths actualizados con detección de desbalance: jerárquico+LET (Phase 56) y cosmológico SFC+LET. El path SFC+LET BarnesHut ya existente usa el threshold configurable en lugar del valor hardcodeado 1.3.
+- 5 tests en [`crates/gadget-ng-physics/tests/phase60_adaptive_rebalance.rs`](crates/gadget-ng-physics/tests/phase60_adaptive_rebalance.rs): verifican intervalo, override por costo, interval=0, configurabilidad del threshold y escenario completo de rebalanceo temprano.
+- Reporte: [`docs/reports/2026-04-phase60-adaptive-rebalance.md`](docs/reports/2026-04-phase60-adaptive-rebalance.md).
+
+### Phase 59 — Restart/Checkpoint robusto
+
+- Auditoría del sistema de checkpoint: verificado que todos los paths SFC reconstruyen `SfcDecomposition` correctamente desde posiciones restauradas (no se requiere serializar el SFC).
+- Nuevo campo `sfc_state_saved: bool` en `CheckpointMeta` (siempre `false`, informativo).
+- Test de continuidad bit-a-bit en [`crates/gadget-ng-physics/tests/phase59_checkpoint_continuity.rs`](crates/gadget-ng-physics/tests/phase59_checkpoint_continuity.rs): N=8³ PM, 20 pasos — corrida continua vs corrida dividida (10+10 con clone de partículas). Resultado: `max|Δx| = 0.00e0`, `max|Δv| = 0.00e0`.
+- Reporte: [`docs/reports/2026-04-phase59-checkpoint-continuity.md`](docs/reports/2026-04-phase59-checkpoint-continuity.md).
+
+### Phase 58 — c(M) desde N-body + función de correlación ξ(r)
+
+- Nueva función `concentration_ludlow2016(m200_msun_h, z)` en `gadget-ng-analysis/src/nfw.rs`: relación c(M) de Ludlow et al. 2016 (Planck2015 ΛCDM). A z=0 y M=10¹³ M☉/h: c=5.57 vs Duffy c=4.99 (ratio 1.12). Para M=10¹⁵: c=2.07 vs Duffy 3.39 (ratio 0.61).
+- Nuevo archivo `gadget-ng-analysis/src/correlation.rs` con `XiBin { r, xi, n_pairs }`, `two_point_correlation_fft` (suma de Hankel discreta O(N_k × N_r)) y `two_point_correlation_pairs` (estimador Davis-Peebles DD/RR−1, O(N²)). Expuestos en `lib.rs`.
+- Test de integración en [`crates/gadget-ng-physics/tests/phase58_nfw_concentration.rs`](crates/gadget-ng-physics/tests/phase58_nfw_concentration.rs): simulación PM N=32³, z:50→0, FoF → ajuste NFW; validación c(M) y ξ(r) via FFT y pares directos. Controlado con `PHASE58_SKIP=1`.
+- Reporte: [`docs/reports/2026-04-phase58-nfw-concentration-xi.md`](docs/reports/2026-04-phase58-nfw-concentration-xi.md).
+
+### Phase 57 — CUDA/HIP PM solver
+
+- Nuevos crates `crates/gadget-ng-cuda` y `crates/gadget-ng-hip`: solver PM GPU opcional con degradación elegante si el toolchain no está disponible (`CUDA_SKIP=1` / `HIP_SKIP=1`).
+- Kernels GPU: asignación de masa CIC (atomic), FFT 3D R2C via cuFFT/rocFFT, solver de Poisson en k-space, 3× FFT C2R para componentes de fuerza, interpolación CIC adjunta.
+- Variables de config: `use_gpu_cuda = true`, `use_gpu_hip = true` en `[performance]`.
+- Tests smoke con `#[ignore]` por defecto (requieren GPU real).
+- Reporte: [`docs/reports/2026-04-phase57-cuda-hip-pm.md`](docs/reports/2026-04-phase57-cuda-hip-pm.md).
+
+### Phase 56 — Block timesteps jerárquicos acoplados al árbol LET distribuido
+
+- Nueva función `compute_forces_hierarchical_let` en `gadget-ng-parallel`: evalúa fuerzas solo para `active_local` usando halos SFC intercambiados, árbol local sobre `local + halos`.
+- Acoplamiento en `engine.rs` path jerárquico+SFC (`use_hierarchical_let`): `exchange_halos_sfc` una vez por base-step, closure de fuerzas llama a `compute_forces_hierarchical_let`.
+- Corrección bug softening cosmológico: `eps2 = (eps_phys/a)²` cuando `physical_softening = true`.
+- 5 tests en [`crates/gadget-ng-physics/tests/phase56_hierarchical_let.rs`](crates/gadget-ng-physics/tests/phase56_hierarchical_let.rs): conservación de momentum, estabilidad energética, activos vs inactivos.
+- Reporte: [`docs/reports/2026-04-phase56-hierarchical-let.md`](docs/reports/2026-04-phase56-hierarchical-let.md).
+
 ### Phase 55 — Comparación FoF vs HMF hasta z=0
 
 - Nuevo reporte [`docs/reports/2026-04-phase55-fof-vs-hmf.md`](docs/reports/2026-04-phase55-fof-vs-hmf.md): evolución PM hasta `a=1.0` (z=0) con `G_consistent` y timestep adaptativo; FoF (b=0.2, min_particles=20) en unidades internas; conversión física `m_part = Ω_m·ρ_crit_H2·BOX³_Mpc_h/N_total`.

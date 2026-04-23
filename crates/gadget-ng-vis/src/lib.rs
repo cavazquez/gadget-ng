@@ -29,10 +29,12 @@
 pub mod canvas;
 pub mod color;
 pub mod export;
+pub mod ppm;
 pub mod projection;
 pub mod renderer;
 
 pub use color::ColorMode;
 pub use export::{frame_path, save_png};
+pub use ppm::{render_ppm, write_ppm};
 pub use projection::Projection;
 pub use renderer::{Renderer, RendererConfig};
