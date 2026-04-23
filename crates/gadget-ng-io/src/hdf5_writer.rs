@@ -2,9 +2,10 @@
 use std::path::Path;
 
 use gadget_ng_core::{Particle, Vec3};
-use ndarray::{arr1, Array1, Array2};
+use ndarray::{Array1, Array2};
 
 use crate::error::SnapshotError;
+use crate::gadget4_attrs::{write_gadget4_header, Gadget4Header};
 use crate::provenance::Provenance;
 use crate::reader::{SnapshotData, SnapshotReader};
 use crate::snapshot::{build_meta, write_sidecar_json};
@@ -28,64 +29,17 @@ impl SnapshotWriter for Hdf5Writer {
         let path = out_dir.join("snapshot.hdf5");
         let file = hdf5::File::create(&path)?;
 
-        // --- Header (convención GADGET-4 HDF5 — compatible con yt y pynbody) ---
+        // --- Header completo GADGET-4 (Phase 74) ---
+        let g4h = Gadget4Header::for_nbody(
+            n,
+            env.time,
+            env.box_size,
+            env.omega_m,
+            env.omega_lambda,
+            env.h_dimless,
+        );
         let header = file.create_group("Header")?;
-        let num_part_total: [i64; 6] = [0, n as i64, 0, 0, 0, 0];
-        header
-            .new_attr_builder()
-            .with_data(&num_part_total)
-            .create("NumPart_Total")?;
-        header
-            .new_attr_builder()
-            .with_data(&num_part_total)
-            .create("NumPart_ThisFile")?;
-        let mass_table: [f64; 6] = [0.0; 6];
-        header
-            .new_attr_builder()
-            .with_data(&mass_table)
-            .create("MassTable")?;
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[meta.time]))
-            .create("Time")?;
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[meta.redshift]))
-            .create("Redshift")?;
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[meta.box_size]))
-            .create("BoxSize")?;
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[env.h_dimless]))
-            .create("HubbleParam")?;
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[env.omega_m]))
-            .create("Omega0")?;
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[env.omega_lambda]))
-            .create("OmegaLambda")?;
-        // Atributos requeridos por yt y pynbody
-        header
-            .new_attr_builder()
-            .with_data(&arr1(&[1_i32]))
-            .create("NumFilesPerSnapshot")?;
-        let flags_zero = arr1(&[0_i32]);
-        for name in [
-            "Flag_Sfr",
-            "Flag_Feedback",
-            "Flag_Cooling",
-            "Flag_StellarAge",
-            "Flag_Metals",
-        ] {
-            header
-                .new_attr_builder()
-                .with_data(&flags_zero)
-                .create(name)?;
-        }
+        write_gadget4_header(&header, &g4h)?;
 
         // --- PartType1 = DM (N-body colisionless típico) ---
         let mut coords = Array2::<f64>::zeros((n, 3));

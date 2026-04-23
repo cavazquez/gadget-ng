@@ -23,6 +23,7 @@
 //! println!("{} halos encontrados", result.halos.len());
 //! ```
 
+pub mod bispectrum;
 pub mod catalog;
 pub mod correlation;
 pub mod fof;
@@ -30,11 +31,13 @@ pub mod fof;
 pub mod fof_parallel;
 pub mod halo_mass_function;
 pub mod halofit;
+pub mod halo_spin;
 pub mod merger_tree;
 pub mod nfw;
 pub mod pk_correction;
 pub mod power_spectrum;
 pub mod subfind;
+pub mod velocity_profile;
 
 pub use catalog::{
     analyse, read_halo_catalog, read_power_spectrum, write_halo_catalog, write_power_spectrum,
@@ -60,4 +63,11 @@ pub use merger_tree::{
 };
 pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_rn, RnModel};
 pub use power_spectrum::PkBin;
+pub use bispectrum::{
+    bispectrum_equilateral, bispectrum_isosceles, reduced_bispectrum, BkBin, BkIsoscelesBin,
+};
+pub use halo_spin::{compute_halo_spins, halo_spin, HaloSpin, SpinParams};
 pub use subfind::{find_subhalos, local_density_sph, SubfindParams, SubhaloRecord};
+pub use velocity_profile::{
+    sigma_1d, velocity_anisotropy, velocity_profile, VelocityProfileBin, VelocityProfileParams,
+};

@@ -1,12 +1,12 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–65 + Rápidas + Grandes G1/G2/G3/G4/G5 completadas.  
-> Todas las fases Grandes originales están implementadas.  
+> **Estado al 23 de abril de 2026:** Phases 1–74 completadas.  
+> Phases 71–74: Bispectrum B(k), spin λ, perfiles σ_v(r), HDF5 GADGET-4 estándar.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
 
-## Phases completadas (1–65 + Rápidas + G1/G2/G3/G4/G5)
+## Phases completadas (1–74)
 
 | Rango | Descripción |
 |-------|-------------|
@@ -32,20 +32,23 @@
 | **Phase 68** | 🔍 **SUBFIND**: `local_density_sph`, `find_subhalos`, `SubhaloRecord`, flag `--subfind` en `gadget-ng analyze` |
 | **Phase 69** | 🚀 **Producción N=256³**: `configs/production_256.toml`, `scripts/run_production_256.sh`, notebooks Python P(k)/HMF, smoke tests N=32³ |
 | **Phase 70** | 🔲 **AMR-PM**: `PatchGrid`, `amr_pm_accels`, zero-padding, identificación de parches por sobredensidad, 2 niveles jerárquicos |
+| **Phase 71** | 📊 **Bispectrum B(k₁,k₂,k₃)**: `bispectrum_equilateral`, `bispectrum_isosceles`, `reduced_bispectrum` Q(k); detector de no-gaussianidades |
+| **Phase 72** | 🌀 **Spin de halos λ**: `halo_spin`, `compute_halo_spins`; λ Peebles + λ' Bullock |
+| **Phase 73** | 🌊 **Perfiles de velocidad σ_v(r)**: `velocity_profile`, `velocity_anisotropy` β(r), `sigma_1d`; binning log/lineal |
+| **Phase 74** | 💾 **HDF5 GADGET-4 estándar completo**: `Gadget4Header` 22 atributos, unidades físicas; compatible con yt/pynbody/h5py |
 
 ---
 
 ## Trabajos futuros
 
-Todas las Grandes originales están completadas. Posibles extensiones:
+Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
-| G4 jerárquico | AMR de 3+ niveles recursivos + comunicación MPI de parches | 3–4 sesiones |
+| AMR jerárquico | AMR de 3+ niveles recursivos + comunicación MPI de parches | 3–4 sesiones |
 | RT | Transferencia radiativa (M1 closure, Morel) | 5–8 sesiones |
 | Stellar feedback | Kick estocástico SN en gas SPH cercano | 2–3 sesiones |
-| Bispectrum B(k) | Estadísticas de orden 3 del campo de densidad | 1–2 sesiones |
-
+| Validación producción | Corrida N=128³ completa hasta z=0, HMF vs Tinker | 2–3 sesiones |
 ---
 
 ## Historial de fases (detalle técnico)

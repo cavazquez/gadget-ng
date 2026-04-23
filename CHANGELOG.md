@@ -8,6 +8,55 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 74 — Output HDF5 con atributos estándar GADGET-4
+
+- Nuevo módulo `crates/gadget-ng-io/src/gadget4_attrs.rs` con:
+  - `Gadget4Header`: struct completo con los 22 atributos del estándar GADGET-4 HDF5.
+  - Constructores `for_nbody(...)` y `for_sph(...)` para casos comunes.
+  - `write_gadget4_header(group, &header)`: escribe todos los atributos al grupo `/Header`.
+  - `read_gadget4_header(group)`: lee todos los atributos con tolerancia a campos opcionales.
+  - Constantes de conversión: `KPC_IN_CM = 3.086e21`, `MSUN_IN_G = 1.989e33`, `KMS_IN_CMS = 1e5`.
+  - `hubble_of_a(a)`: H(a) en km/s/Mpc para cosmología ΛCdM plana.
+- Atributos nuevos respecto a la implementación anterior: `OmegaBaryon`, `NumPart_Total_HW`, `Flag_Entropy_ICs`, `Flag_DoublePrecision`, `Flag_IC_Info`, `UnitLength_in_cm`, `UnitMass_in_g`, `UnitVelocity_in_cm_per_s`.
+- `Hdf5Writer` actualizado para usar `write_gadget4_header` (Phase 55 → Phase 74 compatible).
+- Los snapshots resultantes son legibles directamente por `yt`, `pynbody`, `h5py`, GADGET-4.
+- 7 tests unitarios (+ 1 HDF5 con feature gate) en `gadget-ng-io --lib`.
+- Reporte: [`docs/reports/2026-04-phase74-hdf5-gadget4-attrs.md`](docs/reports/2026-04-phase74-hdf5-gadget4-attrs.md).
+
+### Phase 73 — Perfiles de velocidad σ_v(r)
+
+- Nuevo módulo `crates/gadget-ng-analysis/src/velocity_profile.rs` con:
+  - `VelocityProfileBin`: bin radial con `v_r_mean`, `sigma_r`, `sigma_t`, `sigma_3d`, `n_part`.
+  - `velocity_profile(positions, velocities, masses, center, v_center, params)`: binning en anillos esféricos con bins log o lineales.
+  - `sigma_1d(sigma_3d)`: dispersión 1D = σ₃D / √3 (observable en espectroscopía).
+  - `velocity_anisotropy(profile)`: β(r) = 1 − σ_t²/σ_r² de Binney.
+- Bins con soporte para escalas logarítmicas y lineales; bins vacíos se omiten automáticamente.
+- 8 tests unitarios verificando ordenamiento, σ ≥ 0, β finito, anisotropía radial.
+- Reporte: [`docs/reports/2026-04-phase73-velocity-profile.md`](docs/reports/2026-04-phase73-velocity-profile.md).
+
+### Phase 72 — Spin de halos λ (Peebles)
+
+- Nuevo módulo `crates/gadget-ng-analysis/src/halo_spin.rs` con:
+  - `HaloSpin`: resultado con L, |L|, R₂₀₀, V_vir, `lambda_peebles`, `lambda_bullock`.
+  - `halo_spin(positions, velocities, masses, params)`: calcula λ y λ' para un halo.
+  - `compute_halo_spins(...)`: batch sobre múltiples halos dados como índices.
+  - `SpinParams`: configurable (G_Newton, Δ_vir, ρ_crit).
+- Relación exacta λ_Bullock = λ_Peebles / √2.
+- 7 tests: anillo circular, halo estático, vacío, dirección de L, batch multi-halo.
+- Reporte: [`docs/reports/2026-04-phase72-halo-spin.md`](docs/reports/2026-04-phase72-halo-spin.md).
+
+### Phase 71 — Bispectrum B(k₁,k₂,k₃)
+
+- Nuevo módulo `crates/gadget-ng-analysis/src/bispectrum.rs` con:
+  - `BkBin`, `BkIsoscelesBin`: structs de salida serializables.
+  - `bispectrum_equilateral(positions, masses, box_size, mesh, n_bins)`: B_eq(k) via shell-filter + IFFT.
+  - `bispectrum_isosceles(...)`: B(k₁, k₂) para configuraciones isósceles.
+  - `reduced_bispectrum(bk_bins, pk_table)`: Q(k) = B_eq / (3P²) — detector de no-gaussianidad.
+- Algoritmo shell-filter: CIC deposit → FFT 3D → filtrado por cáscara → IFFT → ⟨δ_k³⟩.
+- Para campo gaussiano: Q ≈ 0; para campo no-lineal: Q > 0.
+- 5 tests: campo uniforme, ordenamiento de k, distribución aleatoria, serialización JSON.
+- Reporte: [`docs/reports/2026-04-phase71-bispectrum.md`](docs/reports/2026-04-phase71-bispectrum.md).
+
 ### Fix — Actualización de literales Particle/RunConfig
 
 - Corregidos ~55 archivos de tests en todo el workspace que inicializaban `Particle` o `RunConfig` como struct literal, fallando tras los campos nuevos agregados en G2 y Phase 63.
