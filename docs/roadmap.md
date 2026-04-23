@@ -1,13 +1,11 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–60 completadas + Rápidas (analyze + PPM).  
-> Siguiente bloque planificado: **Phases 61–65** (Medianas).  
-> Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).  
-> Plan detallado de Medianas: [`plan-medianas-phase61-65.md`](reports/2026-04-plan-medianas-phase61-65.md).
+> **Estado al 23 de abril de 2026:** Phases 1–65 completadas + Rápidas.  
+> Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
 
-## Phases completadas (1–60 + Rápidas)
+## Phases completadas (1–65 + Rápidas)
 
 | Rango | Descripción |
 |-------|-------------|
@@ -23,20 +21,11 @@
 | 59 | 💾 Checkpoint/restart bit-a-bit robusto |
 | 60 | 🔀 Domain decomposition adaptativa por costo |
 | Rápidas | 📊 CLI `analyze` + 🖼️ PPM render sin dependencias |
-
----
-
-## Próximo bloque: Phases 61–65 (Medianas)
-
-Ver plan completo en [`plan-medianas-phase61-65.md`](reports/2026-04-plan-medianas-phase61-65.md).
-
-| Fase | Tarea | Sesiones |
-|------|-------|----------|
-| **61** | ⚡ FoF paralelo MPI | 1–2 |
-| **62** | 🌳 Merger trees (single-pass) | 1 |
-| **63** | 📈 Análisis in-situ en loop `stepping` | 1 |
-| **64** | 🖼️ Proyecciones adicionales + mapa de densidad | 1 |
-| **65** | 💾 HDF5 paralelo MPI-IO | 2 |
+| 61 | ⚡ FoF paralelo MPI (cross-boundary Union-Find) |
+| 62 | 🌳 Merger trees single-pass (historia de ensamble) |
+| 63 | 📈 Análisis in-situ en loop stepping |
+| 64 | 🖼️ Proyecciones adicionales + mapa de densidad Viridis + PNG |
+| 65 | 💾 HDF5 paralelo MPI-IO (colectivo, layout GADGET-4) |
 
 ---
 

@@ -8,6 +8,50 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 65 — HDF5 paralelo MPI-IO
+
+- Nuevo módulo `crates/gadget-ng-io/src/hdf5_parallel_writer.rs` con feature `hdf5-parallel`: `write_snapshot_hdf5_serial`, `read_snapshot_hdf5_serial` y módulo `parallel_impl` (requiere `libhdf5` con `--enable-parallel`).
+- `Hdf5ParallelOptions { chunk_size: 65536, compression: 0 }` para control de chunks y compresión gzip.
+- Layout idéntico al `Hdf5Writer` existente: `/Header` + `/PartType1/{Coordinates,Velocities,Masses,ParticleIDs}`.
+- Con `SerialRuntime` (P=1) produce archivos bit-a-bit idénticos al escritor serial. Tests se saltan si `libhdf5` no disponible.
+- 4 tests en [`crates/gadget-ng-physics/tests/phase65_hdf5_parallel.rs`](crates/gadget-ng-physics/tests/phase65_hdf5_parallel.rs): roundtrip P=1, layout GADGET-4, contenido idéntico, defaults de opciones.
+- Reporte: [`docs/reports/2026-04-phase65-hdf5-parallel.md`](docs/reports/2026-04-phase65-hdf5-parallel.md).
+
+### Phase 64 — gadget-ng-vis: proyecciones adicionales y mapa de densidad
+
+- `crates/gadget-ng-vis/src/ppm.rs` extendido con 3 nuevas funciones: `render_ppm_projection` (proyecciones XY/XZ/YZ), `render_density_ppm` (escala log₁₀ + colormap Viridis) y `write_png` (exportación PNG nativa vía crate `png`).
+- Exportadas en `lib.rs`: `render_density_ppm`, `render_ppm_projection`, `write_png`.
+- CLI `Commands::Stepping` extendido con `--vis-proj <xy|xz|yz>`, `--vis-mode <points|density>`, `--vis-format <ppm|png>`.
+- 6 tests en [`crates/gadget-ng-vis/tests/ppm_extended.rs`](crates/gadget-ng-vis/tests/ppm_extended.rs): `density_map_concentrated_bright`, `density_map_empty_is_dark`, `projection_xz_correct`, `projection_yz_correct`, `write_png_header`, `write_png_minimal`.
+- Reporte: [`docs/reports/2026-04-phase64-vis-projections-density.md`](docs/reports/2026-04-phase64-vis-projections-density.md).
+
+### Phase 63 — Análisis in-situ en el loop stepping
+
+- Nueva sección `InsituAnalysisSection` en `gadget-ng-core/src/config.rs` con campos `enabled`, `interval`, `pk_mesh`, `fof_b`, `fof_min_part`, `xi_bins`, `output_dir`. Exportada desde `gadget-ng-core`.
+- Campo `pub insitu_analysis: InsituAnalysisSection` agregado a `RunConfig` (default: `enabled=false`).
+- Nuevo módulo `crates/gadget-ng-cli/src/insitu.rs` con `maybe_run_insitu(particles, cfg, box_size, a, step, out_dir)`: escribe `insitu_{step:06}.json` con P(k), n_halos, masa total y ξ(r) opcional.
+- Macro `maybe_insitu!(step)` insertada en los 7 loops de stepping de `engine.rs`.
+- 5 tests en [`crates/gadget-ng-physics/tests/phase63_insitu_analysis.rs`](crates/gadget-ng-physics/tests/phase63_insitu_analysis.rs): defaults, lógica de intervalo, disabled, params, P(k) finito en lattice uniforme.
+- Reporte: [`docs/reports/2026-04-phase63-insitu-analysis.md`](docs/reports/2026-04-phase63-insitu-analysis.md).
+
+### Phase 62 — Merger Trees single-pass
+
+- Nuevo archivo `crates/gadget-ng-analysis/src/merger_tree.rs` con `MergerTreeNode`, `MergerForest`, `ParticleSnapshot` y `build_merger_forest(catalogs, min_shared_fraction)`.
+- Algoritmo single-pass: vota progenitor por fracción de partículas compartidas entre snapshots consecutivos; registra mergers secundarios.
+- Nuevo subcomando CLI `gadget-ng merge-tree` con `--snapshots`, `--catalogs`, `--out`, `--min-shared`. Implementado en `crates/gadget-ng-cli/src/merge_tree_cmd.rs`.
+- Exportados desde `lib.rs`: `build_merger_forest`, `MergerForest`, `MergerTreeNode`, `ParticleSnapshot`.
+- 4 tests en [`crates/gadget-ng-physics/tests/phase62_merger_trees.rs`](crates/gadget-ng-physics/tests/phase62_merger_trees.rs): trivial sin mergers, fusión binaria, roundtrip JSON, snapshot único.
+- Reporte: [`docs/reports/2026-04-phase62-merger-trees.md`](docs/reports/2026-04-phase62-merger-trees.md).
+
+### Phase 61 — FoF paralelo MPI (cross-boundary Union-Find)
+
+- Feature `parallel` en `gadget-ng-analysis/Cargo.toml`: dependencia opcional `gadget-ng-parallel`.
+- Nuevo archivo `crates/gadget-ng-analysis/src/fof_parallel.rs` con `find_halos_parallel<R: ParallelRuntime>`: intercambia partículas frontera vía `exchange_halos_sfc` y aplica Union-Find cross-boundary.
+- Nuevo helper `find_halos_combined` en `fof.rs`: FoF sobre conjunto local+halos recibidos, guardando solo grupos con raíz local (índice < N_local).
+- Con `SerialRuntime` (P=1) idéntico al FoF serial; con P>1 escala a O(N/P + N_frontera).
+- 3 tests en [`crates/gadget-ng-physics/tests/phase61_fof_parallel.rs`](crates/gadget-ng-physics/tests/phase61_fof_parallel.rs): vs serial P=1, halo cross-boundary, conservación de masa.
+- Reporte: [`docs/reports/2026-04-phase61-fof-parallel-mpi.md`](docs/reports/2026-04-phase61-fof-parallel-mpi.md).
+
 ### Rápidas — `gadget-ng analyze` + `gadget-ng-vis` PPM
 
 - Nuevo subcomando `gadget-ng analyze` en [`crates/gadget-ng-cli/src/analyze_cmd.rs`](crates/gadget-ng-cli/src/analyze_cmd.rs): pipeline completo FoF + P(k) + ξ(r) + c(M) desde snapshot JSONL; escribe `results.json` con halos, espectro de potencia, función de correlación y tabla concentración-masa. Opciones: `--fof-b`, `--pk-mesh`, `--xi-bins`, `--nfw-min-part`, `--box-size-mpc-h`.
