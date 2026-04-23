@@ -28,6 +28,12 @@ pub struct SnapshotEnv {
     pub box_size: f64,
     /// `Some(...)` si la simulación usa unidades físicas (`[units] enabled = true`).
     pub units: Option<SnapshotUnits>,
+    /// Ω_m (materia). 0.0 si no hay cosmología activa.
+    pub omega_m: f64,
+    /// Ω_Λ (constante cosmológica). 0.0 si no hay cosmología activa.
+    pub omega_lambda: f64,
+    /// H₀/100 (adimensional). 1.0 si no hay cosmología activa.
+    pub h_dimless: f64,
 }
 
 impl Default for SnapshotEnv {
@@ -37,6 +43,9 @@ impl Default for SnapshotEnv {
             redshift: 0.0,
             box_size: 1.0,
             units: None,
+            omega_m: 0.0,
+            omega_lambda: 0.0,
+            h_dimless: 1.0,
         }
     }
 }

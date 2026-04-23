@@ -251,6 +251,7 @@ mod tests {
             time: 2.71,
             redshift: 1.5,
             box_size: 12.0,
+            ..Default::default()
         };
         NetcdfWriter
             .write(dir.path(), &particles, &dummy_prov(), &env)
@@ -277,6 +278,7 @@ mod tests {
             time: 0.99,
             redshift: 0.1,
             box_size: 5.0,
+            ..Default::default()
         };
         NetcdfWriter
             .write(dir.path(), &particles, &dummy_prov(), &env)

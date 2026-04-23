@@ -28,7 +28,7 @@ impl SnapshotWriter for Hdf5Writer {
         let path = out_dir.join("snapshot.hdf5");
         let file = hdf5::File::create(&path)?;
 
-        // --- Header (convención GADGET HDF5) ---
+        // --- Header (convención GADGET-4 HDF5 — compatible con yt y pynbody) ---
         let header = file.create_group("Header")?;
         let num_part_total: [i64; 6] = [0, n as i64, 0, 0, 0, 0];
         header
@@ -56,21 +56,27 @@ impl SnapshotWriter for Hdf5Writer {
             .new_attr_builder()
             .with_data(&arr1(&[meta.box_size]))
             .create("BoxSize")?;
-        let h_param = 1.0_f64;
         header
             .new_attr_builder()
-            .with_data(&arr1(&[h_param]))
+            .with_data(&arr1(&[env.h_dimless]))
             .create("HubbleParam")?;
-        let omega0 = 0.0_f64;
         header
             .new_attr_builder()
-            .with_data(&arr1(&[omega0]))
+            .with_data(&arr1(&[env.omega_m]))
             .create("Omega0")?;
-        let omega_lambda = 0.0_f64;
         header
             .new_attr_builder()
-            .with_data(&arr1(&[omega_lambda]))
+            .with_data(&arr1(&[env.omega_lambda]))
             .create("OmegaLambda")?;
+        // Atributos requeridos por yt y pynbody
+        header
+            .new_attr_builder()
+            .with_data(&arr1(&[1_i32]))
+            .create("NumFilesPerSnapshot")?;
+        let flags_zero = arr1(&[0_i32]);
+        for name in ["Flag_Sfr", "Flag_Feedback", "Flag_Cooling", "Flag_StellarAge", "Flag_Metals"] {
+            header.new_attr_builder().with_data(&flags_zero).create(name)?;
+        }
 
         // --- PartType1 = DM (N-body colisionless típico) ---
         let mut coords = Array2::<f64>::zeros((n, 3));
@@ -173,6 +179,7 @@ mod tests {
             time: 0.1,
             redshift: 0.0,
             box_size: 2.0,
+            ..Default::default()
         };
         Hdf5Writer
             .write(dir.path(), &particles, &prov, &env)
@@ -208,6 +215,7 @@ mod tests {
             time: 0.33,
             redshift: 2.0,
             box_size: 8.0,
+            ..Default::default()
         };
         Hdf5Writer
             .write(dir.path(), &particles, &prov, &env)

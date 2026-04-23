@@ -187,6 +187,7 @@ mod tests {
             redshift: 0.0,
             box_size: 1.0,
             units: None,
+            ..Default::default()
         };
         JsonlWriter
             .write(dir.path(), &particles, &prov, &env)
@@ -224,6 +225,7 @@ mod tests {
             redshift: 1.0,
             box_size: 5.0,
             units: None,
+            ..Default::default()
         };
         JsonlWriter
             .write(dir.path(), &particles, &prov, &env)

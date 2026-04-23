@@ -836,7 +836,22 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         // Si rel_err ≤ 1% y auto_g = false: G manual ya es consistente, no se avisa.
     }
 
-    let eps2 = cfg.softening_squared();
+    let eps2_base = cfg.softening_squared();
+    let physical_softening = cfg.simulation.physical_softening && cfg.cosmology.enabled;
+    // Calcula eps2 efectivo para un dado factor de escala.
+    // Con physical_softening=true: ε_com(a) = softening/a → eps2 = (softening/a)².
+    // Con physical_softening=false: eps2 = softening² constante (comportamiento legacy).
+    let eps2_at = |a: f64| -> f64 {
+        if physical_softening {
+            let eps_com = cfg.simulation.softening / a;
+            eps_com * eps_com
+        } else {
+            eps2_base
+        }
+    };
+    // eps2 general: constante para paths no-cosmológicos. En los loops cosmológicos
+    // se recalcula por paso con `eps2_at(a_current)`.
+    let eps2 = eps2_base;
     let theta = cfg.gravity.theta;
     let solver = make_solver(cfg);
     let dt = cfg.simulation.dt;
@@ -1038,12 +1053,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     } else {
                         0.0
                     };
-                    let env = SnapshotEnv {
-                        time: t,
-                        redshift: z,
-                        box_size: cfg.simulation.box_size,
-                        units: snapshot_units_for(cfg),
-                    };
+                    let env = snapshot_env_for(cfg, t, z);
                     write_snapshot_formatted(
                         cfg.output.snapshot_format,
                         &frame_dir,
@@ -1127,6 +1137,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             } else {
                 g
             };
+            // Softening físico: recalcular ε_com = ε_phys/a en cada paso.
+            let eps2 = eps2_at(a_current);
 
             let cosmo_arg = cosmo_state
                 .as_ref()
@@ -1238,6 +1250,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             // que debe recibir el solver para que `dp/dt = −∇Φ_pec` es `g · a³`.
             // El histórico `g/a` metía un factor `a⁴` de error. Ver Phase 45.
             let g_cosmo = gravity_coupling_qksl(g, a_current);
+            // Softening físico: recalcular ε_com = ε_phys/a en cada paso.
+            let eps2 = eps2_at(a_current);
 
             // ── Rebalanceo SFC ────────────────────────────────────────────────────
             let do_rebalance =
@@ -2964,12 +2978,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             } else {
                 0.0
             };
-            let env = SnapshotEnv {
-                time: time_final,
-                redshift,
-                box_size: cfg.simulation.box_size,
-                units: snapshot_units_for(cfg),
-            };
+            let env = snapshot_env_for(cfg, time_final, redshift);
             write_snapshot_formatted(cfg.output.snapshot_format, &snap_dir, &parts, &prov, &env)?;
             // Guardar el estado jerárquico junto al snapshot si aplica.
             if cfg.timestep.hierarchical {
@@ -3016,6 +3025,26 @@ fn snapshot_units_for(cfg: &RunConfig) -> Option<SnapshotUnits> {
     }
 }
 
+fn snapshot_env_for(cfg: &RunConfig, time: f64, redshift: f64) -> SnapshotEnv {
+    // h_dimless es h = H₀/(100 km/s/Mpc). cfg.cosmology.h0 está en unidades internas
+    // (1/t_sim), así que no es equivalente. Se usa como mejor aproximación disponible;
+    // para runs con unidades físicas el valor correcto es el `h` de las ICs Zeldovich.
+    let (omega_m, omega_lambda, h_dimless) = if cfg.cosmology.enabled {
+        (cfg.cosmology.omega_m, cfg.cosmology.omega_lambda, cfg.cosmology.h0)
+    } else {
+        (0.0, 0.0, 1.0)
+    };
+    SnapshotEnv {
+        time,
+        redshift,
+        box_size: cfg.simulation.box_size,
+        units: snapshot_units_for(cfg),
+        omega_m,
+        omega_lambda,
+        h_dimless,
+    }
+}
+
 fn enabled_features_list() -> Vec<String> {
     let mut f = Vec::new();
     if cfg!(feature = "mpi") {
@@ -3047,12 +3076,7 @@ pub fn run_snapshot<R: ParallelRuntime + ?Sized>(
     let prov = provenance_for_run(cfg)?;
     if let Some(parts) = rt.root_gather_particles(&local, total) {
         fs::create_dir_all(out_dir).map_err(|e| CliError::io(out_dir, e))?;
-        let env = SnapshotEnv {
-            time: 0.0,
-            redshift: 0.0,
-            box_size: cfg.simulation.box_size,
-            units: snapshot_units_for(cfg),
-        };
+        let env = snapshot_env_for(cfg, 0.0, 0.0);
         write_snapshot_formatted(cfg.output.snapshot_format, out_dir, &parts, &prov, &env)?;
     }
     Ok(())

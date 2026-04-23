@@ -109,6 +109,7 @@ mod tests {
             time: 1.23,
             redshift: 0.7,
             box_size: 8.0,
+            ..Default::default()
         };
         MsgpackWriter
             .write(dir.path(), &particles, &dummy_prov(), &env)

@@ -92,6 +92,7 @@ mod tests {
             time: 0.77,
             redshift: 0.5,
             box_size: 10.0,
+            ..Default::default()
         };
         BincodeWriter
             .write(dir.path(), &particles, &prov, &env)

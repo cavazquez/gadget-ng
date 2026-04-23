@@ -27,6 +27,13 @@ pub struct SimulationSection {
     pub dt: f64,
     pub num_steps: u64,
     pub softening: f64,
+    /// Si `true`, `softening` se interpreta como ε_phys constante en unidades físicas.
+    /// En cada paso el softening comóvil efectivo es `ε_com = softening / a`, de modo que
+    /// la longitud física de suavizado permanece fija mientras el universo se expande.
+    /// Por defecto `false` (comportamiento legacy: softening comóvil constante).
+    /// Solo tiene efecto cuando `[cosmology] enabled = true`.
+    #[serde(default)]
+    pub physical_softening: bool,
     #[serde(default = "default_g")]
     pub gravitational_constant: f64,
     pub particle_count: usize,
