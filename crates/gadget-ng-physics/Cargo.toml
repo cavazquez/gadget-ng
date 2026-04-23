@@ -24,4 +24,5 @@ gadget-ng-io          = { path = "../gadget-ng-io" }
 [dev-dependencies]
 rustfft = "6.4.1"
 serde_json = { workspace = true }
+toml = { workspace = true }
 rayon = "1.10"

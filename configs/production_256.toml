@@ -1,0 +1,105 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Corrida de producción ΛCDM — N = 256³ = 16 777 216 partículas
+#
+# Cosmología: Planck 2018 (Ω_m = 0.315, Ω_Λ = 0.685, h = 0.674, σ₈ = 0.811)
+# Caja: L = 300 Mpc/h
+# ICs: 2LPT + Eisenstein–Hu (z_init = 49)
+# Solver: TreePM con SFC + LET + block timesteps jerárquicos
+# PM grid: 512³ (factor 2 de oversampling respecto a la partícula)
+# Softening: ε = 0.027 Mpc/h ≈ L/(30·N^{1/3}) (resolución de softening estándar)
+# Snapshots: cada 50 pasos (≈ 20 snaps en z=49→0)
+# Checkpoint: cada 100 pasos (recuperación automática cada ~2 h estimada)
+#
+# Uso:
+#   cargo run --release -- run --config configs/production_256.toml
+# Con MPI (4 ranks):
+#   mpirun -n 4 cargo run --release -- run --config configs/production_256.toml
+# Con script de producción (checkpointing automático):
+#   bash scripts/run_production_256.sh
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count     = 16777216      # 256³
+box_size           = 300.0         # Mpc/h (unidades internas: 1 u.l. = 1 Mpc/h)
+dt                 = 0.001         # paso base (en unidades de tiempo interno)
+num_steps          = 1000          # z=49 → z=0 con timesteps adaptivos
+softening          = 0.027         # Mpc/h; ε_phys constante (GADGET-4 estándar)
+physical_softening = true          # ε en unidades físicas (NO comóvil)
+seed               = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 12345,
+    grid_size       = 256,          # 256³ partículas en retícula
+    spectral_index  = 0.965,        # Planck18 n_s
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.811,        # Planck18 σ₈(z=0)
+    omega_b         = 0.049,
+    h               = 0.674,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 300.0,
+    use_2lpt        = true,
+    normalization_mode = "z0_sigma8"
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1        # H₀ en unidades internas (1/t_sim); ≈ 100 km/s/Mpc en u.v.=km/s
+a_init       = 0.02       # z_init = 49
+auto_g       = true       # G calculado de Friedmann: G = 3·Ω_m·H₀²/(8π)
+
+[units]
+enabled          = true
+length_in_kpc    = 1000.0   # 1 u.l. = 1 Mpc/h = 1000 kpc/h
+mass_in_msun     = 1.0e10   # 1 u.m. = 10¹⁰ M☉/h
+velocity_in_km_s = 1.0      # 1 u.v. = 1 km/s
+
+[gravity]
+solver          = "tree_pm"
+theta           = 0.5
+opening_criterion = "relative"
+err_tol_force_acc = 0.0025    # GADGET-4 default
+softened_multipoles = true
+mac_softening   = "consistent"
+pm_grid_size    = 512         # nm = 512 (2× oversampling)
+treepm_sr_sfc   = true
+treepm_halo_3d  = true
+treepm_pm_scatter_gather = true
+
+[performance]
+deterministic            = false   # Rayon para velocidad máxima
+use_sfc                  = true
+sfc_kind                 = "hilbert"
+sfc_rebalance_interval   = 10
+rebalance_imbalance_threshold = 1.3
+let_nonblocking          = true
+use_let_tree             = true
+let_tree_threshold       = 64
+let_tree_leaf_max        = 8
+let_theta_export_factor  = 0.0
+halo_factor              = 0.5
+use_distributed_tree     = true
+
+[timestep]
+hierarchical = true
+eta          = 0.025          # parámetro de Aarseth
+max_level    = 6              # hasta dt/64
+criterion    = "jerk"         # más preciso que solo aceleración
+kappa_h      = 0.025          # cota cosmológica del timestep
+
+[output]
+snapshot_format     = "hdf5"
+checkpoint_interval = 100     # guardar cada 100 pasos (~2 h estimados)
+snapshot_interval   = 50      # snapshot cada 50 pasos (≈ 20 snaps z=49→0)
+
+[insitu_analysis]
+enabled      = true
+interval     = 50             # sincronizado con snapshot_interval
+pk_mesh      = 256
+fof_b        = 0.2
+fof_min_part = 20
+xi_bins      = 30
+output_dir   = "runs/production_256/insitu"

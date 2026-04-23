@@ -8,6 +8,40 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Fix — Actualización de literales Particle/RunConfig
+
+- Corregidos ~55 archivos de tests en todo el workspace que inicializaban `Particle` o `RunConfig` como struct literal, fallando tras los campos nuevos agregados en G2 y Phase 63.
+- `Particle { ... }` → `Particle::new(...)` en tests de `gadget-ng-treepm`, `gadget-ng-physics`, `gadget-ng-parallel`.
+- `RunConfig { ... }` → agregados `insitu_analysis: Default::default()` y `sph: Default::default()` en todos los tests afectados.
+- Reporte: [`docs/reports/2026-04-fix-struct-literals.md`](docs/reports/2026-04-fix-struct-literals.md).
+
+### Phase G4 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh
+
+- Nuevo módulo `crates/gadget-ng-pm/src/amr.rs` con:
+  - `AmrParams { delta_refine, patch_cells_base, nm_patch, max_patches, zero_pad }`.
+  - `PatchGrid { center, size, nm, density, forces }` — descriptor de región refinada.
+  - `identify_refinement_patches(base_density, nm, box_size, params)` — celdas con `ρ > ρ̄(1+δ_refine)`.
+  - `deposit_to_patch(positions, masses, patch)` — CIC no periódico dentro del parche.
+  - `solve_patch(patch, g, zero_pad)` — Poisson local con opción de zero-padding para condiciones de borde libre.
+  - `interpolate_patch_forces(patch, positions)` — CIC bilineal local.
+  - `amr_pm_accels(positions, masses, box_size, nm_base, g, params)` — solver completo 2 niveles.
+  - `amr_pm_accels_with_stats(...)` — igual con `AmrStats { n_patches, n_particles_refined, max_overdensity }`.
+- Exportados desde `gadget-ng-pm`: `amr_pm_accels`, `amr_pm_accels_with_stats`, `AmrParams`, `AmrStats`, `PatchGrid`.
+- Zero-padding: densidad del parche se extiende a `2nm³` antes de la FFT para simular condiciones de borde no periódicas (Hockney & Eastwood 1988).
+- Peso de transición en bordes: corrección del parche se aplica con `w = (1-2|f-0.5|)³` para suavizar la transición entre base y parche.
+- 7 tests en [`crates/gadget-ng-physics/tests/phase_g4_amr_pm.rs`](crates/gadget-ng-physics/tests/phase_g4_amr_pm.rs) + 7 tests unitarios en `gadget-ng-pm --lib`.
+- Reporte: [`docs/reports/2026-04-phase-g4-amr-pm.md`](docs/reports/2026-04-phase-g4-amr-pm.md).
+
+### Phase G3 — Infraestructura corrida de producción N=256³
+
+- `configs/production_256.toml`: configuración completa ΛCDM Planck18 para N=256³ con TreePM+SFC, block timesteps jerárquicos, 2LPT+E-H, HDF5, análisis in-situ.
+- `configs/production_256_test.toml`: versión reducida N=32³ para CI smoke tests (<60 s).
+- `scripts/run_production_256.sh`: script de producción con detección de checkpoint, soporte MPI (`N_RANKS`), post-proceso Python opcional, logging con timestamp.
+- `docs/notebooks/postprocess_pk.py`: post-proceso P(k,z) desde archivos in-situ; genera `pk_evolution.json` y `pk_evolution.png`.
+- `docs/notebooks/postprocess_hmf.py`: post-proceso HMF n(M,z) con comparación Sheth-Tormen analítica; genera `hmf_evolution.json` y `hmf_evolution.png`.
+- 6 tests en [`crates/gadget-ng-physics/tests/phase_g3_production.rs`](crates/gadget-ng-physics/tests/phase_g3_production.rs): parseo de configs, ICs N=32³ sin NaN, parámetros físicos, masa consistente, σ₈ no trivial.
+- Reporte: [`docs/reports/2026-04-phase-g3-production.md`](docs/reports/2026-04-phase-g3-production.md).
+
 ### Phase G1 — SUBFIND: subestructura dentro de halos FoF
 
 - Nuevo módulo `crates/gadget-ng-analysis/src/subfind.rs` con `SubfindParams`, `SubhaloRecord`, `local_density_sph` y `find_subhalos`.

@@ -1,11 +1,12 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–65 + Rápidas + Grandes G2/G5/G1 completadas.  
+> **Estado al 23 de abril de 2026:** Phases 1–65 + Rápidas + Grandes G1/G2/G3/G4/G5 completadas.  
+> Todas las fases Grandes originales están implementadas.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
 
-## Phases completadas (1–65 + Rápidas + G2/G5/G1)
+## Phases completadas (1–65 + Rápidas + G1/G2/G3/G4/G5)
 
 | Rango | Descripción |
 |-------|-------------|
@@ -29,15 +30,21 @@
 | **G2** | 💧 **SPH cosmológico integrado**: `ParticleType`, `internal_energy`, `smoothing_length` en `Particle`; `sph_cosmo_kdk_step`, enfriamiento atómico H+He, hook `maybe_sph!` en motor |
 | **G5** | 🌳 **MAH Merger Trees**: `MassAccretionHistory`, `mah_main_branch`, `mah_mcbride2009`, CLI `gadget-ng mah` |
 | **G1** | 🔍 **SUBFIND**: `local_density_sph`, `find_subhalos`, `SubhaloRecord`, flag `--subfind` en `gadget-ng analyze` |
+| **G3** | 🚀 **Producción N=256³**: `configs/production_256.toml`, `scripts/run_production_256.sh`, notebooks Python P(k)/HMF, smoke tests N=32³ |
+| **G4** | 🔲 **AMR-PM**: `PatchGrid`, `amr_pm_accels`, zero-padding, identificación de parches por sobredensidad, 2 niveles jerárquicos |
 
 ---
 
-## Trabajos futuros Grandes pendientes
+## Trabajos futuros
 
-| ID | Tarea | Estado |
-|----|-------|--------|
-| G3 | Corrida de producción N=256³ end-to-end | Pendiente (~2 sesiones) |
-| G4 | AMR-PM (refinamiento adaptativo de malla) | Pendiente (~5 sesiones) |
+Todas las Grandes originales están completadas. Posibles extensiones:
+
+| Tarea | Descripción | Estimación |
+|-------|-------------|-----------|
+| G4 jerárquico | AMR de 3+ niveles recursivos + comunicación MPI de parches | 3–4 sesiones |
+| RT | Transferencia radiativa (M1 closure, Morel) | 5–8 sesiones |
+| Stellar feedback | Kick estocástico SN en gas SPH cercano | 2–3 sesiones |
+| Bispectrum B(k) | Estadísticas de orden 3 del campo de densidad | 1–2 sesiones |
 
 ---
 
