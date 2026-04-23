@@ -100,6 +100,7 @@ fn zel_config(seed: u64, spectral_index: f64, amplitude: f64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 
@@ -353,6 +354,7 @@ fn zel_pk_follows_power_law() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     };
 
     let parts = build_particles(&cfg).expect("IC build N16");

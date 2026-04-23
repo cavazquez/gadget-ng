@@ -67,6 +67,7 @@ fn make_config_uniform_sphere() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 
@@ -95,6 +96,7 @@ fn make_config_plummer() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 
@@ -884,6 +886,7 @@ fn make_config_plummer_a(a: f64, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 

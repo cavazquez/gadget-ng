@@ -37,6 +37,7 @@ gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 gadget-ng-io       = { path = "../gadget-ng-io" }
 gadget-ng-analysis = { path = "../gadget-ng-analysis" }
 gadget-ng-sph      = { path = "../gadget-ng-sph" }
+gadget-ng-rt       = { path = "../gadget-ng-rt" }
 gadget-ng-vis      = { path = "../gadget-ng-vis" }
 clap.workspace = true
 figment.workspace = true

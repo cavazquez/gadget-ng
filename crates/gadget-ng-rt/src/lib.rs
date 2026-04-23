@@ -35,13 +35,25 @@
 //! - [`m1`] — Solver M1 hiperbólico: factor de Eddington, RadiationField, m1_update.
 //! - [`coupling`] — Acoplamiento rad-gas: fotoionización, fotocalentamiento, emisión.
 
+pub mod chemistry;
 pub mod coupling;
 pub mod m1;
+pub mod mpi;
 
+pub use chemistry::{
+    alpha_hii, alpha_heii, alpha_heiii,
+    apply_chemistry, beta_hi, beta_hei, beta_heii,
+    cooling_rate_approx, solve_chemistry_implicit,
+    ChemParams, ChemState, F_HE,
+};
 pub use coupling::{
     apply_photoheating, deposit_gas_emission, photoionization_rate,
     radiation_gas_coupling_step,
 };
 pub use m1::{
     eddington_factor, m1_update, M1Params, RadiationField, C_KMS,
+};
+pub use mpi::{
+    allreduce_radiation, exchange_radiation_halos, m1_update_slab,
+    RadiationFieldSlab, RtRuntime,
 };

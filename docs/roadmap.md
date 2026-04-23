@@ -43,6 +43,11 @@
 | **Phase 79** | ✅ **Validación N=128³**: config completa, script MPI, notebook σ₈/P(k)/HMF, 6 smoke tests |
 | **Phase 80** | 🔲 **AMR 3 niveles**: jerarquía recursiva N-nivel, umbral escalado por nivel |
 | **Phase 81** | ☀️ **Transferencia radiativa M1**: solver HLL, fotoionización HI, fotocalentamiento SPH |
+| **Phase 82** | 🔁 **Integraciones**: `maybe_sph!`+`maybe_rt!` en engine, bispectrum+assembly_bias in-situ, `--hdf5-catalog` |
+| **Phase 83** | 📊 **Post-proceso**: `postprocess_insitu.py` — P(k,z), σ₈(z), multipoles, B(k), halos |
+| **Phase 84** | 🌐 **RT MPI**: `RadiationFieldSlab`, `allreduce_radiation`, `exchange_radiation_halos` |
+| **Phase 85** | 🌐 **AMR MPI**: `AmrPatchMessage`, `broadcast_patch_forces`, `amr_pm_accels_multilevel_mpi` |
+| **Phase 86** | 🧪 **Química no-equilibrio**: `ChemState`, `solve_chemistry_implicit`, `apply_chemistry` (HII/HeII/HeIII) |
 
 ---
 
@@ -52,9 +57,11 @@ Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
-| MPI RT | Transferencia radiativa distribuida (MPI para el campo de radiación) | 3–4 sesiones |
-| Stellar feedback | Kick estocástico SN en gas SPH cercano | 2–3 sesiones |
+| MPI RT real | Implementar `MPI_Allreduce`/`MPI_Sendrecv` reales en `gadget-ng-rt/src/mpi.rs` | 2–3 sesiones |
+| MPI AMR real | Implementar `MPI_Bcast`/`MPI_Gatherv` en `gadget-ng-pm/src/amr_mpi.rs` | 2–3 sesiones |
 | Validación producción | Corrida N=128³ completa hasta z=0, HMF vs Tinker | 2–3 sesiones |
+| Reionización | Fuentes UV puntuales, front de ionización, estadísticas 21cm | 4–5 sesiones |
+
 ---
 
 ## Historial de fases (detalle técnico)

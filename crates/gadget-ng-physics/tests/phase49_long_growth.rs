@@ -114,6 +114,7 @@ fn build_ic(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 

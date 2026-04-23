@@ -8,6 +8,70 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 86 — Química de no-equilibrio HII/HeII/HeIII
+
+- Nuevo módulo `crates/gadget-ng-rt/src/chemistry.rs`:
+  - `ChemState { x_hi, x_hii, x_hei, x_heii, x_heiii, x_e }` — fracciones de ionización.
+  - `solve_chemistry_implicit(state, gamma_hi, gamma_hei, T, dt)` — solver subcíclico (Anninos 1997).
+  - Tasas de recombinación: `alpha_hii`, `alpha_heii`, `alpha_heiii` (Verner & Ferland 1996).
+  - Tasas de ionización colisional: `beta_hi`, `beta_hei`, `beta_heii` (Cen 1992).
+  - `apply_chemistry(particles, chem_states, rad, params, dt)` — acoplamiento gas+RT.
+  - `cooling_rate_approx` — bremsstrahlung + Lyα.
+  - `temperature_from_internal_energy` — temperatura via μ adaptativo.
+- 13 tests unitarios: conservación de H/He, tasas positivas, solver neutro/ionizado, UV fuerte.
+- Exportado desde `gadget-ng-rt` (`ChemState`, `ChemParams`, `solve_chemistry_implicit`, `apply_chemistry`, etc.).
+- Reporte: [`docs/reports/2026-04-phase86-chemistry.md`](docs/reports/2026-04-phase86-chemistry.md).
+
+### Phase 85 — AMR MPI: comunicación de parches
+
+- Nuevo módulo `crates/gadget-ng-pm/src/amr_mpi.rs`:
+  - `AmrPatchMessage` — parche serializable para difusión entre ranks.
+  - `AmrRuntime` — wrapper del communicator MPI.
+  - `broadcast_patch_forces(patches, rt)` — difunde fuerzas: MPI_Bcast (pequeños) / MPI_Scatterv (grandes).
+  - `amr_pm_accels_multilevel_mpi(...)` — wrapper MPI del solver multi-nivel.
+  - `build_amr_hierarchy_mpi(...)` — jerarquía con reducción global de densidad.
+  - En modo serial: delegación directa a funciones seriales (resultado bit-a-bit idéntico).
+- 3 tests: `serial_mpi_matches_direct`, `broadcast_serial_identity`, `hierarchy_mpi_serial_same`.
+- Reporte: [`docs/reports/2026-04-phase85-amr-mpi.md`](docs/reports/2026-04-phase85-amr-mpi.md).
+
+### Phase 84 — RT MPI distribuida
+
+- Nuevo módulo `crates/gadget-ng-rt/src/mpi.rs`:
+  - `RadiationFieldSlab` — campo de radiación particionado en slabs Y (±1 celda halo).
+  - `RtRuntime` — wrapper del communicator MPI.
+  - `allreduce_radiation(rad, rt)` — suma global de E y F (MPI_Allreduce stub).
+  - `exchange_radiation_halos(slab, rt)` — intercambio halos ghost Y (MPI_Sendrecv stub).
+  - `m1_update_slab(slab, dt, params)` — solver M1 sobre slab con halos.
+  - En modo serial: condición periódica para halos ghost.
+- 5 tests: identidad slab serial, allreduce no-op, halos periódicos, roundtrip global, m1 estable.
+- Reporte: [`docs/reports/2026-04-phase84-rt-mpi.md`](docs/reports/2026-04-phase84-rt-mpi.md).
+
+### Phase 83 — Post-procesamiento automático + README
+
+- Nuevo script `docs/notebooks/postprocess_insitu.py`:
+  - Carga `insitu_*.json`; genera P(k,z), multipoles P₀/P₂/P₄, σ₈(z), n_halos(z), B_eq(k).
+  - Escribe `summary.json` con series temporales.
+  - Dependencias opcionales: numpy, matplotlib, scipy.
+- README actualizado con sección completa para Phases 71–83 (descripción + ejemplos TOML + código).
+- Tabla de hitos ampliada con entries para Phases 61–83.
+- Reporte: [`docs/reports/2026-04-phase83-postprocess.md`](docs/reports/2026-04-phase83-postprocess.md).
+
+### Phase 82 — Integraciones in-situ + CLI
+
+- **Fix crítico**: `maybe_sph!` ahora se invoca en los 7 loops de integración de `engine.rs`.
+  - Macro rediseñada: acepta `$sph_step:expr`; construye `CosmoFactors` internamente.
+  - Corregido scope de `rank` → `rt.rank()` en seed de SN kicks.
+- **Nuevo**: macro `maybe_rt!()` en `engine.rs` para transferencia radiativa automática.
+  - `rt_field_opt: Option<RadiationField>` inicializado antes de las macros (scope requirement).
+  - `gadget-ng-rt` añadido como dependencia de `gadget-ng-cli`.
+- **Nuevo**: bispectrum equilateral + assembly bias en `insitu.rs`:
+  - Campos `bk_equilateral: Vec<BkBinOut>` y `assembly_bias: Option<AssemblyBiasOut>` en `InsituResult`.
+  - Config: `bispectrum_bins`, `assembly_bias_enabled`, `assembly_bias_smooth_r` en `InsituAnalysisSection`.
+- **Nuevo**: flag `--hdf5-catalog` en `gadget-ng analyze`:
+  - Escribe `halos.hdf5` (con feature hdf5) o `halos.jsonl` (sin feature).
+- **Fix**: `rt: Default::default()` añadido a ~45 inicializaciones de `RunConfig` en tests.
+- Reporte: [`docs/reports/2026-04-phase82-integrations.md`](docs/reports/2026-04-phase82-integrations.md).
+
 ### Phase 81 — Transferencia radiativa M1 (nuevo crate `gadget-ng-rt`)
 
 - Nuevo crate `crates/gadget-ng-rt/` con solver M1 completo:

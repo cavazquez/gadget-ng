@@ -1251,6 +1251,15 @@ pub struct InsituAnalysisSection {
     /// Número de bins en μ para P(k,μ) en espacio de redshift. `0` → no calcular. Default: 0.
     #[serde(default)]
     pub pk_rsd_bins: usize,
+    /// Número de bins para el bispectrum equilateral B(k). `0` → no calcular. Default: 0.
+    #[serde(default)]
+    pub bispectrum_bins: usize,
+    /// Activar cálculo de assembly bias (correlación spin/concentración vs entorno). Default: false.
+    #[serde(default)]
+    pub assembly_bias_enabled: bool,
+    /// Radio de suavizado para el campo de densidad del entorno (unidades internas). Default: 5.0.
+    #[serde(default = "default_ab_smooth_r")]
+    pub assembly_bias_smooth_r: f64,
     /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
     /// Si es `None` se usa `<out_dir>/insitu/`.
     #[serde(default)]
@@ -1261,6 +1270,7 @@ fn default_insitu_interval() -> u64 { 0 }
 fn default_pk_mesh() -> usize { 32 }
 fn default_fof_b() -> f64 { 0.2 }
 fn default_fof_min_part() -> usize { 20 }
+fn default_ab_smooth_r() -> f64 { 5.0 }
 
 impl Default for InsituAnalysisSection {
     fn default() -> Self {
@@ -1272,6 +1282,9 @@ impl Default for InsituAnalysisSection {
             fof_min_part: default_fof_min_part(),
             xi_bins: 0,
             pk_rsd_bins: 0,
+            bispectrum_bins: 0,
+            assembly_bias_enabled: false,
+            assembly_bias_smooth_r: default_ab_smooth_r(),
             output_dir: None,
         }
     }

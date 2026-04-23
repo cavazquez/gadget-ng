@@ -128,6 +128,7 @@ fn make_config(seed: u64, grid: usize, nm: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 

@@ -82,6 +82,7 @@ fn collapse_config() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 

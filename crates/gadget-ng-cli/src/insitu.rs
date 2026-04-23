@@ -4,8 +4,9 @@
 //! escribiendo `insitu_NNNNNN.json` en `<output_dir>/`.
 
 use gadget_ng_analysis::{
-    analyse, compute_pk_multipoles, two_point_correlation_fft,
-    AnalysisParams, LosAxis, PkRsdParams, XiBin,
+    analyse, bispectrum_equilateral, compute_assembly_bias, compute_pk_multipoles,
+    two_point_correlation_fft, AnalysisParams, AssemblyBiasParams, AssemblyBiasResult, BkBin,
+    LosAxis, PkRsdParams, XiBin,
 };
 use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin};
 use gadget_ng_core::{InsituAnalysisSection, Particle};
@@ -28,6 +29,46 @@ pub struct InsituResult {
     /// Multipoles P₀/P₂/P₄. Vacío si `pk_rsd_bins == 0`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pk_multipoles: Vec<PkMultipoleOut>,
+    /// Bispectrum equilateral B(k). Vacío si `bispectrum_bins == 0`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bk_equilateral: Vec<BkBinOut>,
+    /// Assembly bias (Spearman spin/concentración vs entorno). None si no activado.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assembly_bias: Option<AssemblyBiasOut>,
+}
+
+/// Salida de un bin del bispectrum.
+#[derive(Debug, Serialize)]
+pub struct BkBinOut {
+    pub k: f64,
+    pub bk: f64,
+    pub n_triangles: u64,
+}
+
+impl From<&BkBin> for BkBinOut {
+    fn from(b: &BkBin) -> Self {
+        Self { k: b.k, bk: b.bk, n_triangles: b.n_triangles }
+    }
+}
+
+/// Salida del assembly bias.
+#[derive(Debug, Serialize)]
+pub struct AssemblyBiasOut {
+    pub smooth_radius: f64,
+    pub spearman_lambda: f64,
+    pub spearman_concentration: f64,
+    pub n_halos: usize,
+}
+
+impl From<&AssemblyBiasResult> for AssemblyBiasOut {
+    fn from(r: &AssemblyBiasResult) -> Self {
+        Self {
+            smooth_radius: r.smooth_radius,
+            spearman_lambda: r.spearman_lambda,
+            spearman_concentration: r.spearman_concentration,
+            n_halos: r.n_halos,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -159,6 +200,55 @@ pub fn maybe_run_insitu(
                 (Vec::new(), Vec::new())
             };
 
+            // Phase 82c: Bispectrum equilateral B(k)
+            let bk_equilateral_out: Vec<BkBinOut> = if cfg.bispectrum_bins > 0 {
+                let positions: Vec<_> = particles.iter().map(|p| p.position).collect();
+                let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+                bispectrum_equilateral(&positions, &masses, box_size, cfg.pk_mesh, cfg.bispectrum_bins)
+                    .iter()
+                    .map(BkBinOut::from)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            // Phase 82c: Assembly bias
+            let assembly_bias_out: Option<AssemblyBiasOut> = if cfg.assembly_bias_enabled
+                && result.halos.len() >= 4
+            {
+                let all_pos: Vec<_> = particles.iter().map(|p| p.position).collect();
+                let all_mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+
+                let halo_pos: Vec<_> = result
+                    .halos
+                    .iter()
+                    .map(|h| gadget_ng_core::Vec3::new(h.x_com, h.y_com, h.z_com))
+                    .collect();
+                let halo_mass: Vec<f64> = result.halos.iter().map(|h| h.mass).collect();
+
+                // In-situ: usamos dispersión de velocidades como proxy de spin (sin membership).
+                // El spin real requiere partículas miembro; se usa 0 como placeholder.
+                let spins: Vec<f64> = result
+                    .halos
+                    .iter()
+                    .map(|h| h.velocity_dispersion)
+                    .collect();
+                let concentrations: Vec<f64> = vec![0.0; result.halos.len()];
+
+                let ab_params = AssemblyBiasParams {
+                    smooth_radius: cfg.assembly_bias_smooth_r,
+                    mesh: cfg.pk_mesh,
+                    n_quartiles: 4,
+                };
+                let ab = compute_assembly_bias(
+                    &halo_pos, &halo_mass, &spins, &concentrations,
+                    &all_pos, &all_mass, box_size, &ab_params,
+                );
+                Some(AssemblyBiasOut::from(&ab))
+            } else {
+                None
+            };
+
             let z = if a > 0.0 { 1.0 / a - 1.0 } else { f64::INFINITY };
 
             let insitu = InsituResult {
@@ -171,6 +261,8 @@ pub fn maybe_run_insitu(
                 xi_r,
                 pk_rsd: pk_rsd_out,
                 pk_multipoles: pk_multipoles_out,
+                bk_equilateral: bk_equilateral_out,
+                assembly_bias: assembly_bias_out,
             };
 
             let path = out_dir.join(format!("insitu_{step:06}.json"));

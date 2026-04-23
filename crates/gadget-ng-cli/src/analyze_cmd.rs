@@ -14,6 +14,9 @@ use gadget_ng_analysis::{
     two_point_correlation_fft, AnalysisParams, SubfindParams, RHO_CRIT_H2,
 };
 use gadget_ng_core::{SnapshotFormat, Vec3};
+use gadget_ng_io::{write_halo_catalog_jsonl, HaloCatalogEntry, HaloCatalogHeader};
+#[cfg(feature = "hdf5")]
+use gadget_ng_io::SubhaloCatalogEntry;
 use std::fs;
 use std::path::Path;
 
@@ -39,6 +42,8 @@ pub struct AnalyzeParams<'a> {
     pub subfind: bool,
     /// Número mínimo de partículas de halo para correr SUBFIND.
     pub subfind_min_particles: usize,
+    /// Escribir catálogo de halos en formato HDF5 (Phase 82d). Si no hay feature hdf5, usa JSONL.
+    pub hdf5_catalog: bool,
 }
 
 impl<'a> Default for AnalyzeParams<'a> {
@@ -55,6 +60,7 @@ impl<'a> Default for AnalyzeParams<'a> {
             box_size_mpc_h: None,
             subfind: false,
             subfind_min_particles: 50,
+            hdf5_catalog: false,
         }
     }
 }
@@ -290,6 +296,58 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
     }
     let json_str = serde_json::to_string_pretty(&output)?;
     fs::write(params.out_path, &json_str).map_err(|e| CliError::io(params.out_path, e))?;
+
+    // ── Phase 82d: Catálogo de halos HDF5 / JSONL ────────────────────────────
+    if params.hdf5_catalog {
+        let (omega_m_cat, _omega_l_cat, z_cat) = params.cosmology.unwrap_or((0.315, 0.685, 0.0));
+        let rho_crit_h2_cat = RHO_CRIT_H2;
+        let box_mpc_h_cat = params.box_size_mpc_h.unwrap_or(box_size);
+        let m_part_cat = omega_m_cat * rho_crit_h2_cat * box_mpc_h_cat.powi(3) / n as f64;
+
+        let halo_entries: Vec<HaloCatalogEntry> = result
+            .halos
+            .iter()
+            .map(|h| HaloCatalogEntry {
+                mass: h.n_particles as f64 * m_part_cat,
+                pos: [h.x_com * box_mpc_h_cat, h.y_com * box_mpc_h_cat, h.z_com * box_mpc_h_cat],
+                vel: [0.0, 0.0, 0.0],
+                r200: h.r_vir * box_mpc_h_cat,
+                spin_peebles: 0.0,
+                npart: h.n_particles as i64,
+            })
+            .collect();
+
+        let header = HaloCatalogHeader::new(z_cat, box_mpc_h_cat, halo_entries.len(), 0);
+
+        // Determinar path del catálogo junto al results.json
+        let cat_dir = params
+            .out_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let jsonl_path = cat_dir.join("halos.jsonl");
+
+        #[cfg(feature = "hdf5")]
+        {
+            let subhalo_entries: Vec<SubhaloCatalogEntry> = Vec::new();
+            let hdf5_path = cat_dir.join("halos.hdf5");
+            match gadget_ng_io::write_halo_catalog_hdf5(
+                &hdf5_path,
+                &header,
+                &halo_entries,
+                &subhalo_entries,
+            ) {
+                Ok(_) => eprintln!("[analyze] Catálogo HDF5 escrito en {:?}", hdf5_path),
+                Err(e) => eprintln!("[analyze] Error escribiendo HDF5, usando JSONL: {e}"),
+            }
+        }
+        #[cfg(not(feature = "hdf5"))]
+        {
+            match write_halo_catalog_jsonl(&jsonl_path, &header, &halo_entries) {
+                Ok(_) => eprintln!("[analyze] Catálogo JSONL escrito en {:?}", jsonl_path),
+                Err(e) => eprintln!("[analyze] Error escribiendo catálogo JSONL: {e}"),
+            }
+        }
+    }
 
     println!(
         "[analyze] Resultados escritos en {:?} ({} halos, {} bins ξ(r), {} halos c(M))",

@@ -146,6 +146,7 @@ fn make_config(seed: u64, grid: usize, nm: usize, use_2lpt: bool, use_treepm: bo
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 

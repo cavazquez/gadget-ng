@@ -1144,6 +1144,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // `h_state_opt` se mantiene vivo tras el bucle para poder guardarlo con el snapshot.
     let mut h_state_opt: Option<HierarchicalState> = None;
 
+    // ── Campo de radiación M1 (Phase 82b) — debe declararse ANTES de las macros ──
+    // Se inicializa antes del loop si rt.enabled; de lo contrario permanece None.
+    let mut rt_field_opt: Option<gadget_ng_rt::RadiationField> = if cfg.rt.enabled {
+        let n = cfg.rt.rt_mesh;
+        let dx = if n > 0 { cfg.simulation.box_size / n as f64 } else { 1.0 };
+        Some(gadget_ng_rt::RadiationField::uniform(n, n, n, dx, 0.0))
+    } else {
+        None
+    };
+
     // Macro local para guardar checkpoint cuando toca.
     macro_rules! maybe_checkpoint {
         ($step:expr, $hs:expr) => {
@@ -1193,12 +1203,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-    // Macro local para el paso SPH cosmológico (Phase 66).
+    // Macro local para el paso SPH cosmológico (Phase 66, fix Phase 82a).
     // Solo actúa si `cfg.sph.enabled` es true; de lo contrario es un no-op.
+    // Construye los CosmoFactors desde cosmo_state si está activo, o usa factores planos.
+    // $sph_step: índice del paso actual (u64), usado para la semilla de feedback.
     macro_rules! maybe_sph {
-        ($cf:expr) => {
+        ($sph_step:expr) => {
             if cfg.sph.enabled {
-                let cf_sph = $cf;
+                let cf_sph = match &cosmo_state {
+                    Some((cp, _)) => {
+                        let (d, k, k2) = cp.drift_kick_factors(a_current, cfg.simulation.dt);
+                        CosmoFactors { drift: d, kick_half: k, kick_half2: k2 }
+                    }
+                    None => CosmoFactors::flat(cfg.simulation.dt),
+                };
                 let gamma = cfg.sph.gamma;
                 let alpha = cfg.sph.alpha_visc;
                 let n_neigh = cfg.sph.n_neigh as f64;
@@ -1216,13 +1234,41 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 // Phase 78: Feedback estelar estocástico
                 if cfg.sph.feedback.enabled {
                     let sfr = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
-                    let mut fb_seed = tpm_step_count.wrapping_mul(2654435761).wrapping_add(rank as u64);
+                    // Semilla única por paso y rank.
+                    let mut fb_seed = ($sph_step as u64)
+                        .wrapping_mul(2654435761)
+                        .wrapping_add(rt.rank() as u64);
                     gadget_ng_sph::apply_sn_feedback(
                         &mut local,
                         &sfr,
                         &cfg.sph.feedback,
                         cfg.simulation.dt,
                         &mut fb_seed,
+                    );
+                }
+            }
+        };
+    }
+
+    // Macro local para el solver de transferencia radiativa M1 (Phase 82b).
+    // Solo actúa si `cfg.rt.enabled` es true; de lo contrario es un no-op.
+    macro_rules! maybe_rt {
+        () => {
+            if cfg.rt.enabled {
+                if let Some(ref mut rf) = rt_field_opt {
+                    let m1p = gadget_ng_rt::M1Params {
+                        c_red_factor: cfg.rt.c_red_factor,
+                        kappa_abs: cfg.rt.kappa_abs,
+                        kappa_scat: 0.0,
+                        substeps: cfg.rt.substeps,
+                    };
+                    gadget_ng_rt::m1_update(rf, cfg.simulation.dt, &m1p);
+                    gadget_ng_rt::radiation_gas_coupling_step(
+                        &mut local,
+                        rf,
+                        &m1p,
+                        cfg.simulation.dt,
+                        cfg.simulation.box_size,
                     );
                 }
             }
@@ -1467,6 +1513,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
         h_state_opt = Some(h_state);
     } else if use_sfc_let_cosmo {
@@ -1729,6 +1777,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
         // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
@@ -2413,6 +2463,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
     } else if use_sfc_let {
         // ── SFC + LET: Fase 9 — overlap compute/comm + Rayon + HpcStepStats ──
@@ -2851,6 +2903,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
 
         // Construir resumen HPC que se pasará al bloque de timings.json genérico.
@@ -3087,6 +3141,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
@@ -3148,6 +3204,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
     } else {
         // ── Leapfrog clásico: Allgather global ────────────────────────────────
@@ -3189,6 +3247,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
             maybe_insitu!(step);
+            maybe_sph!(step);
+            maybe_rt!();
         }
     }
 

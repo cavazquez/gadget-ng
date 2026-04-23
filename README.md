@@ -312,7 +312,10 @@ gadget-ng/
 │   ├── gadget-ng-analysis      # FoF halos + P(k) + pk_correction (Phase 34–36);
 │   │                           # NFW + c(M) Duffy/Bhattacharya/Ludlow+2016 (Phase 53/58);
 │   │                           # ξ(r) FFT + pares Davis-Peebles (Phase 58)
-│   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan
+│   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan;
+│   │                           # ⭐ stellar feedback estocástico (Phase 78)
+│   ├── gadget-ng-rt            # 🌅 Transferencia radiativa M1 (Phase 81):
+│   │                           # solver Godunov HLL, cierre Levermore 1984, acoplamiento SPH
 │   ├── gadget-ng-vis           # Visualización CPU: proyecciones, Viridis, PNG;
 │   │                           # 🖼️ render_ppm / write_ppm PPM sin dependencias (Phase Rápidas)
 │   ├── gadget-ng-physics       # Tests de validación física/cosmológica (Kepler,
@@ -320,7 +323,7 @@ gadget-ng/
 │   │                           # checkpoint Phase 59, rebalanceo adaptativo Phase 60)
 │   └── gadget-ng-cli           # Binario gadget-ng (clap), subcomandos config/snapshot/
 │                               # stepping/analyse/analyze/visualize;
-│                               # checkpoint robuste + should_rebalance (Phase 59/60)
+│                               # RT M1 + SPH acoplados al stepping (Phase 82/83)
 ├── examples/                   # Configuraciones TOML comentadas
 ├── experiments/nbody/          # Benchmarks y resultados por fase (60+ experimentos)
 └── docs/reports/               # Reportes técnicos de cada fase (60+ reportes)
@@ -390,6 +393,25 @@ gadget-ng/
 | **59** | 💾 Restart/checkpoint bit-a-bit: guarda/restaura estado completo (pos, vel, paso, SFC) | ✅ |
 | **60** | 🔀 Domain decomposition adaptativa por costo: `should_rebalance` + `rebalance_imbalance_threshold` | ✅ |
 | **Rápidas** | 📊 CLI `gadget-ng analyze` (FoF+P(k)+ξ(r)+c(M)→JSON); 🖼️ `gadget-ng-vis` render PPM sin deps | ✅ |
+| **61–65** | Grandes: SPH cosmológico, merger trees MAH, SUBFIND, N=256³ producción, AMR-PM | ✅ |
+| **66** | 🌊 SPH cosmológico KDK: gas+DM, cooling atómico, separación de partículas | ✅ |
+| **67** | 🌳 Merger trees + Mass Accretion History (MAH, McBride 2009) | ✅ |
+| **68** | 🔍 SUBFIND: subestructura intra-halo via Union-Find + binding energy | ✅ |
+| **69** | 🚀 Producción N=256³: config TOML, scripts PBS, notebook post-proceso | ✅ |
+| **70** | 🔲 AMR-PM: parches adaptativos 2 niveles, refinamiento por sobredensidad | ✅ |
+| **71** | 📊 Bispectrum B(k₁,k₂,k₃): estadística de orden 3, CIC+FFT+shell-filter | ✅ |
+| **72** | 🌀 Spin de halos λ Peebles+Bullock: momento angular FoF | ✅ |
+| **73** | 📐 Perfiles de velocidad σ_v(r): σ_r, σ_t, β(r) de Binney | ✅ |
+| **74** | 💾 HDF5 GADGET-4 estándar: 22 atributos, compatible con yt/pynbody | ✅ |
+| **75** | 📈 P(k,μ) RSD: espacio de redshift, multipoles P₀/P₂/P₄ (Hamilton 1992) | ✅ |
+| **76** | 🔗 Assembly bias: Spearman spin/concentración vs δ_env suavizado | ✅ |
+| **77** | 📁 Catálogo de halos HDF5: FoF+SUBFIND, /Header, /Halos, /Subhalos | ✅ |
+| **78** | ⭐ Stellar feedback estocástico: SFR+SN kicks, `compute_sfr`, `apply_sn_feedback` | ✅ |
+| **79** | 🔬 Validación N=128³: config Planck18, scripts PBS, validate_pk_hmf.py | ✅ |
+| **80** | 🔲 AMR jerárquico N-nivel: `build_amr_hierarchy`, `amr_pm_accels_multilevel` | ✅ |
+| **81** | 🌅 Transferencia radiativa M1: solver HLL, cierre Levermore 1984, acoplamiento SPH | ✅ |
+| **82** | 🔁 Integración automática: `maybe_sph!`, `maybe_rt!`, bispectrum+assembly_bias in-situ, `--hdf5-catalog` | ✅ |
+| **83** | 📊 Post-procesamiento: `postprocess_insitu.py` — P(k), σ₈(z), multipoles, B(k) | ✅ |
 
 ---
 
@@ -665,6 +687,202 @@ use gadget_ng_vis::ppm::{render_ppm, write_ppm};
 
 let pixels = render_ppm(&positions, box_size, 512, 512);
 write_ppm(Path::new("snapshot.ppm"), &pixels, 512, 512)?;
+```
+
+---
+
+## Estadísticas avanzadas y transferencia radiativa (Phases 71–82)
+
+### 📊 Bispectrum B(k₁,k₂,k₃) (Phase 71)
+
+Estadística de tercer orden; detector de no-gaussianidades primordiales.
+
+```rust
+use gadget_ng_analysis::{bispectrum_equilateral, BkBin};
+
+let bk: Vec<BkBin> = bispectrum_equilateral(&positions, &masses, box_size, mesh, n_bins);
+// bk[i].k: modo k; bk[i].bk: B(k,k,k); bk[i].n_triangles: número de triángulos
+```
+
+Activar en análisis in-situ (TOML):
+```toml
+[insitu_analysis]
+bispectrum_bins = 20   # 0 = desactivado
+```
+
+### 🌀 Spin de halos λ (Phase 72)
+
+Momento angular de halos FoF, definiciones Peebles y Bullock.
+
+```rust
+use gadget_ng_analysis::{halo_spin, SpinParams, HaloSpin};
+
+let params = SpinParams::default();
+let spin: Option<HaloSpin> = halo_spin(&positions, &velocities, &masses, &params);
+// spin.lambda_peebles: |L| / (M × V_vir × R_vir)
+// spin.lambda_bullock: |L| / (sqrt(2) × M × V_vir × R_vir)
+```
+
+### 📐 Perfiles de velocidad σ_v(r) (Phase 73)
+
+Dispersión radial y tangencial dentro de halos; parámetro de anisotropía de Binney β(r).
+
+```rust
+use gadget_ng_analysis::{velocity_profile, VelocityProfileParams};
+
+let params = VelocityProfileParams { n_bins: 12, log_bins: true, ..Default::default() };
+let profile = velocity_profile(&positions, &velocities, &center, &params);
+// profile[i].sigma_r, .sigma_t, .sigma_3d, .beta
+```
+
+### 💾 HDF5 compatible GADGET-4 (Phase 74)
+
+22 atributos estándar de GADGET-4 en cada snapshot. Compatible con `yt`, `pynbody`, `h5py`.
+
+```bash
+# Compilar con soporte HDF5
+cargo build --features hdf5
+
+# Los snapshots incluyen /Header con NumPart_Total, OmegaBaryon, etc.
+```
+
+### 📈 P(k,μ) en espacio de redshift (Phase 75)
+
+Espectro de potencia anisótropo con RSD (Hamilton 1992). Multipoles P₀/P₂/P₄.
+
+```rust
+use gadget_ng_analysis::{compute_pk_multipoles, PkRsdParams, LosAxis};
+
+let params = PkRsdParams {
+    n_k_bins: 32, n_mu_bins: 10, los: LosAxis::Z,
+    scale_factor: 0.5, hubble_a: 67.4,
+};
+let multipoles = compute_pk_multipoles(&positions, &velocities, &masses, box, mesh, &params);
+```
+
+```toml
+[insitu_analysis]
+pk_rsd_bins = 10   # bins en μ para P(k,μ)
+```
+
+Los resultados se guardan en `insitu_NNNNNN.json` bajo las claves `pk_rsd` y `pk_multipoles`.
+
+### 🔗 Assembly bias (Phase 76)
+
+Correlación de Spearman entre propiedades de halos (spin, concentración) y densidad del entorno.
+
+```rust
+use gadget_ng_analysis::{compute_assembly_bias, AssemblyBiasParams};
+
+let params = AssemblyBiasParams { smooth_radius: 5.0, mesh: 32, n_quartiles: 4 };
+let result = compute_assembly_bias(&halo_pos, &halo_mass, &spins, &concs,
+                                   &all_pos, &all_mass, box_size, &params);
+// result.spearman_lambda, result.bias_vs_lambda
+```
+
+```toml
+[insitu_analysis]
+assembly_bias_enabled = true
+assembly_bias_smooth_r = 5.0
+```
+
+### 📁 Catálogo de halos HDF5 (Phase 77)
+
+Catálogo FoF + SUBFIND en formato HDF5 compatible con `Caesar`, `rockstar-galaxies`.
+
+```bash
+# Generar catálogo de halos al analizar un snapshot
+gadget-ng analyze --snapshot out/snap --out analysis/ --hdf5-catalog
+# → analysis/halos.hdf5  (con feature hdf5)
+# → analysis/halos.jsonl (sin feature hdf5)
+```
+
+```rust
+use gadget_ng_io::{write_halo_catalog_hdf5, HaloCatalogEntry, HaloCatalogHeader};
+```
+
+### ⭐ Stellar feedback estocástico (Phase 78)
+
+Kicks de supernova aleatorios acoplados al módulo SPH. Activar en TOML:
+
+```toml
+[sph]
+enabled = true
+
+[sph.feedback]
+enabled = true
+sn_energy_erg    = 1.0e51
+sn_efficiency    = 0.1
+sfr_threshold    = 1.0
+```
+
+### 🔬 Validación N=128³ (Phase 79)
+
+Configuración de producción con comparación contra Eisenstein-Hu y HMF analítica.
+
+```bash
+bash scripts/run_validation_128.sh --out runs/val128
+python docs/notebooks/validate_pk_hmf.py --dir runs/val128/insitu
+```
+
+### 🔲 AMR jerárquico multi-nivel (Phase 80)
+
+Solver PM adaptativo con N niveles de refinamiento recursivos.
+
+```rust
+use gadget_ng_pm::{build_amr_hierarchy, amr_pm_accels_multilevel, AmrParams};
+
+let params = AmrParams {
+    overdensity_threshold: 5.0, patch_size: 8,
+    max_levels: 3, refine_factor: 2,
+};
+let levels = build_amr_hierarchy(&density_grid, n, box_size, &params);
+let accels = amr_pm_accels_multilevel(&particles, box_size, &params);
+```
+
+### 🌅 Transferencia radiativa M1 (Phase 81)
+
+Solver Godunov de primer orden con cierre M1 (Levermore 1984). Acoplado a gas SPH.
+
+```rust
+use gadget_ng_rt::{RadiationField, M1Params, m1_update, radiation_gas_coupling_step};
+
+let mut rf = RadiationField::uniform(32, 32, 32, dx, e0);
+let m1 = M1Params { c_red_factor: 100.0, kappa_abs: 1.0, kappa_scat: 0.0, substeps: 5 };
+m1_update(&mut rf, dt, &m1);
+radiation_gas_coupling_step(&mut particles, &mut rf, &m1, dt, box_size);
+```
+
+Activar en TOML:
+```toml
+[rt]
+enabled     = true
+c_red_factor = 100.0
+kappa_abs    = 1.0
+rt_mesh      = 32
+substeps     = 5
+```
+
+### 🔁 Integración automática in-situ (Phase 82)
+
+Los módulos SPH, RT, bispectrum y assembly bias se ejecutan automáticamente en cada
+paso de simulación cuando están activados. La macro `maybe_rt!()` y `maybe_sph!()` en
+`engine.rs` coordinan la secuencia: gravedad → SPH → RT → análisis in-situ.
+
+### 📊 Post-procesamiento automático (Phase 83)
+
+```bash
+# Procesar todos los insitu_*.json de una corrida
+python docs/notebooks/postprocess_insitu.py \
+    --dir runs/cosmo/insitu \
+    --out analysis/ \
+    --box-size 100.0
+# → analysis/pk_evolution.png
+# → analysis/pk_multipoles.png
+# → analysis/sigma8_evolution.png
+# → analysis/halos_evolution.png
+# → analysis/bispectrum.png
+# → analysis/summary.json
 ```
 
 ---

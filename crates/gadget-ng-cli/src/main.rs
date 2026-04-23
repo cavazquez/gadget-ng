@@ -135,6 +135,9 @@ enum Commands {
         /// Número mínimo de partículas de halo para ejecutar SUBFIND (default: 50).
         #[arg(long, default_value_t = 50)]
         subfind_min_particles: usize,
+        /// Escribir catálogo de halos en HDF5/JSONL además de results.json (Phase 82d).
+        #[arg(long, default_value_t = false)]
+        hdf5_catalog: bool,
     },
     /// Analiza un snapshot: Friends-of-Friends (halos) + espectro de potencia P(k).
     ///
@@ -314,6 +317,7 @@ fn main() -> Result<(), CliError> {
             box_size_mpc_h,
             subfind,
             subfind_min_particles,
+            hdf5_catalog,
         } => {
             let params = analyze_cmd::AnalyzeParams {
                 snapshot_dir: &snapshot,
@@ -327,6 +331,7 @@ fn main() -> Result<(), CliError> {
                 box_size_mpc_h,
                 subfind,
                 subfind_min_particles,
+                hdf5_catalog,
             };
             analyze_cmd::run_analyze(&params)?;
         }

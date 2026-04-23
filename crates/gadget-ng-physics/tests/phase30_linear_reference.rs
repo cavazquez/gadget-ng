@@ -150,6 +150,7 @@ fn config_2lpt(seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 
@@ -207,6 +208,7 @@ fn config_sigma_test(seed: u64, use_2lpt: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     }
 }
 

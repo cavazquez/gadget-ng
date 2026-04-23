@@ -65,6 +65,7 @@ fn distributed_tree_serial_kinetic_bounded() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     };
 
     let rt = SerialRuntime;
@@ -155,6 +156,7 @@ fn halo_exchange_serial_returns_empty() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
+        rt: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let rt = SerialRuntime;
