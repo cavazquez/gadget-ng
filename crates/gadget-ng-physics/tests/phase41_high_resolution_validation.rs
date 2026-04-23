@@ -483,15 +483,21 @@ fn run_one_simulation(n: usize, seed: u64, mode: Mode) -> Vec<SnapshotResult> {
 }
 
 /// Matriz completa: N ∈ {32, 64, 128, 256} × seeds_for(N) × 2 modos × 3 snapshots.
+/// N=256 está desactivado por defecto (~27 horas). Activar con `PHASE41_RUN_N256=1`.
 fn run_full_matrix() -> Vec<SnapshotResult> {
-    let skip_n256 = std::env::var("PHASE41_SKIP_N256")
+    let run_n256 = std::env::var("PHASE41_RUN_N256")
         .map(|x| x == "1")
         .unwrap_or(false);
 
+    if !run_n256 {
+        eprintln!(
+            "[phase41] N=256 omitido por defecto (~27 h). Para correrlo: PHASE41_RUN_N256=1"
+        );
+    }
+
     let mut all = Vec::new();
     for &n in N_VALUES.iter() {
-        if n == 256 && skip_n256 {
-            eprintln!("[phase41] N=256 skippeado por PHASE41_SKIP_N256=1");
+        if n == 256 && !run_n256 {
             continue;
         }
         for &seed in seeds_for(n).iter() {
