@@ -9,11 +9,11 @@
 //! 6. `sr_force_vs_direct_periodic` — fuerza SR periódica vs cálculo directo
 //! 7. `erfc_partition_of_unity` — erf + erfc = 1 en toda la gama de r/r_s
 
+use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_treepm::{
     distributed::{short_range_accels_slab, SlabShortRangeParams},
-    short_range::{min_dist2_to_aabb_periodic, minimum_image, erfc_approx, erfc_factor},
+    short_range::{erfc_approx, erfc_factor, min_dist2_to_aabb_periodic, minimum_image},
 };
-use gadget_ng_core::{Particle, Vec3};
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ fn border_particle_sr_periodic() {
     // Distancia directa = 0.98 (fuera de r_cut).
     // Distancia min-image = 0.02 (dentro de r_cut).
     let local = make_particle(0, 0.5, 0.5, 0.01, 1.0);
-    let halo  = make_particle(1, 0.5, 0.5, 0.99, 1.0);
+    let halo = make_particle(1, 0.5, 0.5, 0.99, 1.0);
 
     let params = SlabShortRangeParams {
         local_particles: &[local],
@@ -87,7 +87,8 @@ fn border_particle_sr_periodic() {
     // La fuerza debe apuntar en -z (imagen periódica está en z = 0.01 - 0.02 = -0.01, o sea hacia z=L).
     assert!(
         out[0].z < 0.0,
-        "fuerza SR debe apuntar en -z (atracción a través del borde periódico), got {:?}", out[0]
+        "fuerza SR debe apuntar en -z (atracción a través del borde periódico), got {:?}",
+        out[0]
     );
 }
 
@@ -111,7 +112,7 @@ fn halo_coverage_completeness() {
     // En este test, verificamos directamente que la fuerza SR es no nula usando
     // el halo directamente como parámetro (sin MPI real).
     let local = make_particle(0, 0.5, 0.5, 0.05, 1.0); // z cerca del borde izquierdo
-    let halo  = make_particle(1, 0.5, 0.5, 0.85, 1.0); // z en rank vecino
+    let halo = make_particle(1, 0.5, 0.5, 0.85, 1.0); // z en rank vecino
 
     // Distancia min-image: |0.85-0.05-1.0| = |−0.2| = 0.2 < r_cut=0.25.
     let d_minimg = minimum_image(0.85 - 0.05, box_size).abs();
@@ -155,11 +156,8 @@ fn minimum_image_no_double_counting() {
     };
     let mut out = vec![Vec3::zero()];
     short_range_accels_slab(&params, &mut out);
-    let fmag = (out[0].x*out[0].x + out[0].y*out[0].y + out[0].z*out[0].z).sqrt();
-    assert!(
-        fmag < 1e-14,
-        "auto-fuerza debe ser cero, got fmag={fmag}"
-    );
+    let fmag = (out[0].x * out[0].x + out[0].y * out[0].y + out[0].z * out[0].z).sqrt();
+    assert!(fmag < 1e-14, "auto-fuerza debe ser cero, got fmag={fmag}");
 }
 
 // ── Test 5: AABB periódica correcta ──────────────────────────────────────────
@@ -203,7 +201,7 @@ fn sr_force_vs_direct_periodic() {
     // Partícula 0 en z=0.05, partícula 1 en z=0.95.
     // min_image: dz = |0.95-0.05-1.0| = 0.10 (negativo, apuntando a z-).
     let local = make_particle(0, 0.0, 0.0, 0.05, 1.0);
-    let halo  = make_particle(1, 0.0, 0.0, 0.95, 1.0);
+    let halo = make_particle(1, 0.0, 0.0, 0.95, 1.0);
 
     let params = SlabShortRangeParams {
         local_particles: &[local],
@@ -226,7 +224,9 @@ fn sr_force_vs_direct_periodic() {
 
     assert!(
         (out[0].z - fz_expected).abs() < 1e-9,
-        "Fz={:.6e} vs esperado={:.6e}", out[0].z, fz_expected
+        "Fz={:.6e} vs esperado={:.6e}",
+        out[0].z,
+        fz_expected
     );
     // Solo componente z no nula (partículas alineadas en z).
     assert!(out[0].x.abs() < 1e-14, "Fx debe ser 0");
@@ -241,7 +241,7 @@ fn erfc_partition_of_unity() {
     for r in [0.01, 0.05, 0.1, 0.2, 0.5, 1.0_f64] {
         let x = r / (std::f64::consts::SQRT_2 * r_split);
         let erfc_val = erfc_approx(x);
-        let erf_val  = 1.0 - erfc_val;
+        let erf_val = 1.0 - erfc_val;
         assert!(
             (erf_val + erfc_val - 1.0).abs() < 1e-6,
             "partición de unidad falla en r={r}: erf={erf_val:.6} erfc={erfc_val:.6}"

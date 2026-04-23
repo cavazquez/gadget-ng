@@ -184,8 +184,7 @@ fn source_to_psi2(source: &[f64], n: usize, box_size: f64) -> [Vec<f64>; 3] {
     let half = (n / 2) as i64;
 
     // FFT forward: S(x) → S(k)
-    let mut s_k: Vec<Complex<f64>> =
-        source.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    let mut s_k: Vec<Complex<f64>> = source.iter().map(|&x| Complex::new(x, 0.0)).collect();
     fft3d(&mut s_k, n, true);
 
     let mut psi: [Vec<Complex<f64>>; 3] = [
@@ -207,11 +206,7 @@ fn source_to_psi2(source: &[f64], n: usize, box_size: f64) -> [Vec<f64>; 3] {
                 let idx = ix * n * n + iy * n + iz;
 
                 // DC y Nyquist → 0 (consistente con delta_to_displacement)
-                if n2 == 0.0
-                    || nxi.abs() == half
-                    || nyi.abs() == half
-                    || nzi.abs() == half
-                {
+                if n2 == 0.0 || nxi.abs() == half || nyi.abs() == half || nzi.abs() == half {
                     continue;
                 }
 
@@ -219,10 +214,7 @@ fn source_to_psi2(source: &[f64], n: usize, box_size: f64) -> [Vec<f64>; 3] {
                 // Ψ²_α(k) = −i · n_α / |n|² · S(k)
                 // −i·(a + ib) = b − i·a   →   re = n_α·S.im/|n|², im = −n_α·S.re/|n|²
                 let make_psi2 = |n_alpha: f64| -> Complex<f64> {
-                    Complex::new(
-                        n_alpha * s.im / n2,
-                        -n_alpha * s.re / n2,
-                    )
+                    Complex::new(n_alpha * s.im / n2, -n_alpha * s.re / n2)
                 };
 
                 psi[0][idx] = make_psi2(nx);
@@ -265,8 +257,7 @@ fn source_to_psi2_legacy_buggy(source: &[f64], n: usize, box_size: f64) -> [Vec<
     let ifft_norm = 1.0 / n3 as f64;
     let half = (n / 2) as i64;
 
-    let mut s_k: Vec<Complex<f64>> =
-        source.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    let mut s_k: Vec<Complex<f64>> = source.iter().map(|&x| Complex::new(x, 0.0)).collect();
     fft3d(&mut s_k, n, true);
 
     let mut psi: [Vec<Complex<f64>>; 3] = [
@@ -287,11 +278,7 @@ fn source_to_psi2_legacy_buggy(source: &[f64], n: usize, box_size: f64) -> [Vec<
                 let n2 = nx * nx + ny * ny + nz * nz;
                 let idx = ix * n * n + iy * n + iz;
 
-                if n2 == 0.0
-                    || nxi.abs() == half
-                    || nyi.abs() == half
-                    || nzi.abs() == half
-                {
+                if n2 == 0.0 || nxi.abs() == half || nyi.abs() == half || nzi.abs() == half {
                     continue;
                 }
 
@@ -379,8 +366,21 @@ pub fn zeldovich_2lpt_ics(
     hi: usize,
 ) -> Vec<Particle> {
     zeldovich_2lpt_ics_with_variant(
-        cfg, n, seed, amplitude, spectral_index, transfer, sigma8, omega_b, h_dimless,
-        t_cmb, box_size_mpc_h, rescale_to_a_init, lo, hi, Psi2Variant::Fixed,
+        cfg,
+        n,
+        seed,
+        amplitude,
+        spectral_index,
+        transfer,
+        sigma8,
+        omega_b,
+        h_dimless,
+        t_cmb,
+        box_size_mpc_h,
+        rescale_to_a_init,
+        lo,
+        hi,
+        Psi2Variant::Fixed,
     )
 }
 
@@ -613,7 +613,10 @@ mod tests {
         let s = build_2lpt_source(&phi_d);
         let [px, py, pz] = source_to_psi2(&s, n, box_size);
         assert!(
-            px.iter().chain(py.iter()).chain(pz.iter()).all(|&x| x.is_finite()),
+            px.iter()
+                .chain(py.iter())
+                .chain(pz.iter())
+                .all(|&x| x.is_finite()),
             "Ψ² contiene NaN/Inf"
         );
     }
@@ -645,8 +648,7 @@ mod tests {
         let [psi2_x, psi2_y, psi2_z] = source_to_psi2(&s_real, n, box_size);
 
         // FFT forward de S(x) → S(k)
-        let mut s_k: Vec<Complex<f64>> =
-            s_real.iter().map(|&x| Complex::new(x, 0.0)).collect();
+        let mut s_k: Vec<Complex<f64>> = s_real.iter().map(|&x| Complex::new(x, 0.0)).collect();
         fft3d(&mut s_k, n, true);
 
         // FFT forward de Ψ²_α(x) → Ψ̂²_α(k)
@@ -695,11 +697,7 @@ mod tests {
                     let idx = ix * n * n + iy * n + iz;
 
                     // DC + Nyquist → cero en ambas partes
-                    if n2 == 0.0
-                        || nxi.abs() == half
-                        || nyi.abs() == half
-                        || nzi.abs() == half
-                    {
+                    if n2 == 0.0 || nxi.abs() == half || nyi.abs() == half || nzi.abs() == half {
                         continue;
                     }
 
@@ -775,8 +773,7 @@ mod tests {
             let d = box_size / n as f64;
             let ifft_norm = 1.0 / n3 as f64;
             let half = (n / 2) as i64;
-            let mut s_k: Vec<Complex<f64>> =
-                s.iter().map(|&x| Complex::new(x, 0.0)).collect();
+            let mut s_k: Vec<Complex<f64>> = s.iter().map(|&x| Complex::new(x, 0.0)).collect();
             fft3d(&mut s_k, n, true);
             let mut psi: [Vec<Complex<f64>>; 3] = [
                 vec![Complex::default(); n3],
@@ -794,10 +791,7 @@ mod tests {
                         let nz = nzi as f64;
                         let n2 = nx * nx + ny * ny + nz * nz;
                         let idx = ix * n * n + iy * n + iz;
-                        if n2 == 0.0
-                            || nxi.abs() == half
-                            || nyi.abs() == half
-                            || nzi.abs() == half
+                        if n2 == 0.0 || nxi.abs() == half || nyi.abs() == half || nzi.abs() == half
                         {
                             continue;
                         }
@@ -869,13 +863,7 @@ mod tests {
         let ratio: Vec<f64> = p1x
             .iter()
             .zip(p2x.iter())
-            .filter_map(|(a, b)| {
-                if a.abs() > 1e-14 {
-                    Some(b / a)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(a, b)| if a.abs() > 1e-14 { Some(b / a) } else { None })
             .collect();
         assert!(!ratio.is_empty(), "Ψ²(delta=0)? no hay puntos válidos");
         let mean_ratio: f64 = ratio.iter().sum::<f64>() / ratio.len() as f64;

@@ -126,11 +126,16 @@ fn evolve_pm_to_a_adaptive(
     a_start: f64,
     a_target: f64,
 ) -> f64 {
-    if a_start >= a_target { return a_start; }
+    if a_start >= a_target {
+        return a_start;
+    }
     let cosmo = cosmo_params();
     let g_code = g_consistent();
     let softening = BOX / (n_mesh as f64 * 20.0);
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let n = parts.len();
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = a_start;
@@ -147,15 +152,23 @@ fn evolve_pm_to_a_adaptive(
     let max_iter = 300_000usize;
     let mut step = 0usize;
     for _ in 0..max_iter {
-        if a >= a_target { break; }
-        let acc_max = scratch.iter().map(|v| (v.x * v.x + v.y * v.y + v.z * v.z).sqrt())
+        if a >= a_target {
+            break;
+        }
+        let acc_max = scratch
+            .iter()
+            .map(|v| (v.x * v.x + v.y * v.y + v.z * v.z).sqrt())
             .fold(0.0_f64, f64::max);
-        let dt = adaptive_dt_cosmo(cosmo, a, acc_max, softening, ETA_GRAV, ALPHA_H, DT_MAX)
-            .max(1e-8);
+        let dt =
+            adaptive_dt_cosmo(cosmo, a, acc_max, softening, ETA_GRAV, ALPHA_H, DT_MAX).max(1e-8);
 
         let g_cosmo = gravity_coupling_qksl(g_code, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
         step += 1;
 
@@ -206,7 +219,10 @@ impl SimResult55 {
 
 fn run_simulation_n(n: usize) -> SimResult55 {
     let t0 = std::time::Instant::now();
-    eprintln!("[phase55] Iniciando N={n}³  BOX={BOX_MPC_H} Mpc/h  G_consistent={:.4e}", g_consistent());
+    eprintln!(
+        "[phase55] Iniciando N={n}³  BOX={BOX_MPC_H} Mpc/h  G_consistent={:.4e}",
+        g_consistent()
+    );
     let cfg = build_run_config(n);
     let mut parts = build_particles(&cfg).expect("build_particles falló");
     let a_final = evolve_pm_to_a_adaptive(&mut parts, n, A_INIT, A_FINAL);
@@ -214,28 +230,42 @@ fn run_simulation_n(n: usize) -> SimResult55 {
     // v_rms en unidades internas
     let n_total = parts.len();
     let v_rms = {
-        let sq_sum: f64 = parts.iter().map(|p| p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y + p.velocity.z * p.velocity.z).sum();
+        let sq_sum: f64 = parts
+            .iter()
+            .map(|p| {
+                p.velocity.x * p.velocity.x
+                    + p.velocity.y * p.velocity.y
+                    + p.velocity.z * p.velocity.z
+            })
+            .sum();
         (sq_sum / n_total as f64).sqrt()
     };
 
     // FoF en unidades internas — rho_crit=0 para usar r_max como r_vir
-    let analysis = analyse(&parts, &AnalysisParams {
-        box_size: BOX,
-        b: FOF_B,
-        min_particles: FOF_MIN_PART,
-        rho_crit: 0.0,
-        pk_mesh: 32,
-    });
+    let analysis = analyse(
+        &parts,
+        &AnalysisParams {
+            box_size: BOX,
+            b: FOF_B,
+            min_particles: FOF_MIN_PART,
+            rho_crit: 0.0,
+            pk_mesh: 32,
+        },
+    );
 
     let mp = m_part_msun_h(n);
     // FofHalo.mass es la suma de p.mass; cada p.mass = 1/N_total en ICs
     // → masa en M_sun/h = h.n_particles * mp
-    let halo_masses_physical: Vec<f64> = analysis.halos.iter()
+    let halo_masses_physical: Vec<f64> = analysis
+        .halos
+        .iter()
         .map(|h| h.n_particles as f64 * mp)
         .collect();
     eprintln!(
         "[phase55] N={n} halos={} v_rms={:.4e} tiempo={:.1}s",
-        halo_masses_physical.len(), v_rms, t0.elapsed().as_secs_f64()
+        halo_masses_physical.len(),
+        v_rms,
+        t0.elapsed().as_secs_f64()
     );
 
     SimResult55 {
@@ -250,8 +280,12 @@ fn run_simulation_n(n: usize) -> SimResult55 {
 // ── Matriz global con OnceLock ────────────────────────────────────────────────
 
 fn run_full_matrix() -> Vec<SimResult55> {
-    let skip_n256 = std::env::var("PHASE55_SKIP_N256").map(|v| v == "1").unwrap_or(false);
-    let skip_n128 = std::env::var("PHASE55_SKIP_N128").map(|v| v == "1").unwrap_or(false);
+    let skip_n256 = std::env::var("PHASE55_SKIP_N256")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let skip_n128 = std::env::var("PHASE55_SKIP_N128")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let mut all = Vec::new();
     for &n in N_VALUES.iter() {
         if n == 256 && skip_n256 {
@@ -279,7 +313,9 @@ fn matrix() -> &'static [SimResult55] {
 fn dump_results(sims: &[SimResult55]) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static DUMPED: AtomicBool = AtomicBool::new(false);
-    if DUMPED.swap(true, Ordering::SeqCst) { return; }
+    if DUMPED.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let dir = phase55_dir();
     let all: Vec<_> = sims.iter().map(|s| s.to_json()).collect();
     let txt = serde_json::to_string_pretty(&json!({
@@ -288,14 +324,17 @@ fn dump_results(sims: &[SimResult55]) {
         "omega_m": OMEGA_M,
         "fof_b": FOF_B,
         "simulations": all,
-    })).unwrap_or_default();
+    }))
+    .unwrap_or_default();
     let _ = fs::write(dir.join("fof_results.json"), txt);
 }
 
 fn phase55_dir() -> PathBuf {
     let mut d = PathBuf::from(std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
         let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.pop(); p.pop(); p.push("target");
+        p.pop();
+        p.pop();
+        p.push("target");
         p.to_string_lossy().to_string()
     }));
     d.push("phase55");
@@ -321,29 +360,39 @@ fn hmf_params() -> HmfParams {
 
 /// Densidad analítica ST para un rango de masas → dn/dlnM en h³/Mpc³
 fn hmf_st_density(m_min: f64, m_max: f64, n_bins: usize) -> Vec<HmfBin> {
-    if m_min >= m_max || n_bins == 0 { return Vec::new(); }
+    if m_min >= m_max || n_bins == 0 {
+        return Vec::new();
+    }
     mass_function_table(&hmf_params(), m_min, m_max, n_bins, 0.0)
 }
 
 /// Histograma FoF dn/dlnM en h³/Mpc³ para las masas dadas
 fn fof_dn_dlnm(masses: &[f64], m_min: f64, m_max: f64, n_bins: usize) -> Vec<(f64, f64)> {
-    if masses.is_empty() || m_min >= m_max || n_bins == 0 { return Vec::new(); }
+    if masses.is_empty() || m_min >= m_max || n_bins == 0 {
+        return Vec::new();
+    }
     let ln_m_min = m_min.ln();
     let ln_m_max = m_max.ln();
     let d_ln_m = (ln_m_max - ln_m_min) / n_bins as f64;
     let vol = BOX_MPC_H.powi(3);
     let mut counts = vec![0usize; n_bins];
     for &m in masses {
-        if m < m_min || m >= m_max { continue; }
+        if m < m_min || m >= m_max {
+            continue;
+        }
         let bin = ((m.ln() - ln_m_min) / d_ln_m) as usize;
-        if bin < n_bins { counts[bin] += 1; }
+        if bin < n_bins {
+            counts[bin] += 1;
+        }
     }
-    (0..n_bins).map(|i| {
-        let ln_m_center = ln_m_min + (i as f64 + 0.5) * d_ln_m;
-        let m_center = ln_m_center.exp();
-        let dn_dlnm = counts[i] as f64 / (vol * d_ln_m);
-        (m_center, dn_dlnm)
-    }).collect()
+    (0..n_bins)
+        .map(|i| {
+            let ln_m_center = ln_m_min + (i as f64 + 0.5) * d_ln_m;
+            let m_center = ln_m_center.exp();
+            let dn_dlnm = counts[i] as f64 / (vol * d_ln_m);
+            (m_center, dn_dlnm)
+        })
+        .collect()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -353,7 +402,10 @@ fn fof_dn_dlnm(masses: &[f64], m_min: f64, m_max: f64, n_bins: usize) -> Vec<(f6
 fn phase55_evolution_stable_n64() {
     let n = 64;
     let sim = find_sim(n).expect("N=64 no encontrado en la matriz");
-    eprintln!("[phase55] N={n} a_final={:.5} v_rms={:.4e}", sim.a_final, sim.v_rms);
+    eprintln!(
+        "[phase55] N={n} a_final={:.5} v_rms={:.4e}",
+        sim.a_final, sim.v_rms
+    );
     assert!(
         (sim.a_final - A_FINAL).abs() < 0.01,
         "N={n}: a_final={:.5} demasiado lejos de A_FINAL={A_FINAL}",
@@ -374,8 +426,14 @@ fn phase55_halos_found_n64() {
     let n_halos = sim.halo_masses_msun_h.len();
     eprintln!(
         "[phase55] N={n} halos={n_halos}  m_min={:.2e}  m_max={:.2e}  [M_sun/h]",
-        sim.halo_masses_msun_h.iter().cloned().fold(f64::INFINITY, f64::min),
-        sim.halo_masses_msun_h.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+        sim.halo_masses_msun_h
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min),
+        sim.halo_masses_msun_h
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max),
     );
     assert!(
         n_halos >= 1,
@@ -387,7 +445,10 @@ fn phase55_halos_found_n64() {
 #[test]
 fn phase55_halos_found_n128() {
     let n = 128;
-    if find_sim(n).is_none() { eprintln!("[phase55] N=128 no disponible, saltando"); return; }
+    if find_sim(n).is_none() {
+        eprintln!("[phase55] N=128 no disponible, saltando");
+        return;
+    }
     let sim = find_sim(n).unwrap();
     let n_halos = sim.halo_masses_msun_h.len();
     eprintln!("[phase55] N={n} halos={n_halos}");
@@ -401,7 +462,10 @@ fn phase55_halos_found_n128() {
 #[test]
 fn phase55_halos_found_n256() {
     let n = 256;
-    if find_sim(n).is_none() { eprintln!("[phase55] N=256 no disponible (PHASE55_SKIP_N256=1), saltando"); return; }
+    if find_sim(n).is_none() {
+        eprintln!("[phase55] N=256 no disponible (PHASE55_SKIP_N256=1), saltando");
+        return;
+    }
     let sim = find_sim(n).unwrap();
     let n_halos = sim.halo_masses_msun_h.len();
     eprintln!("[phase55] N={n} halos={n_halos}");
@@ -415,10 +479,16 @@ fn phase55_halos_found_n256() {
 #[test]
 fn phase55_fof_vs_hmf_ratio_n128() {
     let n = 128;
-    if find_sim(n).is_none() { eprintln!("[phase55] N=128 no disponible, saltando"); return; }
+    if find_sim(n).is_none() {
+        eprintln!("[phase55] N=128 no disponible, saltando");
+        return;
+    }
     let sim = find_sim(n).unwrap();
     let masses = &sim.halo_masses_msun_h;
-    if masses.is_empty() { eprintln!("[phase55] N=128 sin halos — saltando comparación HMF"); return; }
+    if masses.is_empty() {
+        eprintln!("[phase55] N=128 sin halos — saltando comparación HMF");
+        return;
+    }
 
     let m_min = sim.m_min_resoluble;
     let m_max = masses.iter().cloned().fold(f64::NEG_INFINITY, f64::max) * 2.0;
@@ -430,13 +500,22 @@ fn phase55_fof_vs_hmf_ratio_n128() {
     let mut ratios_ok = 0;
     let mut ratios_total = 0;
     for (i, (fof_m, fof_dn)) in fof_hist.iter().enumerate() {
-        if i >= hmf_table.len() { break; }
+        if i >= hmf_table.len() {
+            break;
+        }
         let st_dn = hmf_table[i].n_st;
-        if st_dn <= 0.0 || *fof_dn <= 0.0 { continue; }
+        if st_dn <= 0.0 || *fof_dn <= 0.0 {
+            continue;
+        }
         let ratio = fof_dn / st_dn;
-        eprintln!("  M={:.2e} M_sun/h: FoF={:.3e}  ST={:.3e}  ratio={:.3}", fof_m, fof_dn, st_dn, ratio);
+        eprintln!(
+            "  M={:.2e} M_sun/h: FoF={:.3e}  ST={:.3e}  ratio={:.3}",
+            fof_m, fof_dn, st_dn, ratio
+        );
         ratios_total += 1;
-        if ratio >= 0.05 && ratio <= 20.0 { ratios_ok += 1; }
+        if ratio >= 0.05 && ratio <= 20.0 {
+            ratios_ok += 1;
+        }
     }
     eprintln!("[phase55] Bins con ratio dentro de [0.05, 20]: {ratios_ok}/{ratios_total}");
     if ratios_total > 0 {
@@ -452,19 +531,44 @@ fn phase55_fof_vs_hmf_ratio_n128() {
 fn phase55_mass_function_convergence() {
     let n_low = 64;
     let n_high = 256;
-    let sim_low = match find_sim(n_low) { Some(s) => s, None => { eprintln!("N=64 no disponible"); return; } };
-    let sim_high = match find_sim(n_high) { Some(s) => s, None => { eprintln!("[phase55] N=256 no disponible, saltando convergencia"); return; } };
+    let sim_low = match find_sim(n_low) {
+        Some(s) => s,
+        None => {
+            eprintln!("N=64 no disponible");
+            return;
+        }
+    };
+    let sim_high = match find_sim(n_high) {
+        Some(s) => s,
+        None => {
+            eprintln!("[phase55] N=256 no disponible, saltando convergencia");
+            return;
+        }
+    };
 
     if sim_low.halo_masses_msun_h.is_empty() || sim_high.halo_masses_msun_h.is_empty() {
-        eprintln!("[phase55] Sin halos en N=64 o N=256, saltando"); return;
+        eprintln!("[phase55] Sin halos en N=64 o N=256, saltando");
+        return;
     }
 
-    let m_min_low: f64 = sim_low.halo_masses_msun_h.iter().cloned().fold(f64::INFINITY, f64::min);
-    let m_min_high: f64 = sim_high.halo_masses_msun_h.iter().cloned().fold(f64::INFINITY, f64::min);
-    eprintln!("[phase55] Masa mínima: N={n_low}={:.3e}  N={n_high}={:.3e} [M_sun/h]", m_min_low, m_min_high);
+    let m_min_low: f64 = sim_low
+        .halo_masses_msun_h
+        .iter()
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    let m_min_high: f64 = sim_high
+        .halo_masses_msun_h
+        .iter()
+        .cloned()
+        .fold(f64::INFINITY, f64::min);
+    eprintln!(
+        "[phase55] Masa mínima: N={n_low}={:.3e}  N={n_high}={:.3e} [M_sun/h]",
+        m_min_low, m_min_high
+    );
     assert!(
         m_min_high < m_min_low,
         "N={n_high} debería tener masa mínima más baja ({:.3e}) que N={n_low} ({:.3e})",
-        m_min_high, m_min_low
+        m_min_high,
+        m_min_low
     );
 }

@@ -3,11 +3,10 @@ use crate::error::CliError;
 #[cfg(feature = "simd")]
 use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
-    build_particles_for_gid_range,
-    cosmology::CosmologyParams,
-    density_contrast_rms, gravity_coupling_qksl, hubble_param, peculiar_vrms, wrap_position,
-    DirectGravity, GravitySolver, IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind,
-    SolverKind, Vec3,
+    build_particles_for_gid_range, cosmology::CosmologyParams, density_contrast_rms,
+    gravity_coupling_qksl, hubble_param, peculiar_vrms, wrap_position, DirectGravity,
+    GravitySolver, IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind, SolverKind,
+    Vec3,
 };
 use gadget_ng_integrators::{
     hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, yoshida4_cosmo_kdk_step,
@@ -20,8 +19,8 @@ use gadget_ng_io::{
 };
 use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, SlabDecomposition};
 use gadget_ng_pm::distributed as pm_dist;
-use gadget_ng_pm::slab_pm;
 use gadget_ng_pm::slab_fft::SlabLayout;
+use gadget_ng_pm::slab_pm;
 use gadget_ng_pm::{solve_forces_pencil2d, PencilLayout2D, PmSolver};
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
@@ -551,6 +550,7 @@ struct CosmoDiag {
     pub treepm: Option<TreePmStepDiag>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     rt: &R,
     step: u64,
@@ -625,7 +625,7 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
             if let Some(td) = cd.treepm {
                 map.insert(
                     "treepm".into(),
-                    serde_json::to_value(&td).unwrap_or(serde_json::Value::Null),
+                    serde_json::to_value(td).unwrap_or(serde_json::Value::Null),
                 );
             }
         }
@@ -731,8 +731,7 @@ fn compute_forces_sfc_let(
     }
 
     for (li, acc_out) in out.iter_mut().enumerate() {
-        let a_local =
-            tree.walk_accel(parts[li].position, li, g, eps2, theta, &all_pos, &all_mass);
+        let a_local = tree.walk_accel(parts[li].position, li, g, eps2, theta, &all_pos, &all_mass);
         let a_remote = accel_from_let(parts[li].position, &remote_nodes, g, eps2);
         *acc_out = a_local + a_remote;
     }
@@ -879,9 +878,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     // SFC+LET es el path por defecto para multirank + BarnesHut.
     // Se desactiva solo con `force_allgather_fallback = true` (legacy) o tamaño 1.
-    let use_sfc_let = is_barnes_hut_eligible
-        && rt.size() > 1
-        && !cfg.performance.force_allgather_fallback;
+    let use_sfc_let =
+        is_barnes_hut_eligible && rt.size() > 1 && !cfg.performance.force_allgather_fallback;
 
     // Path slab legacy: use_distributed_tree + !use_sfc (retrocompatible).
     let use_dtree = !use_sfc_let
@@ -933,7 +931,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             rt.root_eprintln(&format!(
                 "[gadget-ng] TREEPM SLAB DISTRIBUIDO (Fase 21): PM largo alcance slab + \
                  árbol corto alcance periódico. r_split={:.4} r_cut={:.4}",
-                r_s_log, 5.0 * r_s_log
+                r_s_log,
+                5.0 * r_s_log
             ));
         } else if cfg.gravity.pm_slab && cfg.gravity.solver == SolverKind::Pm {
             let nm = cfg.gravity.pm_grid_size;
@@ -941,14 +940,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             if p > nm {
                 // P > nm → slab 1D imposible; validar que pencil 2D sea factible.
                 let (py, pz) = PencilLayout2D::factorize(nm, p);
-                if py * pz != p || nm % py != 0 || nm % pz != 0 {
-                    return Err(CliError::InvalidConfig(
-                        format!(
-                            "pencil_2d (Fase 46): no existe factorización válida \
-                             para nm={nm} y P={p}. Se requiere P ≤ nm² con nm%py==0 y nm%pz==0."
-                        )
-                        .into(),
-                    ));
+                if py * pz != p || !nm.is_multiple_of(py) || !nm.is_multiple_of(pz) {
+                    return Err(CliError::InvalidConfig(format!(
+                        "pencil_2d (Fase 46): no existe factorización válida \
+                         para nm={nm} y P={p}. Se requiere P ≤ nm² con nm%py==0 y nm%pz==0."
+                    )));
                 }
                 rt.root_eprintln(&format!(
                     "[gadget-ng] PM PENCIL 2D (Fase 46): P={p} > nm={nm}; \
@@ -956,10 +952,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     nm * nm
                 ));
             } else {
-                if nm % p != 0 {
-                    return Err(CliError::InvalidConfig(
-                        format!("pm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0").into(),
-                    ));
+                if !nm.is_multiple_of(p) {
+                    return Err(CliError::InvalidConfig(format!(
+                        "pm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0"
+                    )));
                 }
                 rt.root_eprintln(
                     "[gadget-ng] PM SLAB (Fase 20): FFT distribuida alltoall O(nm³/P) + slab decomposition.",
@@ -1178,8 +1174,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 treepm: None,
             });
             write_diagnostic_line(
-                rt, step, &local, &diag_path, &mut diag_file,
-                Some(&step_stats), None, hier_cosmo_diag.as_ref(),
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                Some(&step_stats),
+                None,
+                hier_cosmo_diag.as_ref(),
             )?;
             maybe_checkpoint!(step, Some(&h_state));
             maybe_snap_frame!(step);
@@ -1207,12 +1209,24 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos_init: Vec<Vec3> = local.iter().map(|p| p.position).collect();
         let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-            &all_pos_init, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
+            &all_pos_init,
+            gxlo,
+            gxhi,
+            gylo,
+            gyhi,
+            gzlo,
+            gzhi,
+            rt.size(),
+            sfc_kind,
         );
         let size = rt.size() as usize;
         let my_rank = rt.rank() as usize;
         let f_export = cfg.performance.let_theta_export_factor;
-        let theta_export = if f_export > 0.0 { theta * f_export } else { theta };
+        let theta_export = if f_export > 0.0 {
+            theta * f_export
+        } else {
+            theta
+        };
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -1226,14 +1240,22 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let g_cosmo = gravity_coupling_qksl(g, a_current);
 
             // ── Rebalanceo SFC ────────────────────────────────────────────────────
-            let do_rebalance = sfc_rebalance == 0
-                || (step - start_step) % sfc_rebalance.max(1) == 0;
+            let do_rebalance =
+                sfc_rebalance == 0 || (step - start_step) % sfc_rebalance.max(1) == 0;
             if do_rebalance {
                 let t_rb = Instant::now();
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
                 sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
+                    &pos_loc,
+                    gxlo,
+                    gxhi,
+                    gylo,
+                    gyhi,
+                    gzlo,
+                    gzhi,
+                    rt.size(),
+                    sfc_kind,
                 );
                 this_comm += t_rb.elapsed().as_nanos() as u64;
             }
@@ -1252,17 +1274,38 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 // 1. AABB allgather — para saber a qué rangos enviar nodos LET.
                 let my_aabb: Vec<f64> = if parts.is_empty() {
                     vec![
-                        f64::INFINITY, f64::NEG_INFINITY,
-                        f64::INFINITY, f64::NEG_INFINITY,
-                        f64::INFINITY, f64::NEG_INFINITY,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
                     ]
                 } else {
-                    let xlo = parts.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
-                    let xhi = parts.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max);
-                    let ylo = parts.iter().map(|p| p.position.y).fold(f64::INFINITY, f64::min);
-                    let yhi = parts.iter().map(|p| p.position.y).fold(f64::NEG_INFINITY, f64::max);
-                    let zlo = parts.iter().map(|p| p.position.z).fold(f64::INFINITY, f64::min);
-                    let zhi = parts.iter().map(|p| p.position.z).fold(f64::NEG_INFINITY, f64::max);
+                    let xlo = parts
+                        .iter()
+                        .map(|p| p.position.x)
+                        .fold(f64::INFINITY, f64::min);
+                    let xhi = parts
+                        .iter()
+                        .map(|p| p.position.x)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let ylo = parts
+                        .iter()
+                        .map(|p| p.position.y)
+                        .fold(f64::INFINITY, f64::min);
+                    let yhi = parts
+                        .iter()
+                        .map(|p| p.position.y)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let zlo = parts
+                        .iter()
+                        .map(|p| p.position.z)
+                        .fold(f64::INFINITY, f64::min);
+                    let zhi = parts
+                        .iter()
+                        .map(|p| p.position.z)
+                        .fold(f64::NEG_INFINITY, f64::max);
                     vec![xlo, xhi, ylo, yhi, zlo, zhi]
                 };
                 let t_aabb = Instant::now();
@@ -1280,9 +1323,13 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let t_exp = Instant::now();
                 let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
                 for r in 0..size {
-                    if r == my_rank { continue; }
+                    if r == my_rank {
+                        continue;
+                    }
                     let ra = &all_aabbs[r];
-                    if ra.len() < 6 { continue; }
+                    if ra.len() < 6 {
+                        continue;
+                    }
                     let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
                     let let_nodes = tree.export_let(target_aabb, theta_export);
                     if !let_nodes.is_empty() {
@@ -1309,7 +1356,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 IntegratorKind::Leapfrog => {
                     let (drift, kick_half, kick_half2) =
                         cosmo_params.drift_kick_factors(a_current, dt);
-                    let cf = CosmoFactors { drift, kick_half, kick_half2 };
+                    let cf = CosmoFactors {
+                        drift,
+                        kick_half,
+                        kick_half2,
+                    };
                     a_current = cosmo_params.advance_a(a_current, dt);
                     leapfrog_cosmo_kdk_step(&mut local, cf, &mut scratch, |parts, acc| {
                         force_cosmo(parts, acc);
@@ -1323,7 +1374,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     for (i, &sub_dt) in sub_dts.iter().enumerate() {
                         let (drift, kick_half, kick_half2) =
                             cosmo_params.drift_kick_factors(a_current, sub_dt);
-                        cfs[i] = CosmoFactors { drift, kick_half, kick_half2 };
+                        cfs[i] = CosmoFactors {
+                            drift,
+                            kick_half,
+                            kick_half2,
+                        };
                         a_current = cosmo_params.advance_a(a_current, sub_dt);
                     }
                     yoshida4_cosmo_kdk_step(&mut local, cfs, &mut scratch, |parts, acc| {
@@ -1350,8 +1405,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             };
             // delta_rms: aproximación local (cada rango ve su subconjunto de partículas).
             // En MPI, este valor es una estimación local; el reporte lo nota explícitamente.
-            let delta_rms_local =
-                density_contrast_rms(&local, cfg.simulation.box_size, 16);
+            let delta_rms_local = density_contrast_rms(&local, cfg.simulation.box_size, 16);
 
             let cd = CosmoDiag {
                 a: a_current,
@@ -1366,7 +1420,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_gravity_ns += this_grav;
             steps_run += 1;
             write_diagnostic_line(
-                rt, step, &local, &diag_path, &mut diag_file, None, None, Some(&cd),
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                None,
+                None,
+                Some(&cd),
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
@@ -1431,7 +1492,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
         // Precomputar límites de slab Z para Fase 20 (solo si pm_slab activo).
         let slab_layout_opt: Option<SlabLayout> = if use_pm_slab {
-            Some(SlabLayout::new(pm_nm, rt.rank() as usize, rt.size() as usize))
+            Some(SlabLayout::new(
+                pm_nm,
+                rt.rank() as usize,
+                rt.size() as usize,
+            ))
         } else {
             None
         };
@@ -1440,14 +1505,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let pencil_layout_opt: Option<PencilLayout2D> = if use_pm_pencil2d {
             let p = rt.size() as usize;
             let (py, pz) = PencilLayout2D::factorize(pm_nm, p);
-            if py * pz != p || pm_nm % py != 0 || pm_nm % pz != 0 {
-                return Err(CliError::InvalidConfig(
-                    format!(
-                        "pencil_2d: no existe factorización válida para nm={pm_nm} y P={p}. \
-                         Se requiere P ≤ nm² con nm % py == 0 y nm % pz == 0."
-                    )
-                    .into(),
-                ));
+            if py * pz != p || !pm_nm.is_multiple_of(py) || !pm_nm.is_multiple_of(pz) {
+                return Err(CliError::InvalidConfig(format!(
+                    "pencil_2d: no existe factorización válida para nm={pm_nm} y P={p}. \
+                     Se requiere P ≤ nm² con nm % py == 0 y nm % pz == 0."
+                )));
             }
             Some(PencilLayout2D::new(pm_nm, rt.rank() as usize, py, pz))
         } else {
@@ -1458,13 +1520,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let treepm_slab_layout_opt: Option<SlabLayout> = if use_treepm_slab {
             let nm = pm_nm;
             let p = rt.size() as usize;
-            if nm % p != 0 {
-                return Err(CliError::InvalidConfig(
-                    format!(
-                        "treepm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0"
-                    )
-                    .into(),
-                ));
+            if !nm.is_multiple_of(p) {
+                return Err(CliError::InvalidConfig(format!(
+                    "treepm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0"
+                )));
             }
             Some(SlabLayout::new(nm, rt.rank() as usize, p))
         } else {
@@ -1474,7 +1533,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         // Radio de splitting efectivo para TreePM slab.
         let treepm_r_split = if use_treepm_slab {
             let r_s = cfg.gravity.r_split;
-            if r_s > 0.0 { r_s } else { 2.5 * box_size / pm_nm as f64 }
+            if r_s > 0.0 {
+                r_s
+            } else {
+                2.5 * box_size / pm_nm as f64
+            }
         } else {
             0.0
         };
@@ -1489,9 +1552,19 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 use gadget_ng_parallel::sfc::global_bbox;
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                Some(gadget_ng_parallel::SfcDecomposition::build_with_bbox_and_kind(
-                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sr_sfc_kind,
-                ))
+                Some(
+                    gadget_ng_parallel::SfcDecomposition::build_with_bbox_and_kind(
+                        &pos_loc,
+                        gxlo,
+                        gxhi,
+                        gylo,
+                        gyhi,
+                        gzlo,
+                        gzhi,
+                        rt.size(),
+                        sr_sfc_kind,
+                    ),
+                )
             } else {
                 None
             };
@@ -1530,16 +1603,23 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             // Las partículas viven en SFC domain; el PM las clonará temporalmente a z-slab.
             if use_treepm_sr_sfc && rt.size() > 1 {
                 use gadget_ng_parallel::sfc::global_bbox;
-                let do_rebalance = sr_sfc_rebalance == 0
-                    || (step - start_step) % sr_sfc_rebalance.max(1) == 0;
+                let do_rebalance =
+                    sr_sfc_rebalance == 0 || (step - start_step) % sr_sfc_rebalance.max(1) == 0;
                 if do_rebalance {
                     let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                     let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
                     sr_sfc_decomp_opt = Some(
                         gadget_ng_parallel::SfcDecomposition::build_with_bbox_and_kind(
-                            &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi,
-                            rt.size(), sr_sfc_kind,
-                        )
+                            &pos_loc,
+                            gxlo,
+                            gxhi,
+                            gylo,
+                            gyhi,
+                            gzlo,
+                            gzhi,
+                            rt.size(),
+                            sr_sfc_kind,
+                        ),
                     );
                 }
                 if let Some(ref sfc_d) = sr_sfc_decomp_opt {
@@ -1557,383 +1637,405 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             // El histórico `g/a` producía fuerzas ~6·10⁶× más grandes de lo
             // correcto a `a = 0.02`, haciendo que `v_rms` explotara.
             let g_cosmo = gravity_coupling_qksl(g, a_current);
-            let mut compute_acc =
-                |parts: &[Particle], acc: &mut [Vec3], this_comm: &mut u64, this_grav: &mut u64| {
-                    if use_treepm_sr_sfc {
-                        // ─ Fase 23: TreePM SR desacoplado del slab-z (dominio 3D/SFC) ────
-                        //
-                        // Arquitectura dual:
-                        //   • SR tree:  dominio SFC real (Morton/Hilbert). Halos 3D periódicos.
-                        //   • PM LR:    slab-z sin cambios (Fase 20/21). Sincronización explícita.
-                        //
-                        // F_total = F_lr (PM slab + erf) + F_sr (árbol erfc, dominio SFC)
-                        let layout = treepm_slab_layout_opt.as_ref().unwrap();
-                        let r_s   = treepm_r_split;
-                        let r_cut = treepm_r_cut;
-                        let _t_tpm = Instant::now();
+            let mut compute_acc = |parts: &[Particle],
+                                   acc: &mut [Vec3],
+                                   this_comm: &mut u64,
+                                   this_grav: &mut u64| {
+                if use_treepm_sr_sfc {
+                    // ─ Fase 23: TreePM SR desacoplado del slab-z (dominio 3D/SFC) ────
+                    //
+                    // Arquitectura dual:
+                    //   • SR tree:  dominio SFC real (Morton/Hilbert). Halos 3D periódicos.
+                    //   • PM LR:    slab-z sin cambios (Fase 20/21). Sincronización explícita.
+                    //
+                    // F_total = F_lr (PM slab + erf) + F_sr (árbol erfc, dominio SFC)
+                    let layout = treepm_slab_layout_opt.as_ref().unwrap();
+                    let r_s = treepm_r_split;
+                    let r_cut = treepm_r_cut;
+                    let _t_tpm = Instant::now();
 
-                        // ── 1. SR: halo volumétrico 3D periódico (path activo principal) ─
-                        let t_sr_halo = Instant::now();
-                        let sr_halos = rt.exchange_halos_3d_periodic(parts, box_size, r_cut);
-                        let sr_halo_comm_ns = t_sr_halo.elapsed().as_nanos() as u64;
-                        *this_comm += sr_halo_comm_ns;
+                    // ── 1. SR: halo volumétrico 3D periódico (path activo principal) ─
+                    let t_sr_halo = Instant::now();
+                    let sr_halos = rt.exchange_halos_3d_periodic(parts, box_size, r_cut);
+                    let sr_halo_comm_ns = t_sr_halo.elapsed().as_nanos() as u64;
+                    *this_comm += sr_halo_comm_ns;
 
-                        // ── 2. SR: árbol corto alcance sobre dominio SFC + halos 3D ──────
-                        let t_sr_tree = Instant::now();
-                        let sr_params = treepm_dist::SfcShortRangeParams {
-                            local_particles: parts,
-                            halo_particles: &sr_halos,
-                            eps2,
-                            g: g_cosmo,
-                            r_split: r_s,
-                            box_size,
-                        };
-                        let mut acc_sr = vec![Vec3::zero(); parts.len()];
-                        treepm_dist::short_range_accels_sfc(&sr_params, &mut acc_sr);
-                        let tree_sr_ns = t_sr_tree.elapsed().as_nanos() as u64;
-                        *this_grav += tree_sr_ns;
+                    // ── 2. SR: árbol corto alcance sobre dominio SFC + halos 3D ──────
+                    let t_sr_tree = Instant::now();
+                    let sr_params = treepm_dist::SfcShortRangeParams {
+                        local_particles: parts,
+                        halo_particles: &sr_halos,
+                        eps2,
+                        g: g_cosmo,
+                        r_split: r_s,
+                        box_size,
+                    };
+                    let mut acc_sr = vec![Vec3::zero(); parts.len()];
+                    treepm_dist::short_range_accels_sfc(&sr_params, &mut acc_sr);
+                    let tree_sr_ns = t_sr_tree.elapsed().as_nanos() as u64;
+                    *this_grav += tree_sr_ns;
 
-                        // ── 3. PM LR: scatter/gather (Fase 24) o clone+migrate (Fase 23) ──
-                        let t_pm_sync = Instant::now();
+                    // ── 3. PM LR: scatter/gather (Fase 24) o clone+migrate (Fase 23) ──
+                    let t_pm_sync = Instant::now();
 
-                        let (acc_lr, sg_stats_opt): (Vec<Vec3>, Option<treepm_dist::PmScatterStats>) =
-                            if use_treepm_pm_scatter_gather {
-                                // ── Fase 24: scatter/gather PM mínimo ───────────────────────
-                                //
-                                // Las partículas permanecen en SFC domain.
-                                // Se envía solo (gid, pos, mass) al slab PM destino.
-                                // El slab PM devuelve (gid, acc_pm) al source rank.
-                                // Sin clone, sin migración de Particle completo.
-                                let (acc_pm, sg_stats) = treepm_dist::pm_scatter_gather_accels(
-                                    parts, layout, g_cosmo, r_s, box_size, rt,
-                                );
-                                *this_comm += sg_stats.scatter_ns + sg_stats.gather_ns;
-                                *this_grav += sg_stats.pm_solve_ns;
-                                (acc_pm, Some(sg_stats))
-                            } else {
-                                // ── Fase 23: clone → z-slab → PM → back-SFC → HashMap ───────
-                                //
-                                // Conservado como fallback para comparación con Fase 24.
-
-                                // 3a. Clonar partículas locales y migrar a z-slab PM.
-                                let mut pm_parts = parts.to_vec();
-                                let pm_z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
-                                let pm_z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
-                                rt.exchange_domain_by_z(&mut pm_parts, pm_z_lo, pm_z_hi);
-                                *this_comm += t_pm_sync.elapsed().as_nanos() as u64;
-
-                                // 3b. PM pipeline sobre las partículas en z-slab.
-                                let t_pm = Instant::now();
-                                let pm_pos: Vec<Vec3> = pm_parts.iter().map(|p| p.position).collect();
-                                let pm_mass: Vec<f64> = pm_parts.iter().map(|p| p.mass).collect();
-                                let mut density_ext = slab_pm::deposit_slab_extended(
-                                    &pm_pos, &pm_mass, layout, box_size,
-                                );
-                                slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
-                                *this_comm += t_pm.elapsed().as_nanos() as u64;
-
-                                let t_pm2 = Instant::now();
-                                let mut forces = slab_pm::forces_from_slab(
-                                    &density_ext, layout, g_cosmo, box_size, Some(r_s), rt,
-                                );
-                                slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
-                                *this_comm += t_pm2.elapsed().as_nanos() as u64;
-
-                                let t_interp = Instant::now();
-                                let acc_lr_pm = slab_pm::interpolate_slab_local(
-                                    &pm_pos, &forces, layout, box_size,
-                                );
-                                *this_grav += t_interp.elapsed().as_nanos() as u64;
-
-                                // 3c. Embeber acc_lr en pm_parts.acceleration.
-                                for (p, a) in pm_parts.iter_mut().zip(acc_lr_pm.iter()) {
-                                    p.acceleration = *a;
-                                }
-
-                                // 3d. Retornar pm_parts al dominio SFC.
-                                let t_back = Instant::now();
-                                if let Some(ref sfc_d) = sr_sfc_decomp_opt {
-                                    rt.exchange_domain_sfc(&mut pm_parts, sfc_d);
-                                }
-                                *this_comm += t_back.elapsed().as_nanos() as u64;
-
-                                // 3e. Lookup de acc_lr por global_id.
-                                let lr_map: std::collections::HashMap<usize, Vec3> = pm_parts
-                                    .iter()
-                                    .map(|p| (p.global_id, p.acceleration))
-                                    .collect();
-                                let acc_lr: Vec<Vec3> = parts
-                                    .iter()
-                                    .map(|p| lr_map.get(&p.global_id).copied().unwrap_or(Vec3::zero()))
-                                    .collect();
-                                (acc_lr, None)
-                            };
-
-                        let sr_sync_elapsed = t_pm_sync.elapsed().as_nanos() as u64;
-
-                        // ── 4. Suma: F_total = F_lr + F_sr ──────────────────────────────
-                        for (k, a) in acc.iter_mut().enumerate() {
-                            *a = acc_lr[k] + acc_sr[k];
-                        }
-
-                        let _ = sr_sync_elapsed;
-                        // ── Diagnóstico TreePM SR-SFC: propagar stats al scope exterior ──
-                        // Se construye un TreePmStepDiag con los valores medidos en esta
-                        // sub-llamada y se acumula en tpm_diag_cell (interior mutability).
-                        let new_diag = TreePmStepDiag {
-                            scatter_ns:        sg_stats_opt.map_or(0, |s| s.scatter_ns),
-                            gather_ns:         sg_stats_opt.map_or(0, |s| s.gather_ns),
-                            pm_solve_ns:       sg_stats_opt.map_or(0, |s| s.pm_solve_ns),
-                            sr_halo_ns:        sr_halo_comm_ns,
-                            tree_sr_ns,
-                            scatter_particles: sg_stats_opt.map_or(parts.len(), |s| s.scatter_particles),
-                            scatter_bytes:     sg_stats_opt.map_or(0, |s| s.scatter_bytes),
-                            gather_bytes:      sg_stats_opt.map_or(0, |s| s.gather_bytes),
-                            path: if use_treepm_pm_scatter_gather { "sg" } else { "clone" },
-                        };
-                        tpm_diag_cell.set(tpm_diag_cell.get().add(new_diag));
-                    } else if use_treepm_slab {
-                        // ─ Fase 21/22: TreePM slab distribuido ───────────────────────────
-                        //
-                        // F_total = F_lr (PM slab + filtro Gaussiano) + F_sr (árbol erfc + minimum_image)
-                        //
-                        // Fase 21: halo 1D en z.
-                        // Fase 22 (use_treepm_3d_halo): halo volumétrico 3D periódico.
-                        let layout = treepm_slab_layout_opt.as_ref().unwrap();
-                        let r_s  = treepm_r_split;
-                        let r_cut = treepm_r_cut;
-                        let t_tpm = Instant::now();
-
-                        // ── 1. Halos de corto alcance ────────────────────────────────────
-                        let t_comm_sr = Instant::now();
-                        let sr_halos = if use_treepm_3d_halo {
-                            // Fase 22: halo volumétrico 3D periódico (fix del bug de exchange_halos_sfc).
-                            rt.exchange_halos_3d_periodic(parts, box_size, r_cut)
+                    let (acc_lr, sg_stats_opt): (Vec<Vec3>, Option<treepm_dist::PmScatterStats>) =
+                        if use_treepm_pm_scatter_gather {
+                            // ── Fase 24: scatter/gather PM mínimo ───────────────────────
+                            //
+                            // Las partículas permanecen en SFC domain.
+                            // Se envía solo (gid, pos, mass) al slab PM destino.
+                            // El slab PM devuelve (gid, acc_pm) al source rank.
+                            // Sin clone, sin migración de Particle completo.
+                            let (acc_pm, sg_stats) = treepm_dist::pm_scatter_gather_accels(
+                                parts, layout, g_cosmo, r_s, box_size, rt,
+                            );
+                            *this_comm += sg_stats.scatter_ns + sg_stats.gather_ns;
+                            *this_grav += sg_stats.pm_solve_ns;
+                            (acc_pm, Some(sg_stats))
                         } else {
-                            // Fase 21: halo 1D-z periódico.
-                            let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
-                            let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
-                            rt.exchange_halos_by_z_periodic(parts, z_lo, z_hi, r_cut)
-                        };
-                        let halo_comm_ns = t_comm_sr.elapsed().as_nanos() as u64;
-                        *this_comm += halo_comm_ns;
+                            // ── Fase 23: clone → z-slab → PM → back-SFC → HashMap ───────
+                            //
+                            // Conservado como fallback para comparación con Fase 24.
 
-                        // ── 2. PM largo alcance (slab FFT con filtro Gaussiano) ──────────
-                        let t_pm = Instant::now();
-                        let local_pos: Vec<Vec3>  = parts.iter().map(|p| p.position).collect();
-                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                            // 3a. Clonar partículas locales y migrar a z-slab PM.
+                            let mut pm_parts = parts.to_vec();
+                            let pm_z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                            let pm_z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size
+                                / pm_nm as f64;
+                            rt.exchange_domain_by_z(&mut pm_parts, pm_z_lo, pm_z_hi);
+                            *this_comm += t_pm_sync.elapsed().as_nanos() as u64;
 
-                        let mut density_ext = slab_pm::deposit_slab_extended(
-                            &local_pos, &local_mass, layout, box_size,
-                        );
-                        slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
-                        *this_comm += t_pm.elapsed().as_nanos() as u64;
+                            // 3b. PM pipeline sobre las partículas en z-slab.
+                            let t_pm = Instant::now();
+                            let pm_pos: Vec<Vec3> = pm_parts.iter().map(|p| p.position).collect();
+                            let pm_mass: Vec<f64> = pm_parts.iter().map(|p| p.mass).collect();
+                            let mut density_ext =
+                                slab_pm::deposit_slab_extended(&pm_pos, &pm_mass, layout, box_size);
+                            slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
+                            *this_comm += t_pm.elapsed().as_nanos() as u64;
 
-                        let t_pm2 = Instant::now();
-                        let mut forces = slab_pm::forces_from_slab(
-                            &density_ext, layout, g_cosmo, box_size, Some(r_s), rt,
-                        );
-                        slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
-                        *this_comm += t_pm2.elapsed().as_nanos() as u64;
+                            let t_pm2 = Instant::now();
+                            let mut forces = slab_pm::forces_from_slab(
+                                &density_ext,
+                                layout,
+                                g_cosmo,
+                                box_size,
+                                Some(r_s),
+                                rt,
+                            );
+                            slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
+                            *this_comm += t_pm2.elapsed().as_nanos() as u64;
 
-                        let t_interp = Instant::now();
-                        let acc_lr = slab_pm::interpolate_slab_local(
-                            &local_pos, &forces, layout, box_size,
-                        );
-                        let pm_ns = t_interp.elapsed().as_nanos() as u64;
-                        *this_grav += pm_ns;
+                            let t_interp = Instant::now();
+                            let acc_lr_pm =
+                                slab_pm::interpolate_slab_local(&pm_pos, &forces, layout, box_size);
+                            *this_grav += t_interp.elapsed().as_nanos() as u64;
 
-                        // ── 3. Árbol corto alcance (minimum_image periódico) ─────────────
-                        let t_sr = Instant::now();
-                        let sr_params = treepm_dist::SlabShortRangeParams {
-                            local_particles: parts,
-                            halo_particles: &sr_halos,
-                            eps2,
-                            g: g_cosmo,
-                            r_split: r_s,
-                            box_size,
-                        };
-                        let mut acc_sr = vec![Vec3::zero(); parts.len()];
-                        treepm_dist::short_range_accels_slab(&sr_params, &mut acc_sr);
-                        let tree_ns = t_sr.elapsed().as_nanos() as u64;
-                        *this_grav += tree_ns;
-
-                        // ── 4. Suma: F_total = F_lr + F_sr ──────────────────────────────
-                        for (k, a) in acc.iter_mut().enumerate() {
-                            *a = acc_lr[k] + acc_sr[k];
-                        }
-
-                        let tpm_total_ns = t_tpm.elapsed().as_nanos() as u64;
-                        // Estadísticas para diagnostics.jsonl (conservadas para evitar dead_code).
-                        let _sr_halo_n   = sr_halos.len();
-                        let _sr_halo_b   = sr_halos.len() * std::mem::size_of::<gadget_ng_core::Particle>();
-                        let _halo_ns_cap = halo_comm_ns;
-                        let _ = tpm_total_ns;
-                    } else if use_pm_slab {
-                        // ─ Fase 20: PM slab distribuido ──────────────────────────────────
-                        let layout = slab_layout_opt.as_ref().unwrap();
-                        let t0 = Instant::now();
-
-                        let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-
-                        // 1. Depósito CIC en slab extendido (con ghost right).
-                        let mut density_ext = slab_pm::deposit_slab_extended(
-                            &local_pos, &local_mass, layout, box_size,
-                        );
-                        // 2. Intercambio de halos de densidad Z (ring periódico).
-                        slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
-                        *this_comm += t0.elapsed().as_nanos() as u64;
-
-                        // 3. Solve de Poisson distribuido (alltoall transposes).
-                        let t1 = Instant::now();
-                        let mut forces = slab_pm::forces_from_slab(
-                            &density_ext, layout, g_cosmo, box_size, None, rt,
-                        );
-                        // 4. Intercambio de halos de fuerza Z (para CIC correcto en bordes).
-                        slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
-                        *this_comm += t1.elapsed().as_nanos() as u64;
-
-                        // 5. Interpolación CIC local.
-                        let t2 = Instant::now();
-                        let accels = slab_pm::interpolate_slab_local(
-                            &local_pos, &forces, layout, box_size,
-                        );
-                        for (a, v) in acc.iter_mut().zip(accels.iter()) {
-                            *a = *v;
-                        }
-                        *this_grav += t2.elapsed().as_nanos() as u64;
-                    } else if use_pm_pencil2d {
-                        // ─ Fase 46: PM pencil 2D (P > nm) ────────────────────────────────
-                        // Usa descomposición pencil 2D (Py × Pz = P) para la FFT distribuida.
-                        // Permite escalar a P ≤ nm² ranks (vs P ≤ nm del slab 1D).
-                        //
-                        // Pipeline:
-                        //   1. Depósito CIC local → allreduce global nm³
-                        //   2. Extraer slab 2D local [ny_local × nz_local × nm]
-                        //   3. solve_forces_pencil2d → fuerzas slab 2D local
-                        //   4. Allgather fuerzas → reconstruir grid global nm³
-                        //   5. Interpolación CIC local
-                        let pencil_layout = pencil_layout_opt.as_ref().unwrap();
-                        let nm = pm_nm;
-                        let pz = pencil_layout.pz;
-                        let ny_local = pencil_layout.ny_local;
-                        let nz_local = pencil_layout.nz_local;
-                        let iy_lo = pencil_layout.rank_y * ny_local;
-                        let iz_lo = pencil_layout.rank_z * nz_local;
-                        let n_ranks = pencil_layout.n_ranks;
-
-                        // 1. Depósito CIC + allreduce global.
-                        let t0 = Instant::now();
-                        let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-                        let mut density =
-                            pm_dist::deposit_local(&local_pos, &local_mass, box_size, nm);
-                        rt.allreduce_sum_f64_slice(&mut density);
-                        *this_comm += t0.elapsed().as_nanos() as u64;
-
-                        // 2. Extraer slab 2D del rank actual: density_2d[iy_local][iz_local][ix].
-                        // CIC usa density[iz * nm² + iy * nm + ix].
-                        let mut density_2d = vec![0.0f64; ny_local * nz_local * nm];
-                        for iy_local_i in 0..ny_local {
-                            let iy = iy_lo + iy_local_i;
-                            for iz_local_i in 0..nz_local {
-                                let iz = iz_lo + iz_local_i;
-                                for ix in 0..nm {
-                                    density_2d[iy_local_i * nz_local * nm + iz_local_i * nm + ix]
-                                        = density[iz * nm * nm + iy * nm + ix];
-                                }
+                            // 3c. Embeber acc_lr en pm_parts.acceleration.
+                            for (p, a) in pm_parts.iter_mut().zip(acc_lr_pm.iter()) {
+                                p.acceleration = *a;
                             }
-                        }
-                        drop(density);
 
-                        // 3. Solve pencil FFT: alltoalls dentro de subcomunicadores Y/Z.
-                        let t1 = Instant::now();
-                        let [fx_2d, fy_2d, fz_2d] = solve_forces_pencil2d(
-                            &density_2d, pencil_layout, g_cosmo, box_size, None, rt,
-                        );
-                        *this_grav += t1.elapsed().as_nanos() as u64;
-
-                        // 4. Allgather slabs de fuerza → reconstruir grids nm³ globales.
-                        let t2 = Instant::now();
-                        let all_fx = rt.allgather_f64(&fx_2d);
-                        let all_fy = rt.allgather_f64(&fy_2d);
-                        let all_fz = rt.allgather_f64(&fz_2d);
-                        *this_comm += t2.elapsed().as_nanos() as u64;
-
-                        let mut fx_global = vec![0.0f64; nm * nm * nm];
-                        let mut fy_global = vec![0.0f64; nm * nm * nm];
-                        let mut fz_global = vec![0.0f64; nm * nm * nm];
-                        for r in 0..n_ranks {
-                            let ry_r = r / pz;
-                            let rz_r = r % pz;
-                            let iy_r_lo = ry_r * ny_local;
-                            let iz_r_lo = rz_r * nz_local;
-                            for iy_l in 0..ny_local {
-                                let iy = iy_r_lo + iy_l;
-                                for iz_l in 0..nz_local {
-                                    let iz = iz_r_lo + iz_l;
-                                    for ix in 0..nm {
-                                        let src = iy_l * nz_local * nm + iz_l * nm + ix;
-                                        let dst = iz * nm * nm + iy * nm + ix;
-                                        fx_global[dst] = all_fx[r][src];
-                                        fy_global[dst] = all_fy[r][src];
-                                        fz_global[dst] = all_fz[r][src];
-                                    }
-                                }
+                            // 3d. Retornar pm_parts al dominio SFC.
+                            let t_back = Instant::now();
+                            if let Some(ref sfc_d) = sr_sfc_decomp_opt {
+                                rt.exchange_domain_sfc(&mut pm_parts, sfc_d);
                             }
-                        }
+                            *this_comm += t_back.elapsed().as_nanos() as u64;
 
-                        // 5. Interpolación CIC local desde el grid global.
-                        let t3 = Instant::now();
-                        let accels = pm_dist::interpolate_local(
-                            &local_pos, &fx_global, &fy_global, &fz_global, nm, box_size,
-                        );
-                        for (a, v) in acc.iter_mut().zip(accels.iter()) {
-                            *a = *v;
-                        }
-                        *this_grav += t3.elapsed().as_nanos() as u64;
-                    } else if use_pm_dist {
-                        // ─ Fase 19: PM distribuido ────────────────────────────────────────
-                        // 1. Depósito CIC local (O(N/P) por rank).
-                        let t0 = Instant::now();
-                        let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-                        let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-                        let mut density =
-                            pm_dist::deposit_local(&local_pos, &local_mass, box_size, pm_nm);
-                        // 2. allreduce_sum del grid de densidad (O(nm³), no O(N·P)).
-                        rt.allreduce_sum_f64_slice(&mut density);
-                        *this_comm += t0.elapsed().as_nanos() as u64;
-                        // 3. Solve de Poisson (determinista, idéntico en todos los ranks).
-                        let t1 = Instant::now();
-                        let [fx, fy, fz] = pm_dist::forces_from_global_density(
-                            &density, g_cosmo, pm_nm, box_size,
-                        );
-                        // 4. Interpolación CIC local (O(N/P) por rank).
-                        let accels =
-                            pm_dist::interpolate_local(&local_pos, &fx, &fy, &fz, pm_nm, box_size);
-                        for (a, v) in acc.iter_mut().zip(accels.iter()) {
-                            *a = *v;
-                        }
-                        *this_grav += t1.elapsed().as_nanos() as u64;
-                    } else {
-                        // ─ Path clásico: allgather de partículas (Fase 18 y anteriores) ──
-                        let t0 = Instant::now();
-                        rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
-                        *this_comm += t0.elapsed().as_nanos() as u64;
-                        let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
-                        let t1 = Instant::now();
-                        solver.accelerations_for_indices(
-                            &global_pos,
-                            &global_mass,
-                            eps2,
-                            g_cosmo,
-                            &idx,
-                            acc,
-                        );
-                        *this_grav += t1.elapsed().as_nanos() as u64;
+                            // 3e. Lookup de acc_lr por global_id.
+                            let lr_map: std::collections::HashMap<usize, Vec3> = pm_parts
+                                .iter()
+                                .map(|p| (p.global_id, p.acceleration))
+                                .collect();
+                            let acc_lr: Vec<Vec3> = parts
+                                .iter()
+                                .map(|p| lr_map.get(&p.global_id).copied().unwrap_or(Vec3::zero()))
+                                .collect();
+                            (acc_lr, None)
+                        };
+
+                    let sr_sync_elapsed = t_pm_sync.elapsed().as_nanos() as u64;
+
+                    // ── 4. Suma: F_total = F_lr + F_sr ──────────────────────────────
+                    for (k, a) in acc.iter_mut().enumerate() {
+                        *a = acc_lr[k] + acc_sr[k];
                     }
-                };
+
+                    let _ = sr_sync_elapsed;
+                    // ── Diagnóstico TreePM SR-SFC: propagar stats al scope exterior ──
+                    // Se construye un TreePmStepDiag con los valores medidos en esta
+                    // sub-llamada y se acumula en tpm_diag_cell (interior mutability).
+                    let new_diag = TreePmStepDiag {
+                        scatter_ns: sg_stats_opt.map_or(0, |s| s.scatter_ns),
+                        gather_ns: sg_stats_opt.map_or(0, |s| s.gather_ns),
+                        pm_solve_ns: sg_stats_opt.map_or(0, |s| s.pm_solve_ns),
+                        sr_halo_ns: sr_halo_comm_ns,
+                        tree_sr_ns,
+                        scatter_particles: sg_stats_opt
+                            .map_or(parts.len(), |s| s.scatter_particles),
+                        scatter_bytes: sg_stats_opt.map_or(0, |s| s.scatter_bytes),
+                        gather_bytes: sg_stats_opt.map_or(0, |s| s.gather_bytes),
+                        path: if use_treepm_pm_scatter_gather {
+                            "sg"
+                        } else {
+                            "clone"
+                        },
+                    };
+                    tpm_diag_cell.set(tpm_diag_cell.get().add(new_diag));
+                } else if use_treepm_slab {
+                    // ─ Fase 21/22: TreePM slab distribuido ───────────────────────────
+                    //
+                    // F_total = F_lr (PM slab + filtro Gaussiano) + F_sr (árbol erfc + minimum_image)
+                    //
+                    // Fase 21: halo 1D en z.
+                    // Fase 22 (use_treepm_3d_halo): halo volumétrico 3D periódico.
+                    let layout = treepm_slab_layout_opt.as_ref().unwrap();
+                    let r_s = treepm_r_split;
+                    let r_cut = treepm_r_cut;
+                    let t_tpm = Instant::now();
+
+                    // ── 1. Halos de corto alcance ────────────────────────────────────
+                    let t_comm_sr = Instant::now();
+                    let sr_halos = if use_treepm_3d_halo {
+                        // Fase 22: halo volumétrico 3D periódico (fix del bug de exchange_halos_sfc).
+                        rt.exchange_halos_3d_periodic(parts, box_size, r_cut)
+                    } else {
+                        // Fase 21: halo 1D-z periódico.
+                        let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                        let z_hi =
+                            (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                        rt.exchange_halos_by_z_periodic(parts, z_lo, z_hi, r_cut)
+                    };
+                    let halo_comm_ns = t_comm_sr.elapsed().as_nanos() as u64;
+                    *this_comm += halo_comm_ns;
+
+                    // ── 2. PM largo alcance (slab FFT con filtro Gaussiano) ──────────
+                    let t_pm = Instant::now();
+                    let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                    let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+
+                    let mut density_ext =
+                        slab_pm::deposit_slab_extended(&local_pos, &local_mass, layout, box_size);
+                    slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
+                    *this_comm += t_pm.elapsed().as_nanos() as u64;
+
+                    let t_pm2 = Instant::now();
+                    let mut forces = slab_pm::forces_from_slab(
+                        &density_ext,
+                        layout,
+                        g_cosmo,
+                        box_size,
+                        Some(r_s),
+                        rt,
+                    );
+                    slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
+                    *this_comm += t_pm2.elapsed().as_nanos() as u64;
+
+                    let t_interp = Instant::now();
+                    let acc_lr =
+                        slab_pm::interpolate_slab_local(&local_pos, &forces, layout, box_size);
+                    let pm_ns = t_interp.elapsed().as_nanos() as u64;
+                    *this_grav += pm_ns;
+
+                    // ── 3. Árbol corto alcance (minimum_image periódico) ─────────────
+                    let t_sr = Instant::now();
+                    let sr_params = treepm_dist::SlabShortRangeParams {
+                        local_particles: parts,
+                        halo_particles: &sr_halos,
+                        eps2,
+                        g: g_cosmo,
+                        r_split: r_s,
+                        box_size,
+                    };
+                    let mut acc_sr = vec![Vec3::zero(); parts.len()];
+                    treepm_dist::short_range_accels_slab(&sr_params, &mut acc_sr);
+                    let tree_ns = t_sr.elapsed().as_nanos() as u64;
+                    *this_grav += tree_ns;
+
+                    // ── 4. Suma: F_total = F_lr + F_sr ──────────────────────────────
+                    for (k, a) in acc.iter_mut().enumerate() {
+                        *a = acc_lr[k] + acc_sr[k];
+                    }
+
+                    let tpm_total_ns = t_tpm.elapsed().as_nanos() as u64;
+                    // Estadísticas para diagnostics.jsonl (conservadas para evitar dead_code).
+                    let _sr_halo_n = sr_halos.len();
+                    let _sr_halo_b =
+                        sr_halos.len() * std::mem::size_of::<gadget_ng_core::Particle>();
+                    let _halo_ns_cap = halo_comm_ns;
+                    let _ = tpm_total_ns;
+                } else if use_pm_slab {
+                    // ─ Fase 20: PM slab distribuido ──────────────────────────────────
+                    let layout = slab_layout_opt.as_ref().unwrap();
+                    let t0 = Instant::now();
+
+                    let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                    let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+
+                    // 1. Depósito CIC en slab extendido (con ghost right).
+                    let mut density_ext =
+                        slab_pm::deposit_slab_extended(&local_pos, &local_mass, layout, box_size);
+                    // 2. Intercambio de halos de densidad Z (ring periódico).
+                    slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
+                    *this_comm += t0.elapsed().as_nanos() as u64;
+
+                    // 3. Solve de Poisson distribuido (alltoall transposes).
+                    let t1 = Instant::now();
+                    let mut forces = slab_pm::forces_from_slab(
+                        &density_ext,
+                        layout,
+                        g_cosmo,
+                        box_size,
+                        None,
+                        rt,
+                    );
+                    // 4. Intercambio de halos de fuerza Z (para CIC correcto en bordes).
+                    slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
+                    *this_comm += t1.elapsed().as_nanos() as u64;
+
+                    // 5. Interpolación CIC local.
+                    let t2 = Instant::now();
+                    let accels =
+                        slab_pm::interpolate_slab_local(&local_pos, &forces, layout, box_size);
+                    for (a, v) in acc.iter_mut().zip(accels.iter()) {
+                        *a = *v;
+                    }
+                    *this_grav += t2.elapsed().as_nanos() as u64;
+                } else if use_pm_pencil2d {
+                    // ─ Fase 46: PM pencil 2D (P > nm) ────────────────────────────────
+                    // Usa descomposición pencil 2D (Py × Pz = P) para la FFT distribuida.
+                    // Permite escalar a P ≤ nm² ranks (vs P ≤ nm del slab 1D).
+                    //
+                    // Pipeline:
+                    //   1. Depósito CIC local → allreduce global nm³
+                    //   2. Extraer slab 2D local [ny_local × nz_local × nm]
+                    //   3. solve_forces_pencil2d → fuerzas slab 2D local
+                    //   4. Allgather fuerzas → reconstruir grid global nm³
+                    //   5. Interpolación CIC local
+                    let pencil_layout = pencil_layout_opt.as_ref().unwrap();
+                    let nm = pm_nm;
+                    let pz = pencil_layout.pz;
+                    let ny_local = pencil_layout.ny_local;
+                    let nz_local = pencil_layout.nz_local;
+                    let iy_lo = pencil_layout.rank_y * ny_local;
+                    let iz_lo = pencil_layout.rank_z * nz_local;
+                    let n_ranks = pencil_layout.n_ranks;
+
+                    // 1. Depósito CIC + allreduce global.
+                    let t0 = Instant::now();
+                    let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                    let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                    let mut density = pm_dist::deposit_local(&local_pos, &local_mass, box_size, nm);
+                    rt.allreduce_sum_f64_slice(&mut density);
+                    *this_comm += t0.elapsed().as_nanos() as u64;
+
+                    // 2. Extraer slab 2D del rank actual: density_2d[iy_local][iz_local][ix].
+                    // CIC usa density[iz * nm² + iy * nm + ix].
+                    let mut density_2d = vec![0.0f64; ny_local * nz_local * nm];
+                    for iy_local_i in 0..ny_local {
+                        let iy = iy_lo + iy_local_i;
+                        for iz_local_i in 0..nz_local {
+                            let iz = iz_lo + iz_local_i;
+                            for ix in 0..nm {
+                                density_2d[iy_local_i * nz_local * nm + iz_local_i * nm + ix] =
+                                    density[iz * nm * nm + iy * nm + ix];
+                            }
+                        }
+                    }
+                    drop(density);
+
+                    // 3. Solve pencil FFT: alltoalls dentro de subcomunicadores Y/Z.
+                    let t1 = Instant::now();
+                    let [fx_2d, fy_2d, fz_2d] = solve_forces_pencil2d(
+                        &density_2d,
+                        pencil_layout,
+                        g_cosmo,
+                        box_size,
+                        None,
+                        rt,
+                    );
+                    *this_grav += t1.elapsed().as_nanos() as u64;
+
+                    // 4. Allgather slabs de fuerza → reconstruir grids nm³ globales.
+                    let t2 = Instant::now();
+                    let all_fx = rt.allgather_f64(&fx_2d);
+                    let all_fy = rt.allgather_f64(&fy_2d);
+                    let all_fz = rt.allgather_f64(&fz_2d);
+                    *this_comm += t2.elapsed().as_nanos() as u64;
+
+                    let mut fx_global = vec![0.0f64; nm * nm * nm];
+                    let mut fy_global = vec![0.0f64; nm * nm * nm];
+                    let mut fz_global = vec![0.0f64; nm * nm * nm];
+                    for r in 0..n_ranks {
+                        let ry_r = r / pz;
+                        let rz_r = r % pz;
+                        let iy_r_lo = ry_r * ny_local;
+                        let iz_r_lo = rz_r * nz_local;
+                        for iy_l in 0..ny_local {
+                            let iy = iy_r_lo + iy_l;
+                            for iz_l in 0..nz_local {
+                                let iz = iz_r_lo + iz_l;
+                                for ix in 0..nm {
+                                    let src = iy_l * nz_local * nm + iz_l * nm + ix;
+                                    let dst = iz * nm * nm + iy * nm + ix;
+                                    fx_global[dst] = all_fx[r][src];
+                                    fy_global[dst] = all_fy[r][src];
+                                    fz_global[dst] = all_fz[r][src];
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. Interpolación CIC local desde el grid global.
+                    let t3 = Instant::now();
+                    let accels = pm_dist::interpolate_local(
+                        &local_pos, &fx_global, &fy_global, &fz_global, nm, box_size,
+                    );
+                    for (a, v) in acc.iter_mut().zip(accels.iter()) {
+                        *a = *v;
+                    }
+                    *this_grav += t3.elapsed().as_nanos() as u64;
+                } else if use_pm_dist {
+                    // ─ Fase 19: PM distribuido ────────────────────────────────────────
+                    // 1. Depósito CIC local (O(N/P) por rank).
+                    let t0 = Instant::now();
+                    let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+                    let local_mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+                    let mut density =
+                        pm_dist::deposit_local(&local_pos, &local_mass, box_size, pm_nm);
+                    // 2. allreduce_sum del grid de densidad (O(nm³), no O(N·P)).
+                    rt.allreduce_sum_f64_slice(&mut density);
+                    *this_comm += t0.elapsed().as_nanos() as u64;
+                    // 3. Solve de Poisson (determinista, idéntico en todos los ranks).
+                    let t1 = Instant::now();
+                    let [fx, fy, fz] =
+                        pm_dist::forces_from_global_density(&density, g_cosmo, pm_nm, box_size);
+                    // 4. Interpolación CIC local (O(N/P) por rank).
+                    let accels =
+                        pm_dist::interpolate_local(&local_pos, &fx, &fy, &fz, pm_nm, box_size);
+                    for (a, v) in acc.iter_mut().zip(accels.iter()) {
+                        *a = *v;
+                    }
+                    *this_grav += t1.elapsed().as_nanos() as u64;
+                } else {
+                    // ─ Path clásico: allgather de partículas (Fase 18 y anteriores) ──
+                    let t0 = Instant::now();
+                    rt.allgatherv_state(parts, total, &mut global_pos, &mut global_mass);
+                    *this_comm += t0.elapsed().as_nanos() as u64;
+                    let idx: Vec<usize> = parts.iter().map(|p| p.global_id).collect();
+                    let t1 = Instant::now();
+                    solver.accelerations_for_indices(
+                        &global_pos,
+                        &global_mass,
+                        eps2,
+                        g_cosmo,
+                        &idx,
+                        acc,
+                    );
+                    *this_grav += t1.elapsed().as_nanos() as u64;
+                }
+            };
             match integrator_kind {
                 IntegratorKind::Leapfrog => {
                     let (drift, kick_half, kick_half2) =
@@ -1992,15 +2094,24 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 a: a_current,
                 z: 1.0 / a_current - 1.0,
                 v_rms: peculiar_vrms(&local, a_current),
-                delta_rms: density_contrast_rms(
-                    &local,
-                    cfg.simulation.box_size,
-                    16,
-                ),
+                delta_rms: density_contrast_rms(&local, cfg.simulation.box_size, 16),
                 hubble: hubble_param(*cosmo_params, a_current),
-                treepm: if use_treepm_sr_sfc { Some(step_tpm) } else { None },
+                treepm: if use_treepm_sr_sfc {
+                    Some(step_tpm)
+                } else {
+                    None
+                },
             };
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, Some(&cd))?;
+            write_diagnostic_line(
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                None,
+                None,
+                Some(&cd),
+            )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -2019,7 +2130,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
         let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
+            &all_pos,
+            gxlo,
+            gxhi,
+            gylo,
+            gyhi,
+            gzlo,
+            gzhi,
+            rt.size(),
+            sfc_kind,
         );
         let size = rt.size() as usize;
         let my_rank = rt.rank() as usize;
@@ -2048,7 +2167,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
                 let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
                 sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-                    &pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind,
+                    &pos_loc,
+                    gxlo,
+                    gxhi,
+                    gylo,
+                    gyhi,
+                    gzlo,
+                    gzhi,
+                    rt.size(),
+                    sfc_kind,
                 );
                 let rb_ns = t_rb.elapsed().as_nanos() as u64;
                 this_comm += rb_ns;
@@ -2081,17 +2208,38 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     // 1. Allgather de AABBs (puro MPI → this_comm).
                     let my_aabb: Vec<f64> = if parts.is_empty() {
                         vec![
-                            f64::INFINITY, f64::NEG_INFINITY,
-                            f64::INFINITY, f64::NEG_INFINITY,
-                            f64::INFINITY, f64::NEG_INFINITY,
+                            f64::INFINITY,
+                            f64::NEG_INFINITY,
+                            f64::INFINITY,
+                            f64::NEG_INFINITY,
+                            f64::INFINITY,
+                            f64::NEG_INFINITY,
                         ]
                     } else {
-                        let xlo = parts.iter().map(|p| p.position.x).fold(f64::INFINITY, f64::min);
-                        let xhi = parts.iter().map(|p| p.position.x).fold(f64::NEG_INFINITY, f64::max);
-                        let ylo = parts.iter().map(|p| p.position.y).fold(f64::INFINITY, f64::min);
-                        let yhi = parts.iter().map(|p| p.position.y).fold(f64::NEG_INFINITY, f64::max);
-                        let zlo = parts.iter().map(|p| p.position.z).fold(f64::INFINITY, f64::min);
-                        let zhi = parts.iter().map(|p| p.position.z).fold(f64::NEG_INFINITY, f64::max);
+                        let xlo = parts
+                            .iter()
+                            .map(|p| p.position.x)
+                            .fold(f64::INFINITY, f64::min);
+                        let xhi = parts
+                            .iter()
+                            .map(|p| p.position.x)
+                            .fold(f64::NEG_INFINITY, f64::max);
+                        let ylo = parts
+                            .iter()
+                            .map(|p| p.position.y)
+                            .fold(f64::INFINITY, f64::min);
+                        let yhi = parts
+                            .iter()
+                            .map(|p| p.position.y)
+                            .fold(f64::NEG_INFINITY, f64::max);
+                        let zlo = parts
+                            .iter()
+                            .map(|p| p.position.z)
+                            .fold(f64::INFINITY, f64::min);
+                        let zhi = parts
+                            .iter()
+                            .map(|p| p.position.z)
+                            .fold(f64::NEG_INFINITY, f64::max);
                         vec![xlo, xhi, ylo, yhi, zlo, zhi]
                     };
                     let t_aabb = Instant::now();
@@ -2112,7 +2260,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     // 3. Exportar y empaquetar nodos LET (cómputo → this_grav).
                     // Calcular theta_export: factor=0.0 significa "usa theta" (retrocompat.).
                     let f_export = cfg.performance.let_theta_export_factor;
-                    let theta_export = if f_export > 0.0 { theta * f_export } else { theta };
+                    let theta_export = if f_export > 0.0 {
+                        theta * f_export
+                    } else {
+                        theta
+                    };
 
                     let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
                     let mut total_let_exported = 0usize;
@@ -2121,9 +2273,13 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     let mut export_ns_eval = 0u64;
                     let mut pack_ns_eval = 0u64;
                     for r in 0..size {
-                        if r == my_rank { continue; }
+                        if r == my_rank {
+                            continue;
+                        }
                         let ra = &all_aabbs[r];
-                        if ra.len() < 6 { continue; }
+                        if ra.len() < 6 {
+                            continue;
+                        }
                         let target_aabb = [ra[0], ra[1], ra[2], ra[3], ra[4], ra[5]];
                         let t_exp = Instant::now();
                         let let_nodes = tree.export_let(target_aabb, theta_export);
@@ -2131,7 +2287,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         let n_exp = let_nodes.len();
                         if n_exp > 0 {
                             total_let_exported += n_exp;
-                            if n_exp > max_let_per_rank { max_let_per_rank = n_exp; }
+                            if n_exp > max_let_per_rank {
+                                max_let_per_rank = n_exp;
+                            }
                             let t_pack = Instant::now();
                             sends[r] = pack_let_nodes(&let_nodes);
                             pack_ns_eval += t_pack.elapsed().as_nanos() as u64;
@@ -2159,18 +2317,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                 #[cfg(feature = "simd")]
                                 {
                                     use rayon::prelude::*;
-                                    local_accels
-                                        .par_iter_mut()
-                                        .enumerate()
-                                        .for_each(|(li, a)| {
-                                            *a = tree.walk_accel(
-                                                parts[li].position,
-                                                li,
-                                                g, eps2, theta,
-                                                &all_pos_l,
-                                                &all_mass_l,
-                                            );
-                                        });
+                                    local_accels.par_iter_mut().enumerate().for_each(|(li, a)| {
+                                        *a = tree.walk_accel(
+                                            parts[li].position,
+                                            li,
+                                            g,
+                                            eps2,
+                                            theta,
+                                            &all_pos_l,
+                                            &all_mass_l,
+                                        );
+                                    });
                                 }
                                 #[cfg(not(feature = "simd"))]
                                 {
@@ -2178,7 +2335,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                         *a = tree.walk_accel(
                                             parts[li].position,
                                             li,
-                                            g, eps2, theta,
+                                            g,
+                                            eps2,
+                                            theta,
                                             &all_pos_l,
                                             &all_mass_l,
                                         );
@@ -2240,9 +2399,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                         for k in 0..tile_size {
                                             pos[k] = parts_tile[k].position;
                                         }
-                                        let result = let_tree.walk_accel_4xi(
-                                            pos, tile_size, g, eps2, theta,
-                                        );
+                                        let result =
+                                            let_tree.walk_accel_4xi(pos, tile_size, g, eps2, theta);
                                         for k in 0..tile_size {
                                             acc_tile[k] = local_tile[k] + result[k];
                                         }
@@ -2262,8 +2420,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             let (leaf_calls, leaf_rmn) = gadget_ng_tree::let_tree_prof_end();
                             hpc.apply_leaf_calls += leaf_calls;
                             hpc.apply_leaf_rmn_count += leaf_rmn;
-                            let (tile_calls, tile_i) =
-                                gadget_ng_tree::let_tree_tile_prof_read();
+                            let (tile_calls, tile_i) = gadget_ng_tree::let_tree_tile_prof_read();
                             hpc.apply_leaf_tile_calls += tile_calls;
                             hpc.apply_leaf_tile_i_count += tile_i;
                             this_grav += ltw_ns;
@@ -2286,8 +2443,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                             eps2,
                                         );
                                 });
-                                hpc.accel_from_let_soa_ns +=
-                                    t_soa.elapsed().as_nanos() as u64;
+                                hpc.accel_from_let_soa_ns += t_soa.elapsed().as_nanos() as u64;
                             }
                             #[cfg(not(feature = "simd"))]
                             {
@@ -2321,8 +2477,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         for buf in &received {
                             if !buf.is_empty() {
                                 total_bytes_recv += buf.len() * std::mem::size_of::<f64>();
-                                total_imported +=
-                                    buf.len() / gadget_ng_tree::RMN_FLOATS;
+                                total_imported += buf.len() / gadget_ng_tree::RMN_FLOATS;
                             }
                         }
                         hpc.let_nodes_imported += total_imported;
@@ -2384,7 +2539,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             steps_run += 1;
 
             write_diagnostic_line(
-                rt, step, &local, &diag_path, &mut diag_file, None, Some(&hpc), None,
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                None,
+                Some(&hpc),
+                None,
             )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
@@ -2395,8 +2557,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let n = steps_run as f64;
             let ns2s = 1e-9_f64;
             let total_step_s = acc_step_ns as f64 * ns2s;
-            let wait_total_s = (acc_hpc.let_alltoallv_ns.saturating_sub(acc_hpc.walk_local_ns))
-                as f64
+            let wait_total_s = (acc_hpc
+                .let_alltoallv_ns
+                .saturating_sub(acc_hpc.walk_local_ns)) as f64
                 * ns2s;
             hpc_aggregate_opt = Some(HpcTimingsAggregate {
                 mean_tree_build_s: acc_hpc.tree_build_ns as f64 * ns2s / n,
@@ -2499,7 +2662,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos: Vec<Vec3> = local.iter().map(|p| p.position).collect();
         let mut sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-            &all_pos, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
+            &all_pos,
+            gxlo,
+            gxhi,
+            gylo,
+            gyhi,
+            gzlo,
+            gzhi,
+            rt.size(),
+            sfc_kind_legacy,
         );
 
         // Costes EMA por partícula (indexados por posición local). Inicializados a 1.0
@@ -2523,13 +2694,26 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     sfc_decomp = SfcDecomposition::build_weighted(
                         &all_pos_loc,
                         &local_particle_costs,
-                        gxlo, gxhi, gylo, gyhi, gzlo, gzhi,
+                        gxlo,
+                        gxhi,
+                        gylo,
+                        gyhi,
+                        gzlo,
+                        gzhi,
                         rt.size(),
                         sfc_kind_legacy,
                     );
                 } else {
                     sfc_decomp = SfcDecomposition::build_with_bbox_and_kind(
-                        &all_pos_loc, gxlo, gxhi, gylo, gyhi, gzlo, gzhi, rt.size(), sfc_kind_legacy,
+                        &all_pos_loc,
+                        gxlo,
+                        gxhi,
+                        gylo,
+                        gyhi,
+                        gzlo,
+                        gzhi,
+                        rt.size(),
+                        sfc_kind_legacy,
                     );
                 }
                 this_comm += t_rb.elapsed().as_nanos() as u64;
@@ -2554,7 +2738,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 this_comm += t0.elapsed().as_nanos() as u64;
                 let t1 = Instant::now();
                 if collect_costs {
-                    compute_forces_local_tree_with_costs(parts, &halos, theta, g, eps2, acc, &mut raw_costs);
+                    compute_forces_local_tree_with_costs(
+                        parts,
+                        &halos,
+                        theta,
+                        g,
+                        eps2,
+                        acc,
+                        &mut raw_costs,
+                    );
                 } else {
                     compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
                 }
@@ -2581,7 +2773,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, None)?;
+            write_diagnostic_line(
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                None,
+                None,
+                None,
+            )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -2632,7 +2833,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, None)?;
+            write_diagnostic_line(
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                None,
+                None,
+                None,
+            )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -2663,7 +2873,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             acc_comm_ns += this_comm;
             acc_gravity_ns += this_grav;
             steps_run += 1;
-            write_diagnostic_line(rt, step, &local, &diag_path, &mut diag_file, None, None, None)?;
+            write_diagnostic_line(
+                rt,
+                step,
+                &local,
+                &diag_path,
+                &mut diag_file,
+                None,
+                None,
+                None,
+            )?;
             maybe_checkpoint!(step, None);
             maybe_snap_frame!(step);
         }
@@ -2673,8 +2892,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     if tpm_step_count > 0 {
         let n = tpm_step_count as f64;
         let ns2s = 1e-9_f64;
-        let total_sync =
-            (acc_tpm.scatter_ns + acc_tpm.gather_ns) as f64;
+        let total_sync = (acc_tpm.scatter_ns + acc_tpm.gather_ns) as f64;
         let total_treepm = (acc_tpm.scatter_ns
             + acc_tpm.gather_ns
             + acc_tpm.pm_solve_ns

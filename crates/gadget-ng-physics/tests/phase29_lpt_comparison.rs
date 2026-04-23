@@ -42,9 +42,7 @@
 
 use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
-    build_particles,
-    cosmology::CosmologyParams,
-    density_contrast_rms, peculiar_vrms,
+    build_particles, cosmology::CosmologyParams, density_contrast_rms, peculiar_vrms,
     wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
     InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
     TimestepSection, TransferKind, UnitsSection, Vec3,
@@ -120,7 +118,7 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -135,31 +133,42 @@ fn with_treepm(mut cfg: RunConfig) -> RunConfig {
 }
 
 /// Compute |Ψ²|_rms = rms(pos_2lpt − pos_1lpt) con simetría periódica.
-fn psi2_rms(parts_1lpt: &[gadget_ng_core::Particle], parts_2lpt: &[gadget_ng_core::Particle]) -> f64 {
-    let sum_sq: f64 = parts_1lpt.iter().zip(parts_2lpt.iter()).map(|(p1, p2)| {
-        let dx = (p2.position.x - p1.position.x + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dy = (p2.position.y - p1.position.y + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dz = (p2.position.z - p1.position.z + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        dx * dx + dy * dy + dz * dz
-    }).sum::<f64>();
+fn psi2_rms(
+    parts_1lpt: &[gadget_ng_core::Particle],
+    parts_2lpt: &[gadget_ng_core::Particle],
+) -> f64 {
+    let sum_sq: f64 = parts_1lpt
+        .iter()
+        .zip(parts_2lpt.iter())
+        .map(|(p1, p2)| {
+            let dx = (p2.position.x - p1.position.x + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dy = (p2.position.y - p1.position.y + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dz = (p2.position.z - p1.position.z + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            dx * dx + dy * dy + dz * dz
+        })
+        .sum::<f64>();
     (sum_sq / N_PART as f64).sqrt()
 }
 
 /// Compute |Ψ¹|_rms = rms(pos_1lpt − q_lagrange) con simetría periódica.
 fn psi1_rms(parts_1lpt: &[gadget_ng_core::Particle]) -> f64 {
     let d_grid = BOX / GRID as f64;
-    let sum_sq: f64 = parts_1lpt.iter().enumerate().map(|(gid, p)| {
-        let ix = gid / (GRID * GRID);
-        let iy = (gid % (GRID * GRID)) / GRID;
-        let iz = gid % GRID;
-        let qx = (ix as f64 + 0.5) * d_grid;
-        let qy = (iy as f64 + 0.5) * d_grid;
-        let qz = (iz as f64 + 0.5) * d_grid;
-        let dx = (p.position.x - qx + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dy = (p.position.y - qy + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dz = (p.position.z - qz + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        dx * dx + dy * dy + dz * dz
-    }).sum::<f64>();
+    let sum_sq: f64 = parts_1lpt
+        .iter()
+        .enumerate()
+        .map(|(gid, p)| {
+            let ix = gid / (GRID * GRID);
+            let iy = (gid % (GRID * GRID)) / GRID;
+            let iz = gid % GRID;
+            let qx = (ix as f64 + 0.5) * d_grid;
+            let qy = (iy as f64 + 0.5) * d_grid;
+            let qz = (iz as f64 + 0.5) * d_grid;
+            let dx = (p.position.x - qx + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dy = (p.position.y - qy + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dz = (p.position.z - qz + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            dx * dx + dy * dy + dz * dz
+        })
+        .sum::<f64>();
     (sum_sq / N_PART as f64).sqrt()
 }
 
@@ -168,14 +177,21 @@ fn psi1_rms(parts_1lpt: &[gadget_ng_core::Particle]) -> f64 {
 /// Retorna el factor de escala final.
 fn run_pm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
@@ -195,14 +211,22 @@ fn run_pm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, d
 /// Evolución leapfrog cosmológico con TreePM durante `n_steps` pasos.
 fn run_treepm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let treepm = TreePmSolver { grid_size: NM, box_size: BOX, r_split: 0.0 };
+    let treepm = TreePmSolver {
+        grid_size: NM,
+        box_size: BOX,
+        r_split: 0.0,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
@@ -246,10 +270,8 @@ fn correction_scales_with_amplitude() {
     let mut ratios = [0.0f64; 3];
 
     for (i, &s8) in sigma8_values.iter().enumerate() {
-        let parts_1lpt = build_particles(&base_config(SEED, s8, false))
-            .expect("1LPT build");
-        let parts_2lpt = build_particles(&base_config(SEED, s8, true))
-            .expect("2LPT build");
+        let parts_1lpt = build_particles(&base_config(SEED, s8, false)).expect("1LPT build");
+        let parts_2lpt = build_particles(&base_config(SEED, s8, true)).expect("2LPT build");
 
         let psi1 = psi1_rms(&parts_1lpt);
         let psi2 = psi2_rms(&parts_1lpt, &parts_2lpt);
@@ -262,12 +284,14 @@ fn correction_scales_with_amplitude() {
     assert!(
         ratios[1] > ratios[0],
         "ratio(σ₈=0.8)={:.4e} ≤ ratio(σ₈=0.4)={:.4e} — corrección 2LPT no crece con amplitud",
-        ratios[1], ratios[0]
+        ratios[1],
+        ratios[0]
     );
     assert!(
         ratios[2] > ratios[1],
         "ratio(σ₈=1.6)={:.4e} ≤ ratio(σ₈=0.8)={:.4e} — corrección 2LPT no crece con amplitud",
-        ratios[2], ratios[1]
+        ratios[2],
+        ratios[1]
     );
 
     // La corrección siempre debe ser subleading (< 100%) — 2LPT mejora, no domina.
@@ -275,7 +299,8 @@ fn correction_scales_with_amplitude() {
         assert!(
             ratios[i] < 1.0,
             "ratio(σ₈={})={:.4e} ≥ 1.0 — Ψ² domina sobre Ψ¹, régimen inválido para 2LPT",
-            s8, ratios[i]
+            s8,
+            ratios[i]
         );
     }
 
@@ -307,10 +332,8 @@ fn correction_scales_with_amplitude() {
 #[test]
 fn psi1_psi2_ratio_quantified() {
     const SEED: u64 = 1234;
-    let parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false))
-        .expect("1LPT build");
-    let parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true))
-        .expect("2LPT build");
+    let parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false)).expect("1LPT build");
+    let parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true)).expect("2LPT build");
 
     let psi1 = psi1_rms(&parts_1lpt);
     let psi2 = psi2_rms(&parts_1lpt, &parts_2lpt);
@@ -326,7 +349,8 @@ fn psi1_psi2_ratio_quantified() {
     assert!(
         psi2 > LOWER * psi1,
         "|Ψ²|_rms / |Ψ¹|_rms = {:.3e} < {:.3e} — corrección demasiado pequeña",
-        ratio, LOWER
+        ratio,
+        LOWER
     );
 
     // La corrección 2LPT debe ser subleading (2LPT es una corrección, no el efecto dominante).
@@ -343,7 +367,12 @@ fn psi1_psi2_ratio_quantified() {
          |Ψ¹|_rms  = {:.4e} [box]\n\
          |Ψ²|_rms  = {:.4e} [box]\n\
          ratio     = {:.4e}  ({:.2}%)",
-        SIGMA8_STD, A_INIT, psi1, psi2, ratio, ratio * 100.0
+        SIGMA8_STD,
+        A_INIT,
+        psi1,
+        psi2,
+        ratio,
+        ratio * 100.0
     );
 }
 
@@ -362,10 +391,8 @@ fn psi1_psi2_ratio_quantified() {
 #[test]
 fn pk_2lpt_initial_consistent_with_1lpt() {
     const SEED: u64 = 567;
-    let parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false))
-        .expect("1LPT build");
-    let parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true))
-        .expect("2LPT build");
+    let parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false)).expect("1LPT build");
+    let parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true)).expect("2LPT build");
 
     let pos_1lpt: Vec<Vec3> = parts_1lpt.iter().map(|p| p.position).collect();
     let pos_2lpt: Vec<Vec3> = parts_2lpt.iter().map(|p| p.position).collect();
@@ -379,7 +406,8 @@ fn pk_2lpt_initial_consistent_with_1lpt() {
         "P(k) vacío — error en power_spectrum"
     );
     assert_eq!(
-        pk_1lpt.len(), pk_2lpt.len(),
+        pk_1lpt.len(),
+        pk_2lpt.len(),
         "P(k) 1LPT y 2LPT tienen distinto número de bins"
     );
 
@@ -393,7 +421,9 @@ fn pk_2lpt_initial_consistent_with_1lpt() {
         assert!(
             rel_err < MAX_REL_ERR,
             "P_2lpt(k={:.3}) / P_1lpt - 1 = {:.3} > {:.2} — 2LPT rompe la forma espectral",
-            b1.k, rel_err, MAX_REL_ERR
+            b1.k,
+            rel_err,
+            MAX_REL_ERR
         );
     }
 }
@@ -419,10 +449,9 @@ fn pm_growth_both_lpt_consistent() {
     const N_STEPS: usize = 20;
     const DT: f64 = 0.002;
 
-    let mut parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false))
-        .expect("1LPT build");
-    let mut parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true))
-        .expect("2LPT build");
+    let mut parts_1lpt =
+        build_particles(&base_config(SEED, SIGMA8_STD, false)).expect("1LPT build");
+    let mut parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true)).expect("2LPT build");
 
     // Contraste de densidad inicial.
     let delta0_1 = density_contrast_rms(&parts_1lpt, BOX, NGRID_DELTA);
@@ -440,12 +469,14 @@ fn pm_growth_both_lpt_consistent() {
     assert!(
         delta_f_1 >= delta0_1 * 0.5,
         "1LPT+PM: delta_rms colapsa de {:.4e} a {:.4e} — inestabilidad numérica",
-        delta0_1, delta_f_1
+        delta0_1,
+        delta_f_1
     );
     assert!(
         delta_f_2 >= delta0_2 * 0.5,
         "2LPT+PM: delta_rms colapsa de {:.4e} a {:.4e} — inestabilidad numérica",
-        delta0_2, delta_f_2
+        delta0_2,
+        delta_f_2
     );
 
     // El crecimiento final debe ser consistente entre 1LPT y 2LPT.
@@ -455,7 +486,10 @@ fn pm_growth_both_lpt_consistent() {
         rel_diff < MAX_DIFF,
         "PM: |delta_rms_2LPT - delta_rms_1LPT| / delta_rms_1LPT = {:.3} > {:.2}\n\
          delta_f_1LPT={:.4e}  delta_f_2LPT={:.4e}",
-        rel_diff, MAX_DIFF, delta_f_1, delta_f_2
+        rel_diff,
+        MAX_DIFF,
+        delta_f_1,
+        delta_f_2
     );
 
     println!(
@@ -463,10 +497,17 @@ fn pm_growth_both_lpt_consistent() {
          1LPT: delta_0={:.4e} → delta_f={:.4e}  (×{:.2})\n\
          2LPT: delta_0={:.4e} → delta_f={:.4e}  (×{:.2})\n\
          |Δdelta| / delta_1LPT = {:.3} ({:.2}%)",
-        N_STEPS, DT, A_INIT,
-        delta0_1, delta_f_1, delta_f_1 / delta0_1.max(1e-15),
-        delta0_2, delta_f_2, delta_f_2 / delta0_2.max(1e-15),
-        rel_diff, rel_diff * 100.0
+        N_STEPS,
+        DT,
+        A_INIT,
+        delta0_1,
+        delta_f_1,
+        delta_f_1 / delta0_1.max(1e-15),
+        delta0_2,
+        delta_f_2,
+        delta_f_2 / delta0_2.max(1e-15),
+        rel_diff,
+        rel_diff * 100.0
     );
 }
 
@@ -501,12 +542,14 @@ fn treepm_growth_both_lpt_consistent() {
     assert!(
         delta_f_1 >= delta0_1 * 0.5,
         "1LPT+TreePM: delta_rms colapsa de {:.4e} a {:.4e}",
-        delta0_1, delta_f_1
+        delta0_1,
+        delta_f_1
     );
     assert!(
         delta_f_2 >= delta0_2 * 0.5,
         "2LPT+TreePM: delta_rms colapsa de {:.4e} a {:.4e}",
-        delta0_2, delta_f_2
+        delta0_2,
+        delta_f_2
     );
 
     let rel_diff = (delta_f_2 - delta_f_1).abs() / delta_f_1.max(1e-15);
@@ -515,7 +558,10 @@ fn treepm_growth_both_lpt_consistent() {
         rel_diff < MAX_DIFF,
         "TreePM: |delta_rms_2LPT - delta_rms_1LPT| / delta_rms_1LPT = {:.3} > {:.2}\n\
          delta_f_1LPT={:.4e}  delta_f_2LPT={:.4e}",
-        rel_diff, MAX_DIFF, delta_f_1, delta_f_2
+        rel_diff,
+        MAX_DIFF,
+        delta_f_1,
+        delta_f_2
     );
 
     println!(
@@ -523,10 +569,17 @@ fn treepm_growth_both_lpt_consistent() {
          1LPT: delta_0={:.4e} → delta_f={:.4e}  (×{:.2})\n\
          2LPT: delta_0={:.4e} → delta_f={:.4e}  (×{:.2})\n\
          |Δdelta| / delta_1LPT = {:.3} ({:.2}%)",
-        N_STEPS, DT, A_INIT,
-        delta0_1, delta_f_1, delta_f_1 / delta0_1.max(1e-15),
-        delta0_2, delta_f_2, delta_f_2 / delta0_2.max(1e-15),
-        rel_diff, rel_diff * 100.0
+        N_STEPS,
+        DT,
+        A_INIT,
+        delta0_1,
+        delta_f_1,
+        delta_f_1 / delta0_1.max(1e-15),
+        delta0_2,
+        delta_f_2,
+        delta_f_2 / delta0_2.max(1e-15),
+        rel_diff,
+        rel_diff * 100.0
     );
 }
 
@@ -550,22 +603,14 @@ fn treepm_growth_both_lpt_consistent() {
 fn velocity_correction_subleading() {
     const SEED: u64 = 3141;
 
-    let parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false))
-        .expect("1LPT build");
-    let parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true))
-        .expect("2LPT build");
+    let parts_1lpt = build_particles(&base_config(SEED, SIGMA8_STD, false)).expect("1LPT build");
+    let parts_2lpt = build_particles(&base_config(SEED, SIGMA8_STD, true)).expect("2LPT build");
 
     let vrms_1lpt = peculiar_vrms(&parts_1lpt, A_INIT);
     let vrms_2lpt = peculiar_vrms(&parts_2lpt, A_INIT);
 
-    assert!(
-        vrms_1lpt > 0.0,
-        "v_rms 1LPT = 0 — velocidades degeneradas"
-    );
-    assert!(
-        vrms_2lpt > 0.0,
-        "v_rms 2LPT = 0 — velocidades degeneradas"
-    );
+    assert!(vrms_1lpt > 0.0, "v_rms 1LPT = 0 — velocidades degeneradas");
+    assert!(vrms_2lpt > 0.0, "v_rms 2LPT = 0 — velocidades degeneradas");
 
     let rel_diff = (vrms_2lpt - vrms_1lpt).abs() / vrms_1lpt;
     const MAX_DIFF: f64 = 0.20;
@@ -574,7 +619,10 @@ fn velocity_correction_subleading() {
         "|v_rms_2LPT - v_rms_1LPT| / v_rms_1LPT = {:.3} > {:.2}\n\
          v_rms_1LPT={:.4e}  v_rms_2LPT={:.4e}\n\
          La corrección de velocidad 2LPT es demasiado grande para régimen lineal",
-        rel_diff, MAX_DIFF, vrms_1lpt, vrms_2lpt
+        rel_diff,
+        MAX_DIFF,
+        vrms_1lpt,
+        vrms_2lpt
     );
 
     println!(
@@ -583,6 +631,11 @@ fn velocity_correction_subleading() {
          v_rms 2LPT = {:.4e}\n\
          |Δv| / v_1LPT = {:.3} ({:.2}%)\n\
          Nota: corrección incluye factor f₂/f₁=2 × d₂/d₁²≈−0.43",
-        SIGMA8_STD, A_INIT, vrms_1lpt, vrms_2lpt, rel_diff, rel_diff * 100.0
+        SIGMA8_STD,
+        A_INIT,
+        vrms_1lpt,
+        vrms_2lpt,
+        rel_diff,
+        rel_diff * 100.0
     );
 }

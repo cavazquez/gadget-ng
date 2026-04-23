@@ -11,9 +11,7 @@ use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::SerialRuntime;
 use gadget_ng_pm::SlabLayout;
 use gadget_ng_treepm::{
-    distributed::{
-        pm_scatter_gather_accels, short_range_accels_sfc, SfcShortRangeParams,
-    },
+    distributed::{pm_scatter_gather_accels, short_range_accels_sfc, SfcShortRangeParams},
     short_range::erfc_approx,
 };
 
@@ -77,8 +75,7 @@ fn sg_no_double_counting_erf_erfc() {
     let particles = vec![p0, p1];
 
     // PM largo alcance (scatter/gather Fase 24)
-    let (acc_pm, _) =
-        pm_scatter_gather_accels(&particles, &layout, g, r_split, box_size, &rt);
+    let (acc_pm, _) = pm_scatter_gather_accels(&particles, &layout, g, r_split, box_size, &rt);
 
     // SR corto alcance (erfc kernel, sin halos en P=1)
     let eps2 = 1e-6;
@@ -126,7 +123,8 @@ fn sg_no_double_counting_erf_erfc() {
     // pero no puede producir una fuerza mayor que el doble de Newton)
     assert!(
         mag_total_0 < 2.0 * f_newton,
-        "posible doble conteo: |f_total|={mag_total_0:.4} > 2×f_newton={:.4}", 2.0 * f_newton
+        "posible doble conteo: |f_total|={mag_total_0:.4} > 2×f_newton={:.4}",
+        2.0 * f_newton
     );
 
     // Verificar el kernel split: erf(r/r2) + erfc(r/r2) = 1 para r = dz
@@ -218,15 +216,21 @@ fn sg_cosmo_no_explosion_n27() {
     for p in &particles {
         assert!(
             p.position.x >= 0.0 && p.position.x < box_size,
-            "partícula {} fuera del box en x: {}", p.global_id, p.position.x
+            "partícula {} fuera del box en x: {}",
+            p.global_id,
+            p.position.x
         );
         assert!(
             p.position.y >= 0.0 && p.position.y < box_size,
-            "partícula {} fuera del box en y: {}", p.global_id, p.position.y
+            "partícula {} fuera del box en y: {}",
+            p.global_id,
+            p.position.y
         );
         assert!(
             p.position.z >= 0.0 && p.position.z < box_size,
-            "partícula {} fuera del box en z: {}", p.global_id, p.position.z
+            "partícula {} fuera del box en z: {}",
+            p.global_id,
+            p.position.z
         );
     }
 }
@@ -278,8 +282,7 @@ fn sg_momentum_conservation() {
     );
 
     for _step in 0..n_steps {
-        let (acc_pm, _) =
-            pm_scatter_gather_accels(&particles, &layout, g, r_split, box_size, &rt);
+        let (acc_pm, _) = pm_scatter_gather_accels(&particles, &layout, g, r_split, box_size, &rt);
 
         let sr_params = SfcShortRangeParams {
             local_particles: &particles,
@@ -325,14 +328,22 @@ fn sg_momentum_conservation() {
     let v_rms = {
         let sum_v2: f64 = particles
             .iter()
-            .map(|p| p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y + p.velocity.z * p.velocity.z)
+            .map(|p| {
+                p.velocity.x * p.velocity.x
+                    + p.velocity.y * p.velocity.y
+                    + p.velocity.z * p.velocity.z
+            })
             .sum();
         (sum_v2 / particles.len() as f64).sqrt()
     };
     let total_mass: f64 = particles.iter().map(|p| p.mass).sum();
     let p_scale = total_mass * v_rms;
 
-    let rel_momentum = if p_scale > 0.0 { p_rms / p_scale } else { p_rms };
+    let rel_momentum = if p_scale > 0.0 {
+        p_rms / p_scale
+    } else {
+        p_rms
+    };
     assert!(
         rel_momentum < 0.05,
         "impulso relativo demasiado grande: |Δp|/p_scale = {rel_momentum:.4} (límite=0.05)\n\

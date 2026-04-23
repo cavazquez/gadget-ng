@@ -107,7 +107,7 @@ fn build_ic(n: usize, seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -141,7 +141,11 @@ fn median_ratio(pk0: &[PkBin], pk1: &[PkBin]) -> f64 {
     }
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = ratios.len() / 2;
-    if ratios.len() % 2 == 1 { ratios[mid] } else { 0.5 * (ratios[mid - 1] + ratios[mid]) }
+    if ratios.len() % 2 == 1 {
+        ratios[mid]
+    } else {
+        0.5 * (ratios[mid - 1] + ratios[mid])
+    }
 }
 
 fn vrms(parts: &[gadget_ng_core::Particle]) -> f64 {
@@ -161,7 +165,10 @@ fn evolve_adaptive(
     dt_max: f64,
 ) -> (f64, usize) {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     let mut n_steps = 0_usize;
@@ -183,7 +190,11 @@ fn evolve_adaptive(
         let dt = adaptive_dt_cosmo(c, a, acc_max, softening, eta_grav, alpha_h, dt_max);
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -208,7 +219,10 @@ fn evolve_fixed(
     dt: f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..500_000 {
@@ -217,7 +231,11 @@ fn evolve_fixed(
         }
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -259,8 +277,7 @@ fn phase49_growth_n32_adaptive() {
 
     let a_target = 0.20_f64;
     let (a_final, n_steps) = evolve_adaptive(
-        &mut parts, n, softening, A_INIT, a_target,
-        0.025, 0.025, 5.0e-3,
+        &mut parts, n, softening, A_INIT, a_target, 0.025, 0.025, 5.0e-3,
     );
 
     let pk1 = measure_pk(&parts, n);
@@ -277,18 +294,25 @@ fn phase49_growth_n32_adaptive() {
         "[phase49_growth_n32] a: {A_INIT}→{a_final:.4}  n_steps={n_steps}  \
          P_ratio={ratio:.3}  D²_analitico={expected:.3}  v: {v0:.3e}→{v1:.3e}"
     );
-    println!(
-        "  Nota: ratio<D² esperado por inconsistencia G/H₀ en parámetros de test."
-    );
+    println!("  Nota: ratio<D² esperado por inconsistencia G/H₀ en parámetros de test.");
 
     // ── Criterios de estabilidad (física correcta) ──
-    assert!(a_final >= a_target * 0.99, "No alcanzó a_target: {a_final:.4}");
-    assert!(ratio.is_finite() && ratio > 0.0, "P(k) ratio no finito/positivo: {ratio}");
+    assert!(
+        a_final >= a_target * 0.99,
+        "No alcanzó a_target: {a_final:.4}"
+    );
+    assert!(
+        ratio.is_finite() && ratio > 0.0,
+        "P(k) ratio no finito/positivo: {ratio}"
+    );
     assert!(v1.is_finite() && !v1.is_nan(), "v_rms no finito");
     assert!(n_steps > 0, "Sin pasos ejecutados");
 
     // P(k) debe CRECER (ratio > 1): hay expansión y perturbaciones.
-    assert!(ratio > 1.0, "P(k) no creció con la evolución: ratio={ratio:.3}");
+    assert!(
+        ratio > 1.0,
+        "P(k) no creció con la evolución: ratio={ratio:.3}"
+    );
 
     // v_rms no debe explotar (ratio < 1000 para cualquier evolución razonable).
     let v_ratio = if v0 > 0.0 { v1 / v0 } else { 1.0 };
@@ -330,8 +354,14 @@ fn phase49_timestep_convergence() {
 
     // dt adaptativo — debe converger al mismo resultado.
     let (a_adap, n_steps_adap) = evolve_adaptive(
-        &mut parts_adap, n, softening, A_INIT, a_target,
-        0.025, 0.025, 2.0e-3,
+        &mut parts_adap,
+        n,
+        softening,
+        A_INIT,
+        a_target,
+        0.025,
+        0.025,
+        2.0e-3,
     );
     let pk_adap = measure_pk(&parts_adap, n);
     let ratio_adap = median_ratio(&linear_bins(&pk0, n), &linear_bins(&pk_adap, n));
@@ -339,9 +369,7 @@ fn phase49_timestep_convergence() {
     let d_ratio = growth_factor_d_ratio(cosmo(), a_fixed.min(a_adap), A_INIT);
     let expected_d2 = d_ratio * d_ratio;
 
-    println!(
-        "[convergencia] a_fixed={a_fixed:.4} a_adap={a_adap:.4} n_steps_adap={n_steps_adap}"
-    );
+    println!("[convergencia] a_fixed={a_fixed:.4} a_adap={a_adap:.4} n_steps_adap={n_steps_adap}");
     println!(
         "  ratio_fixed={ratio_fixed:.4}  ratio_adap={ratio_adap:.4}  D²_analitico={expected_d2:.3}"
     );
@@ -354,8 +382,14 @@ fn phase49_timestep_convergence() {
     );
 
     // ── Criterio 1: ambos finitos y positivos ──
-    assert!(ratio_fixed.is_finite() && ratio_fixed > 0.0, "ratio_fixed no finito/positivo");
-    assert!(ratio_adap.is_finite() && ratio_adap > 0.0, "ratio_adap no finito/positivo");
+    assert!(
+        ratio_fixed.is_finite() && ratio_fixed > 0.0,
+        "ratio_fixed no finito/positivo"
+    );
+    assert!(
+        ratio_adap.is_finite() && ratio_adap > 0.0,
+        "ratio_adap no finito/positivo"
+    );
 
     // ── Criterio 2 (principal): adaptativo converge al fijo (< 5 %) ──
     let cross_diff = (ratio_fixed - ratio_adap).abs() / ratio_fixed.max(1e-30);
@@ -367,8 +401,14 @@ fn phase49_timestep_convergence() {
     );
 
     // ── Criterio 3: P(k) crece (ratio > 1) ──
-    assert!(ratio_fixed > 1.0, "P(k) no creció: ratio_fixed={ratio_fixed:.4}");
-    assert!(ratio_adap > 1.0, "P(k) no creció: ratio_adap={ratio_adap:.4}");
+    assert!(
+        ratio_fixed > 1.0,
+        "P(k) no creció: ratio_fixed={ratio_fixed:.4}"
+    );
+    assert!(
+        ratio_adap > 1.0,
+        "P(k) no creció: ratio_adap={ratio_adap:.4}"
+    );
 }
 
 // ── TEST 3 — Secuencia de snapshots cosmológicos ──────────────────────────────
@@ -408,8 +448,7 @@ fn phase49_growth_snapshot_sequence() {
     // Evolucionar a los siguientes snapshots.
     for &a_snap in &snapshots_a[1..] {
         let (a_reached, n_steps) = evolve_adaptive(
-            &mut parts, n, softening, a_current, a_snap,
-            0.025, 0.025, 5.0e-3,
+            &mut parts, n, softening, a_current, a_snap, 0.025, 0.025, 5.0e-3,
         );
         a_current = a_reached;
 
@@ -434,7 +473,10 @@ fn phase49_growth_snapshot_sequence() {
 
         assert!(ratio.is_finite(), "P(k) ratio no finito en a={a_snap}");
         // P(k) debe crecer (ratio > 1.0 para a > a_init).
-        assert!(ratio > 1.0, "P(k) no creció en a={a_snap}: ratio={ratio:.4}");
+        assert!(
+            ratio > 1.0,
+            "P(k) no creció en a={a_snap}: ratio={ratio:.4}"
+        );
     }
 
     // Verificar monotonía: P(k) debe crecer con a (en régimen lineal).

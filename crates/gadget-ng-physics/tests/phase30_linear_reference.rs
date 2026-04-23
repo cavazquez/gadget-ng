@@ -57,10 +57,10 @@ use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
     cosmology::{gravity_coupling_qksl, CosmologyParams},
-    sigma_from_pk_bins, transfer_eh_nowiggle,
-    wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    sigma_from_pk_bins, transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
+    GravitySection, GravitySolver, IcKind, InitialConditionsSection, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
+    Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -69,21 +69,21 @@ use gadget_ng_treepm::TreePmSolver;
 // ── Constantes compartidas ────────────────────────────────────────────────────
 
 const G: f64 = 1.0;
-const BOX: f64 = 1.0;          // tamaño interno (siempre 1.0)
-const GRID: usize = 8;          // 8³ = 512 partículas — rápido para CI
+const BOX: f64 = 1.0; // tamaño interno (siempre 1.0)
+const GRID: usize = 8; // 8³ = 512 partículas — rápido para CI
 const N_PART: usize = 512;
-const NM: usize = 8;            // malla PM/TreePM
+const NM: usize = 8; // malla PM/TreePM
 
 const OMEGA_M: f64 = 0.315;
 const OMEGA_L: f64 = 0.685;
-const H0: f64 = 0.1;           // H₀ en unidades internas
-const A_INIT: f64 = 0.02;       // z ≈ 49
+const H0: f64 = 0.1; // H₀ en unidades internas
+const A_INIT: f64 = 0.02; // z ≈ 49
 
 const OMEGA_B: f64 = 0.049;
-const H_DIMLESS: f64 = 0.674;   // h = H₀ / (100 km/s/Mpc)
+const H_DIMLESS: f64 = 0.674; // h = H₀ / (100 km/s/Mpc)
 const T_CMB: f64 = 2.7255;
 const N_S: f64 = 0.965;
-const BOX_MPC_H: f64 = 100.0;  // para la mayoría de tests
+const BOX_MPC_H: f64 = 100.0; // para la mayoría de tests
 const BOX_MPC_H_S: f64 = 30.0; // para tests de sigma8 (mejor cobertura de k)
 const SIGMA8_TARGET: f64 = 0.8;
 
@@ -143,7 +143,7 @@ fn config_2lpt(seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -197,7 +197,7 @@ fn config_sigma_test(seed: u64, use_2lpt: bool) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -221,20 +221,23 @@ fn theory_pk_at_bins(k_hmpc_vals: &[f64]) -> Vec<(f64, f64)> {
 }
 
 /// Evolución PM cosmológica durante `n_steps` pasos. Devuelve (a_final, partes).
-fn run_pm(
-    parts: &mut Vec<gadget_ng_core::Particle>,
-    n_steps: usize,
-    dt: f64,
-) -> f64 {
+fn run_pm(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -250,20 +253,24 @@ fn run_pm(
 }
 
 /// Evolución TreePM cosmológica durante `n_steps` pasos.
-fn run_treepm(
-    parts: &mut Vec<gadget_ng_core::Particle>,
-    n_steps: usize,
-    dt: f64,
-) -> f64 {
+fn run_treepm(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let treepm = TreePmSolver { grid_size: NM, box_size: BOX, r_split: 0.0 };
+    let treepm = TreePmSolver {
+        grid_size: NM,
+        box_size: BOX,
+        r_split: 0.0,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -313,13 +320,15 @@ fn normalization_offset_is_characterized() {
     assert!(!pk_bins.is_empty(), "P(k) vacío");
 
     // Convertir k a h/Mpc y P a (Mpc/h)³
-    let k_hmpc: Vec<f64> = pk_bins.iter()
+    let k_hmpc: Vec<f64> = pk_bins
+        .iter()
         .map(|b| b.k * H_DIMLESS / BOX_MPC_H_S)
         .collect();
     let theory_bins = theory_pk_at_bins(&k_hmpc);
 
     // R(k) = P_measured / P_theory para cada bin con P > 0
-    let r_vals: Vec<f64> = pk_bins.iter()
+    let r_vals: Vec<f64> = pk_bins
+        .iter()
         .zip(theory_bins.iter())
         .filter(|(b, (_, pth))| b.pk > 0.0 && *pth > 0.0)
         .map(|(b, (_, pth))| {
@@ -331,10 +340,13 @@ fn normalization_offset_is_characterized() {
     assert!(!r_vals.is_empty(), "No hay bins válidos para calcular R(k)");
 
     let mean_r: f64 = r_vals.iter().sum::<f64>() / r_vals.len() as f64;
-    let var_r: f64 = r_vals.iter().map(|r| (r - mean_r).powi(2)).sum::<f64>()
-        / r_vals.len() as f64;
+    let var_r: f64 = r_vals.iter().map(|r| (r - mean_r).powi(2)).sum::<f64>() / r_vals.len() as f64;
     let std_r = var_r.sqrt();
-    let cv = if mean_r > 0.0 { std_r / mean_r } else { f64::INFINITY };
+    let cv = if mean_r > 0.0 {
+        std_r / mean_r
+    } else {
+        f64::INFINITY
+    };
 
     println!(
         "\n[phase30 offset normalización] caja={} Mpc/h, N=8³, a_init={}:\n\
@@ -342,9 +354,15 @@ fn normalization_offset_is_characterized() {
          mean R = {:.4e}   std R = {:.4e}   CV = {:.3}\n\
          NOTA: R << 1 es esperado por convención de unidades del IC generator\n\
          Si CV < 0.5, la FORMA del espectro está bien reproducida",
-        BOX_MPC_H_S, A_INIT,
-        r_vals.iter().map(|r| format!("{:.3e}", r)).collect::<Vec<_>>(),
-        mean_r, std_r, cv
+        BOX_MPC_H_S,
+        A_INIT,
+        r_vals
+            .iter()
+            .map(|r| format!("{:.3e}", r))
+            .collect::<Vec<_>>(),
+        mean_r,
+        std_r,
+        cv
     );
 
     // El offset R debe ser positivo (el P(k) medido es positivo)
@@ -355,7 +373,8 @@ fn normalization_offset_is_characterized() {
         cv < 0.50,
         "CV de R(k) = {:.3} > 0.50: la forma del espectro está distorsionada\n\
          R(k) por bin: {:?}",
-        cv, r_vals
+        cv,
+        r_vals
     );
 
     // Validación interna del generador: amplitude_for_sigma8 es autoconsistente
@@ -367,12 +386,14 @@ fn normalization_offset_is_characterized() {
         let n_k = 512usize;
         let k_min = 1e-4f64;
         let k_max = 50.0f64;
-        let bins_full: Vec<(f64, f64)> = (0..n_k).map(|i| {
-            let k = k_min * (k_max / k_min).powf(i as f64 / (n_k - 1) as f64);
-            let tk = transfer_eh_nowiggle(k, &eh);
-            let pk = amp * amp * k.powf(N_S) * tk * tk;
-            (k, pk)
-        }).collect();
+        let bins_full: Vec<(f64, f64)> = (0..n_k)
+            .map(|i| {
+                let k = k_min * (k_max / k_min).powf(i as f64 / (n_k - 1) as f64);
+                let tk = transfer_eh_nowiggle(k, &eh);
+                let pk = amp * amp * k.powf(N_S) * tk * tk;
+                (k, pk)
+            })
+            .collect();
         let s = sigma_from_pk_bins(&bins_full, 8.0);
         s * s
     };
@@ -381,11 +402,15 @@ fn normalization_offset_is_characterized() {
     assert!(
         rel_err < 0.05,
         "Generador no es internamente consistente: sigma8_internal={:.4} target={:.4} err={:.2}%",
-        sigma8_internal, SIGMA8_TARGET, rel_err * 100.0
+        sigma8_internal,
+        SIGMA8_TARGET,
+        rel_err * 100.0
     );
     println!(
         "  Validación interna generador: sigma8_internal = {:.4} (target {:.4}, err {:.2}%)",
-        sigma8_internal, SIGMA8_TARGET, rel_err * 100.0
+        sigma8_internal,
+        SIGMA8_TARGET,
+        rel_err * 100.0
     );
 }
 
@@ -411,9 +436,13 @@ fn pk_spectral_shape_consistent_with_eh() {
     let masses: Vec<f64> = parts.iter().map(|p| p.mass).collect();
     let pk_bins = power_spectrum(&positions, &masses, BOX, NM);
 
-    assert!(pk_bins.len() >= 2, "Insuficientes bins de P(k) para comparación de forma");
+    assert!(
+        pk_bins.len() >= 2,
+        "Insuficientes bins de P(k) para comparación de forma"
+    );
 
-    let k_vals_hmpc: Vec<f64> = pk_bins.iter()
+    let k_vals_hmpc: Vec<f64> = pk_bins
+        .iter()
         .map(|b| b.k * H_DIMLESS / BOX_MPC_H)
         .collect();
     let theory_bins = theory_pk_at_bins(&k_vals_hmpc);
@@ -435,7 +464,7 @@ fn pk_spectral_shape_consistent_with_eh() {
             }
 
             let ratio_measured = pi_m / pj_m;
-            let ratio_theory   = pi_t / pj_t;
+            let ratio_theory = pi_t / pj_t;
 
             let rel_err = (ratio_measured / ratio_theory - 1.0).abs();
             n_pairs_total += 1;
@@ -456,14 +485,17 @@ fn pk_spectral_shape_consistent_with_eh() {
         fraction_ok >= 0.5,
         "Solo {}/{} pares ({:.0}%) de bins tienen ratio dentro del 30% de EH\n\
          k_bins: {:?}",
-        n_pairs_ok, n_pairs_total,
+        n_pairs_ok,
+        n_pairs_total,
         fraction_ok * 100.0,
         k_vals_hmpc
     );
 
     println!(
         "\n[phase30 forma espectral] {}/{} pares de bins dentro de 30% de EH ({:.0}%)",
-        n_pairs_ok, n_pairs_total, fraction_ok * 100.0
+        n_pairs_ok,
+        n_pairs_total,
+        fraction_ok * 100.0
     );
 
     // Verificar también el suprimido de alto k: T(k_max) < T(k_min)
@@ -474,7 +506,10 @@ fn pk_spectral_shape_consistent_with_eh() {
     assert!(
         t_max < t_min,
         "T(k_max={:.3}) = {:.4} ≥ T(k_min={:.3}) = {:.4} — función de transferencia invertida",
-        k_max_hmpc, t_max, k_min_hmpc, t_min
+        k_max_hmpc,
+        t_max,
+        k_min_hmpc,
+        t_min
     );
 }
 
@@ -539,8 +574,11 @@ fn pk_amplitude_grows_consistent_with_linear_d1() {
          mean P(k) ratio (lineal) = {:.3}\n\
          ratio/expected = {:.3}\n\
          bins usados = {}",
-        N_STEPS, A_INIT, a_final,
-        expected_growth_sq, mean_ratio,
+        N_STEPS,
+        A_INIT,
+        a_final,
+        expected_growth_sq,
+        mean_ratio,
         mean_ratio / expected_growth_sq,
         ratios.len()
     );
@@ -552,12 +590,16 @@ fn pk_amplitude_grows_consistent_with_linear_d1() {
     assert!(
         mean_ratio > lo,
         "Crecimiento demasiado lento: ratio={:.3} < {:.3} (0.15×expected={:.3})",
-        mean_ratio, lo, expected_growth_sq
+        mean_ratio,
+        lo,
+        expected_growth_sq
     );
     assert!(
         mean_ratio < hi,
         "Crecimiento demasiado rápido: ratio={:.3} > {:.3} (10×expected={:.3})",
-        mean_ratio, hi, expected_growth_sq
+        mean_ratio,
+        hi,
+        expected_growth_sq
     );
 }
 
@@ -597,7 +639,11 @@ fn lpt2_pk_consistent_with_1lpt() {
     let pk_2lpt = measure_pk(&parts_2lpt);
 
     assert!(!pk_1lpt.is_empty() && !pk_2lpt.is_empty(), "P(k) vacío");
-    assert_eq!(pk_1lpt.len(), pk_2lpt.len(), "Diferente número de bins 1LPT vs 2LPT");
+    assert_eq!(
+        pk_1lpt.len(),
+        pk_2lpt.len(),
+        "Diferente número de bins 1LPT vs 2LPT"
+    );
 
     let mut max_rel_diff = 0.0f64;
     let mut n_valid = 0usize;
@@ -617,10 +663,15 @@ fn lpt2_pk_consistent_with_1lpt() {
         "\n[phase30 2LPT vs 1LPT P(k)] {} bins válidos:\n\
          max |P_1lpt/P_2lpt - 1| = {:.4} ({:.2}%)\n\
          Corrección 2LPT en P(k) es subleading respecto al ruido de 8³",
-        n_valid, max_rel_diff, max_rel_diff * 100.0
+        n_valid,
+        max_rel_diff,
+        max_rel_diff * 100.0
     );
 
-    assert!(n_valid > 0, "No hay bins válidos para comparar 1LPT vs 2LPT");
+    assert!(
+        n_valid > 0,
+        "No hay bins válidos para comparar 1LPT vs 2LPT"
+    );
 
     assert!(
         max_rel_diff < 0.15,
@@ -654,25 +705,28 @@ fn k_bins_have_correct_physical_units() {
     assert!(!pk_bins.is_empty(), "P(k) vacío");
 
     // Valores esperados en unidades internas
-    let k_fund_expected_int = 2.0 * PI / BOX;           // 2π (primer bin)
-    let k_nyq_expected_int  = PI * NM as f64 / BOX;     // π·8 = 4π (último bin máximo)
+    let k_fund_expected_int = 2.0 * PI / BOX; // 2π (primer bin)
+    let k_nyq_expected_int = PI * NM as f64 / BOX; // π·8 = 4π (último bin máximo)
 
     let k_first_int = pk_bins.first().unwrap().k;
-    let k_last_int  = pk_bins.last().unwrap().k;
+    let k_last_int = pk_bins.last().unwrap().k;
 
     // El primer bin debe estar ≈ k_fund
     let ratio_first = k_first_int / k_fund_expected_int;
     assert!(
         (ratio_first - 1.0).abs() < 0.15,
         "k_primer_bin = {:.4} vs k_fund_esperado = {:.4} (ratio = {:.4}, debe ser ≈1 ±15%)",
-        k_first_int, k_fund_expected_int, ratio_first
+        k_first_int,
+        k_fund_expected_int,
+        ratio_first
     );
 
     // El último bin debe estar ≤ k_Nyq
     assert!(
         k_last_int <= k_nyq_expected_int * 1.05,
         "k_último_bin = {:.4} > k_Nyq = {:.4} — bins fuera del rango esperado",
-        k_last_int, k_nyq_expected_int
+        k_last_int,
+        k_nyq_expected_int
     );
 
     // Convertir a h/Mpc y verificar que coincide con k del IC generator
@@ -684,7 +738,8 @@ fn k_bins_have_correct_physical_units() {
     assert!(
         (ratio_hmpc - 1.0).abs() < 0.15,
         "k_fund de power_spectrum ({:.5} h/Mpc) vs IC generator ({:.5} h/Mpc) difieren > 15%",
-        k_fund_hmpc_ps, k_fund_hmpc_ic
+        k_fund_hmpc_ps,
+        k_fund_hmpc_ic
     );
 
     println!(
@@ -693,10 +748,15 @@ fn k_bins_have_correct_physical_units() {
          k_Nyq  [int]  = {:.4}  (máximo:   {:.4})\n\
          k_fund [h/Mpc]= {:.5}  (IC gen:   {:.5})\n\
          N bins = {}",
-        NM, BOX, BOX_MPC_H,
-        k_first_int, k_fund_expected_int,
-        k_last_int, k_nyq_expected_int,
-        k_fund_hmpc_ps, k_fund_hmpc_ic,
+        NM,
+        BOX,
+        BOX_MPC_H,
+        k_first_int,
+        k_fund_expected_int,
+        k_last_int,
+        k_nyq_expected_int,
+        k_fund_hmpc_ps,
+        k_fund_hmpc_ic,
         pk_bins.len()
     );
 }
@@ -719,11 +779,15 @@ fn pm_50_steps_no_nan_inf() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "PM 50 pasos: posición NaN/Inf gid={}: {:?}", p.global_id, p.position
+            "PM 50 pasos: posición NaN/Inf gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "PM 50 pasos: velocidad NaN/Inf gid={}: {:?}", p.global_id, p.velocity
+            "PM 50 pasos: velocidad NaN/Inf gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -749,11 +813,15 @@ fn treepm_50_steps_no_nan_inf() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "TreePM 50 pasos: posición NaN/Inf gid={}: {:?}", p.global_id, p.position
+            "TreePM 50 pasos: posición NaN/Inf gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "TreePM 50 pasos: velocidad NaN/Inf gid={}: {:?}", p.global_id, p.velocity
+            "TreePM 50 pasos: velocidad NaN/Inf gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -784,7 +852,7 @@ fn pm_treepm_pk_agree_in_linear_regime() {
     cfg_treepm.gravity.solver = gadget_ng_core::SolverKind::TreePm;
     cfg_treepm.gravity.theta = 0.5;
 
-    let mut parts_pm     = build_particles(&cfg_pm).expect("PM build");
+    let mut parts_pm = build_particles(&cfg_pm).expect("PM build");
     let mut parts_treepm = build_particles(&cfg_treepm).expect("TreePM build");
 
     // Evolución independiente
@@ -822,7 +890,10 @@ fn pm_treepm_pk_agree_in_linear_regime() {
          max |P_PM/P_TreePM - 1| = {:.3} ({:.1}%)\n\
          NOTA: tolerancia 35% para absorber ruido estadístico de N=8³\n\
          (N_modes/bin ~ 6-20 → ruido Poisson ~ 20-40%)",
-        N_STEPS, n_valid, max_rel_err, max_rel_err * 100.0
+        N_STEPS,
+        n_valid,
+        max_rel_err,
+        max_rel_err * 100.0
     );
 
     if n_valid > 0 {

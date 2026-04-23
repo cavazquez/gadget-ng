@@ -171,7 +171,7 @@ mod tests {
             timestep: crate::config::TimestepSection::default(),
             cosmology: crate::config::CosmologySection::default(),
             units: crate::config::UnitsSection::default(),
-        decomposition: Default::default(),
+            decomposition: Default::default(),
         }
     }
 

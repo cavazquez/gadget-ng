@@ -39,8 +39,7 @@ use gadget_ng_analysis::{
     power_spectrum::power_spectrum,
 };
 use gadget_ng_core::{
-    amplitude_for_sigma8,
-    build_particles,
+    amplitude_for_sigma8, build_particles,
     cosmology::{growth_factor_d_ratio, CosmologyParams},
     CosmologySection, EisensteinHuParams, GravitySection, IcKind, InitialConditionsSection,
     NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
@@ -67,7 +66,12 @@ const A_INIT: f64 = 0.05; // z≈19 con Z0Sigma8
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn eh() -> EisensteinHuParams {
-    EisensteinHuParams { omega_m: OMEGA_M, omega_b: OMEGA_B, h: H_DIMLESS, t_cmb: T_CMB }
+    EisensteinHuParams {
+        omega_m: OMEGA_M,
+        omega_b: OMEGA_B,
+        h: H_DIMLESS,
+        t_cmb: T_CMB,
+    }
 }
 
 fn cosmo_params() -> CosmologyParams {
@@ -75,7 +79,10 @@ fn cosmo_params() -> CosmologyParams {
 }
 
 fn halofit_cosmo() -> HalofitCosmo {
-    HalofitCosmo { omega_m0: OMEGA_M, omega_de0: OMEGA_L }
+    HalofitCosmo {
+        omega_m0: OMEGA_M,
+        omega_de0: OMEGA_L,
+    }
 }
 
 fn build_ic_config(seed: u64) -> RunConfig {
@@ -122,7 +129,7 @@ fn build_ic_config(seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -152,8 +159,11 @@ fn phase48_halofit_static() {
 
     let k_vals: Vec<f64> = vec![0.01, 0.05, 0.1, 0.3, 1.0, 3.0, 10.0];
     let p_nl = halofit_pk(&k_vals, &p_lin_z0, &cosmo, 0.0);
-    let ratios: Vec<f64> =
-        p_nl.iter().zip(&k_vals).map(|((_, pnl), &k)| pnl / p_lin_z0(k)).collect();
+    let ratios: Vec<f64> = p_nl
+        .iter()
+        .zip(&k_vals)
+        .map(|((_, pnl), &k)| pnl / p_lin_z0(k))
+        .collect();
 
     println!("  k [h/Mpc]  P_nl/P_lin");
     for (&k, &r) in k_vals.iter().zip(ratios.iter()) {
@@ -207,7 +217,7 @@ fn phase48_halofit_growth_consistency() {
 
     // Factor de crecimiento según Friedmann.
     let d_ratio = growth_factor_d_ratio(cp, a1, a2); // D(a1)/D(a2) = D(z=1)/D(z=0)
-    let expected_ratio = d_ratio * d_ratio;          // [D(z1)/D(z2)]²
+    let expected_ratio = d_ratio * d_ratio; // [D(z1)/D(z2)]²
 
     // Halofit a z=1 y z=0 con P_lin correctamente escalado.
     let p_lin_z1 = |k: f64| p_linear_eh(k, amp, N_S, growth_factor_d_ratio(cp, a1, 1.0), &e);
@@ -218,7 +228,10 @@ fn phase48_halofit_growth_consistency() {
     let p_nl_z1 = halofit_pk(&k_linear, &p_lin_z1, &cosmo, z1);
     let p_nl_z2 = halofit_pk(&k_linear, &p_lin_z2, &cosmo, z2);
 
-    println!("  D(z=1)/D(z=0) = {:.4}  → [D ratio]² = {:.4}", d_ratio, expected_ratio);
+    println!(
+        "  D(z=1)/D(z=0) = {:.4}  → [D ratio]² = {:.4}",
+        d_ratio, expected_ratio
+    );
     println!("  k [h/Mpc]   P_nl(z=1)/P_nl(z=0)   expected");
     let mut max_err = 0.0_f64;
     for (i, &k) in k_linear.iter().enumerate() {
@@ -267,7 +280,10 @@ fn phase48_pk_vs_halofit_at_ics() {
     let z_init = 1.0 / A_INIT - 1.0; // ≈ 19
     let cosmo = halofit_cosmo();
 
-    let k_eval: Vec<f64> = pk_corr.iter().map(|b| b.k * H_DIMLESS / BOX_MPC_H).collect();
+    let k_eval: Vec<f64> = pk_corr
+        .iter()
+        .map(|b| b.k * H_DIMLESS / BOX_MPC_H)
+        .collect();
     let p_lin_fn = |k: f64| p_lin_at_a(k, A_INIT);
     let p_halofit = halofit_pk(&k_eval, &p_lin_fn, &cosmo, z_init);
 
@@ -291,7 +307,10 @@ fn phase48_pk_vs_halofit_at_ics() {
         let ratio = bin.pk / p_hf;
         let err = (ratio - 1.0).abs();
         errors.push(err);
-        println!("  {k_hmpc_bin:8.4}   {:.3e}   {:.3e}   {ratio:.3}", bin.pk, p_hf);
+        println!(
+            "  {k_hmpc_bin:8.4}   {:.3e}   {:.3e}   {ratio:.3}",
+            bin.pk, p_hf
+        );
     }
 
     if errors.is_empty() {
@@ -302,7 +321,10 @@ fn phase48_pk_vs_halofit_at_ics() {
 
     errors.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median_err = errors[errors.len() / 2];
-    println!("\n  Mediana |ratio-1| = {median_err:.3}  ({} bins)", errors.len());
+    println!(
+        "\n  Mediana |ratio-1| = {median_err:.3}  ({} bins)",
+        errors.len()
+    );
 
     assert!(
         median_err < 0.50,
@@ -340,7 +362,11 @@ fn phase48_nonlinear_boost_redshift_dependence() {
             let p_lin = p_lin_fn(k);
             boosts.push(if p_lin > 0.0 { p / p_lin } else { 1.0 });
         }
-        println!("  {z:.1}  {:.3}  {:.3}", boosts[0], boosts.get(1).copied().unwrap_or(0.0));
+        println!(
+            "  {z:.1}  {:.3}  {:.3}",
+            boosts[0],
+            boosts.get(1).copied().unwrap_or(0.0)
+        );
 
         // A z=0, boost en k=1 debe ser significativo (> 2×).
         if z == 0.0 {

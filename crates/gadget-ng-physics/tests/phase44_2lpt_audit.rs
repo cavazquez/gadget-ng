@@ -35,10 +35,10 @@ use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
     cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, Psi2Variant, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
+    PerformanceSection, Psi2Variant, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_treepm::TreePmSolver;
@@ -139,7 +139,7 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -426,7 +426,11 @@ fn compute_pcref_stats(
     let med = median_abs(&log_ratios);
     let mu = mean(&ratios);
     let sd = stdev(&ratios);
-    let cv = if mu.abs() > 0.0 { sd / mu.abs() } else { f64::NAN };
+    let cv = if mu.abs() > 0.0 {
+        sd / mu.abs()
+    } else {
+        f64::NAN
+    };
     (med, mu, cv)
 }
 
@@ -552,9 +556,7 @@ fn ic_amplitudes_changed_by_fix() {
         })
         .fold(0.0_f64, f64::max);
 
-    println!(
-        "[phase44] ICs A/B (N={n}): max Δpos={max_dpos:.3e}, max Δvel={max_dvel:.3e}",
-    );
+    println!("[phase44] ICs A/B (N={n}): max Δpos={max_dpos:.3e}, max Δvel={max_dvel:.3e}",);
 
     // Debe ser **estrictamente no cero** (el fix cambia Ψ²), pero también
     // **no catastrófico** (ambas variantes son consistentes al 1º orden).
@@ -601,7 +603,11 @@ fn no_nan_inf_under_phase44_matrix() {
     for m in results {
         assert!(m.delta_rms.is_finite(), "δ_rms no finito en {:?}", m);
         assert!(m.v_rms.is_finite(), "v_rms no finito en {:?}", m);
-        assert!(m.median_log_pcref.is_finite(), "median_log no finito en {:?}", m);
+        assert!(
+            m.median_log_pcref.is_finite(),
+            "median_log no finito en {:?}",
+            m
+        );
         assert!(m.mean_pcref.is_finite(), "mean no finito en {:?}", m);
         assert!(
             m.growth_ratio_lowk.is_finite(),
@@ -641,11 +647,7 @@ fn fixed_variant_improves_growth_vs_legacy() {
     // Comparación a `a_final ≈ 0.10`. Esperamos que el fix reduzca
     // `|log10(P_c/P_ref)|` y/o acerque `growth_ratio_lowk` a 1.0.
     let results = get_results();
-    let fixed_last = results
-        .iter()
-        .rev()
-        .find(|m| m.variant == "fixed")
-        .unwrap();
+    let fixed_last = results.iter().rev().find(|m| m.variant == "fixed").unwrap();
     let bug_last = results
         .iter()
         .rev()

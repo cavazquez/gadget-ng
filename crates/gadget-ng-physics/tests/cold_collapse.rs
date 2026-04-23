@@ -38,7 +38,7 @@
 
 use gadget_ng_core::{
     build_particles, CosmologySection, GravitySection, IcKind, InitialConditionsSection,
-    OutputSection, PerformanceSection, Particle, RunConfig, SimulationSection, TimestepSection,
+    OutputSection, Particle, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
     UnitsSection, Vec3,
 };
 use gadget_ng_integrators::leapfrog_kdk_step;
@@ -132,7 +132,10 @@ fn virial_ratio(particles: &[Particle], eps2: f64) -> f64 {
 // ── Paso de integración ───────────────────────────────────────────────────────
 fn integrate(particles: &mut Vec<Particle>, n_steps: usize, dt: f64) {
     let eps2 = EPS * EPS;
-    let bh = BarnesHutGravity { theta: THETA, ..Default::default() };
+    let bh = BarnesHutGravity {
+        theta: THETA,
+        ..Default::default()
+    };
     let mut scratch = vec![Vec3::zero(); particles.len()];
     let n = particles.len();
 

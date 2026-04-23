@@ -93,13 +93,7 @@ impl AdaptiveDtCriterion {
     }
 
     /// Construcción ergonómica del criterio combinado aceleración + cosmología.
-    pub fn cosmo_acceleration(
-        eta: f64,
-        eps: f64,
-        kappa_h: f64,
-        dt_min: f64,
-        dt_max: f64,
-    ) -> Self {
+    pub fn cosmo_acceleration(eta: f64, eps: f64, kappa_h: f64, dt_min: f64, dt_max: f64) -> Self {
         Self::CosmoAcceleration {
             eta,
             eps,

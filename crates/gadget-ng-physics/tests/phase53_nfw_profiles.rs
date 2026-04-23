@@ -54,33 +54,46 @@ fn phase53_nfw_virial_properties() {
     let masses = [1e11_f64, 1e12, 1e13, 1e14, 1e15];
 
     println!("[phase53] Propiedades NFW a z=0:");
-    println!("  {:>10}  {:>6}  {:>8}  {:>10}  {:>10}",
-        "M_200", "c", "r_200", "ρ_s", "r_s");
+    println!(
+        "  {:>10}  {:>6}  {:>8}  {:>10}  {:>10}",
+        "M_200", "c", "r_200", "ρ_s", "r_s"
+    );
 
     for &m200 in &masses {
         let c = concentration_duffy2008(m200, 0.0);
         let profile = NfwProfile::from_m200_c(m200, c, rho_c);
         let r200 = r200_from_m200(m200, rho_c);
 
-        println!("  {:.1e}  {:>6.2}  {:>8.4}  {:>10.3e}  {:>10.4}",
-            m200, c, r200, profile.rho_s, profile.r_s);
+        println!(
+            "  {:.1e}  {:>6.2}  {:>8.4}  {:>10.3e}  {:>10.4}",
+            m200, c, r200, profile.rho_s, profile.r_s
+        );
 
         // M(<r_200) = M_200 por construcción
         let m_enc = profile.mass_enclosed(r200);
         let err_m = (m_enc / m200 - 1.0).abs();
-        assert!(err_m < 1e-10, "M(<r_200)/M_200 error = {err_m:.2e} para M={m200:.1e}");
+        assert!(
+            err_m < 1e-10,
+            "M(<r_200)/M_200 error = {err_m:.2e} para M={m200:.1e}"
+        );
 
         // ρ_mean(<r_200) = 200 ρ_crit
         let rho_mean = m_enc / ((4.0 / 3.0) * PI * r200.powi(3));
         let err_rho = (rho_mean / (200.0 * rho_c) - 1.0).abs();
-        assert!(err_rho < 1e-10, "ρ_mean(<r_200) error = {err_rho:.2e} para M={m200:.1e}");
+        assert!(
+            err_rho < 1e-10,
+            "ρ_mean(<r_200) error = {err_rho:.2e} para M={m200:.1e}"
+        );
 
         // r_s = r_200 / c por construcción
         let err_rs = (profile.r_s / (r200 / c) - 1.0).abs();
         assert!(err_rs < 1e-14, "r_s error = {err_rs:.2e}");
 
         // ρ_s debe ser positiva y razonable
-        assert!(profile.rho_s > 0.0 && profile.rho_s.is_finite(), "ρ_s no válido");
+        assert!(
+            profile.rho_s > 0.0 && profile.rho_s.is_finite(),
+            "ρ_s no válido"
+        );
     }
 }
 
@@ -106,13 +119,17 @@ fn phase53_concentration_mass_relation() {
         println!("  {:>10.1}  {:>8.3}  {:>8.3}", m200.log10(), c_d, c_b);
 
         // c decrece con M
-        assert!(c_d < prev_c * 1.01,
-            "c(Duffy) no decrece con M: c({m200:.1e})={c_d:.3} ≥ prev={prev_c:.3}");
+        assert!(
+            c_d < prev_c * 1.01,
+            "c(Duffy) no decrece con M: c({m200:.1e})={c_d:.3} ≥ prev={prev_c:.3}"
+        );
         prev_c = c_d;
 
         // Rango físico: c ∈ [1.5, 30] para M ∈ [10¹⁰, 10¹⁵]
-        assert!(c_d > 1.5 && c_d < 30.0,
-            "c({m200:.1e}) = {c_d:.3} fuera de [1.5, 30]");
+        assert!(
+            c_d > 1.5 && c_d < 30.0,
+            "c({m200:.1e}) = {c_d:.3} fuera de [1.5, 30]"
+        );
     }
 
     // Evolución con redshift: c decrece al aumentar z
@@ -126,10 +143,14 @@ fn phase53_concentration_mass_relation() {
     // Verificar valores de referencia de la literatura (±20%)
     let c_mw = concentration_duffy2008(1e12, 0.0);
     let c_cluster = concentration_duffy2008(1e14, 0.0);
-    assert!(c_mw > 4.5 && c_mw < 8.0,
-        "c(MW ~ 10¹²) = {c_mw:.3} fuera de [4.5, 8.0]");
-    assert!(c_cluster > 3.5 && c_cluster < 6.0,
-        "c(cluster ~ 10¹⁴) = {c_cluster:.3} fuera de [3.5, 6.0]");
+    assert!(
+        c_mw > 4.5 && c_mw < 8.0,
+        "c(MW ~ 10¹²) = {c_mw:.3} fuera de [4.5, 8.0]"
+    );
+    assert!(
+        c_cluster > 3.5 && c_cluster < 6.0,
+        "c(cluster ~ 10¹⁴) = {c_cluster:.3} fuera de [3.5, 6.0]"
+    );
 }
 
 // ── Test 3: Pendientes logarítmicas del perfil NFW ────────────────────────────
@@ -141,7 +162,10 @@ fn phase53_concentration_mass_relation() {
 /// Se verifica midiendo la pendiente logarítmica d ln ρ / d ln r en los extremos.
 #[test]
 fn phase53_nfw_profile_shapes() {
-    let profile = NfwProfile { rho_s: 1e7, r_s: 0.3 };
+    let profile = NfwProfile {
+        rho_s: 1e7,
+        r_s: 0.3,
+    };
 
     // Pendiente interna: en r = 0.01 r_s, esperamos γ ≈ -1
     let r_inner = 0.01 * profile.r_s;
@@ -191,8 +215,10 @@ fn phase53_mass_concentration_table() {
     let masses = [1e8_f64, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15];
 
     println!("[phase53] Tabla c(M) y propiedades NFW (Planck 2018, z=0):");
-    println!("  {:>7}  {:>5}  {:>7}  {:>7}  {:>10}  {:>7}",
-        "log10M", "c", "r_200", "r_s", "rho_s", "M(<2rs)/M200");
+    println!(
+        "  {:>7}  {:>5}  {:>7}  {:>7}  {:>10}  {:>7}",
+        "log10M", "c", "r_200", "r_s", "rho_s", "M(<2rs)/M200"
+    );
 
     for &m200 in &masses {
         let c = concentration_duffy2008(m200, 0.0);
@@ -200,17 +226,35 @@ fn phase53_mass_concentration_table() {
         let r200 = r200_from_m200(m200, rho_c);
         let m_2rs = profile.mass_enclosed(2.0 * profile.r_s) / m200;
 
-        println!("  {:>7.1}  {:>5.2}  {:>7.4}  {:>7.5}  {:>10.3e}  {:>7.4}",
-            m200.log10(), c, r200, profile.r_s, profile.rho_s, m_2rs);
+        println!(
+            "  {:>7.1}  {:>5.2}  {:>7.4}  {:>7.5}  {:>10.3e}  {:>7.4}",
+            m200.log10(),
+            c,
+            r200,
+            profile.r_s,
+            profile.rho_s,
+            m_2rs
+        );
 
         // Verificaciones básicas
-        assert!(r200 > 0.0 && r200 < 50.0, "r_200 fuera de rango para M={m200:.1e}");
-        assert!(profile.r_s > 0.0 && profile.r_s < 10.0, "r_s fuera de rango");
-        assert!(profile.rho_s > 0.0 && profile.rho_s.is_finite(), "ρ_s inválido");
+        assert!(
+            r200 > 0.0 && r200 < 50.0,
+            "r_200 fuera de rango para M={m200:.1e}"
+        );
+        assert!(
+            profile.r_s > 0.0 && profile.r_s < 10.0,
+            "r_s fuera de rango"
+        );
+        assert!(
+            profile.rho_s > 0.0 && profile.rho_s.is_finite(),
+            "ρ_s inválido"
+        );
 
         // Fracción de masa encerrada en 2r_s (típico: ~40-60%)
-        assert!(m_2rs > 0.1 && m_2rs < 1.0,
-            "M(<2r_s)/M_200 = {m_2rs:.4} fuera de [0.1, 1.0] para M={m200:.1e}");
+        assert!(
+            m_2rs > 0.1 && m_2rs < 1.0,
+            "M(<2r_s)/M_200 = {m_2rs:.4} fuera de [0.1, 1.0] para M={m200:.1e}"
+        );
     }
 }
 
@@ -228,7 +272,10 @@ fn phase53_circular_velocity_peak() {
     // g'(x) = x/(1+x)² → x²/(1+x)² = g(x) = ln(1+x) - x/(1+x)
     // Solución numérica: x ≈ 2.163
 
-    let profile = NfwProfile { rho_s: 1e7, r_s: 0.3 };
+    let profile = NfwProfile {
+        rho_s: 1e7,
+        r_s: 0.3,
+    };
 
     // Barrer r en [0.5 r_s, 10 r_s] y encontrar el máximo de M(<r)/r
     let n_r = 1000;
@@ -356,7 +403,9 @@ fn phase53_density_profile_from_fof_halo() {
 
     if n_halos == 0 {
         // Con ICs lineales a z=0 y N=16³, es normal no encontrar halos colapsados
-        println!("[phase53] Sin halos colapsados con ICs Zel'dovich en z=0 — normal a baja resolución");
+        println!(
+            "[phase53] Sin halos colapsados con ICs Zel'dovich en z=0 — normal a baja resolución"
+        );
         return;
     }
 
@@ -374,8 +423,10 @@ fn phase53_density_profile_from_fof_halo() {
     let c = concentration_duffy2008(m_halo, 0.0);
     let nfw = NfwProfile::from_m200_c(m_halo, c, rho_crit_val);
     let r200 = r200_from_m200(m_halo, rho_crit_val);
-    println!("[phase53] NFW esperado: c={c:.2}  r_200={r200:.4} Mpc/h  r_s={:.4} Mpc/h  ρ_s={:.3e}",
-        nfw.r_s, nfw.rho_s);
+    println!(
+        "[phase53] NFW esperado: c={c:.2}  r_200={r200:.4} Mpc/h  r_s={:.4} Mpc/h  ρ_s={:.3e}",
+        nfw.r_s, nfw.rho_s
+    );
 
     // ── Distancias radiales de las partículas del halo ────────────────────────
     let halo_particle_idx: Vec<usize> = (0..particles.len())
@@ -409,22 +460,37 @@ fn phase53_density_profile_from_fof_halo() {
     let bins = measure_density_profile(&radii, m_part, r_prof_min, r_prof_max, 10, Some(&nfw));
 
     println!("[phase53] Perfil de densidad del halo más masivo:");
-    println!("  {:>8}  {:>8}  {:>8}  {:>10}  {:>10}",
-        "r (Mpc/h)", "n_part", "ρ_med", "ρ_NFW", "ratio");
+    println!(
+        "  {:>8}  {:>8}  {:>8}  {:>10}  {:>10}",
+        "r (Mpc/h)", "n_part", "ρ_med", "ρ_NFW", "ratio"
+    );
     for bin in &bins {
         if bin.rho_nfw > 0.0 {
-            let ratio = if bin.rho > 0.0 { bin.rho / bin.rho_nfw } else { 0.0 };
-            println!("  {:>8.4}  {:>8}  {:>8.3e}  {:>10.3e}  {:>10.3}",
-                bin.r, bin.n_part, bin.rho, bin.rho_nfw, ratio);
+            let ratio = if bin.rho > 0.0 {
+                bin.rho / bin.rho_nfw
+            } else {
+                0.0
+            };
+            println!(
+                "  {:>8.4}  {:>8}  {:>8.3e}  {:>10.3e}  {:>10.3}",
+                bin.r, bin.n_part, bin.rho, bin.rho_nfw, ratio
+            );
         }
     }
 
     // Solo verificamos que la infraestructura funciona (bins con datos razonables)
     let bins_with_data = bins.iter().filter(|b| b.n_part > 0).count();
-    println!("[phase53] {bins_with_data} bins con partículas de {}", bins.len());
+    println!(
+        "[phase53] {bins_with_data} bins con partículas de {}",
+        bins.len()
+    );
 
     // El perfil debe tener bins con densidades positivas y finitas
     for bin in bins.iter().filter(|b| b.n_part > 0) {
-        assert!(bin.rho.is_finite() && bin.rho > 0.0, "ρ no válido en r={:.4}", bin.r);
+        assert!(
+            bin.rho.is_finite() && bin.rho > 0.0,
+            "ρ no válido en r={:.4}",
+            bin.r
+        );
     }
 }

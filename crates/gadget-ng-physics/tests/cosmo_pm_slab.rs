@@ -13,11 +13,8 @@
 use gadget_ng_core::Vec3;
 use gadget_ng_parallel::SerialRuntime;
 use gadget_ng_pm::{
-    cic,
-    fft_poisson,
-    slab_fft::{
-        solve_forces_slab, SlabLayout,
-    },
+    cic, fft_poisson,
+    slab_fft::{solve_forces_slab, SlabLayout},
     slab_pm,
 };
 use std::f64::consts::PI;
@@ -56,11 +53,17 @@ fn slab_layout_covers_all_planes() {
                 assert_eq!(layout.nz_local, nm / n_ranks);
                 assert_eq!(layout.z_lo_idx, r * layout.nz_local);
                 for iz in layout.z_lo_idx..layout.z_lo_idx + layout.nz_local {
-                    assert!(!covered[iz], "plano {iz} cubierto dos veces (nm={nm} P={n_ranks})");
+                    assert!(
+                        !covered[iz],
+                        "plano {iz} cubierto dos veces (nm={nm} P={n_ranks})"
+                    );
                     covered[iz] = true;
                 }
             }
-            assert!(covered.iter().all(|&c| c), "no todos los planos cubiertos nm={nm} P={n_ranks}");
+            assert!(
+                covered.iter().all(|&c| c),
+                "no todos los planos cubiertos nm={nm} P={n_ranks}"
+            );
         }
     }
 }
@@ -164,7 +167,9 @@ fn alltoall_transpose_roundtrip_p1() {
         assert!(
             fx[i].abs() < 1e-10 && fy[i].abs() < 1e-10 && fz[i].abs() < 1e-10,
             "densidad uniforme debe dar fuerza≈0 en celda {i}: fx={:.2e} fy={:.2e} fz={:.2e}",
-            fx[i], fy[i], fz[i]
+            fx[i],
+            fy[i],
+            fz[i]
         );
     }
 
@@ -182,9 +187,15 @@ fn alltoall_transpose_roundtrip_p1() {
     let [fx2_slab, _, _] = solve_forces_slab(&density2, &layout, g, box_size, None, &rt);
     let [fx2_ref, _, _] = fft_poisson::solve_forces(&density2, g, nm, box_size);
 
-    let max_err = fx2_slab.iter().zip(fx2_ref.iter()).map(|(a, b)| (a - b).abs())
+    let max_err = fx2_slab
+        .iter()
+        .zip(fx2_ref.iter())
+        .map(|(a, b)| (a - b).abs())
         .fold(0.0_f64, f64::max);
-    assert!(max_err < 1e-10, "transpose roundtrip: max error vs serial = {max_err:.2e}");
+    assert!(
+        max_err < 1e-10,
+        "transpose roundtrip: max error vs serial = {max_err:.2e}"
+    );
 }
 
 // ── Test 6: Solve slab P=1 idéntico a PM serial ───────────────────────────────
@@ -203,24 +214,18 @@ fn slab_solve_matches_serial_pm() {
     let density = cic::assign(&pos, &masses, box_size, nm);
 
     let [fx_s, fy_s, fz_s] = fft_poisson::solve_forces(&density, g, nm, box_size);
-    let [fx_d, fy_d, fz_d] =
-        solve_forces_slab(&density, &layout, g, box_size, None, &rt);
+    let [fx_d, fy_d, fz_d] = solve_forces_slab(&density, &layout, g, box_size, None, &rt);
 
     let tol = 1e-10;
     for i in 0..nm * nm * nm {
         assert!(
             (fx_s[i] - fx_d[i]).abs() < tol,
             "fx slab != serial en {i}: slab={:.6e} serial={:.6e}",
-            fx_d[i], fx_s[i]
+            fx_d[i],
+            fx_s[i]
         );
-        assert!(
-            (fy_s[i] - fy_d[i]).abs() < tol,
-            "fy slab != serial en {i}"
-        );
-        assert!(
-            (fz_s[i] - fz_d[i]).abs() < tol,
-            "fz slab != serial en {i}"
-        );
+        assert!((fy_s[i] - fy_d[i]).abs() < tol, "fy slab != serial en {i}");
+        assert!((fz_s[i] - fz_d[i]).abs() < tol, "fz slab != serial en {i}");
     }
 }
 

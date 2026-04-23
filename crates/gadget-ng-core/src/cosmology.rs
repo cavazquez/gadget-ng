@@ -460,8 +460,7 @@ pub fn growth_factor_d(params: CosmologyParams, a: f64) -> f64 {
     }
     let om_a = params.omega_m / denom;
     let ol_a = params.omega_lambda * a3 / denom;
-    let bracket =
-        om_a.max(0.0).powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0);
+    let bracket = om_a.max(0.0).powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0);
     if bracket <= 0.0 {
         return a;
     }

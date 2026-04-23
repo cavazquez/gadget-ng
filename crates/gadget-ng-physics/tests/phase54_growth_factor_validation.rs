@@ -19,11 +19,14 @@ use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
 use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
-    cosmology::{adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    cosmology::{
+        adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl, growth_factor_d_ratio,
+        CosmologyParams,
+    },
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
+    Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -58,7 +61,12 @@ const DT_MAX: f64 = 0.05;
 // ── Helpers físicos ───────────────────────────────────────────────────────────
 
 fn eh_params() -> EisensteinHuParams {
-    EisensteinHuParams { omega_m: OMEGA_M, omega_b: OMEGA_B, h: H_DIMLESS, t_cmb: T_CMB }
+    EisensteinHuParams {
+        omega_m: OMEGA_M,
+        omega_b: OMEGA_B,
+        h: H_DIMLESS,
+        t_cmb: T_CMB,
+    }
 }
 
 fn cosmo_params() -> CosmologyParams {
@@ -145,10 +153,16 @@ fn eh_pk_at_z0(k_hmpc: f64) -> f64 {
 }
 
 fn median(mut v: Vec<f64>) -> f64 {
-    if v.is_empty() { return f64::NAN; }
+    if v.is_empty() {
+        return f64::NAN;
+    }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let n = v.len();
-    if n % 2 == 1 { v[n / 2] } else { 0.5 * (v[n / 2 - 1] + v[n / 2]) }
+    if n % 2 == 1 {
+        v[n / 2]
+    } else {
+        0.5 * (v[n / 2 - 1] + v[n / 2])
+    }
 }
 
 // ── Evolución PM adaptativa con G consistente ─────────────────────────────────
@@ -159,11 +173,16 @@ fn evolve_pm_to_a_adaptive(
     a_start: f64,
     a_target: f64,
 ) -> f64 {
-    if a_start >= a_target { return a_start; }
+    if a_start >= a_target {
+        return a_start;
+    }
     let cosmo = cosmo_params();
     let g_code = g_consistent();
     let softening = BOX / (n_mesh as f64 * 20.0);
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let n = parts.len();
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = a_start;
@@ -180,19 +199,27 @@ fn evolve_pm_to_a_adaptive(
     let max_iter = 200_000usize;
     let mut step = 0usize;
     for _ in 0..max_iter {
-        if a >= a_target { break; }
+        if a >= a_target {
+            break;
+        }
         step += 1;
         if step % 200 == 0 {
             eprintln!("[phase54] N={n_mesh} step={step} a={a:.4} → a_target={a_target:.4}");
         }
-        let acc_max = scratch.iter().map(|v| (v.x * v.x + v.y * v.y + v.z * v.z).sqrt())
+        let acc_max = scratch
+            .iter()
+            .map(|v| (v.x * v.x + v.y * v.y + v.z * v.z).sqrt())
             .fold(0.0_f64, f64::max);
-        let dt = adaptive_dt_cosmo(cosmo, a, acc_max, softening, ETA_GRAV, ALPHA_H, DT_MAX)
-            .max(1e-8);
+        let dt =
+            adaptive_dt_cosmo(cosmo, a, acc_max, softening, ETA_GRAV, ALPHA_H, DT_MAX).max(1e-8);
 
         let g_cosmo = gravity_coupling_qksl(g_code, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
@@ -225,8 +252,12 @@ struct SnapshotResult54 {
 
 impl SnapshotResult54 {
     fn to_json(&self) -> serde_json::Value {
-        let ratios: Vec<f64> = self.pk_corr.iter().zip(self.pk_ref.iter())
-            .map(|(&c, &r)| c / r).collect();
+        let ratios: Vec<f64> = self
+            .pk_corr
+            .iter()
+            .zip(self.pk_ref.iter())
+            .map(|(&c, &r)| c / r)
+            .collect();
         let errs: Vec<f64> = ratios.iter().map(|r| (r - 1.0).abs()).collect();
         json!({
             "n": self.n,
@@ -243,7 +274,10 @@ impl SnapshotResult54 {
 // ── Simulación por N ──────────────────────────────────────────────────────────
 
 fn run_simulation_n(n: usize) -> Vec<SnapshotResult54> {
-    eprintln!("[phase54] Iniciando N={n}³ con G_consistent={:.4e}", g_consistent());
+    eprintln!(
+        "[phase54] Iniciando N={n}³ con G_consistent={:.4e}",
+        g_consistent()
+    );
     let cfg = build_run_config(n);
     let mut parts = build_particles(&cfg).expect("build_particles falló");
     let model = RnModel::phase47_default();
@@ -264,7 +298,9 @@ fn run_simulation_n(n: usize) -> Vec<SnapshotResult54> {
         let mut prs = Vec::new();
         let cosmo = cosmo_params();
         for bin in &pk_corr {
-            if bin.pk <= 0.0 { continue; }
+            if bin.pk <= 0.0 {
+                continue;
+            }
             let k_h = k_internal_to_hmpc(bin.k);
             let d_ratio = growth_factor_d_ratio(cosmo, a_current, 1.0);
             let p_ref = eh_pk_at_z0(k_h) * d_ratio * d_ratio;
@@ -275,7 +311,14 @@ fn run_simulation_n(n: usize) -> Vec<SnapshotResult54> {
             }
         }
         eprintln!("[phase54] N={n} a={a_current:.3}  bins={}", ks.len());
-        results.push(SnapshotResult54 { n, a_target: a_t, a_actual: a_current, ks_hmpc: ks, pk_corr: pcs, pk_ref: prs });
+        results.push(SnapshotResult54 {
+            n,
+            a_target: a_t,
+            a_actual: a_current,
+            ks_hmpc: ks,
+            pk_corr: pcs,
+            pk_ref: prs,
+        });
     }
     results
 }
@@ -283,8 +326,12 @@ fn run_simulation_n(n: usize) -> Vec<SnapshotResult54> {
 // ── Matriz global con OnceLock ────────────────────────────────────────────────
 
 fn run_full_matrix() -> Vec<SnapshotResult54> {
-    let skip_n256 = std::env::var("PHASE54_SKIP_N256").map(|v| v == "1").unwrap_or(false);
-    let skip_n128 = std::env::var("PHASE54_SKIP_N128").map(|v| v == "1").unwrap_or(false);
+    let skip_n256 = std::env::var("PHASE54_SKIP_N256")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let skip_n128 = std::env::var("PHASE54_SKIP_N128")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let mut all = Vec::new();
     for &n in N_VALUES.iter() {
         if n == 256 && skip_n256 {
@@ -297,7 +344,10 @@ fn run_full_matrix() -> Vec<SnapshotResult54> {
         }
         let t0 = std::time::Instant::now();
         all.extend(run_simulation_n(n));
-        eprintln!("[phase54] ✓ N={n} completado en {:.1}s", t0.elapsed().as_secs_f64());
+        eprintln!(
+            "[phase54] ✓ N={n} completado en {:.1}s",
+            t0.elapsed().as_secs_f64()
+        );
     }
     all
 }
@@ -314,7 +364,9 @@ fn matrix() -> &'static [SnapshotResult54] {
 fn dump_results(m: &[SnapshotResult54]) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static DUMPED: AtomicBool = AtomicBool::new(false);
-    if DUMPED.swap(true, Ordering::SeqCst) { return; }
+    if DUMPED.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let dir = phase54_dir();
     let all: Vec<_> = m.iter().map(|r| r.to_json()).collect();
     let txt = serde_json::to_string_pretty(&json!({
@@ -323,14 +375,17 @@ fn dump_results(m: &[SnapshotResult54]) {
         "sigma8": SIGMA8,
         "a_snapshots": A_SNAPSHOTS,
         "snapshots": all,
-    })).unwrap_or_default();
+    }))
+    .unwrap_or_default();
     let _ = fs::write(dir.join("snapshots.json"), txt);
 }
 
 fn phase54_dir() -> PathBuf {
     let mut d = PathBuf::from(std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
         let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.pop(); p.pop(); p.push("target");
+        p.pop();
+        p.pop();
+        p.push("target");
         p.to_string_lossy().to_string()
     }));
     d.push("phase54");
@@ -339,12 +394,17 @@ fn phase54_dir() -> PathBuf {
 }
 
 fn find_snap(n: usize, a_target: f64) -> Option<&'static SnapshotResult54> {
-    matrix().iter().find(|r| r.n == n && (r.a_target - a_target).abs() < 1e-9)
+    matrix()
+        .iter()
+        .find(|r| r.n == n && (r.a_target - a_target).abs() < 1e-9)
 }
 
 /// Error relativo mediano |P_sim/P_ref - 1| sobre todos los bins de un snapshot
 fn median_rel_err(snap: &SnapshotResult54) -> f64 {
-    let errs: Vec<f64> = snap.pk_corr.iter().zip(snap.pk_ref.iter())
+    let errs: Vec<f64> = snap
+        .pk_corr
+        .iter()
+        .zip(snap.pk_ref.iter())
         .map(|(&c, &r)| (c / r - 1.0).abs())
         .collect();
     median(errs)
@@ -369,14 +429,23 @@ fn growth_ratio_err(n: usize, a_target: f64) -> f64 {
 fn phase54_sigma8_normalization() {
     let m = matrix();
     for &n in N_VALUES.iter() {
-        let snap = match m.iter().find(|r| r.n == n && (r.a_target - A_INIT).abs() < 1e-9) {
+        let snap = match m
+            .iter()
+            .find(|r| r.n == n && (r.a_target - A_INIT).abs() < 1e-9)
+        {
             Some(s) => s,
-            None => { eprintln!("[phase54] N={n} no encontrado, saltando"); continue; }
+            None => {
+                eprintln!("[phase54] N={n} no encontrado, saltando");
+                continue;
+            }
         };
         // Integrar sigma8 desde el P(k) medido en el IC snapshot
         // Estimación simple: comparar P(k) en el IC vs P_ref
         let med_err = median_rel_err(snap);
-        eprintln!("[phase54] sigma8 check: N={n} mediana_err_pk={:.3}", med_err);
+        eprintln!(
+            "[phase54] sigma8 check: N={n} mediana_err_pk={:.3}",
+            med_err
+        );
         assert!(
             med_err < 0.30,
             "N={n}: error mediano en IC ({:.3}) supera 30% — revisar normalización sigma8",
@@ -402,16 +471,37 @@ fn phase54_sigma8_normalization() {
 fn phase54_growth_d2_n64() {
     let n = 64;
     if matrix().iter().all(|r| r.n != n) {
-        eprintln!("[phase54] N=64 no disponible, saltando"); return;
+        eprintln!("[phase54] N=64 no disponible, saltando");
+        return;
     }
-    for &a in &[A_SNAPSHOTS[1], A_SNAPSHOTS[2], A_SNAPSHOTS[3], A_SNAPSHOTS[4], A_SNAPSHOTS[5]] {
-        let snap = match find_snap(n, a) { Some(s) => s, None => continue };
+    for &a in &[
+        A_SNAPSHOTS[1],
+        A_SNAPSHOTS[2],
+        A_SNAPSHOTS[3],
+        A_SNAPSHOTS[4],
+        A_SNAPSHOTS[5],
+    ] {
+        let snap = match find_snap(n, a) {
+            Some(s) => s,
+            None => continue,
+        };
         let err = growth_ratio_err(n, a);
-        eprintln!("[phase54] N={n} a={a:.2}→{:.3} bins={} err_vs_linear={:.4}",
-            snap.a_actual, snap.ks_hmpc.len(), err);
-        assert!(snap.ks_hmpc.len() >= 4, "N={n} a={a}: menos de 4 bins — posible crash");
+        eprintln!(
+            "[phase54] N={n} a={a:.2}→{:.3} bins={} err_vs_linear={:.4}",
+            snap.a_actual,
+            snap.ks_hmpc.len(),
+            err
+        );
+        assert!(
+            snap.ks_hmpc.len() >= 4,
+            "N={n} a={a}: menos de 4 bins — posible crash"
+        );
         // Verificación de no-explosión: P no puede ser > 1000× o < 1e-4× la referencia
-        assert!(err < 999.0, "N={n} a={a}: err={:.2} — simulación inestable", err);
+        assert!(
+            err < 999.0,
+            "N={n} a={a}: err={:.2} — simulación inestable",
+            err
+        );
     }
     eprintln!("[phase54] N=64: simulación estable hasta a=0.50 ✓");
     eprintln!("[phase54] (El error vs D²(a) lineal refleja que G_consistent con");
@@ -423,14 +513,35 @@ fn phase54_growth_d2_n64() {
 fn phase54_growth_d2_n128() {
     let n = 128;
     if matrix().iter().all(|r| r.n != n) {
-        eprintln!("[phase54] N=128 no disponible, saltando"); return;
+        eprintln!("[phase54] N=128 no disponible, saltando");
+        return;
     }
-    for &a in &[A_SNAPSHOTS[1], A_SNAPSHOTS[2], A_SNAPSHOTS[3], A_SNAPSHOTS[4], A_SNAPSHOTS[5]] {
-        let snap = match find_snap(n, a) { Some(s) => s, None => continue };
+    for &a in &[
+        A_SNAPSHOTS[1],
+        A_SNAPSHOTS[2],
+        A_SNAPSHOTS[3],
+        A_SNAPSHOTS[4],
+        A_SNAPSHOTS[5],
+    ] {
+        let snap = match find_snap(n, a) {
+            Some(s) => s,
+            None => continue,
+        };
         let err = growth_ratio_err(n, a);
-        eprintln!("[phase54] N={n} a={a:.2} bins={} err={:.4}", snap.ks_hmpc.len(), err);
-        assert!(snap.ks_hmpc.len() >= 4, "N={n} a={a}: menos de 4 bins — posible crash");
-        assert!(err < 999.0, "N={n} a={a}: err={:.2} — simulación inestable", err);
+        eprintln!(
+            "[phase54] N={n} a={a:.2} bins={} err={:.4}",
+            snap.ks_hmpc.len(),
+            err
+        );
+        assert!(
+            snap.ks_hmpc.len() >= 4,
+            "N={n} a={a}: menos de 4 bins — posible crash"
+        );
+        assert!(
+            err < 999.0,
+            "N={n} a={a}: err={:.2} — simulación inestable",
+            err
+        );
     }
 }
 
@@ -439,14 +550,35 @@ fn phase54_growth_d2_n128() {
 fn phase54_growth_d2_n256() {
     let n = 256;
     if matrix().iter().all(|r| r.n != n) {
-        eprintln!("[phase54] N=256 no disponible (PHASE54_SKIP_N256=1), saltando"); return;
+        eprintln!("[phase54] N=256 no disponible (PHASE54_SKIP_N256=1), saltando");
+        return;
     }
-    for &a in &[A_SNAPSHOTS[1], A_SNAPSHOTS[2], A_SNAPSHOTS[3], A_SNAPSHOTS[4], A_SNAPSHOTS[5]] {
-        let snap = match find_snap(n, a) { Some(s) => s, None => continue };
+    for &a in &[
+        A_SNAPSHOTS[1],
+        A_SNAPSHOTS[2],
+        A_SNAPSHOTS[3],
+        A_SNAPSHOTS[4],
+        A_SNAPSHOTS[5],
+    ] {
+        let snap = match find_snap(n, a) {
+            Some(s) => s,
+            None => continue,
+        };
         let err = growth_ratio_err(n, a);
-        eprintln!("[phase54] N={n} a={a:.2} bins={} err={:.4}", snap.ks_hmpc.len(), err);
-        assert!(snap.ks_hmpc.len() >= 4, "N={n} a={a}: menos de 4 bins — posible crash");
-        assert!(err < 999.0, "N={n} a={a}: err={:.2} — simulación inestable", err);
+        eprintln!(
+            "[phase54] N={n} a={a:.2} bins={} err={:.4}",
+            snap.ks_hmpc.len(),
+            err
+        );
+        assert!(
+            snap.ks_hmpc.len() >= 4,
+            "N={n} a={a}: menos de 4 bins — posible crash"
+        );
+        assert!(
+            err < 999.0,
+            "N={n} a={a}: err={:.2} — simulación inestable",
+            err
+        );
     }
 }
 
@@ -456,7 +588,9 @@ fn phase54_growth_d2_n256() {
 #[test]
 fn phase54_convergence_with_n() {
     let a_test = 0.50;
-    let ns_available: Vec<usize> = N_VALUES.iter().copied()
+    let ns_available: Vec<usize> = N_VALUES
+        .iter()
+        .copied()
         .filter(|&n| find_snap(n, a_test).is_some())
         .collect();
     eprintln!("[phase54] Convergencia verificada con N={:?}", ns_available);
@@ -466,29 +600,46 @@ fn phase54_convergence_with_n() {
     }
     // Con un solo N: verificar que al menos hay bins y el error es < 99%
     for &n in &ns_available {
-        let snap = match find_snap(n, a_test) { Some(s) => s, None => continue };
+        let snap = match find_snap(n, a_test) {
+            Some(s) => s,
+            None => continue,
+        };
         let nbins = snap.ks_hmpc.len();
-        eprintln!("[phase54] N={n} a={a_test:.2} bins={nbins} err={:.4}", median_rel_err(snap));
+        eprintln!(
+            "[phase54] N={n} a={a_test:.2} bins={nbins} err={:.4}",
+            median_rel_err(snap)
+        );
         assert!(nbins >= 4, "N={n}: menos de 4 bins a a={a_test}");
         // Simulación no explota: error < 99% (amplio para permitir libre streaming)
-        assert!(median_rel_err(snap) < 0.99,
-            "N={n} a={a_test}: simulación posiblemente explosiva (error>99%)");
+        assert!(
+            median_rel_err(snap) < 0.99,
+            "N={n} a={a_test}: simulación posiblemente explosiva (error>99%)"
+        );
     }
     // Con múltiples N: verificar convergencia relativa
     if ns_available.len() >= 2 {
-        let errs: Vec<(usize, f64)> = ns_available.iter()
+        let errs: Vec<(usize, f64)> = ns_available
+            .iter()
             .map(|&n| (n, growth_ratio_err(n, a_test)))
             .collect();
         let valid: Vec<(usize, f64)> = errs.iter().copied().filter(|(_, e)| !e.is_nan()).collect();
         if valid.len() >= 2 {
             let err_low_n = valid[0].1;
             let err_high_n = valid[valid.len() - 1].1;
-            eprintln!("[phase54] N={}: err={:.4}, N={}: err={:.4}",
-                valid[0].0, err_low_n, valid.last().unwrap().0, err_high_n);
+            eprintln!(
+                "[phase54] N={}: err={:.4}, N={}: err={:.4}",
+                valid[0].0,
+                err_low_n,
+                valid.last().unwrap().0,
+                err_high_n
+            );
             assert!(
                 err_high_n <= err_low_n * 2.0,
                 "El error empeora mucho al aumentar N: N={} err={:.4} vs N={} err={:.4}",
-                valid.last().unwrap().0, err_high_n, valid[0].0, err_low_n
+                valid.last().unwrap().0,
+                err_high_n,
+                valid[0].0,
+                err_low_n
             );
         }
     }

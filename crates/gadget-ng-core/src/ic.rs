@@ -13,7 +13,9 @@ pub enum IcError {
     TwoBodyCount,
     #[error("lattice ic requires a perfect cube particle_count = n^3, got {0}")]
     LatticeNotCube(usize),
-    #[error("perturbed_lattice ic requires cosmology.enabled = true to use velocity_amplitude > 0")]
+    #[error(
+        "perturbed_lattice ic requires cosmology.enabled = true to use velocity_amplitude > 0"
+    )]
     PerturbedLatticeVelNoCosmo,
     #[error(
         "zeldovich ic requires particle_count == grid_size^3: got particle_count={particle_count}, grid_size={grid_size}, grid_size^3={grid_cube}"
@@ -213,7 +215,8 @@ fn plummer_ics(
     // Cada gid → estado LCG bien definido.
     let mut particles: Vec<Particle> = (0..n)
         .map(|gid| {
-            let mut lcg = LcgState(seed.wrapping_add((gid as u64).wrapping_mul(0x9e3779b97f4a7c15)));
+            let mut lcg =
+                LcgState(seed.wrapping_add((gid as u64).wrapping_mul(0x9e3779b97f4a7c15)));
             // Radio (inversión de CDF)
             let r = plummer_cdf_inv(lcg.next_f64(), a);
             // Posición aleatoria en la esfera

@@ -154,11 +154,11 @@ fn halo_geometric_3d_filter() {
 
     // Partículas del rango A (dominio [0,0.5)³).
     let particles_a = vec![
-        make_particle(0, 0.1, 0.1, 0.1), // lejos del borde → NO enviar
+        make_particle(0, 0.1, 0.1, 0.1),    // lejos del borde → NO enviar
         make_particle(1, 0.45, 0.45, 0.45), // dentro de la zona halo 3D → SÍ enviar
-        make_particle(2, 0.48, 0.1, 0.1),  // cerca en x pero no en y/z → NO enviar
+        make_particle(2, 0.48, 0.1, 0.1),   // cerca en x pero no en y/z → NO enviar
         make_particle(3, 0.48, 0.48, 0.48), // cerca en todas → SÍ enviar
-        make_particle(4, 0.3, 0.45, 0.45), // cerca en y/z pero no en x → NO enviar
+        make_particle(4, 0.3, 0.45, 0.45),  // cerca en y/z pero no en x → NO enviar
     ];
 
     // AABB del rango B.
@@ -183,9 +183,22 @@ fn halo_geometric_3d_filter() {
 
     // Solo las partículas 1 y 3 deben estar dentro de la AABB 3D expandida.
     let ids: Vec<usize> = in_halo.iter().map(|p| p.global_id).collect();
-    assert!(ids.contains(&1), "partícula 1 debe estar en el halo 3D; ids={:?}", ids);
-    assert!(ids.contains(&3), "partícula 3 debe estar en el halo 3D; ids={:?}", ids);
-    assert_eq!(ids.len(), 2, "solo 2 partículas deben estar en el halo 3D; ids={:?}", ids);
+    assert!(
+        ids.contains(&1),
+        "partícula 1 debe estar en el halo 3D; ids={:?}",
+        ids
+    );
+    assert!(
+        ids.contains(&3),
+        "partícula 3 debe estar en el halo 3D; ids={:?}",
+        ids
+    );
+    assert_eq!(
+        ids.len(),
+        2,
+        "solo 2 partículas deben estar en el halo 3D; ids={:?}",
+        ids
+    );
 }
 
 /// Verifica que el allgather_f64 del SerialRuntime devuelve los datos locales.
@@ -195,7 +208,10 @@ fn allgather_f64_serial_returns_local() {
     let local = vec![1.0f64, 2.0, 3.0];
     let result = rt.allgather_f64(&local);
     assert_eq!(result.len(), 1, "serial: 1 rango");
-    assert_eq!(result[0], local, "serial allgather debe devolver datos propios");
+    assert_eq!(
+        result[0], local,
+        "serial allgather debe devolver datos propios"
+    );
 }
 
 /// Verifica que alltoallv_f64 en serial no transfiere datos (sin otros rangos).
@@ -206,5 +222,8 @@ fn alltoallv_f64_serial_noop() {
     let received = rt.alltoallv_f64(&sends);
     // En serial, no hay otros rangos a los que enviar; recibimos vacío.
     assert_eq!(received.len(), 1);
-    assert!(received[0].is_empty(), "serial alltoallv: no hay datos recibidos de otros rangos");
+    assert!(
+        received[0].is_empty(),
+        "serial alltoallv: no hay datos recibidos de otros rangos"
+    );
 }

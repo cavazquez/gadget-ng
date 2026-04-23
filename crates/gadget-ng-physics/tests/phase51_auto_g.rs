@@ -27,11 +27,11 @@
 //!    con `auto_g=true`. Verifica que la simulación completa sin explosión.
 
 use gadget_ng_core::{
-    build_particles, cosmo_consistency_error, g_code_consistent,
+    build_particles, cosmo_consistency_error,
     cosmology::{gravity_coupling_qksl, CosmologyParams},
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection,
-    RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    g_code_consistent, wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -127,7 +127,8 @@ fn phase51_auto_g_effective_g() {
 #[test]
 fn phase51_legacy_g_diagnostic() {
     let cfg = base_cfg(1.0, false); // G=1 legacy, auto_g desactivado
-    let (g_consistent, rel_err) = cfg.cosmo_g_diagnostic()
+    let (g_consistent, rel_err) = cfg
+        .cosmo_g_diagnostic()
         .expect("cosmo_g_diagnostic debe devolver Some cuando cosmology.enabled=true");
 
     println!(
@@ -157,7 +158,8 @@ fn phase51_consistent_g_no_warning() {
     let g_correct = g_code_consistent(OMEGA_M, H0);
     let cfg = base_cfg(g_correct, false); // G correcto, auto_g desactivado
 
-    let (g_consistent, rel_err) = cfg.cosmo_g_diagnostic()
+    let (g_consistent, rel_err) = cfg
+        .cosmo_g_diagnostic()
         .expect("cosmo_g_diagnostic debe devolver Some");
 
     println!(
@@ -220,7 +222,10 @@ fn phase51_auto_g_simulation_stable() {
 
     let mut parts = build_particles(&cfg).expect("ICs");
     let c = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver { grid_size: 8, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: 8,
+        box_size: BOX,
+    };
     let softening = cfg.simulation.softening;
     let mut scratch = vec![Vec3::zero(); parts.len()];
 
@@ -229,10 +234,16 @@ fn phase51_auto_g_simulation_stable() {
     let dt = 1.0e-3;
 
     for _ in 0..200 {
-        if a >= a_target { break; }
+        if a >= a_target {
+            break;
+        }
         let g_cosmo = gravity_coupling_qksl(g, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -246,16 +257,20 @@ fn phase51_auto_g_simulation_stable() {
     }
 
     let v_rms: f64 = {
-        let s: f64 = parts.iter().map(|p| p.velocity.norm() * p.velocity.norm()).sum();
+        let s: f64 = parts
+            .iter()
+            .map(|p| p.velocity.norm() * p.velocity.norm())
+            .sum();
         (s / parts.len() as f64).sqrt()
     };
 
-    println!(
-        "[phase51_sim] G_auto={g:.4e}  a_final={a:.4}  v_rms={v_rms:.4e}"
-    );
+    println!("[phase51_sim] G_auto={g:.4e}  a_final={a:.4}  v_rms={v_rms:.4e}");
 
     assert!(a >= a_target * 0.99, "No alcanzó a_target");
-    assert!(v_rms.is_finite() && !v_rms.is_nan(), "v_rms no finito → explosión");
+    assert!(
+        v_rms.is_finite() && !v_rms.is_nan(),
+        "v_rms no finito → explosión"
+    );
     assert!(v_rms < 1e3, "v_rms excesivo → inestabilidad: {v_rms:.3e}");
 
     // Confirmar que el G usado es el consistente, no 1.0.

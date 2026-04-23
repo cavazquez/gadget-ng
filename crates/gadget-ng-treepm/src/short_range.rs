@@ -390,13 +390,22 @@ mod tests {
         assert!((minimum_image(-0.3, box_size) + 0.3).abs() < 1e-14);
         // Desplazamiento > 0.5: se mapea a -0.3.
         let d = minimum_image(0.7, box_size);
-        assert!((d + 0.3).abs() < 1e-12, "minimum_image(0.7, 1.0) debe ser -0.3, got {d}");
+        assert!(
+            (d + 0.3).abs() < 1e-12,
+            "minimum_image(0.7, 1.0) debe ser -0.3, got {d}"
+        );
         // Desplazamiento < -0.5: se mapea a +0.3.
         let d2 = minimum_image(-0.7, box_size);
-        assert!((d2 - 0.3).abs() < 1e-12, "minimum_image(-0.7, 1.0) debe ser 0.3, got {d2}");
+        assert!(
+            (d2 - 0.3).abs() < 1e-12,
+            "minimum_image(-0.7, 1.0) debe ser 0.3, got {d2}"
+        );
         // Exactamente en el borde: |d| = 0.5.
         let d3 = minimum_image(0.5, box_size);
-        assert!(d3.abs() <= 0.5 + 1e-12, "minimum_image(0.5, 1.0) debe ser ≤0.5, got {d3}");
+        assert!(
+            d3.abs() <= 0.5 + 1e-12,
+            "minimum_image(0.5, 1.0) debe ser ≤0.5, got {d3}"
+        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
 //! FFT 3D distribuida mediante descomposición pencil 2D (Brecha GADGET-4: P ≤ nm²).
+#![allow(clippy::needless_range_loop)]
 //!
 //! ## Motivación
 //!
@@ -80,16 +81,15 @@ impl PencilLayout2D {
     pub fn new(nm: usize, rank: usize, py: usize, pz: usize) -> Self {
         let n_ranks = py * pz;
         assert!(
-            nm % py == 0,
+            nm.is_multiple_of(py),
             "pencil_2d: nm ({nm}) no es divisible por py ({py})"
         );
         assert!(
-            nm % pz == 0,
+            nm.is_multiple_of(pz),
             "pencil_2d: nm ({nm}) no es divisible por pz ({pz})"
         );
-        assert_eq!(
+        assert!(
             rank < n_ranks,
-            true,
             "pencil_2d: rank ({rank}) ≥ n_ranks ({n_ranks})"
         );
         let rank_y = rank / pz;
@@ -119,9 +119,9 @@ impl PencilLayout2D {
         // Buscar Pz = mayor divisor de n_ranks con Pz ≤ nm y nm % Pz == 0.
         let mut best_pz = 1usize;
         for pz in (1..=nm.min(n_ranks)).rev() {
-            if n_ranks % pz == 0 && nm % pz == 0 {
+            if n_ranks.is_multiple_of(pz) && nm.is_multiple_of(pz) {
                 let py = n_ranks / pz;
-                if nm % py == 0 {
+                if nm.is_multiple_of(py) {
                     best_pz = pz;
                     break;
                 }
@@ -511,7 +511,11 @@ fn apply_poisson_kernel_pencil2d(
     let poisson_pre = -g * (box_size * box_size * box_size) / (nm * nm * nm) as f64;
 
     for iy in 0..nm {
-        let ky = if iy <= nm / 2 { iy as f64 } else { iy as f64 - nm as f64 };
+        let ky = if iy <= nm / 2 {
+            iy as f64
+        } else {
+            iy as f64 - nm as f64
+        };
         for iz in 0..nkz {
             let kz_global = kz_lo + iz;
             let kz = if kz_global <= nm / 2 {
@@ -589,7 +593,11 @@ pub fn solve_forces_pencil2d<R: ParallelRuntime + ?Sized>(
     // Normalizar densidad a densidad volumétrica.
     let cell_vol = box_size * box_size * box_size / (nm * nm * nm) as f64;
     let len_2d = ny * nz * nm;
-    assert_eq!(density_2d.len(), len_2d, "density_2d tiene longitud incorrecta");
+    assert_eq!(
+        density_2d.len(),
+        len_2d,
+        "density_2d tiene longitud incorrecta"
+    );
 
     let mut planner = FftPlanner::new();
     let fft_x = planner.plan_fft_forward(nm);
@@ -663,13 +671,14 @@ pub fn solve_forces_pencil2d<R: ParallelRuntime + ?Sized>(
     // Paso 11: IFFT-X + normalización (1/nm³ de las 3 IFFTs).
     let norm = 1.0 / (nm * nm * nm) as f64;
 
-    let extract_real = |mut arr: Vec<Complex<f64>>, ifft: &Arc<dyn rustfft::Fft<f64>>| -> Vec<f64> {
-        // IFFT-X sobre cada fila (iy_local, iz_local).
-        for row in arr.chunks_exact_mut(nm) {
-            ifft.process(row);
-        }
-        arr.iter().map(|c| c.re * norm).collect()
-    };
+    let extract_real =
+        |mut arr: Vec<Complex<f64>>, ifft: &Arc<dyn rustfft::Fft<f64>>| -> Vec<f64> {
+            // IFFT-X sobre cada fila (iy_local, iz_local).
+            for row in arr.chunks_exact_mut(nm) {
+                ifft.process(row);
+            }
+            arr.iter().map(|c| c.re * norm).collect()
+        };
 
     let fx_out = extract_real(fx_2d, &ifft_x);
     let fy_out = extract_real(fy_2d, &ifft_x);
@@ -740,6 +749,9 @@ mod tests {
         let p = 16;
         let (py, pz) = PencilLayout2D::factorize(nm, p);
         assert_eq!(py * pz, p);
-        assert!(nm % py == 0 && nm % pz == 0, "py={py}, pz={pz} no dividen nm={nm}");
+        assert!(
+            nm % py == 0 && nm % pz == 0,
+            "py={py}, pz={pz} no dividen nm={nm}"
+        );
     }
 }

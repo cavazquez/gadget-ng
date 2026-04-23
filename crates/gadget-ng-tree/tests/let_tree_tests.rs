@@ -29,11 +29,17 @@ fn gen_rmns(n: usize, seed: u64, box_size: f64, mass_per: f64) -> Vec<RemoteMult
     let mut rmns = Vec::with_capacity(n);
     let mut s = seed ^ 0xdeadbeef;
     for _ in 0..n {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let x = ((s >> 33) as f64 / u32::MAX as f64 - 0.5) * box_size;
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let y = ((s >> 33) as f64 / u32::MAX as f64 - 0.5) * box_size;
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let z = ((s >> 33) as f64 / u32::MAX as f64 - 0.5) * box_size;
         rmns.push(rmn_monopole(Vec3::new(x, y, z), mass_per, 0.05 * box_size));
     }
@@ -210,21 +216,13 @@ fn let_tree_energy_conservation_short() {
     let mut pos: Vec<Vec3> = (0..n_local)
         .map(|i| {
             let t = i as f64 / n_local as f64;
-            Vec3::new(
-                (t * 6.28).cos() * 5.0,
-                (t * 6.28).sin() * 5.0,
-                0.0,
-            )
+            Vec3::new((t * 6.28).cos() * 5.0, (t * 6.28).sin() * 5.0, 0.0)
         })
         .collect();
     let mut vel: Vec<Vec3> = (0..n_local)
         .map(|i| {
             let t = i as f64 / n_local as f64;
-            Vec3::new(
-                -(t * 6.28).sin() * 0.3,
-                (t * 6.28).cos() * 0.3,
-                0.0,
-            )
+            Vec3::new(-(t * 6.28).sin() * 0.3, (t * 6.28).cos() * 0.3, 0.0)
         })
         .collect();
     let mass = 0.01_f64;
@@ -250,9 +248,8 @@ fn let_tree_energy_conservation_short() {
             * (-mass)
     };
 
-    let kin_energy = |velocities: &[Vec3]| -> f64 {
-        velocities.iter().map(|v| 0.5 * mass * v.dot(*v)).sum()
-    };
+    let kin_energy =
+        |velocities: &[Vec3]| -> f64 { velocities.iter().map(|v| 0.5 * mass * v.dot(*v)).sum() };
 
     // Kick half → Drift → Kick half (leapfrog KDK).
     let e0 = kin_energy(&vel) + pot_energy(&pos);

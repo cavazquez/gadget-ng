@@ -10,8 +10,8 @@
 //! 5. `sr_sfc_no_geometric_gaps` — fuerza no nula para partícula periódicamente cercana en dominio SFC
 
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_parallel::halo3d::{is_in_periodic_halo, compute_aabb_3d};
-use gadget_ng_treepm::distributed::{SfcShortRangeParams, short_range_accels_sfc};
+use gadget_ng_parallel::halo3d::{compute_aabb_3d, is_in_periodic_halo};
+use gadget_ng_treepm::distributed::{short_range_accels_sfc, SfcShortRangeParams};
 
 fn make_particle(id: usize, x: f64, y: f64, z: f64, mass: f64) -> Particle {
     Particle {
@@ -37,17 +37,17 @@ fn sr_sfc_border_interaction() {
     // Rank 0: x ∈ [0, 0.5)  — partícula local en x=0.48
     // Rank 1: x ∈ [0.5, 1)  — partícula halo en x=0.52
     let local = make_particle(0, 0.48, 0.5, 0.5, 1.0);
-    let halo  = make_particle(1, 0.52, 0.5, 0.5, 1.0);
+    let halo = make_particle(1, 0.52, 0.5, 0.5, 1.0);
 
     let r_split = 0.1_f64;
-    let r_cut   = 5.0 * r_split; // 0.5
+    let r_cut = 5.0 * r_split; // 0.5
 
     // Distancia = 0.04 < r_cut=0.5 → debe haber fuerza SR
     let params = SfcShortRangeParams {
         local_particles: &[local],
-        halo_particles:  &[halo],
-        eps2:    1e-6,
-        g:       1.0,
+        halo_particles: &[halo],
+        eps2: 1e-6,
+        g: 1.0,
         r_split,
         box_size: 1.0,
     };
@@ -56,12 +56,14 @@ fn sr_sfc_border_interaction() {
 
     assert!(
         force_mag(&out[0]) > 0.0,
-        "SR-SFC borde: fuerza debe ser no nula (d=0.04 < r_cut={r_cut}), got {:?}", out[0]
+        "SR-SFC borde: fuerza debe ser no nula (d=0.04 < r_cut={r_cut}), got {:?}",
+        out[0]
     );
     // La fuerza apunta en +x (hacia el halo en x=0.52)
     assert!(
         out[0].x > 0.0,
-        "SR-SFC borde: fuerza debe apuntar en +x, got {:?}", out[0]
+        "SR-SFC borde: fuerza debe apuntar en +x, got {:?}",
+        out[0]
     );
 }
 
@@ -73,10 +75,10 @@ fn sr_sfc_border_interaction() {
 #[test]
 fn sr_sfc_diagonal_periodic_interaction() {
     let local = make_particle(0, 0.01, 0.01, 0.01, 1.0);
-    let halo  = make_particle(1, 0.99, 0.99, 0.99, 1.0);
+    let halo = make_particle(1, 0.99, 0.99, 0.99, 1.0);
 
     let r_split = 0.1_f64;
-    let r_cut   = 5.0 * r_split; // 0.5
+    let r_cut = 5.0 * r_split; // 0.5
 
     // Distancia periódica diagonal = √(3 × 0.02²) ≈ 0.0346 < r_cut=0.5
     let d_periodic = (3.0_f64 * 0.02_f64 * 0.02_f64).sqrt();
@@ -87,9 +89,9 @@ fn sr_sfc_diagonal_periodic_interaction() {
 
     let params = SfcShortRangeParams {
         local_particles: &[local],
-        halo_particles:  &[halo],
-        eps2:    1e-6,
-        g:       1.0,
+        halo_particles: &[halo],
+        eps2: 1e-6,
+        g: 1.0,
         r_split,
         box_size: 1.0,
     };
@@ -102,9 +104,21 @@ fn sr_sfc_diagonal_periodic_interaction() {
         "SR-SFC diagonal periódica: fuerza debe ser no nula (d_periodic={d_periodic:.4}), got fmag={fmag}"
     );
     // La imagen más cercana del halo está en (-0.01, -0.01, -0.01) → fuerza apunta en -x,-y,-z
-    assert!(out[0].x < 0.0, "fuerza SR diagonal debe apuntar en -x, got {:?}", out[0]);
-    assert!(out[0].y < 0.0, "fuerza SR diagonal debe apuntar en -y, got {:?}", out[0]);
-    assert!(out[0].z < 0.0, "fuerza SR diagonal debe apuntar en -z, got {:?}", out[0]);
+    assert!(
+        out[0].x < 0.0,
+        "fuerza SR diagonal debe apuntar en -x, got {:?}",
+        out[0]
+    );
+    assert!(
+        out[0].y < 0.0,
+        "fuerza SR diagonal debe apuntar en -y, got {:?}",
+        out[0]
+    );
+    assert!(
+        out[0].z < 0.0,
+        "fuerza SR diagonal debe apuntar en -z, got {:?}",
+        out[0]
+    );
 }
 
 // ── Test 3: halo 3D periódico cubre todos los pares con r < r_cut ─────────────
@@ -124,7 +138,7 @@ fn sr_sfc_halo_3d_covers_rcut_pairs() {
         hi: [0.5, 0.5, 0.5],
     };
 
-    let r_cut   = 0.1_f64;
+    let r_cut = 0.1_f64;
     let box_size = 1.0_f64;
 
     // Partícula en diagonal periódica: distancia ≈ √(3×0.05²) ≈ 0.087 < r_cut=0.1
@@ -171,16 +185,16 @@ fn sr_sfc_halo_3d_covers_rcut_pairs() {
 #[test]
 fn sr_sfc_minimum_image_active_in_walk() {
     let local = make_particle(0, 0.5, 0.5, 0.05, 1.0);
-    let halo  = make_particle(1, 0.5, 0.5, 0.95, 1.0);
+    let halo = make_particle(1, 0.5, 0.5, 0.95, 1.0);
 
     let r_split = 0.1_f64;
-    let r_cut   = 5.0 * r_split; // 0.5
+    let r_cut = 5.0 * r_split; // 0.5
 
     let params = SfcShortRangeParams {
         local_particles: &[local],
-        halo_particles:  &[halo],
-        eps2:    1e-6,
-        g:       1.0,
+        halo_particles: &[halo],
+        eps2: 1e-6,
+        g: 1.0,
         r_split,
         box_size: 1.0,
     };
@@ -195,7 +209,8 @@ fn sr_sfc_minimum_image_active_in_walk() {
     // minimum_image da dz = 0.05 - 0.95 + 1.0 = 0.10 → imagen en z = -0.05 → fuerza en -z
     assert!(
         out[0].z < 0.0,
-        "SR-SFC: fuerza periódica debe apuntar en -z (hacia imagen más cercana), got {:?}", out[0]
+        "SR-SFC: fuerza periódica debe apuntar en -z (hacia imagen más cercana), got {:?}",
+        out[0]
     );
 }
 
@@ -212,9 +227,9 @@ fn sr_sfc_no_geometric_gaps() {
     // Halo recibido del rank vecino: partículas en x ∈ [0.4, 0.8)
     // Ninguna partícula del halo queda fuera del alcance de las locales
 
-    let r_split   = 0.1_f64;
-    let r_cut     = 5.0 * r_split; // 0.5
-    let box_size  = 1.0_f64;
+    let r_split = 0.1_f64;
+    let r_cut = 5.0 * r_split; // 0.5
+    let box_size = 1.0_f64;
 
     let local_particles: Vec<Particle> = (0..5)
         .map(|i| make_particle(i, i as f64 * 0.08, 0.5, 0.5, 1.0))
@@ -227,7 +242,7 @@ fn sr_sfc_no_geometric_gaps() {
     // Para la partícula local más a la derecha (x=0.32), la halo más cercana está en x=0.40.
     // Distancia = 0.08 < r_cut=0.5 → debe haber fuerza SR.
     let closest_local_x = 4_f64 * 0.08; // 0.32
-    let closest_halo_x  = 0.40_f64;
+    let closest_halo_x = 0.40_f64;
     let d_gap = (closest_halo_x - closest_local_x).abs();
     assert!(
         d_gap < r_cut,
@@ -236,9 +251,9 @@ fn sr_sfc_no_geometric_gaps() {
 
     let params = SfcShortRangeParams {
         local_particles: &local_particles,
-        halo_particles:  &halo_particles,
-        eps2:    1e-6,
-        g:       1.0,
+        halo_particles: &halo_particles,
+        eps2: 1e-6,
+        g: 1.0,
         r_split,
         box_size,
     };
@@ -256,9 +271,9 @@ fn sr_sfc_no_geometric_gaps() {
     let single = [make_particle(99, 0.5, 0.5, 0.5, 1.0)];
     let params_solo = SfcShortRangeParams {
         local_particles: &single,
-        halo_particles:  &[],
-        eps2:    1e-6,
-        g:       1.0,
+        halo_particles: &[],
+        eps2: 1e-6,
+        g: 1.0,
         r_split,
         box_size,
     };
@@ -266,6 +281,7 @@ fn sr_sfc_no_geometric_gaps() {
     short_range_accels_sfc(&params_solo, &mut out_solo);
     assert!(
         force_mag(&out_solo[0]) < 1e-14,
-        "SR-SFC: partícula sola sin halos no debe recibir fuerza (auto-fuerza), got {:?}", out_solo[0]
+        "SR-SFC: partícula sola sin halos no debe recibir fuerza (auto-fuerza), got {:?}",
+        out_solo[0]
     );
 }

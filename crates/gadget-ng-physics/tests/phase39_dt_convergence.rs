@@ -23,11 +23,10 @@
 use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
 use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::CosmologyParams,
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    amplitude_for_sigma8, build_particles, cosmology::CosmologyParams, transfer_eh_nowiggle,
+    wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -116,7 +115,7 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -193,8 +192,7 @@ fn cpt92_g(a: f64) -> f64 {
     let a3 = a.powi(3);
     let om_a = OMEGA_M / (OMEGA_M + OMEGA_L * a3);
     let ol_a = OMEGA_L * a3 / (OMEGA_M + OMEGA_L * a3);
-    2.5 * om_a
-        / (om_a.powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0))
+    2.5 * om_a / (om_a.powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0))
 }
 
 fn d_of_a(a: f64) -> f64 {
@@ -314,7 +312,9 @@ fn v_rms(parts: &[gadget_ng_core::Particle]) -> f64 {
     let n = parts.len() as f64;
     let sumsq: f64 = parts
         .iter()
-        .map(|p| p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y + p.velocity.z * p.velocity.z)
+        .map(|p| {
+            p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y + p.velocity.z * p.velocity.z
+        })
         .sum();
     (sumsq / n).sqrt()
 }
@@ -573,7 +573,10 @@ fn dt_does_not_affect_ic_snapshot() {
         }
         // Rango entre dts debería ser esencialmente cero.
         let min_med = meds.iter().map(|(_, v)| *v).fold(f64::INFINITY, f64::min);
-        let max_med = meds.iter().map(|(_, v)| *v).fold(f64::NEG_INFINITY, f64::max);
+        let max_med = meds
+            .iter()
+            .map(|(_, v)| *v)
+            .fold(f64::NEG_INFINITY, f64::max);
         entries.push(json!({
             "seed": seed,
             "per_dt": meds.iter().map(|(d, v)| json!({"dt": d, "median_abs_log10_err_corr": v})).collect::<Vec<_>>(),
@@ -609,9 +612,7 @@ fn smaller_dt_reduces_spectral_error() {
         for &dt in DTS.iter() {
             let vals: Vec<f64> = SEEDS
                 .iter()
-                .map(|&seed| {
-                    median_abs(&find_snap(find(m, dt, seed), a_t).log_err_corr())
-                })
+                .map(|&seed| median_abs(&find_snap(find(m, dt, seed), a_t).log_err_corr()))
                 .collect();
             per_dt.push((dt, mean(&vals), vals));
         }
@@ -727,9 +728,7 @@ fn dt_convergence_trend_detectable() {
         .map(|&dt| {
             let per_seed: Vec<f64> = SEEDS
                 .iter()
-                .map(|&seed| {
-                    median_abs(&find_snap(find(m, dt, seed), a_t).log_err_corr())
-                })
+                .map(|&seed| median_abs(&find_snap(find(m, dt, seed), a_t).log_err_corr()))
                 .collect();
             mean(&per_seed)
         })
@@ -777,9 +776,7 @@ fn dt_scaling_consistent_with_integrator_order() {
             .map(|&dt| {
                 let per_seed: Vec<f64> = SEEDS
                     .iter()
-                    .map(|&seed| {
-                        median_abs(&find_snap(find(m, dt, seed), a_t).log_err_corr())
-                    })
+                    .map(|&seed| median_abs(&find_snap(find(m, dt, seed), a_t).log_err_corr()))
                     .collect();
                 mean(&per_seed)
             })
@@ -799,8 +796,5 @@ fn dt_scaling_consistent_with_integrator_order() {
             "pendiente log-log no finita en a={a_t}: slope={slope}"
         );
     }
-    dump_json(
-        "test5_scaling_order_soft",
-        json!({ "per_a": per_a }),
-    );
+    dump_json("test5_scaling_order_soft", json!({ "per_a": per_a }));
 }

@@ -59,7 +59,7 @@ fn minimum_image_in_short_range() {
     let r_cut = 5.0 * r_split; // 0.10
 
     let local = make_particle(0, 0.01, 0.5, 0.5, 1.0);
-    let halo  = make_particle(1, 0.99, 0.5, 0.5, 1.0);
+    let halo = make_particle(1, 0.99, 0.5, 0.5, 1.0);
 
     let params = SlabShortRangeParams {
         local_particles: &[local],
@@ -72,7 +72,7 @@ fn minimum_image_in_short_range() {
     let mut out = vec![Vec3::zero()];
     short_range_accels_slab(&params, &mut out);
 
-    let fmag = (out[0].x*out[0].x + out[0].y*out[0].y + out[0].z*out[0].z).sqrt();
+    let fmag = (out[0].x * out[0].x + out[0].y * out[0].y + out[0].z * out[0].z).sqrt();
     assert!(
         fmag > 0.0,
         "Test 1: partícula en x=0.01 debe ver la de x=0.99 vía min-image (r_cut={r_cut}), fmag={fmag}"
@@ -95,10 +95,11 @@ fn no_double_counting_pm_tree() {
         let r = d;
         let x = r / (std::f64::consts::SQRT_2 * r_split);
         let erfc_v = gadget_ng_treepm::short_range::erfc_approx(x);
-        let erf_v  = 1.0 - erfc_v;
+        let erf_v = 1.0 - erfc_v;
         assert!(
             (erf_v + erfc_v - 1.0).abs() < 1e-6,
-            "Test 2: erf+erfc debe ser 1 en d={d}, got {:.8}", erf_v + erfc_v
+            "Test 2: erf+erfc debe ser 1 en d={d}, got {:.8}",
+            erf_v + erfc_v
         );
     }
 
@@ -113,22 +114,28 @@ fn no_double_counting_pm_tree() {
     let mass = 1.0_f64 / (n_side * n_side * n_side) as f64;
     let r_split2 = dx * 0.5; // r_split = media celda
 
-    let particles: Vec<Particle> = (0..n_side).flat_map(|iz|
-        (0..n_side).flat_map(move |iy|
-            (0..n_side).map(move |ix| make_particle(
-                iz * n_side * n_side + iy * n_side + ix,
-                (ix as f64 + 0.5) * dx,
-                (iy as f64 + 0.5) * dx,
-                (iz as f64 + 0.5) * dx,
-                mass,
-            ))
-        )
-    ).collect();
+    let particles: Vec<Particle> = (0..n_side)
+        .flat_map(|iz| {
+            (0..n_side).flat_map(move |iy| {
+                (0..n_side).map(move |ix| {
+                    make_particle(
+                        iz * n_side * n_side + iy * n_side + ix,
+                        (ix as f64 + 0.5) * dx,
+                        (iy as f64 + 0.5) * dx,
+                        (iz as f64 + 0.5) * dx,
+                        mass,
+                    )
+                })
+            })
+        })
+        .collect();
 
     // La partícula central (índice 13, en (0.5, 0.5, 0.5)) debe tener fuerza ≈ 0 por simetría.
     let center_idx = 13;
     let local_center = particles[center_idx].clone();
-    let halos: Vec<Particle> = particles.iter().enumerate()
+    let halos: Vec<Particle> = particles
+        .iter()
+        .enumerate()
         .filter(|(i, _)| *i != center_idx)
         .map(|(_, p)| p.clone())
         .collect();
@@ -146,7 +153,7 @@ fn no_double_counting_pm_tree() {
 
     // Por simetría cúbica, la fuerza sobre la partícula central es ≈ 0.
     // Tolerancia más amplia (1e-3) porque el árbol usa aproximación monopolo.
-    let fmag = (out[0].x*out[0].x + out[0].y*out[0].y + out[0].z*out[0].z).sqrt();
+    let fmag = (out[0].x * out[0].x + out[0].y * out[0].y + out[0].z * out[0].z).sqrt();
     assert!(
         fmag < 1e-2,
         "Test 2: fuerza sobre partícula central en lattice simétrico debe ser ≈0, got fmag={fmag:.4e}"
@@ -164,7 +171,7 @@ fn g_over_a_applied_in_both_parts() {
     let eps2 = 1e-8_f64;
 
     let local = make_particle(0, 0.5, 0.5, 0.3, 1.0);
-    let halo  = make_particle(1, 0.5, 0.5, 0.4, 1.0);
+    let halo = make_particle(1, 0.5, 0.5, 0.4, 1.0);
 
     // g_cosmo con a=0.5: g_cosmo = g / a = 2.0
     let a = 0.5_f64;
@@ -197,7 +204,8 @@ fn g_over_a_applied_in_both_parts() {
     let ratio = out2[0].z / out1[0].z;
     assert!(
         (ratio - g_cosmo / g_base).abs() < 1e-10,
-        "Test 3: ratio={ratio:.6} debe ser g_cosmo/g={:.6}", g_cosmo / g_base
+        "Test 3: ratio={ratio:.6} debe ser g_cosmo/g={:.6}",
+        g_cosmo / g_base
     );
 }
 
@@ -232,14 +240,19 @@ fn cosmo_treepm_distributed_no_explosion() {
 
     for _step in 0..3 {
         // PM largo alcance (slab P=1).
-        let mut density_ext = slab_pm::deposit_slab_extended(&positions, &masses, &layout, box_size);
+        let mut density_ext =
+            slab_pm::deposit_slab_extended(&positions, &masses, &layout, box_size);
         slab_pm::exchange_density_halos_z(&mut density_ext, &layout, &rt);
-        let mut forces = slab_pm::forces_from_slab(&density_ext, &layout, g, box_size, Some(r_split), &rt);
+        let mut forces =
+            slab_pm::forces_from_slab(&density_ext, &layout, g, box_size, Some(r_split), &rt);
         slab_pm::exchange_force_halos_z(&mut forces, &layout, &rt);
         let acc_lr = slab_pm::interpolate_slab_local(&positions, &forces, &layout, box_size);
 
         // Árbol corto alcance (P=1, sin halos).
-        let particles: Vec<Particle> = positions.iter().zip(masses.iter()).enumerate()
+        let particles: Vec<Particle> = positions
+            .iter()
+            .zip(masses.iter())
+            .enumerate()
             .map(|(i, (p, &m))| make_particle(i, p.x, p.y, p.z, m))
             .collect();
         let sr_params = SlabShortRangeParams {
@@ -268,11 +281,15 @@ fn cosmo_treepm_distributed_no_explosion() {
             positions[i].z = (positions[i].z + velocities[i].z * dt).rem_euclid(box_size);
 
             assert!(
-                positions[i].x.is_finite() && positions[i].y.is_finite() && positions[i].z.is_finite(),
+                positions[i].x.is_finite()
+                    && positions[i].y.is_finite()
+                    && positions[i].z.is_finite(),
                 "Test 4: posición NaN/Inf en partícula {i}, paso {_step}"
             );
             assert!(
-                velocities[i].x.is_finite() && velocities[i].y.is_finite() && velocities[i].z.is_finite(),
+                velocities[i].x.is_finite()
+                    && velocities[i].y.is_finite()
+                    && velocities[i].z.is_finite(),
                 "Test 4: velocidad NaN/Inf en partícula {i}, paso {_step}"
             );
         }
@@ -318,7 +335,9 @@ fn serial_vs_distributed_forces_p1() {
 
     assert!(
         (acc_sr[0].z - f_sr_z_expected).abs() < 1e-8,
-        "Test 5: F_sr_z={:.6e} vs analítico={:.6e}", acc_sr[0].z, f_sr_z_expected
+        "Test 5: F_sr_z={:.6e} vs analítico={:.6e}",
+        acc_sr[0].z,
+        f_sr_z_expected
     );
 }
 
@@ -339,7 +358,10 @@ fn halo_coverage_prevents_missing_interactions() {
 
     // min_image distance: |0.98-0.02-1.0| = 0.04 < r_cut=0.10
     let d_min = minimum_image(0.98 - 0.02, box_size).abs();
-    assert!(d_min < r_cut, "setup: d_minimg={d_min:.4} < r_cut={r_cut:.4}");
+    assert!(
+        d_min < r_cut,
+        "setup: d_minimg={d_min:.4} < r_cut={r_cut:.4}"
+    );
 
     // Sin halo: fuerza = 0.
     let params_nohalo = SlabShortRangeParams {
@@ -352,8 +374,14 @@ fn halo_coverage_prevents_missing_interactions() {
     };
     let mut out_nohalo = vec![Vec3::zero()];
     short_range_accels_slab(&params_nohalo, &mut out_nohalo);
-    let f_nohalo = (out_nohalo[0].x*out_nohalo[0].x + out_nohalo[0].y*out_nohalo[0].y + out_nohalo[0].z*out_nohalo[0].z).sqrt();
-    assert!(f_nohalo < 1e-14, "Test 6: sin halo fuerza debe ser 0, got {f_nohalo}");
+    let f_nohalo = (out_nohalo[0].x * out_nohalo[0].x
+        + out_nohalo[0].y * out_nohalo[0].y
+        + out_nohalo[0].z * out_nohalo[0].z)
+        .sqrt();
+    assert!(
+        f_nohalo < 1e-14,
+        "Test 6: sin halo fuerza debe ser 0, got {f_nohalo}"
+    );
 
     // Con halo: fuerza ≠ 0.
     let params_halo = SlabShortRangeParams {
@@ -366,7 +394,10 @@ fn halo_coverage_prevents_missing_interactions() {
     };
     let mut out_halo = vec![Vec3::zero()];
     short_range_accels_slab(&params_halo, &mut out_halo);
-    let f_halo = (out_halo[0].x*out_halo[0].x + out_halo[0].y*out_halo[0].y + out_halo[0].z*out_halo[0].z).sqrt();
+    let f_halo = (out_halo[0].x * out_halo[0].x
+        + out_halo[0].y * out_halo[0].y
+        + out_halo[0].z * out_halo[0].z)
+        .sqrt();
     assert!(
         f_halo > 0.0,
         "Test 6: con halo fuerza debe ser ≠ 0 (d_minimg={d_min:.4}), got {f_halo}"
@@ -387,10 +418,10 @@ fn treepm_force_split_partition() {
 
     for d in [0.05, 0.1, 0.2, 0.4_f64] {
         let r2 = d * d + eps2;
-        let r  = r2.sqrt();
-        let x  = r / (std::f64::consts::SQRT_2 * r_split);
+        let r = r2.sqrt();
+        let x = r / (std::f64::consts::SQRT_2 * r_split);
         let erfc_v = gadget_ng_treepm::short_range::erfc_approx(x);
-        let erf_v  = 1.0 - erfc_v;
+        let erf_v = 1.0 - erfc_v;
 
         let f_newton = g * m * m / r2;
         let f_lr = f_newton * erf_v;
@@ -399,7 +430,9 @@ fn treepm_force_split_partition() {
 
         assert!(
             (f_total - f_newton).abs() < f_newton * 1e-6,
-            "Test 7: F_lr+F_sr={:.6e} vs F_Newton={:.6e} a d={d}", f_total, f_newton
+            "Test 7: F_lr+F_sr={:.6e} vs F_Newton={:.6e} a d={d}",
+            f_total,
+            f_newton
         );
     }
 }
@@ -418,7 +451,7 @@ fn periodic_sr_stronger_than_aperiodic_at_border() {
     // Partículas a distancia directa 0.9 (fuera de r_cut).
     // Distancia periódica: 0.1 (dentro de r_cut).
     let local = make_particle(0, 0.5, 0.5, 0.05, 1.0);
-    let halo  = make_particle(1, 0.5, 0.5, 0.95, 1.0);
+    let halo = make_particle(1, 0.5, 0.5, 0.95, 1.0);
 
     let params = SlabShortRangeParams {
         local_particles: &[local],
@@ -432,7 +465,7 @@ fn periodic_sr_stronger_than_aperiodic_at_border() {
     short_range_accels_slab(&params, &mut out);
 
     // Con minimum_image, d_eff = 0.1 < r_cut=0.5 → fuerza ≠ 0.
-    let fmag = (out[0].x*out[0].x + out[0].y*out[0].y + out[0].z*out[0].z).sqrt();
+    let fmag = (out[0].x * out[0].x + out[0].y * out[0].y + out[0].z * out[0].z).sqrt();
     assert!(
         fmag > 0.0,
         "Test 8: con minimum_image, fuerza SR en borde debe ser ≠ 0 (d_eff=0.1 < r_cut={r_cut}), fmag={fmag}"
@@ -441,6 +474,7 @@ fn periodic_sr_stronger_than_aperiodic_at_border() {
     // La fuerza debe apuntar en -z (imagen periódica está en z=0.05-0.10=-0.05).
     assert!(
         out[0].z < 0.0,
-        "Test 8: fuerza SR periódica debe apuntar en -z, got {:?}", out[0]
+        "Test 8: fuerza SR periódica debe apuntar en -z, got {:?}",
+        out[0]
     );
 }

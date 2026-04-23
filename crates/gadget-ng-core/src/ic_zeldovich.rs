@@ -202,9 +202,7 @@ pub fn generate_delta_kspace(
                 let iz_neg = ((-nz).rem_euclid(n as i64)) as usize;
 
                 // Solo procesar cada par una vez (modo "upper": iz > 0, o iz=0 iy>0, o iz=0 iy=0 ix>0).
-                let is_upper = iz > 0
-                    || (iz == 0 && iy > 0)
-                    || (iz == 0 && iy == 0 && ix > 0);
+                let is_upper = iz > 0 || (iz == 0 && iy > 0) || (iz == 0 && iy == 0 && ix > 0);
 
                 if is_upper {
                     let val = delta[ix * n * n + iy * n + iz];
@@ -225,6 +223,7 @@ pub fn generate_delta_kspace(
 ///
 /// La firma del closure retornado es `|n_abs: f64| -> f64`, compatible con
 /// `generate_delta_kspace`.
+#[allow(clippy::too_many_arguments)]
 pub fn build_spectrum_fn(
     n: usize,
     spectral_index: f64,
@@ -347,13 +346,9 @@ pub fn fft3d(buf: &mut [Complex<f64>], n: usize, forward: bool) {
 /// El resultado se multiplica por `d = box_size/N` para obtener desplazamientos físicos.
 ///
 /// Devuelve `[Ψ_x, Ψ_y, Ψ_z]`, cada uno de longitud `n³`, en unidades de `box_size`.
-pub fn delta_to_displacement(
-    delta: &[Complex<f64>],
-    n: usize,
-    box_size: f64,
-) -> [Vec<f64>; 3] {
+pub fn delta_to_displacement(delta: &[Complex<f64>], n: usize, box_size: f64) -> [Vec<f64>; 3] {
     let n3 = n * n * n;
-    let d = box_size / n as f64;    // spacing físico
+    let d = box_size / n as f64; // spacing físico
 
     // Factor de normalización de la IFFT (rustfft no normaliza la inversa).
     let ifft_norm = 1.0 / n3 as f64;
@@ -384,10 +379,7 @@ pub fn delta_to_displacement(
                 // Multiplicar por i·n_α/n²:
                 // i·(a+ib) = −b+ia   →   i·n_α·(a+ib)/n² = (−n_α·b + i·n_α·a) / n²
                 let make_psi = |n_alpha: f64| -> Complex<f64> {
-                    Complex::new(
-                        -n_alpha * d_hat.im / n2,
-                        n_alpha * d_hat.re / n2,
-                    )
+                    Complex::new(-n_alpha * d_hat.im / n2, n_alpha * d_hat.re / n2)
                 };
 
                 psi[0][idx] = make_psi(nx);
@@ -676,9 +668,15 @@ pub fn zeldovich_ics_with_convention(
     let [mut psi_x, mut psi_y, mut psi_z] = delta_to_displacement(&delta, n, box_size);
 
     if scale != 1.0 {
-        for v in psi_x.iter_mut() { *v *= scale; }
-        for v in psi_y.iter_mut() { *v *= scale; }
-        for v in psi_z.iter_mut() { *v *= scale; }
+        for v in psi_x.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi_y.iter_mut() {
+            *v *= scale;
+        }
+        for v in psi_z.iter_mut() {
+            *v *= scale;
+        }
     }
 
     let mut out = Vec::with_capacity(hi.saturating_sub(lo));
@@ -861,20 +859,8 @@ mod tests {
         let mean_z: f64 = pz.iter().sum::<f64>() / pz.len() as f64;
 
         let tol = 1e-12;
-        assert!(
-            mean_x.abs() < tol,
-            "⟨Ψ_x⟩ = {:.2e} ≠ 0",
-            mean_x
-        );
-        assert!(
-            mean_y.abs() < tol,
-            "⟨Ψ_y⟩ = {:.2e} ≠ 0",
-            mean_y
-        );
-        assert!(
-            mean_z.abs() < tol,
-            "⟨Ψ_z⟩ = {:.2e} ≠ 0",
-            mean_z
-        );
+        assert!(mean_x.abs() < tol, "⟨Ψ_x⟩ = {:.2e} ≠ 0", mean_x);
+        assert!(mean_y.abs() < tol, "⟨Ψ_y⟩ = {:.2e} ≠ 0", mean_y);
+        assert!(mean_z.abs() < tol, "⟨Ψ_z⟩ = {:.2e} ≠ 0", mean_z);
     }
 }

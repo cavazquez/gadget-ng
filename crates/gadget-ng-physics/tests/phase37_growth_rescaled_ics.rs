@@ -165,7 +165,7 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool, mode: Mode) -> RunConfi
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -724,10 +724,8 @@ fn rescaled_mode_reduces_initial_displacement_amplitude() {
     let mut results = Vec::new();
     for &ic in &["1lpt", "2lpt"] {
         let use_2lpt = ic == "2lpt";
-        let p_leg =
-            build_particles(&build_run_config(32, 42, use_2lpt, Mode::Legacy)).unwrap();
-        let p_res =
-            build_particles(&build_run_config(32, 42, use_2lpt, Mode::Rescaled)).unwrap();
+        let p_leg = build_particles(&build_run_config(32, 42, use_2lpt, Mode::Legacy)).unwrap();
+        let p_res = build_particles(&build_run_config(32, 42, use_2lpt, Mode::Rescaled)).unwrap();
         let rms_leg = psi_rms_from_particles(&p_leg, 32);
         let rms_res = psi_rms_from_particles(&p_res, 32);
         let ratio = rms_res / rms_leg;
@@ -774,10 +772,8 @@ fn rescaled_mode_reduces_early_nonlinearity() {
     for cfg in configs.iter() {
         for &seed in SEEDS.iter() {
             for &a in &[0.05_f64, 0.10_f64] {
-                let legacy =
-                    find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "legacy", a);
-                let rescaled =
-                    find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "rescaled", a);
+                let legacy = find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "legacy", a);
+                let rescaled = find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "rescaled", a);
                 let ratio = rescaled.delta_rms / legacy.delta_rms.max(1e-30);
                 worst_ratio = worst_ratio.max(ratio);
                 per_cfg.push(json!({
@@ -885,12 +881,10 @@ fn pk_correction_improves_early_snapshot_accuracy_under_rescaled_mode() {
         let mut rescaled_vals = Vec::new();
         for cfg in configs.iter() {
             for &seed in SEEDS.iter() {
-                let legacy =
-                    find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "legacy", a)
-                        .median_abs_log_err_corr();
-                let rescaled =
-                    find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "rescaled", a)
-                        .median_abs_log_err_corr();
+                let legacy = find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "legacy", a)
+                    .median_abs_log_err_corr();
+                let rescaled = find(m, cfg.n, seed, cfg.ic, cfg.solver.as_str(), "rescaled", a)
+                    .median_abs_log_err_corr();
                 legacy_vals.push(legacy);
                 rescaled_vals.push(rescaled);
                 all_legacy.push(legacy);
@@ -1001,8 +995,7 @@ fn rescaled_mode_consistent_across_resolutions() {
         let vals: Vec<f64> = SEEDS
             .iter()
             .map(|&seed| {
-                find(m, n, seed, "2lpt", "pm", "rescaled", A_INIT)
-                    .median_abs_log_err_corr()
+                find(m, n, seed, "2lpt", "pm", "rescaled", A_INIT).median_abs_log_err_corr()
             })
             .collect();
         mean(&vals)

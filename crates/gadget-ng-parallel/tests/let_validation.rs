@@ -17,11 +17,17 @@ fn uniform_positions(n: usize, seed: u64) -> Vec<Vec3> {
     let mut xs = Vec::with_capacity(n);
     let mut state = seed;
     for _ in 0..n {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let x = ((state >> 33) as f64) / (u32::MAX as f64);
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let y = ((state >> 33) as f64) / (u32::MAX as f64);
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let z = ((state >> 33) as f64) / (u32::MAX as f64);
         xs.push(Vec3::new(x, y, z));
     }
@@ -76,7 +82,10 @@ fn let_wire_roundtrip() {
         assert!((orig.mass - rec.mass).abs() < 1e-14, "mass no coincide");
         assert_eq!(orig.quad, rec.quad, "quad no coincide");
         assert_eq!(orig.oct, rec.oct, "oct no coincide");
-        assert!((orig.half_size - rec.half_size).abs() < 1e-14, "half_size no coincide");
+        assert!(
+            (orig.half_size - rec.half_size).abs() < 1e-14,
+            "half_size no coincide"
+        );
     }
 }
 

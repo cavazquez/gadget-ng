@@ -46,7 +46,10 @@
 //! La corrección `Δx_j` es el predictor de Störmer para partículas inactivas:
 //! sus posiciones se mejoran de O(Δt²) a O(Δt³) para la evaluación de fuerzas,
 //! sin modificar la integración simpléctica de las partículas activas.
-use gadget_ng_core::{cosmology::{CosmologyParams, hubble_param}, TimestepCriterion, Particle, Vec3};
+use gadget_ng_core::{
+    cosmology::{hubble_param, CosmologyParams},
+    Particle, TimestepCriterion, Vec3,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -285,7 +288,8 @@ pub fn hierarchical_kdk_step(
 
     // Pre-computar cota cosmológica del timestep: dt_i ≤ kappa_h · a / H(a).
     // Se calcula una vez al inicio del paso con el 'a' del comienzo (conservador).
-    let cosmo_dt_max: Option<f64> = if let (Some(kh), Some((cp, a_ref))) = (kappa_h, cosmo.as_ref()) {
+    let cosmo_dt_max: Option<f64> = if let (Some(kh), Some((cp, a_ref))) = (kappa_h, cosmo.as_ref())
+    {
         let h = hubble_param(**cp, **a_ref);
         if h > 0.0 && kh > 0.0 {
             Some(kh * **a_ref / h)
@@ -416,9 +420,15 @@ pub fn hierarchical_kdk_step(
                         let acc_mag = a_new.dot(a_new).sqrt();
                         aarseth_bin(acc_mag, eps2, dt_base, eta, max_level)
                     }
-                    TimestepCriterion::Jerk => {
-                        aarseth_bin_jerk(a_new, state.prev_acc[i], dt_prev, eps2, dt_base, eta, max_level)
-                    }
+                    TimestepCriterion::Jerk => aarseth_bin_jerk(
+                        a_new,
+                        state.prev_acc[i],
+                        dt_prev,
+                        eps2,
+                        dt_base,
+                        eta,
+                        max_level,
+                    ),
                 };
 
                 // Aplicar cota cosmológica: dt_i ≤ dt_cosmo_max → nivel mínimo.
@@ -603,7 +613,14 @@ mod tests {
         let e0 = energy(&p);
 
         let mut state = HierarchicalState::new(1);
-        state.init_from_accels(&p, eps2, dt, eta_large, max_level, TimestepCriterion::Acceleration);
+        state.init_from_accels(
+            &p,
+            eps2,
+            dt,
+            eta_large,
+            max_level,
+            TimestepCriterion::Acceleration,
+        );
         for _ in 0..200 {
             hierarchical_kdk_step(
                 &mut p,

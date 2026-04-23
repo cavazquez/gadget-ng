@@ -6,10 +6,7 @@
 //!    durante una evolución de corta duración (~10 pasos).
 //! 3. La cota kappa_h restringe los bins de las partículas activas.
 
-use gadget_ng_core::{
-    cosmology::CosmologyParams,
-    TimestepCriterion, Particle, Vec3,
-};
+use gadget_ng_core::{cosmology::CosmologyParams, Particle, TimestepCriterion, Vec3};
 use gadget_ng_integrators::{hierarchical_kdk_step, HierarchicalState};
 
 const G: f64 = 1.0;
@@ -47,7 +44,10 @@ fn gravity_direct(parts: &[Particle], active: &[usize], out: &mut [Vec3]) {
 fn kinetic_energy_comoving(parts: &[Particle], a: f64) -> f64 {
     // En convención QKSL: p = a²·v_peculiar → v_peculiar = p/a²
     // E_cin comóvil = Σ m·|p|²/(2a⁴) = Σ m·|v|²/(2a⁴) donde v = velocity en código
-    parts.iter().map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity) / (a * a * a * a)).sum()
+    parts
+        .iter()
+        .map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity) / (a * a * a * a))
+        .sum()
 }
 
 /// Verifica que con cosmología activada, el path jerárquico no explota:
@@ -73,7 +73,14 @@ fn hierarchical_cosmo_energy_bounded() {
     }
 
     let mut h_state = HierarchicalState::new(parts.len());
-    h_state.init_from_accels(&parts, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     let e0 = kinetic_energy_comoving(&parts, a);
 
@@ -135,7 +142,14 @@ fn hierarchical_cosmo_kappa_h_restricts_bins() {
     }
 
     let mut h_state = HierarchicalState::new(parts.len());
-    h_state.init_from_accels(&parts, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     // kappa_h = 1e-6 → dt_cosmo_max ≈ 1e-6 * a / H(a) extremadamente pequeño
     // → todos los bins deberían estar en MAX_LEVEL.

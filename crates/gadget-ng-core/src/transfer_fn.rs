@@ -96,13 +96,11 @@ pub fn transfer_eh_nowiggle(k_hmpc: f64, p: &EisensteinHuParams) -> f64 {
     let fb = p.omega_b / p.omega_m; // fracción bariónica
 
     // Horizonte de sonido aproximado [Mpc].
-    let s = 44.5 * (9.83_f64 / omega_m_h2).ln()
-        / (1.0 + 10.0 * omega_b_h2.powf(0.75)).sqrt();
+    let s = 44.5 * (9.83_f64 / omega_m_h2).ln() / (1.0 + 10.0 * omega_b_h2.powf(0.75)).sqrt();
 
     // Supresión bariónica del shape parameter.
-    let alpha_gamma = 1.0
-        - 0.328 * (431.0 * omega_m_h2).ln() * fb
-        + 0.38 * (22.3 * omega_m_h2).ln() * fb * fb;
+    let alpha_gamma =
+        1.0 - 0.328 * (431.0 * omega_m_h2).ln() * fb + 0.38 * (22.3 * omega_m_h2).ln() * fb * fb;
 
     // Γ_eff dependiente de k (EH98 eq. 31).
     // k_hmpc está en h/Mpc; el producto k_hmpc * s es adimensional
@@ -116,8 +114,7 @@ pub fn transfer_eh_nowiggle(k_hmpc: f64, p: &EisensteinHuParams) -> f64 {
     // Con k_hmpc en h/Mpc → k_mpc = k_hmpc * h [Mpc⁻¹].
     let k_mpc = k_hmpc * p.h; // [Mpc⁻¹]
     let ks = 0.43 * k_mpc * s;
-    let gamma_eff =
-        p.omega_m * p.h * (alpha_gamma + (1.0 - alpha_gamma) / (1.0 + ks.powi(4)));
+    let gamma_eff = p.omega_m * p.h * (alpha_gamma + (1.0 - alpha_gamma) / (1.0 + ks.powi(4)));
 
     // Parámetro adimensional q (EH98 eq. 30).
     // q = k [Mpc⁻¹] / Γ_eff [Mpc⁻¹]; con k_mpc en Mpc⁻¹ y gamma_eff en h/Mpc:
@@ -132,7 +129,7 @@ pub fn transfer_eh_nowiggle(k_hmpc: f64, p: &EisensteinHuParams) -> f64 {
     let c0 = 14.2 + 731.0 / (1.0 + 62.5 * q);
     let t = l0 / (l0 + c0 * q * q);
 
-    t.max(0.0).min(1.0)
+    t.clamp(0.0, 1.0)
 }
 
 /// Calcula σ²(R) para el espectro P(k) = k^n_s · T²(k) con amplitud unitaria A=1.
@@ -316,15 +313,22 @@ mod tests {
         assert!(
             t_high < t_low,
             "T(10) = {:.6} ≥ T(0.1) = {:.6} — falta supresión en alto k",
-            t_high, t_low
+            t_high,
+            t_low
         );
         // T(k=0.1 h/Mpc) con Planck18 EH no-wiggle: ≈ 0.13-0.16.
         // k=0.1 ya está bien por encima de k_eq ≈ 0.015 h/Mpc.
-        assert!(t_low > 0.05 && t_low < 0.30,
-            "T(0.1 h/Mpc) = {:.4} fuera del rango esperado (0.05, 0.30) para Planck18", t_low);
+        assert!(
+            t_low > 0.05 && t_low < 0.30,
+            "T(0.1 h/Mpc) = {:.4} fuera del rango esperado (0.05, 0.30) para Planck18",
+            t_low
+        );
         // T(k=10 h/Mpc) debe estar muy fuertemente suprimido.
-        assert!(t_high < 0.01,
-            "T(10 h/Mpc) = {:.6} no está lo suficientemente suprimido (esperado < 0.01)", t_high);
+        assert!(
+            t_high < 0.01,
+            "T(10 h/Mpc) = {:.6} no está lo suficientemente suprimido (esperado < 0.01)",
+            t_high
+        );
     }
 
     /// T(k) ∈ (0, 1] para todo k > 0.
@@ -337,7 +341,8 @@ mod tests {
             assert!(
                 t > 0.0 && t <= 1.0 + 1e-10,
                 "T(k={:.0e}) = {:.6} fuera de (0, 1]",
-                k, t
+                k,
+                t
             );
         }
     }
@@ -372,7 +377,9 @@ mod tests {
         assert!(
             rel_err < 1e-3,
             "σ₈ recuperado = {:.6} vs target = {:.6} (error = {:.2e})",
-            sigma8_recovered, sigma8_target, rel_err
+            sigma8_recovered,
+            sigma8_target,
+            rel_err
         );
     }
 
@@ -402,7 +409,11 @@ mod tests {
         let p = planck18();
         // A k=1e-3 h/Mpc (escala mayor que k_eq), T debe ser muy cercano a 1.
         let t_vlow = transfer_eh_nowiggle(1e-3, &p);
-        assert!(t_vlow > 0.90, "T(1e-3 h/Mpc) = {:.4} — esperado > 0.90", t_vlow);
+        assert!(
+            t_vlow > 0.90,
+            "T(1e-3 h/Mpc) = {:.4} — esperado > 0.90",
+            t_vlow
+        );
 
         // A k=0.1 h/Mpc, T ≈ 0.13-0.16 para Planck18.
         let t = transfer_eh_nowiggle(0.1, &p);
@@ -415,7 +426,17 @@ mod tests {
         // La función es estrictamente decreciente: T(0.01) > T(0.1) > T(1.0).
         let t_mid = transfer_eh_nowiggle(0.01, &p);
         let t_high = transfer_eh_nowiggle(1.0, &p);
-        assert!(t_mid > t, "T no decrece de 0.01 a 0.1 h/Mpc: {:.4} vs {:.4}", t_mid, t);
-        assert!(t > t_high, "T no decrece de 0.1 a 1.0 h/Mpc: {:.4} vs {:.4}", t, t_high);
+        assert!(
+            t_mid > t,
+            "T no decrece de 0.01 a 0.1 h/Mpc: {:.4} vs {:.4}",
+            t_mid,
+            t
+        );
+        assert!(
+            t > t_high,
+            "T no decrece de 0.1 a 1.0 h/Mpc: {:.4} vs {:.4}",
+            t,
+            t_high
+        );
     }
 }

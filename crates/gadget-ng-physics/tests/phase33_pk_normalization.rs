@@ -121,7 +121,7 @@ fn make_config(seed: u64, grid: usize, nm: usize) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -644,7 +644,10 @@ fn dump_pk_jsons_for_phase33() {
     };
     fs::create_dir_all(&out_dir).expect("No se pudo crear el directorio de salida");
 
-    println!("\n[phase33 dump] writing P(k) JSONs to {}", out_dir.display());
+    println!(
+        "\n[phase33 dump] writing P(k) JSONs to {}",
+        out_dir.display()
+    );
 
     for &(grid, nm) in &[(GRID_S, NM_S), (GRID_M, NM_M)] {
         for &seed in &SEEDS {

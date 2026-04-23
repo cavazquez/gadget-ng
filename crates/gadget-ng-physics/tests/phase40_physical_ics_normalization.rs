@@ -41,8 +41,8 @@ use gadget_ng_core::{
     cosmology::{growth_factor_d_ratio, CosmologyParams},
     sigma_from_pk_bins, transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
     GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -153,7 +153,7 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -250,11 +250,7 @@ fn sigma8_expected(mode: Mode) -> f64 {
 
 /// σ₈(R) medido empíricamente a partir del espectro de potencias **corregido**
 /// (post-`pk_correction`, ya en `(Mpc/h)³` y `k` en `h/Mpc`).
-fn measure_sigma8_from_corrected(
-    ks_hmpc: &[f64],
-    pk_mpc_h3: &[f64],
-    r_mpc_h: f64,
-) -> f64 {
+fn measure_sigma8_from_corrected(ks_hmpc: &[f64], pk_mpc_h3: &[f64], r_mpc_h: f64) -> f64 {
     let bins: Vec<(f64, f64)> = ks_hmpc
         .iter()
         .zip(pk_mpc_h3.iter())
@@ -528,17 +524,10 @@ fn matrix() -> &'static [SnapshotResult] {
     CELL.get_or_init(run_full_matrix)
 }
 
-fn find<'a>(
-    m: &'a [SnapshotResult],
-    seed: u64,
-    mode: &str,
-    a_target: f64,
-) -> &'a SnapshotResult {
+fn find<'a>(m: &'a [SnapshotResult], seed: u64, mode: &str, a_target: f64) -> &'a SnapshotResult {
     m.iter()
         .find(|r| r.seed == seed && r.mode == mode && (r.a_target - a_target).abs() < 1e-9)
-        .unwrap_or_else(|| {
-            panic!("snapshot no encontrado: seed={seed} mode={mode} a={a_target}")
-        })
+        .unwrap_or_else(|| panic!("snapshot no encontrado: seed={seed} mode={mode} a={a_target}"))
 }
 
 fn phase40_dir() -> PathBuf {
@@ -908,9 +897,7 @@ fn z0_mode_improves_early_snapshot_accuracy_vs_legacy() {
         }),
     );
 
-    eprintln!(
-        "[phase40][test6] DECISION {decision}: global_factor={global_factor:.3} (>=2.0 → A)"
-    );
+    eprintln!("[phase40][test6] DECISION {decision}: global_factor={global_factor:.3} (>=2.0 → A)");
 
     // Soft check: sólo exige que las medianas sean finitas.
     assert!(

@@ -29,12 +29,10 @@
 
 use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
-    build_particles, build_particles_for_gid_range,
-    cosmology::CosmologyParams,
-    growth_rate_f, wrap_position,
-    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    UnitsSection, Vec3,
+    build_particles, build_particles_for_gid_range, cosmology::CosmologyParams, growth_rate_f,
+    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -44,9 +42,9 @@ use gadget_ng_treepm::TreePmSolver;
 
 const G: f64 = 1.0;
 const BOX: f64 = 1.0;
-const GRID: usize = 8;       // 8³ = 512 partículas (rápido en CI)
-const N_PART: usize = 512;   // 8³
-const NM: usize = 8;         // grid PM
+const GRID: usize = 8; // 8³ = 512 partículas (rápido en CI)
+const N_PART: usize = 512; // 8³
+const NM: usize = 8; // grid PM
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -95,7 +93,7 @@ fn zel_config(seed: u64, spectral_index: f64, amplitude: f64) -> RunConfig {
             omega_lambda: 0.0,
             h0: 0.1,
             a_init: 0.02,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -118,7 +116,9 @@ fn zel_reproducible() {
             a.position.x.to_bits(),
             b.position.x.to_bits(),
             "x diferente en gid={}: {} vs {}",
-            a.global_id, a.position.x, b.position.x
+            a.global_id,
+            a.position.x,
+            b.position.x
         );
         assert_eq!(
             a.velocity.x.to_bits(),
@@ -141,24 +141,30 @@ fn zel_mean_displacement_zero() {
     let d = BOX / GRID as f64; // spacing
 
     // Posición de la retícula esperada para cada gid.
-    let mean_dx: f64 = parts.iter().enumerate().map(|(i, p)| {
-        let gid = p.global_id;
-        let ix = gid / (GRID * GRID);
-        let rem = gid % (GRID * GRID);
-        let iy = rem / GRID;
-        let iz = rem % GRID;
-        let q_x = (ix as f64 + 0.5) * d;
-        // Desplazamiento wrapeado (puede cruzar el borde de caja).
-        let raw_dx = p.position.x - q_x;
-        let dx = raw_dx - BOX * (raw_dx / BOX).round();
-        let _ = (iy, iz, i); // silenciar warnings
-        dx
-    }).sum::<f64>() / N_PART as f64;
+    let mean_dx: f64 = parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let gid = p.global_id;
+            let ix = gid / (GRID * GRID);
+            let rem = gid % (GRID * GRID);
+            let iy = rem / GRID;
+            let iz = rem % GRID;
+            let q_x = (ix as f64 + 0.5) * d;
+            // Desplazamiento wrapeado (puede cruzar el borde de caja).
+            let raw_dx = p.position.x - q_x;
+            let dx = raw_dx - BOX * (raw_dx / BOX).round();
+            let _ = (iy, iz, i); // silenciar warnings
+            dx
+        })
+        .sum::<f64>()
+        / N_PART as f64;
 
     assert!(
         mean_dx.abs() < 5.0 * d / N_PART as f64,
         "⟨Ψ_x⟩ = {:.3e} no es ~0 (esperado < {:.3e})",
-        mean_dx, 5.0 * d / N_PART as f64
+        mean_dx,
+        5.0 * d / N_PART as f64
     );
 }
 
@@ -186,17 +192,21 @@ fn zel_dc_mode_zero() {
     assert!(
         (com_x - expected_com).abs() < 3.0 * tol,
         "COM_x = {:.4} ≠ {:.4} (3σ = {:.4}) — posible modo DC no nulo",
-        com_x, expected_com, 3.0 * tol
+        com_x,
+        expected_com,
+        3.0 * tol
     );
     assert!(
         (com_y - expected_com).abs() < 3.0 * tol,
         "COM_y = {:.4} ≠ {:.4}",
-        com_y, expected_com
+        com_y,
+        expected_com
     );
     assert!(
         (com_z - expected_com).abs() < 3.0 * tol,
         "COM_z = {:.4} ≠ {:.4}",
-        com_z, expected_com
+        com_z,
+        expected_com
     );
 }
 
@@ -212,22 +222,26 @@ fn zel_positions_in_box() {
         assert!(
             p.position.x >= 0.0 && p.position.x < BOX,
             "x = {} fuera de [0, {BOX}) en gid={}",
-            p.position.x, p.global_id
+            p.position.x,
+            p.global_id
         );
         assert!(
             p.position.y >= 0.0 && p.position.y < BOX,
             "y = {} fuera de [0, {BOX}) en gid={}",
-            p.position.y, p.global_id
+            p.position.y,
+            p.global_id
         );
         assert!(
             p.position.z >= 0.0 && p.position.z < BOX,
             "z = {} fuera de [0, {BOX}) en gid={}",
-            p.position.z, p.global_id
+            p.position.z,
+            p.global_id
         );
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
             "Posición no finita en gid={}: {:?}",
-            p.global_id, p.position
+            p.global_id,
+            p.position
         );
     }
 }
@@ -243,26 +257,29 @@ fn zel_displacement_rms_linear_regime() {
     let d = BOX / GRID as f64;
 
     // Calcular RMS de desplazamiento respecto a la retícula.
-    let sum_sq: f64 = parts.iter().map(|p| {
-        let gid = p.global_id;
-        let ix = gid / (GRID * GRID);
-        let rem = gid % (GRID * GRID);
-        let iy = rem / GRID;
-        let iz = rem % GRID;
-        let q = Vec3::new(
-            (ix as f64 + 0.5) * d,
-            (iy as f64 + 0.5) * d,
-            (iz as f64 + 0.5) * d,
-        );
-        // Desplazamiento con mínima imagen.
-        let dx = p.position.x - q.x;
-        let dy = p.position.y - q.y;
-        let dz = p.position.z - q.z;
-        let dx = dx - BOX * (dx / BOX).round();
-        let dy = dy - BOX * (dy / BOX).round();
-        let dz = dz - BOX * (dz / BOX).round();
-        dx * dx + dy * dy + dz * dz
-    }).sum();
+    let sum_sq: f64 = parts
+        .iter()
+        .map(|p| {
+            let gid = p.global_id;
+            let ix = gid / (GRID * GRID);
+            let rem = gid % (GRID * GRID);
+            let iy = rem / GRID;
+            let iz = rem % GRID;
+            let q = Vec3::new(
+                (ix as f64 + 0.5) * d,
+                (iy as f64 + 0.5) * d,
+                (iz as f64 + 0.5) * d,
+            );
+            // Desplazamiento con mínima imagen.
+            let dx = p.position.x - q.x;
+            let dy = p.position.y - q.y;
+            let dz = p.position.z - q.z;
+            let dx = dx - BOX * (dx / BOX).round();
+            let dy = dy - BOX * (dy / BOX).round();
+            let dz = dz - BOX * (dz / BOX).round();
+            dx * dx + dy * dy + dz * dz
+        })
+        .sum();
 
     let rms = (sum_sq / N_PART as f64).sqrt();
     let rms_over_d = rms / d;
@@ -326,7 +343,7 @@ fn zel_pk_follows_power_law() {
             omega_lambda: 0.0,
             h0: 0.1,
             a_init: 0.02,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -339,7 +356,10 @@ fn zel_pk_follows_power_law() {
     let pk_bins = power_spectrum(&positions, &masses, BOX, GRID16);
 
     // Debe haber bins con señal.
-    let bins_with_signal: Vec<_> = pk_bins.iter().filter(|b| b.pk > 0.0 && b.n_modes > 0).collect();
+    let bins_with_signal: Vec<_> = pk_bins
+        .iter()
+        .filter(|b| b.pk > 0.0 && b.n_modes > 0)
+        .collect();
     assert!(
         bins_with_signal.len() >= 3,
         "Menos de 3 bins con señal en P(k): {} bins totales",
@@ -361,18 +381,16 @@ fn zel_pk_follows_power_law() {
             assert!(
                 measured_slope > -2.0 - 2.0 && measured_slope < -2.0 + 2.0,
                 "Pendiente medida en P(k) = {:.2} vs n_s=-2 (tolerancia ±2) — k=[{:.3},{:.3}]",
-                measured_slope, k_lo, k_hi
+                measured_slope,
+                k_lo,
+                k_hi
             );
         }
     }
 
     // Verificar que P(k) no tiene NaN/Inf.
     for b in &pk_bins {
-        assert!(
-            b.pk.is_finite(),
-            "P(k={:.3}) = {} no es finito",
-            b.k, b.pk
-        );
+        assert!(b.pk.is_finite(), "P(k={:.3}) = {} no es finito", b.k, b.pk);
     }
 }
 
@@ -386,13 +404,20 @@ fn zel_pm_short_run_stable() {
     let cosmo = CosmologyParams::new(1.0, 0.0, 0.1);
     let mut a = 0.02_f64;
     let dt = 0.002_f64;
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
 
     for _ in 0..10 {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -411,12 +436,14 @@ fn zel_pm_short_run_stable() {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
             "Posición no finita con PM en gid={}: {:?}",
-            p.global_id, p.position
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
             "Velocidad no finita con PM en gid={}: {:?}",
-            p.global_id, p.velocity
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -441,7 +468,11 @@ fn zel_treepm_short_run_stable() {
     for _ in 0..10 {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -460,12 +491,14 @@ fn zel_treepm_short_run_stable() {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
             "Posición no finita con TreePM en gid={}: {:?}",
-            p.global_id, p.position
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
             "Velocidad no finita con TreePM en gid={}: {:?}",
-            p.global_id, p.velocity
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -481,10 +514,17 @@ fn zel_gid_range_consistent() {
     let lo = build_particles_for_gid_range(&cfg, 0, N_PART / 2).expect("range 0..N/2");
     let hi = build_particles_for_gid_range(&cfg, N_PART / 2, N_PART).expect("range N/2..N");
 
-    assert_eq!(lo.len() + hi.len(), all.len(), "split no cubre todas las partículas");
+    assert_eq!(
+        lo.len() + hi.len(),
+        all.len(),
+        "split no cubre todas las partículas"
+    );
 
     for p_all in &all {
-        let found = lo.iter().chain(hi.iter()).find(|q| q.global_id == p_all.global_id);
+        let found = lo
+            .iter()
+            .chain(hi.iter())
+            .find(|q| q.global_id == p_all.global_id);
         let p_range = found.expect(&format!("gid {} no encontrado en rangos", p_all.global_id));
         assert_eq!(
             p_all.position.x.to_bits(),
@@ -524,7 +564,11 @@ fn zel_velocities_linear_theory() {
     let vel_factor = a_init * a_init * f * h;
 
     // El ratio p_rms / vel_factor debe ser el Ψ_rms del campo.
-    let psi_from_vel = if vel_factor > 0.0 { p_rms / vel_factor } else { 0.0 };
+    let psi_from_vel = if vel_factor > 0.0 {
+        p_rms / vel_factor
+    } else {
+        0.0
+    };
 
     // Verificar que no es cero ni explosivo.
     assert!(

@@ -50,9 +50,9 @@
 
 use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
-    adaptive_dt_cosmo, build_particles, cosmo_consistency_error, g_code_consistent,
+    adaptive_dt_cosmo, build_particles, cosmo_consistency_error,
     cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
+    g_code_consistent, wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
     InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
     SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
 };
@@ -67,7 +67,7 @@ const BOX_MPC_H: f64 = 100.0;
 const OMEGA_M: f64 = 0.315;
 const OMEGA_L: f64 = 0.685;
 const OMEGA_B: f64 = 0.049;
-const H0: f64 = 0.1;      // H₀ en unidades internas (1/t_sim)
+const H0: f64 = 0.1; // H₀ en unidades internas (1/t_sim)
 const H_DIMLESS: f64 = 0.674;
 const T_CMB: f64 = 2.7255;
 const N_S: f64 = 0.965;
@@ -133,7 +133,7 @@ fn build_ic(n: usize, g_override: f64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -166,7 +166,11 @@ fn median_ratio(pk0: &[PkBin], pk1: &[PkBin]) -> f64 {
     }
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = ratios.len() / 2;
-    if ratios.len() % 2 == 1 { ratios[mid] } else { 0.5 * (ratios[mid - 1] + ratios[mid]) }
+    if ratios.len() % 2 == 1 {
+        ratios[mid]
+    } else {
+        0.5 * (ratios[mid - 1] + ratios[mid])
+    }
 }
 
 fn evolve_adaptive_g(
@@ -178,7 +182,10 @@ fn evolve_adaptive_g(
     dt_max: f64,
 ) -> (f64, usize) {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let softening = 1.0 / (n_mesh as f64 * 20.0);
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
@@ -201,7 +208,11 @@ fn evolve_adaptive_g(
         let dt = adaptive_dt_cosmo(c, a, acc_max, softening, 0.025, 0.025, dt_max);
         let g_cosmo = gravity_coupling_qksl(g, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -226,7 +237,10 @@ fn evolve_fixed_g(
     dt: f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..500_000 {
@@ -235,7 +249,11 @@ fn evolve_fixed_g(
         }
         let g_cosmo = gravity_coupling_qksl(g, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -270,7 +288,10 @@ fn phase50_consistency_formula() {
     let g_eds = g_code_consistent(1.0, 1.0);
     let err_eds = cosmo_consistency_error(g_eds, 1.0, 1.0, 1.0);
     let g_eds_exact = 3.0 / (8.0 * PI);
-    assert!((g_eds - g_eds_exact).abs() / g_eds_exact < 1e-12, "EdS formula incorrecta");
+    assert!(
+        (g_eds - g_eds_exact).abs() / g_eds_exact < 1e-12,
+        "EdS formula incorrecta"
+    );
     assert!(err_eds < 1e-12, "EdS inconsistente: err={err_eds:.3e}");
     println!("[EdS] G = {g_eds:.6e} = 3/(8π)={g_eds_exact:.6e}  err={err_eds:.3e}");
 
@@ -310,22 +331,36 @@ fn phase50_inconsistency_quantified() {
 
     // Ratio gravitacional vs Hubble (lo que determina el crecimiento).
     let grav_over_hubble_consistent = 4.0 * PI * g_cons * 1.0 / (H0 * H0);
-    let grav_over_hubble_legacy     = 4.0 * PI * g_leg * 1.0 / (H0 * H0);
+    let grav_over_hubble_legacy = 4.0 * PI * g_leg * 1.0 / (H0 * H0);
     let expected_ratio = 1.5 * OMEGA_M; // (3/2)Ω_m
 
     println!("=== Phase 50: Diagnóstico de consistencia cosmológica ===");
     println!("  H₀ = {H0}  Ω_m = {OMEGA_M}  Ω_Λ = {OMEGA_L}");
     println!("  G_consistente  = {g_cons:.4e}");
-    println!("  G_legacy       = {g_leg:.4e}  (ratio G_leg/G_cons = {:.1}×)", g_leg/g_cons);
+    println!(
+        "  G_legacy       = {g_leg:.4e}  (ratio G_leg/G_cons = {:.1}×)",
+        g_leg / g_cons
+    );
     println!();
     println!("  Ratio efectivo (4πGρ̄)/H₀² (debe ser (3/2)Ω_m = {expected_ratio:.4}):");
-    println!("    Consistente: {grav_over_hubble_consistent:.4}  ≈ (3/2)Ω_m? {}",
-             if (grav_over_hubble_consistent / expected_ratio - 1.0).abs() < 0.01 { "✓" } else { "✗" });
-    println!("    Legacy G=1:  {grav_over_hubble_legacy:.4}  factor vs correcto: {:.1}×",
-             grav_over_hubble_legacy / expected_ratio);
+    println!(
+        "    Consistente: {grav_over_hubble_consistent:.4}  ≈ (3/2)Ω_m? {}",
+        if (grav_over_hubble_consistent / expected_ratio - 1.0).abs() < 0.01 {
+            "✓"
+        } else {
+            "✗"
+        }
+    );
+    println!(
+        "    Legacy G=1:  {grav_over_hubble_legacy:.4}  factor vs correcto: {:.1}×",
+        grav_over_hubble_legacy / expected_ratio
+    );
     println!();
     println!("  Conclusión: con G=1 y H₀=0.1, la ecuación del crecimiento");
-    println!("  tiene un term fuente {:.0}× mayor que el correcto.", grav_over_hubble_legacy / expected_ratio);
+    println!(
+        "  tiene un term fuente {:.0}× mayor que el correcto.",
+        grav_over_hubble_legacy / expected_ratio
+    );
     println!("  El factor de escala a³ en g_cosmo=G·a³ compensa parcialmente,");
     println!("  pero solo en el límite de evolución muy corta (streaming domina).");
 
@@ -370,7 +405,10 @@ fn phase50_growth_consistent_short() {
     let ratio = median_ratio(&linear_bins(&pk0, n), &linear_bins(&pk1, n));
 
     let v_rms: f64 = {
-        let sum_sq: f64 = parts.iter().map(|p| p.velocity.norm() * p.velocity.norm()).sum();
+        let sum_sq: f64 = parts
+            .iter()
+            .map(|p| p.velocity.norm() * p.velocity.norm())
+            .sum();
         (sum_sq / parts.len() as f64).sqrt()
     };
 
@@ -381,8 +419,14 @@ fn phase50_growth_consistent_short() {
 
     assert!(a_final >= a_target * 0.99, "No alcanzó a_target");
     assert!(ratio.is_finite() && !ratio.is_nan(), "P(k) ratio no finito");
-    assert!(ratio > 1.0, "P(k) no creció con G_consistente (ratio={ratio:.4})");
-    assert!(ratio < 1000.0, "P(k) explotó con G_consistente (ratio={ratio:.4})");
+    assert!(
+        ratio > 1.0,
+        "P(k) no creció con G_consistente (ratio={ratio:.4})"
+    );
+    assert!(
+        ratio < 1000.0,
+        "P(k) explotó con G_consistente (ratio={ratio:.4})"
+    );
     assert!(v_rms.is_finite(), "v_rms no finito → explosión");
     println!("  ✓ Estable y creciendo. (D²_exacto requiere N≥32 en release)");
 }
@@ -414,7 +458,10 @@ fn phase50_growth_consistent_long() {
     let ratio = median_ratio(&linear_bins(&pk0, n), &linear_bins(&pk1, n));
 
     let v_rms: f64 = {
-        let sum_sq: f64 = parts.iter().map(|p| p.velocity.norm() * p.velocity.norm()).sum();
+        let sum_sq: f64 = parts
+            .iter()
+            .map(|p| p.velocity.norm() * p.velocity.norm())
+            .sum();
         (sum_sq / parts.len() as f64).sqrt()
     };
 
@@ -446,28 +493,34 @@ fn phase50_g_consistent_vs_legacy() {
     let a_target = 0.05_f64;
 
     let mut parts_cons = build_particles(&build_ic(n, g_phys())).expect("ICs_cons");
-    let mut parts_leg  = build_particles(&build_ic(n, G_LEGACY)).expect("ICs_leg");
+    let mut parts_leg = build_particles(&build_ic(n, G_LEGACY)).expect("ICs_leg");
     let pk0 = measure_pk(&parts_cons, n);
 
     // ~25 pasos hasta a=0.05
     let a_cons = evolve_fixed_g(&mut parts_cons, n, g_phys(), A_INIT, a_target, 1.0e-3);
-    let a_leg  = evolve_fixed_g(&mut parts_leg,  n, G_LEGACY,  A_INIT, a_target, 1.0e-3);
+    let a_leg = evolve_fixed_g(&mut parts_leg, n, G_LEGACY, A_INIT, a_target, 1.0e-3);
 
     let pk_cons = measure_pk(&parts_cons, n);
-    let pk_leg  = measure_pk(&parts_leg,  n);
+    let pk_leg = measure_pk(&parts_leg, n);
 
     let d_ratio = growth_factor_d_ratio(cosmo(), a_cons, A_INIT);
     let d2 = d_ratio * d_ratio;
 
     let ratio_cons = median_ratio(&linear_bins(&pk0, n), &linear_bins(&pk_cons, n));
-    let ratio_leg  = median_ratio(&linear_bins(&pk0, n), &linear_bins(&pk_leg,  n));
+    let ratio_leg = median_ratio(&linear_bins(&pk0, n), &linear_bins(&pk_leg, n));
 
     let v_rms_cons: f64 = {
-        let s: f64 = parts_cons.iter().map(|p| p.velocity.norm() * p.velocity.norm()).sum();
+        let s: f64 = parts_cons
+            .iter()
+            .map(|p| p.velocity.norm() * p.velocity.norm())
+            .sum();
         (s / parts_cons.len() as f64).sqrt()
     };
     let v_rms_leg: f64 = {
-        let s: f64 = parts_leg.iter().map(|p| p.velocity.norm() * p.velocity.norm()).sum();
+        let s: f64 = parts_leg
+            .iter()
+            .map(|p| p.velocity.norm() * p.velocity.norm())
+            .sum();
         (s / parts_leg.len() as f64).sqrt()
     };
 
@@ -482,8 +535,11 @@ fn phase50_g_consistent_vs_legacy() {
 
     // G_consistente SIEMPRE debe ser estable.
     assert!(a_cons >= a_target * 0.99, "G_cons no alcanzó a_target");
-    assert!(ratio_cons.is_finite() && ratio_cons > 0.0, "G_cons: ratio no físico");
-    assert!(ratio_cons > 1.0,    "G_cons: P(k) no creció");
+    assert!(
+        ratio_cons.is_finite() && ratio_cons > 0.0,
+        "G_cons: ratio no físico"
+    );
+    assert!(ratio_cons > 1.0, "G_cons: P(k) no creció");
     assert!(ratio_cons < 1000.0, "G_cons: P(k) explotó");
     assert!(v_rms_cons.is_finite(), "G_cons: v_rms no finito");
 

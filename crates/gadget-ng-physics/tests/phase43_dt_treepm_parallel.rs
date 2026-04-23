@@ -42,10 +42,10 @@ use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
     cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
+    Vec3,
 };
 use gadget_ng_integrators::{
     compute_global_adaptive_dt, leapfrog_cosmo_kdk_step, AdaptiveDtCriterion, CosmoFactors,
@@ -109,7 +109,10 @@ enum DtMode {
     Fixed(f64),
     /// Criterio combinado `dt = min(η·√(ε/a_max), κ_h·a/H(a))`, clamped a
     /// `[DT_MIN_ADAPTIVE, DT_MAX_ADAPTIVE]`.
-    AdaptiveCosmoAccel { eta: f64, kappa_h: f64 },
+    AdaptiveCosmoAccel {
+        eta: f64,
+        kappa_h: f64,
+    },
 }
 
 impl DtMode {
@@ -234,7 +237,7 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -586,11 +589,7 @@ fn growth_ratio_low_k(
         if k > k_max_hmpc {
             break;
         }
-        if let Some(j) = ic
-            .ks_hmpc
-            .iter()
-            .position(|&k_ic| (k_ic - k).abs() < 1e-9)
-        {
+        if let Some(j) = ic.ks_hmpc.iter().position(|&k_ic| (k_ic - k).abs() < 1e-9) {
             let p_ev = ev.pk_corrected[i];
             let p_ic = ic.pk_corrected[j];
             if p_ic > 0.0 && p_ev > 0.0 {
@@ -630,8 +629,7 @@ fn run_one_variant(n: usize, seed: u64, mode: DtMode) -> Vec<SnapshotResult> {
     for &a_t in A_SNAPSHOTS.iter() {
         let t0 = Instant::now();
         if a_current < a_t {
-            let (a_next, n_steps, trace) =
-                evolve_with_dt_mode(&mut parts, n, a_current, a_t, mode);
+            let (a_next, n_steps, trace) = evolve_with_dt_mode(&mut parts, n, a_current, a_t, mode);
             a_current = a_next;
             total_steps += n_steps;
             total_trace.extend(trace);

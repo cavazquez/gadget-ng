@@ -175,8 +175,8 @@ fn coords_to_hilbert(ix: u32, iy: u32, iz: u32, p: u32) -> u64 {
     // MSB de h = X[0][0].
     let mut h = 0u64;
     for k in 0..p {
-        for j in 0..n {
-            h = (h << 1) | (((x[j] >> k) & 1) as u64);
+        for xj in x.iter().take(n) {
+            h = (h << 1) | ((*xj >> k) & 1) as u64;
         }
     }
     h
@@ -246,12 +246,7 @@ impl SfcDecomposition {
     }
 
     /// Construye la descomposición SFC con una curva específica.
-    pub fn build_with_kind(
-        positions: &[Vec3],
-        box_size: f64,
-        n_ranks: i32,
-        kind: SfcKind,
-    ) -> Self {
+    pub fn build_with_kind(positions: &[Vec3], box_size: f64, n_ranks: i32, kind: SfcKind) -> Self {
         let n_ranks = n_ranks.max(1);
         if positions.is_empty() {
             return Self {
@@ -321,7 +316,14 @@ impl SfcDecomposition {
         n_ranks: i32,
     ) -> Self {
         Self::build_with_bbox_and_kind(
-            positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, n_ranks,
+            positions,
+            x_lo,
+            x_hi,
+            y_lo,
+            y_hi,
+            z_lo,
+            z_hi,
+            n_ranks,
             SfcKind::Morton,
         )
     }
@@ -358,12 +360,12 @@ impl SfcDecomposition {
         }
 
         let key_fn: Box<dyn Fn(Vec3) -> u64> = match kind {
-            SfcKind::Morton => Box::new(move |p: Vec3| {
-                particle_morton(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
-            }),
-            SfcKind::Hilbert => Box::new(move |p: Vec3| {
-                particle_hilbert(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
-            }),
+            SfcKind::Morton => {
+                Box::new(move |p: Vec3| particle_morton(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi))
+            }
+            SfcKind::Hilbert => {
+                Box::new(move |p: Vec3| particle_hilbert(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi))
+            }
         };
 
         let mut keys: Vec<u64> = positions.iter().map(|p| key_fn(*p)).collect();
@@ -406,6 +408,7 @@ impl SfcDecomposition {
     /// Todos los ranks deben ver exactamente la **misma** lista ordenada de
     /// `(key, weight)` globales. El caller es responsable de pasar los datos globales
     /// (ya reunidos con allgather o equivalente) en `positions` y `weights`.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_weighted(
         positions: &[Vec3],
         weights: &[f64],
@@ -440,12 +443,12 @@ impl SfcDecomposition {
         }
 
         let key_fn: Box<dyn Fn(Vec3) -> u64> = match kind {
-            SfcKind::Morton => Box::new(move |p: Vec3| {
-                particle_morton(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
-            }),
-            SfcKind::Hilbert => Box::new(move |p: Vec3| {
-                particle_hilbert(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi)
-            }),
+            SfcKind::Morton => {
+                Box::new(move |p: Vec3| particle_morton(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi))
+            }
+            SfcKind::Hilbert => {
+                Box::new(move |p: Vec3| particle_hilbert(p, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi))
+            }
         };
 
         // Generar pares (clave, peso) y ordenar por clave SFC.
@@ -732,10 +735,7 @@ mod tests {
         ];
         for (x, y, z) in test_points {
             let k = hilbert3(x, y, z);
-            assert!(
-                k <= max_valid,
-                "hilbert3({x},{y},{z}) = {k} excede 63 bits"
-            );
+            assert!(k <= max_valid, "hilbert3({x},{y},{z}) = {k} excede 63 bits");
         }
     }
 
@@ -746,7 +746,7 @@ mod tests {
         // La curva de Hilbert garantiza esto por construcción.
         let near_a = hilbert3(0.1, 0.1, 0.1);
         let near_b = hilbert3(0.15, 0.12, 0.11);
-        let far_c  = hilbert3(0.85, 0.88, 0.90);
+        let far_c = hilbert3(0.85, 0.88, 0.90);
 
         let dist_near = near_a.abs_diff(near_b);
         let dist_far_a = near_a.abs_diff(far_c);
@@ -778,7 +778,11 @@ mod tests {
         }
         keys.sort_unstable();
         keys.dedup();
-        assert_eq!(keys.len(), 64, "64 puntos distintos deben producir 64 claves distintas");
+        assert_eq!(
+            keys.len(),
+            64,
+            "64 puntos distintos deben producir 64 claves distintas"
+        );
     }
 
     #[test]
@@ -823,7 +827,7 @@ mod tests {
         // Puntos en el cuadrante inferior-izquierdo deben tener claves pequeñas.
         let h_small_1 = hilbert3(0.05, 0.05, 0.05);
         let h_small_2 = hilbert3(0.01, 0.02, 0.03);
-        let h_large   = hilbert3(0.95, 0.95, 0.95);
+        let h_large = hilbert3(0.95, 0.95, 0.95);
 
         // La diferencia entre puntos cerca del origen debe ser mucho menor
         // que la diferencia de puntos lejanos entre sí.

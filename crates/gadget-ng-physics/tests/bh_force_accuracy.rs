@@ -127,7 +127,14 @@ fn compute_bh_full(
     err_tol: f64,
 ) -> (Vec<Vec3>, f64) {
     compute_bh_full_mac(
-        positions, masses, theta, order, softened, relative, err_tol, MacSoftening::Bare,
+        positions,
+        masses,
+        theta,
+        order,
+        softened,
+        relative,
+        err_tol,
+        MacSoftening::Bare,
     )
 }
 
@@ -296,10 +303,19 @@ fn compute_force_error_extended(ref_acc: &[Vec3], bh_acc: &[Vec3]) -> ForceError
     let an = angular_errors.len() as f64;
     let mean_angular_err = if an > 0.0 {
         angular_errors.iter().copied().sum::<f64>() / an
-    } else { 0.0 };
+    } else {
+        0.0
+    };
     let max_angular_err = angular_errors.iter().cloned().fold(0.0_f64, f64::max);
 
-    ForceErrorExtended { mean_err, max_err, p95_err, rms_err, mean_angular_err, max_angular_err }
+    ForceErrorExtended {
+        mean_err,
+        max_err,
+        p95_err,
+        rms_err,
+        mean_angular_err,
+        max_angular_err,
+    }
 }
 
 /// Análisis radial: calcula error de fuerza por bin de distancia al COM (normalizado por eps).
@@ -309,7 +325,8 @@ fn compute_radial_error(
     bh_acc: &[Vec3],
     n_bins: usize,
     max_r_over_eps: f64,
-) -> Vec<(f64, f64, f64, usize)> {  // (r_over_eps_center, mean_err, max_err, count)
+) -> Vec<(f64, f64, f64, usize)> {
+    // (r_over_eps_center, mean_err, max_err, count)
     // Centro de masa
     let com = Vec3::new(
         positions.iter().map(|p| p.x).sum::<f64>() / positions.len() as f64,
@@ -321,7 +338,9 @@ fn compute_radial_error(
 
     for (i, (r_ref, r_bh)) in ref_acc.iter().zip(bh_acc.iter()).enumerate() {
         let r_mag = r_ref.norm();
-        if r_mag < 1e-15 { continue; }
+        if r_mag < 1e-15 {
+            continue;
+        }
         let dist = (positions[i] - com).norm();
         let r_over_eps = dist / EPS;
         let bin = ((r_over_eps / max_r_over_eps) * n_bins as f64) as usize;
@@ -330,16 +349,19 @@ fn compute_radial_error(
         bins[bin].0.push(err);
     }
 
-    bins.iter().enumerate().map(|(i, (errs, _))| {
-        let center = (i as f64 + 0.5) * bin_width;
-        if errs.is_empty() {
-            (center, 0.0, 0.0, 0)
-        } else {
-            let mean = errs.iter().sum::<f64>() / errs.len() as f64;
-            let max = errs.iter().cloned().fold(0.0_f64, f64::max);
-            (center, mean, max, errs.len())
-        }
-    }).collect()
+    bins.iter()
+        .enumerate()
+        .map(|(i, (errs, _))| {
+            let center = (i as f64 + 0.5) * bin_width;
+            if errs.is_empty() {
+                (center, 0.0, 0.0, 0)
+            } else {
+                let mean = errs.iter().sum::<f64>() / errs.len() as f64;
+                let max = errs.iter().cloned().fold(0.0_f64, f64::max);
+                (center, mean, max, errs.len())
+            }
+        })
+        .collect()
 }
 
 // ── Runner principal ──────────────────────────────────────────────────────────
@@ -355,11 +377,7 @@ struct BenchResult {
     time_bh_ms: f64,
 }
 
-fn run_benchmark(
-    distribution: &'static str,
-    cfg: &RunConfig,
-    thetas: &[f64],
-) -> Vec<BenchResult> {
+fn run_benchmark(distribution: &'static str, cfg: &RunConfig, thetas: &[f64]) -> Vec<BenchResult> {
     let particles = build_particles(cfg).expect("build_particles failed");
     let positions: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
@@ -394,8 +412,8 @@ fn write_csv(results: &[BenchResult]) {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let out_dir = repo_root
-        .join("experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results");
+    let out_dir =
+        repo_root.join("experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results");
 
     let Ok(()) = std::fs::create_dir_all(&out_dir) else {
         eprintln!("[bh_force_accuracy] No se pudo crear {out_dir:?}; omitiendo CSV.");
@@ -478,8 +496,8 @@ fn write_ablation_csv(results: &[AblationResult]) {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let out_dir = repo_root
-        .join("experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results");
+    let out_dir =
+        repo_root.join("experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results");
     let Ok(()) = std::fs::create_dir_all(&out_dir) else {
         eprintln!("[bh_multipole_ablation] No se pudo crear {out_dir:?}; omitiendo CSV.");
         return;
@@ -519,8 +537,10 @@ fn bh_force_accuracy_uniform_sphere() {
     let results = run_benchmark("uniform_sphere", &cfg, THETAS);
 
     println!("\n=== BH Force Accuracy: Uniform Sphere (N={N}) ===");
-    println!("{:<8} {:>10} {:>10} {:>10} {:>12} {:>12} {:>10}",
-        "theta", "mean_err%", "max_err%", "rms_err%", "t_direct_ms", "t_bh_ms", "speedup");
+    println!(
+        "{:<8} {:>10} {:>10} {:>10} {:>12} {:>12} {:>10}",
+        "theta", "mean_err%", "max_err%", "rms_err%", "t_direct_ms", "t_bh_ms", "speedup"
+    );
     for r in &results {
         println!(
             "{:<8.2} {:>10.3} {:>10.3} {:>10.3} {:>12.1} {:>10.1} {:>9.2}x",
@@ -535,16 +555,25 @@ fn bh_force_accuracy_uniform_sphere() {
         // Verificaciones de criterios de aceptación.
         match r.theta as i32 {
             _ if (r.theta - 0.2).abs() < 0.01 => {
-                assert!(r.mean_err < 0.01,
-                    "θ=0.2: mean_err={:.4}% esperado < 1%", r.mean_err * 100.0);
+                assert!(
+                    r.mean_err < 0.01,
+                    "θ=0.2: mean_err={:.4}% esperado < 1%",
+                    r.mean_err * 100.0
+                );
             }
             _ if (r.theta - 0.5).abs() < 0.01 => {
-                assert!(r.mean_err < 0.05,
-                    "θ=0.5: mean_err={:.4}% esperado < 5%", r.mean_err * 100.0);
+                assert!(
+                    r.mean_err < 0.05,
+                    "θ=0.5: mean_err={:.4}% esperado < 5%",
+                    r.mean_err * 100.0
+                );
             }
             _ if (r.theta - 0.8).abs() < 0.01 => {
-                assert!(r.mean_err < 0.20,
-                    "θ=0.8: mean_err={:.4}% esperado < 20%", r.mean_err * 100.0);
+                assert!(
+                    r.mean_err < 0.20,
+                    "θ=0.8: mean_err={:.4}% esperado < 20%",
+                    r.mean_err * 100.0
+                );
             }
             _ => {}
         }
@@ -558,8 +587,10 @@ fn bh_force_accuracy_plummer() {
     let results = run_benchmark("plummer", &cfg, THETAS);
 
     println!("\n=== BH Force Accuracy: Plummer (N={N}, a=0.1) ===");
-    println!("{:<8} {:>10} {:>10} {:>10} {:>12} {:>12} {:>10}",
-        "theta", "mean_err%", "max_err%", "rms_err%", "t_direct_ms", "t_bh_ms", "speedup");
+    println!(
+        "{:<8} {:>10} {:>10} {:>10} {:>12} {:>12} {:>10}",
+        "theta", "mean_err%", "max_err%", "rms_err%", "t_direct_ms", "t_bh_ms", "speedup"
+    );
     for r in &results {
         println!(
             "{:<8.2} {:>10.3} {:>10.3} {:>10.3} {:>12.1} {:>10.1} {:>9.2}x",
@@ -574,12 +605,18 @@ fn bh_force_accuracy_plummer() {
         // Plummer concentrado → errores más altos; umbrales más relajados.
         match r.theta as i32 {
             _ if (r.theta - 0.2).abs() < 0.01 => {
-                assert!(r.mean_err < 0.03,
-                    "Plummer θ=0.2: mean_err={:.4}% esperado < 3%", r.mean_err * 100.0);
+                assert!(
+                    r.mean_err < 0.03,
+                    "Plummer θ=0.2: mean_err={:.4}% esperado < 3%",
+                    r.mean_err * 100.0
+                );
             }
             _ if (r.theta - 0.5).abs() < 0.01 => {
-                assert!(r.mean_err < 0.10,
-                    "Plummer θ=0.5: mean_err={:.4}% esperado < 10%", r.mean_err * 100.0);
+                assert!(
+                    r.mean_err < 0.10,
+                    "Plummer θ=0.5: mean_err={:.4}% esperado < 10%",
+                    r.mean_err * 100.0
+                );
             }
             _ => {}
         }
@@ -591,9 +628,8 @@ fn bh_force_accuracy_plummer() {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let csv_path = repo_root.join(
-        "experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results/bh_accuracy.csv",
-    );
+    let csv_path = repo_root
+        .join("experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results/bh_accuracy.csv");
     if csv_path.exists() {
         // Añadir filas de Plummer al CSV existente.
         let mut existing = std::fs::read_to_string(&csv_path).unwrap_or_default();
@@ -628,8 +664,10 @@ fn bh_force_accuracy_full_sweep() {
     all_results.extend(run_benchmark("plummer", &cfg_plummer, THETAS));
 
     println!("\n=== BH Force Accuracy: Barrido completo (N={N}, order=3) ===");
-    println!("{:<16} {:<8} {:>10} {:>10} {:>10} {:>12} {:>10}",
-        "distribution", "theta", "mean_err%", "max_err%", "rms_err%", "t_bh_ms", "speedup");
+    println!(
+        "{:<16} {:<8} {:>10} {:>10} {:>10} {:>12} {:>10}",
+        "distribution", "theta", "mean_err%", "max_err%", "rms_err%", "t_bh_ms", "speedup"
+    );
     for r in &all_results {
         println!(
             "{:<16} {:<8.2} {:>10.3} {:>10.3} {:>10.3} {:>12.1} {:>9.2}x",
@@ -661,7 +699,12 @@ fn bh_multipole_ablation() {
     const ORDERS: &[u8] = &[1, 2, 3];
 
     let mut all = run_ablation("uniform_sphere", &cfg_sphere, ABLATION_THETAS, ORDERS);
-    all.extend(run_ablation("plummer", &cfg_plummer, ABLATION_THETAS, ORDERS));
+    all.extend(run_ablation(
+        "plummer",
+        &cfg_plummer,
+        ABLATION_THETAS,
+        ORDERS,
+    ));
 
     println!("\n=== Ablación multipolar Barnes-Hut (N={N}) ===");
     println!(
@@ -696,15 +739,18 @@ fn bh_multipole_ablation() {
     // lugar de reducir el error del monopolo. Este es un hallazgo científico genuino que
     // aparece también en el plan: "Softening en términos quad/oct: No (bare 1/r⁵) vs GADGET-4: Sí".
     for dist in ["uniform_sphere", "plummer"] {
-        let err_order1 = all.iter()
+        let err_order1 = all
+            .iter()
             .find(|r| r.distribution == dist && (r.theta - 0.5).abs() < 0.01 && r.order == 1)
             .map(|r| r.mean_err)
             .unwrap_or(0.0);
-        let err_order2 = all.iter()
+        let err_order2 = all
+            .iter()
             .find(|r| r.distribution == dist && (r.theta - 0.5).abs() < 0.01 && r.order == 2)
             .map(|r| r.mean_err)
             .unwrap_or(0.0);
-        let err_order3 = all.iter()
+        let err_order3 = all
+            .iter()
             .find(|r| r.distribution == dist && (r.theta - 0.5).abs() < 0.01 && r.order == 3)
             .map(|r| r.mean_err)
             .unwrap_or(f64::MAX);
@@ -720,13 +766,23 @@ fn bh_multipole_ablation() {
             assert!(
                 err_order3 <= err_order1 * 1.1,
                 "uniform_sphere θ=0.5: mono+Q+O ({:.4}%) debería ser ≤ mono ({:.4}%)",
-                err_order3 * 100.0, err_order1 * 100.0
+                err_order3 * 100.0,
+                err_order1 * 100.0
             );
         }
         // Para Plummer: simplemente verificamos que todos los errores son finitos y positivos.
-        assert!(err_order1.is_finite() && err_order1 > 0.0, "{dist}: orden1 inválido");
-        assert!(err_order2.is_finite() && err_order2 > 0.0, "{dist}: orden2 inválido");
-        assert!(err_order3.is_finite() && err_order3 > 0.0, "{dist}: orden3 inválido");
+        assert!(
+            err_order1.is_finite() && err_order1 > 0.0,
+            "{dist}: orden1 inválido"
+        );
+        assert!(
+            err_order2.is_finite() && err_order2 > 0.0,
+            "{dist}: orden2 inválido"
+        );
+        assert!(
+            err_order3.is_finite() && err_order3 > 0.0,
+            "{dist}: orden3 inválido"
+        );
     }
 
     write_ablation_csv(&all);
@@ -757,7 +813,11 @@ fn bh_relative_opening_criterion() {
         let err = compute_force_error(&ref_acc, &bh_acc);
         println!(
             "geometric θ={:.1}              {:>12.3} {:>12.3} {:>12.3} {:>10.2}",
-            theta, err.mean_err * 100.0, err.max_err * 100.0, err.rms_err * 100.0, t
+            theta,
+            err.mean_err * 100.0,
+            err.max_err * 100.0,
+            err.rms_err * 100.0,
+            t
         );
     }
 
@@ -767,7 +827,11 @@ fn bh_relative_opening_criterion() {
         let err = compute_force_error(&ref_acc, &bh_acc);
         println!(
             "relative err_tol={:.3}         {:>12.3} {:>12.3} {:>12.3} {:>10.2}",
-            tol, err.mean_err * 100.0, err.max_err * 100.0, err.rms_err * 100.0, t
+            tol,
+            err.mean_err * 100.0,
+            err.max_err * 100.0,
+            err.rms_err * 100.0,
+            t
         );
     }
 
@@ -860,15 +924,15 @@ fn write_csv_generic(path: &std::path::Path, content: &str) {
 #[test]
 fn bh_softened_multipoles_ablation() {
     let plummer_concentrations: &[(f64, u64, &str)] = &[
-        (0.05, 11, "plummer_a005"),  // a/eps = 1 → núcleo < softening
-        (0.1,  7,  "plummer_a010"),  // a/eps = 2 → núcleo ~ softening
-        (0.3,  13, "plummer_a030"),  // a/eps = 6 → núcleo > softening
-        (1.0,  17, "plummer_a100"),  // a/eps = 20 → campo lejano
+        (0.05, 11, "plummer_a005"), // a/eps = 1 → núcleo < softening
+        (0.1, 7, "plummer_a010"),   // a/eps = 2 → núcleo ~ softening
+        (0.3, 13, "plummer_a030"),  // a/eps = 6 → núcleo > softening
+        (1.0, 17, "plummer_a100"),  // a/eps = 20 → campo lejano
     ];
 
     let mut csv = String::from(
         "distribution,a_plummer,a_over_eps,order,softened,theta,\
-         mean_err,max_err,p95_err,rms_err,mean_angular_err,max_angular_err,time_bh_ms\n"
+         mean_err,max_err,p95_err,rms_err,mean_angular_err,max_angular_err,time_bh_ms\n",
     );
 
     println!("\n=== Ablación softening multipolar — Fase 4 (N={N}, ε={EPS}) ===");
@@ -878,20 +942,25 @@ fn bh_softened_multipoles_ablation() {
     );
 
     let configs: Vec<(String, f64, RunConfig)> = {
-        let mut v: Vec<(String, f64, RunConfig)> = plummer_concentrations.iter()
+        let mut v: Vec<(String, f64, RunConfig)> = plummer_concentrations
+            .iter()
             .map(|(a, seed, name)| (name.to_string(), *a, make_config_plummer_a(*a, *seed)))
             .collect();
-        v.push(("uniform_sphere".to_string(), 0.0, make_config_uniform_sphere()));
+        v.push((
+            "uniform_sphere".to_string(),
+            0.0,
+            make_config_uniform_sphere(),
+        ));
         v
     };
 
     const THETA: f64 = 0.5;
     let configs_to_test: &[(u8, bool)] = &[
-        (1, false),  // monopolo bare
-        (2, false),  // mono+quad bare
-        (3, false),  // mono+quad+oct bare
-        (2, true),   // mono+quad softened
-        (3, true),   // mono+quad+oct softened
+        (1, false), // monopolo bare
+        (2, false), // mono+quad bare
+        (3, false), // mono+quad+oct bare
+        (2, true),  // mono+quad softened
+        (3, true),  // mono+quad+oct softened
     ];
 
     for (dist_name, a_val, cfg) in &configs {
@@ -901,24 +970,38 @@ fn bh_softened_multipoles_ablation() {
         let (ref_acc, _) = compute_direct(&positions, &masses);
 
         for &(order, softened) in configs_to_test {
-            let (bh_acc, t_ms) = compute_bh_full(&positions, &masses, THETA, order, softened, false, 0.005);
+            let (bh_acc, t_ms) =
+                compute_bh_full(&positions, &masses, THETA, order, softened, false, 0.005);
             let err = compute_force_error_extended(&ref_acc, &bh_acc);
             let a_over_eps = if *a_val > 0.0 { a_val / EPS } else { 0.0 };
 
             println!(
                 "{:<18} {:>5} {:>6} {:>8.3} {:>12.3} {:>12.3} {:>12.4} {:>12.4}",
-                dist_name, order,
+                dist_name,
+                order,
                 if softened { "yes" } else { "no" },
-                err.mean_err * 100.0, err.max_err * 100.0, err.p95_err * 100.0,
-                err.mean_angular_err * 100.0, err.max_angular_err * 100.0,
+                err.mean_err * 100.0,
+                err.max_err * 100.0,
+                err.p95_err * 100.0,
+                err.mean_angular_err * 100.0,
+                err.max_angular_err * 100.0,
             );
 
             csv.push_str(&format!(
                 "{},{:.3},{:.2},{},{},{:.2},{:.6e},{:.6e},{:.6e},{:.6e},{:.6e},{:.6e},{:.3}\n",
-                dist_name, a_val, a_over_eps,
-                order, softened as u8, THETA,
-                err.mean_err, err.max_err, err.p95_err, err.rms_err,
-                err.mean_angular_err, err.max_angular_err, t_ms,
+                dist_name,
+                a_val,
+                a_over_eps,
+                order,
+                softened as u8,
+                THETA,
+                err.mean_err,
+                err.max_err,
+                err.p95_err,
+                err.rms_err,
+                err.mean_angular_err,
+                err.max_angular_err,
+                t_ms,
             ));
         }
         println!("---");
@@ -947,8 +1030,14 @@ fn bh_softened_multipoles_ablation() {
     );
 
     // Todos los errores deben ser finitos
-    assert!(err_bare2.mean_err.is_finite(), "bare order2: error no finito");
-    assert!(err_soft2.mean_err.is_finite(), "softened order2: error no finito");
+    assert!(
+        err_bare2.mean_err.is_finite(),
+        "bare order2: error no finito"
+    );
+    assert!(
+        err_soft2.mean_err.is_finite(),
+        "softened order2: error no finito"
+    );
 }
 
 // ── Test: Barrido de criterio relativo vs softened multipoles ─────────────────
@@ -968,7 +1057,7 @@ fn bh_relative_criterion_sweep() {
 
     let mut csv = String::from(
         "distribution,criterion,param,order,softened,mean_err,max_err,p95_err,rms_err,\
-         mean_angular_err,time_bh_ms,speedup_vs_direct\n"
+         mean_angular_err,time_bh_ms,speedup_vs_direct\n",
     );
 
     println!("\n=== Barrido criterio relativo vs geométrico — Fase 4 (N={N}) ===");
@@ -977,7 +1066,10 @@ fn bh_relative_criterion_sweep() {
         "distribution", "criterio", "mean%", "max%", "p95%", "ang%", "t_ms"
     );
 
-    for (dist_name, cfg) in [("plummer_a010", &plummer_cfg), ("uniform_sphere", &sphere_cfg)] {
+    for (dist_name, cfg) in [
+        ("plummer_a010", &plummer_cfg),
+        ("uniform_sphere", &sphere_cfg),
+    ] {
         let particles = build_particles(cfg).expect("build_particles");
         let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
         let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
@@ -991,17 +1083,33 @@ fn bh_relative_criterion_sweep() {
                 let suf = if softened { "geo_soft" } else { "geo_bare" };
                 println!(
                     "{:<16} θ={:.1} {} {:>8.3} {:>8.3} {:>8.3} {:>8.4} {:>10.2}",
-                    dist_name, theta, suf,
-                    err.mean_err * 100.0, err.max_err * 100.0, err.p95_err * 100.0,
-                    err.mean_angular_err * 100.0, t_ms
+                    dist_name,
+                    theta,
+                    suf,
+                    err.mean_err * 100.0,
+                    err.max_err * 100.0,
+                    err.p95_err * 100.0,
+                    err.mean_angular_err * 100.0,
+                    t_ms
                 );
                 csv.push_str(&format!(
                     "{},{},{:.2},{},{},{:.6e},{:.6e},{:.6e},{:.6e},{:.6e},{:.3},{:.3}\n",
                     dist_name,
-                    if softened { "geometric_soft" } else { "geometric_bare" },
-                    theta, 3, softened as u8,
-                    err.mean_err, err.max_err, err.p95_err, err.rms_err,
-                    err.mean_angular_err, t_ms, t_direct / t_ms.max(1e-9)
+                    if softened {
+                        "geometric_soft"
+                    } else {
+                        "geometric_bare"
+                    },
+                    theta,
+                    3,
+                    softened as u8,
+                    err.mean_err,
+                    err.max_err,
+                    err.p95_err,
+                    err.rms_err,
+                    err.mean_angular_err,
+                    t_ms,
+                    t_direct / t_ms.max(1e-9)
                 ));
             }
         }
@@ -1009,22 +1117,39 @@ fn bh_relative_criterion_sweep() {
         // Relativo: err_tol ∈ {1e-1, 5e-2, 1e-2, 5e-3, 1e-3, 1e-4} × softened ∈ {false, true}
         for err_tol in [1e-1f64, 5e-2, 1e-2, 5e-3, 1e-3, 1e-4] {
             for &softened in &[false, true] {
-                let (bh_acc, t_ms) = compute_bh_full(&pos, &masses, 0.5, 3, softened, true, err_tol);
+                let (bh_acc, t_ms) =
+                    compute_bh_full(&pos, &masses, 0.5, 3, softened, true, err_tol);
                 let err = compute_force_error_extended(&ref_acc, &bh_acc);
                 let suf = if softened { "rel_soft" } else { "rel_bare" };
                 println!(
                     "{:<16} tol={:.0e} {} {:>8.3} {:>8.3} {:>8.3} {:>8.4} {:>10.2}",
-                    dist_name, err_tol, suf,
-                    err.mean_err * 100.0, err.max_err * 100.0, err.p95_err * 100.0,
-                    err.mean_angular_err * 100.0, t_ms
+                    dist_name,
+                    err_tol,
+                    suf,
+                    err.mean_err * 100.0,
+                    err.max_err * 100.0,
+                    err.p95_err * 100.0,
+                    err.mean_angular_err * 100.0,
+                    t_ms
                 );
                 csv.push_str(&format!(
                     "{},{},{:.0e},{},{},{:.6e},{:.6e},{:.6e},{:.6e},{:.6e},{:.3},{:.3}\n",
                     dist_name,
-                    if softened { "relative_soft" } else { "relative_bare" },
-                    err_tol, 3, softened as u8,
-                    err.mean_err, err.max_err, err.p95_err, err.rms_err,
-                    err.mean_angular_err, t_ms, t_direct / t_ms.max(1e-9)
+                    if softened {
+                        "relative_soft"
+                    } else {
+                        "relative_bare"
+                    },
+                    err_tol,
+                    3,
+                    softened as u8,
+                    err.mean_err,
+                    err.max_err,
+                    err.p95_err,
+                    err.rms_err,
+                    err.mean_angular_err,
+                    t_ms,
+                    t_direct / t_ms.max(1e-9)
                 ));
             }
         }
@@ -1047,7 +1172,8 @@ fn bh_relative_criterion_sweep() {
 
     println!(
         "\nH3 check: geo θ=0.5 mean={:.3}%  rel tol=5e-3 mean={:.3}%  ratio={:.1}x",
-        err_geo.mean_err * 100.0, err_rel.mean_err * 100.0,
+        err_geo.mean_err * 100.0,
+        err_rel.mean_err * 100.0,
         err_geo.mean_err / err_rel.mean_err.max(1e-15)
     );
     assert!(
@@ -1079,7 +1205,7 @@ fn bh_radial_error_analysis() {
     let (ref_acc, _) = compute_direct(&positions, &masses);
 
     const N_BINS: usize = 20;
-    const MAX_R_EPS: f64 = 30.0;  // r/eps hasta 30 (cubre el núcleo y el halo)
+    const MAX_R_EPS: f64 = 30.0; // r/eps hasta 30 (cubre el núcleo y el halo)
     const THETA: f64 = 0.5;
 
     struct Config {
@@ -1088,20 +1214,51 @@ fn bh_radial_error_analysis() {
         softened: bool,
     }
     let configs = [
-        Config { label: "mono_bare",      order: 1, softened: false },
-        Config { label: "quad_bare",      order: 2, softened: false },
-        Config { label: "quad_soft",      order: 2, softened: true  },
-        Config { label: "oct_bare",       order: 3, softened: false },
-        Config { label: "oct_soft",       order: 3, softened: true  },
+        Config {
+            label: "mono_bare",
+            order: 1,
+            softened: false,
+        },
+        Config {
+            label: "quad_bare",
+            order: 2,
+            softened: false,
+        },
+        Config {
+            label: "quad_soft",
+            order: 2,
+            softened: true,
+        },
+        Config {
+            label: "oct_bare",
+            order: 3,
+            softened: false,
+        },
+        Config {
+            label: "oct_soft",
+            order: 3,
+            softened: true,
+        },
     ];
 
     let mut csv = String::from("config,r_over_eps_center,mean_err,max_err,n_particles\n");
 
     println!("\n=== Análisis radial de error (Plummer a=0.1, θ={THETA}, N={N}) ===");
-    println!("{:<14} {:>6} bins (r/ε center → mean_err%):", "config", N_BINS);
+    println!(
+        "{:<14} {:>6} bins (r/ε center → mean_err%):",
+        "config", N_BINS
+    );
 
     for cfg_item in &configs {
-        let (bh_acc, _) = compute_bh_full(&positions, &masses, THETA, cfg_item.order, cfg_item.softened, false, 0.005);
+        let (bh_acc, _) = compute_bh_full(
+            &positions,
+            &masses,
+            THETA,
+            cfg_item.order,
+            cfg_item.softened,
+            false,
+            0.005,
+        );
         let radial = compute_radial_error(&positions, &ref_acc, &bh_acc, N_BINS, MAX_R_EPS);
 
         print!("  {:<12}", cfg_item.label);
@@ -1114,7 +1271,11 @@ fn bh_radial_error_analysis() {
             }
         }
         // Imprimir resumen de los primeros 5 bins (zona de núcleo)
-        let core_bins: Vec<_> = radial.iter().filter(|(_, _, _, c)| *c > 0).take(5).collect();
+        let core_bins: Vec<_> = radial
+            .iter()
+            .filter(|(_, _, _, c)| *c > 0)
+            .take(5)
+            .collect();
         for (r, m, _, cnt) in &core_bins {
             print!(" r/ε={:.1}→{:.1}%({cnt})", r, m * 100.0);
         }
@@ -1210,9 +1371,9 @@ fn phase5_cases() -> Vec<CaseDef> {
     let mut out = Vec::new();
     let n_values: &[usize] = &[200, 1000];
     let plummer: &[(f64, u64, &str)] = &[
-        (0.05, 11, "plummer_a1"),   // a/ε = 1
-        (0.10, 7,  "plummer_a2"),   // a/ε = 2
-        (0.30, 13, "plummer_a6"),   // a/ε = 6
+        (0.05, 11, "plummer_a1"), // a/ε = 1
+        (0.10, 7, "plummer_a2"),  // a/ε = 2
+        (0.30, 13, "plummer_a6"), // a/ε = 6
     ];
     for &n in n_values {
         for &(a, seed, name) in plummer {
@@ -1249,7 +1410,9 @@ fn bh_mac_softening_ablation() {
          time_bh_ms,time_direct_ms,opened_nodes,leaves_visited,max_depth,mean_depth\n",
     );
 
-    println!("\n=== Fase 5: Ablación MAC softening (θ={THETA}, err_tol={ERR_TOL}, order={ORDER}) ===");
+    println!(
+        "\n=== Fase 5: Ablación MAC softening (θ={THETA}, err_tol={ERR_TOL}, order={ORDER}) ==="
+    );
     println!(
         "{:<18} {:>5} {:>22} {:>9} {:>9} {:>9} {:>9} {:>9} {:>11}",
         "dist", "N", "variant", "mean%", "max%", "p95%", "ang%", "ms", "opened"

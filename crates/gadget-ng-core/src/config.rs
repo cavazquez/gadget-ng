@@ -178,7 +178,6 @@ pub enum IcKind {
         amplitude: f64,
 
         // ── Campos Fase 27 (todos con default para retrocompatibilidad) ──
-
         /// Tipo de función de transferencia a aplicar al espectro.
         /// `"power_law"` (default) = comportamiento legacy; `"eisenstein_hu"` = EH98 no-wiggle.
         #[serde(default)]
@@ -218,7 +217,6 @@ pub enum IcKind {
         use_2lpt: bool,
 
         // ── Campo Fase 40 (reemplaza rescale_to_a_init de Fase 37) ──
-
         /// Convención física de normalización de amplitud del campo inicial.
         ///
         /// - **`Legacy` (default)**: `σ₈` se aplica directamente en

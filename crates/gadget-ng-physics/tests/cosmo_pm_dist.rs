@@ -5,8 +5,8 @@
 //! y que `allreduce_sum_f64_slice` en SerialRuntime es un no-op.
 
 use gadget_ng_core::{CosmologyParams, Vec3};
-use gadget_ng_parallel::SerialRuntime;
 use gadget_ng_parallel::ParallelRuntime;
+use gadget_ng_parallel::SerialRuntime;
 use gadget_ng_pm::{cic, distributed as pm_dist, fft_poisson};
 
 // ── Test 1: allreduce_sum_f64_slice en serial es identidad ───────────────────
@@ -177,12 +177,12 @@ fn distributed_border_particle_deposit() {
 
 #[test]
 fn distributed_pm_no_explosion_eds() {
-    use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
     use gadget_ng_core::Particle;
+    use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 
     let nm = 8usize;
     let box_size = 1.0_f64;
-    let g = 43.009_f64;  // G en unidades N-body típicas
+    let g = 43.009_f64; // G en unidades N-body típicas
 
     let cosmo = CosmologyParams::new(1.0, 0.0, 70.0);
     let mut a = 0.02_f64;
@@ -214,7 +214,11 @@ fn distributed_pm_no_explosion_eds() {
     for _step in 0..num_steps {
         let g_cosmo = g / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
 
         leapfrog_cosmo_kdk_step(&mut particles, cf, &mut scratch, |parts, acc| {
             let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
@@ -283,15 +287,15 @@ fn distributed_poisson_sanity_sinusoidal_mode() {
 
     // Simula el pipeline distribuido: deposita + reduce (trivial: un solo "rank") + solve.
     let rt = SerialRuntime;
-    rt.allreduce_sum_f64_slice(&mut density);  // no-op en serial
+    rt.allreduce_sum_f64_slice(&mut density); // no-op en serial
     let [fx, _fy, _fz] = pm_dist::forces_from_global_density(&density, g, nm, box_size);
 
     // En ix=nm/4 (x≈L/4, cruce de densidad en descenso): fuerza debería ser ≈0
     // pues cos(2π·1/4) = 0 → punto de inflexión, pero la fuerza es ∝ sin(2πx/L).
     // En ix=nm/4: sin(2π/4) = 1 → fuerza positiva (máxima).
     // En ix=3nm/4: sin(2π·3/4) = -1 → fuerza negativa (mínima).
-    let ix_quarter = nm / 4;       // sin = +1, fuerza máxima positiva
-    let ix_3quarter = 3 * nm / 4;  // sin = -1, fuerza máxima negativa
+    let ix_quarter = nm / 4; // sin = +1, fuerza máxima positiva
+    let ix_3quarter = 3 * nm / 4; // sin = -1, fuerza máxima negativa
 
     let iy = 0usize;
     let iz = 0usize;

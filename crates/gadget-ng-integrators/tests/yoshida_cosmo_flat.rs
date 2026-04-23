@@ -14,9 +14,8 @@ fn force_kepler(parts: &[Particle], acc: &mut [Vec3]) {
 
 #[test]
 fn yoshida4_cosmo_flat_bitexact_newtonian() {
-    let make_particle = || {
-        Particle::new(0, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.8, 0.0))
-    };
+    let make_particle =
+        || Particle::new(0, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.8, 0.0));
     let dt = 0.03_f64;
     let cf = [
         CosmoFactors::flat(YOSHIDA4_W1 * dt),

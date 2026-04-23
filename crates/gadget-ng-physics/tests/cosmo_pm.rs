@@ -31,10 +31,9 @@
 use gadget_ng_core::{
     build_particles,
     cosmology::{gravity_coupling_qksl, CosmologyParams},
-    minimum_image, wrap_position,
-    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    UnitsSection, Vec3,
+    minimum_image, wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::{cic, fft_poisson, PmSolver};
@@ -78,7 +77,7 @@ fn eds_pm_config(n: usize) -> RunConfig {
             omega_lambda: 0.0,
             h0: 0.1,
             a_init: 1.0,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -133,21 +132,9 @@ fn wrap_position_correct() {
     // Fuera por la derecha: x=1.2 → 0.2.
     let p = Vec3::new(1.2, -0.1, 2.7);
     let w = wrap_position(p, l);
-    assert!(
-        (w.x - 0.2).abs() < 1e-14,
-        "x=1.2 → {} (esperado 0.2)",
-        w.x
-    );
-    assert!(
-        (w.y - 0.9).abs() < 1e-14,
-        "y=-0.1 → {} (esperado 0.9)",
-        w.y
-    );
-    assert!(
-        (w.z - 0.7).abs() < 1e-13,
-        "z=2.7 → {} (esperado 0.7)",
-        w.z
-    );
+    assert!((w.x - 0.2).abs() < 1e-14, "x=1.2 → {} (esperado 0.2)", w.x);
+    assert!((w.y - 0.9).abs() < 1e-14, "y=-0.1 → {} (esperado 0.9)", w.y);
+    assert!((w.z - 0.7).abs() < 1e-13, "z=2.7 → {} (esperado 0.7)", w.z);
 
     // Resultado siempre en [0, l).
     let positions = [
@@ -271,7 +258,10 @@ fn pm_g_cosmo_scaling() {
     let positions: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = parts.iter().map(|p| p.mass).collect();
 
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
     let idx: Vec<usize> = (0..n).collect();
 
     let mut acc_full = vec![Vec3::zero(); n];
@@ -286,7 +276,9 @@ fn pm_g_cosmo_scaling() {
         let scale = acc_full[i].norm().max(1e-15);
         let diff = (acc_full[i] * 0.5 - acc_half[i]).norm();
         let rel = diff / scale;
-        if rel > max_err { max_err = rel; }
+        if rel > max_err {
+            max_err = rel;
+        }
     }
     assert!(
         max_err < 1e-10,
@@ -311,13 +303,20 @@ fn pm_cosmo_no_explosion() {
     let positions_initial: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = parts.iter().map(|p| p.mass).collect();
     let idx: Vec<usize> = (0..n).collect();
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
 
     for _ in 0..n_steps {
         // Phase 49: coupling correcto QKSL (G·a³), reemplaza G/a histórico.
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -336,18 +335,34 @@ fn pm_cosmo_no_explosion() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "Posición no finita gid={}: {:?}", p.global_id, p.position
+            "Posición no finita gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "Velocidad no finita gid={}: {:?}", p.global_id, p.velocity
+            "Velocidad no finita gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
     // Posiciones deben estar en [0, box_size) tras el wrap.
     for p in &parts {
-        assert!(p.position.x >= 0.0 && p.position.x < BOX, "x fuera de caja: {}", p.position.x);
-        assert!(p.position.y >= 0.0 && p.position.y < BOX, "y fuera de caja: {}", p.position.y);
-        assert!(p.position.z >= 0.0 && p.position.z < BOX, "z fuera de caja: {}", p.position.z);
+        assert!(
+            p.position.x >= 0.0 && p.position.x < BOX,
+            "x fuera de caja: {}",
+            p.position.x
+        );
+        assert!(
+            p.position.y >= 0.0 && p.position.y < BOX,
+            "y fuera de caja: {}",
+            p.position.y
+        );
+        assert!(
+            p.position.z >= 0.0 && p.position.z < BOX,
+            "z fuera de caja: {}",
+            p.position.z
+        );
     }
     assert!(a > 1.0, "a no creció: a = {a:.6}");
 
@@ -398,7 +413,10 @@ fn pm_periodic_force_symmetry() {
     let positions_a = vec![Vec3::new(0.1, 0.5, 0.5), Vec3::new(0.9, 0.5, 0.5)];
     let masses = vec![1.0_f64, 1.0_f64];
 
-    let pm = PmSolver { grid_size: nm, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: nm,
+        box_size: BOX,
+    };
     let mut acc = vec![Vec3::zero(); 2];
     let idx = vec![0_usize, 1_usize];
     pm.accelerations_for_indices(&positions_a, &masses, 0.0, G, &idx, &mut acc);
@@ -410,7 +428,9 @@ fn pm_periodic_force_symmetry() {
     assert!(
         ratio_x > 0.5,
         "Fuerzas PM no antisimétricas: F_A.x = {:.4e}, F_B.x = {:.4e}, ratio = {:.3}",
-        acc[0].x, acc[1].x, ratio_x
+        acc[0].x,
+        acc[1].x,
+        ratio_x
     );
 
     // Componentes y,z deben ser muy pequeñas (simetría del setup).

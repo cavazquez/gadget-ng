@@ -42,7 +42,10 @@ fn stepping_with_barnes_hut_kinetic_bounded() {
     let dt = cfg.simulation.dt;
     let mut parts = build_particles(&cfg).expect("ic");
     let mut scratch = vec![Vec3::zero(); parts.len()];
-    let bh = BarnesHutGravity { theta: 0.5, ..Default::default() };
+    let bh = BarnesHutGravity {
+        theta: 0.5,
+        ..Default::default()
+    };
     let ke0 = kinetic(&parts);
     assert!(ke0.is_finite() && ke0 >= 0.0);
     let mut ke_max = ke0;

@@ -508,7 +508,10 @@ fn r_n_scaling_consistent_with_model() {
         }),
     );
     assert!(alpha > 0.0, "α = {alpha} debe ser positivo");
-    assert!(r2 > 0.99, "R² = {r2:.4} < 0.99 — el modelo log-log no ajusta");
+    assert!(
+        r2 > 0.99,
+        "R² = {r2:.4} < 0.99 — el modelo log-log no ajusta"
+    );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -633,11 +636,7 @@ fn r_n_table_interpolation_consistent() {
         .find(|(n, _)| *n <= target_n)
         .cloned()
         .unwrap();
-    let (n2, r2) = table
-        .iter()
-        .find(|(n, _)| *n >= target_n)
-        .cloned()
-        .unwrap();
+    let (n2, r2) = table.iter().find(|(n, _)| *n >= target_n).cloned().unwrap();
     let lx = (target_n as f64).ln();
     let l1 = (n1 as f64).ln();
     let l2 = (n2 as f64).ln();
@@ -721,14 +720,8 @@ fn tsc_vs_cic_single_point() {
             "r_tsc_list": r_tsc_list,
         }),
     );
-    assert!(
-        r_cic.is_finite() && r_cic > 0.0,
-        "R_CIC no válido: {r_cic}"
-    );
-    assert!(
-        r_tsc.is_finite() && r_tsc > 0.0,
-        "R_TSC no válido: {r_tsc}"
-    );
+    assert!(r_cic.is_finite() && r_cic > 0.0, "R_CIC no válido: {r_cic}");
+    assert!(r_tsc.is_finite() && r_tsc > 0.0, "R_TSC no válido: {r_tsc}");
     // NOTA: en este set-up concreto (ZA lattice, mismas partículas) y tras
     // aplicar la deconvolución apropiada a cada kernel, R_CIC y R_TSC quedan
     // notablemente próximos (ratio ≈ 1.01). Se documenta el valor pero no se

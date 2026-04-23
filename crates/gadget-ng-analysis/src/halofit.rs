@@ -54,7 +54,10 @@ pub struct HalofitCosmo {
 impl Default for HalofitCosmo {
     fn default() -> Self {
         // Planck 2018 TT,TE,EE+lowE+lensing (Ω_k=0).
-        Self { omega_m0: 0.315, omega_de0: 0.685 }
+        Self {
+            omega_m0: 0.315,
+            omega_de0: 0.685,
+        }
     }
 }
 
@@ -197,23 +200,14 @@ fn compute_coeffs(neff: f64, curv: f64, cosmo: &HalofitCosmo, z: f64) -> Halofit
     let de_term = ode * (1.0 + w); // = 0 para ΛCDM w=-1
 
     // Tabla 2 de Takahashi+2012.
-    let log_an = 1.5222
-        + 2.8553 * n
-        + 2.3706 * n * n
-        + 0.9903 * n * n * n
-        + 0.2250 * n * n * n * n
+    let log_an = 1.5222 + 2.8553 * n + 2.3706 * n * n + 0.9903 * n * n * n + 0.2250 * n * n * n * n
         - 0.6038 * c
         + 0.1749 * de_term;
-    let log_bn =
-        -0.5642 + 0.5864 * n + 0.5716 * n * n - 1.5474 * c + 0.2279 * de_term;
+    let log_bn = -0.5642 + 0.5864 * n + 0.5716 * n * n - 1.5474 * c + 0.2279 * de_term;
     let log_cn = 0.3698 + 2.0404 * n + 0.8161 * n * n + 0.5869 * c;
     let gamma_n = 0.1971 - 0.0843 * n + 0.8460 * c;
     let alpha_n = (6.0835 + 1.3373 * n - 0.1959 * n * n - 5.5274 * c).abs();
-    let beta_n = 2.0379
-        - 0.7354 * n
-        + 0.3157 * n * n
-        + 1.2490 * n * n * n
-        + 0.3980 * n * n * n * n
+    let beta_n = 2.0379 - 0.7354 * n + 0.3157 * n * n + 1.2490 * n * n * n + 0.3980 * n * n * n * n
         - 0.1682 * c;
     let mu_n = 0.0; // para ΛCDM w=-1
     let log_nu_n = 5.2105 + 3.6902 * n;
@@ -245,7 +239,7 @@ fn compute_coeffs(neff: f64, curv: f64, cosmo: &HalofitCosmo, z: f64) -> Halofit
 /// # Parámetros
 /// - `k_eval_hmpc` : valores de k en h/Mpc donde evaluar P_nl.
 /// - `p_linear`    : función que devuelve P_lin(k) en **(Mpc/h)³** al
-///                   redshift objetivo (incluir el factor D²(z) correcto).
+///   redshift objetivo (incluir el factor D²(z) correcto).
 /// - `cosmo`       : parámetros cosmológicos (solo ΛCDM plano).
 /// - `z`           : redshift objetivo.
 ///
@@ -328,7 +322,7 @@ pub fn halofit_pk(
 /// # Parámetros
 /// - `k_hmpc`  : número de onda en h/Mpc.
 /// - `amp`     : amplitud A tal que `P(k,z=0) = A² k^ns T²(k)` (obtenida
-///               con `gadget_ng_core::amplitude_for_sigma8`).
+///   con `gadget_ng_core::amplitude_for_sigma8`).
 /// - `n_s`     : índice espectral.
 /// - `d_ratio` : `D(a)/D(1)` — factor de crecimiento normalizado a z=0.
 /// - `eh`      : parámetros EH (omega_m, omega_b, h, t_cmb).
@@ -354,11 +348,19 @@ mod tests {
     use gadget_ng_core::{amplitude_for_sigma8, EisensteinHuParams};
 
     fn eh() -> EisensteinHuParams {
-        EisensteinHuParams { omega_m: 0.315, omega_b: 0.049, h: 0.674, t_cmb: 2.7255 }
+        EisensteinHuParams {
+            omega_m: 0.315,
+            omega_b: 0.049,
+            h: 0.674,
+            t_cmb: 2.7255,
+        }
     }
 
     fn cosmo() -> HalofitCosmo {
-        HalofitCosmo { omega_m0: 0.315, omega_de0: 0.685 }
+        HalofitCosmo {
+            omega_m0: 0.315,
+            omega_de0: 0.685,
+        }
     }
 
     fn p_lin_z0(k: f64) -> f64 {
@@ -388,14 +390,19 @@ mod tests {
             rs > 0.5 && rs < 20.0,
             "R_sigma = {rs:.4} Mpc/h fuera del rango esperado (0.5, 20)"
         );
-        println!("R_sigma = {rs:.4} Mpc/h  →  k_sigma = {:.4} h/Mpc", 1.0/rs);
+        println!(
+            "R_sigma = {rs:.4} Mpc/h  →  k_sigma = {:.4} h/Mpc",
+            1.0 / rs
+        );
     }
 
     /// P_nl ≥ P_lin para todo k > 0 (la no-linealidad sólo aumenta la potencia).
     #[test]
     fn halofit_pk_is_always_geq_linear() {
         let c = cosmo();
-        let k_vals: Vec<f64> = (1..=20).map(|i| 0.01 * 10.0_f64.powf(i as f64 / 5.0)).collect();
+        let k_vals: Vec<f64> = (1..=20)
+            .map(|i| 0.01 * 10.0_f64.powf(i as f64 / 5.0))
+            .collect();
         let result = halofit_pk(&k_vals, &p_lin_z0, &c, 0.0);
         for (k, p_nl) in &result {
             let p_lin = p_lin_z0(*k);
@@ -416,10 +423,7 @@ mod tests {
             let p_lin = p_lin_z0(*k);
             if p_lin > 0.0 {
                 let rel = (p_nl / p_lin - 1.0).abs();
-                assert!(
-                    rel < 0.10,
-                    "A k={k:.3}: P_nl/P_lin - 1 = {rel:.3} (> 10%)"
-                );
+                assert!(rel < 0.10, "A k={k:.3}: P_nl/P_lin - 1 = {rel:.3} (> 10%)");
             }
         }
     }
@@ -461,13 +465,37 @@ mod tests {
         // Tolerancias amplias (40 %) porque usamos EH (no CAMB exacto).
         // EH tiende a sobreestimar la potencia a escala intermedia, reduciendo
         // ligeramente k_sigma y el boost no-lineal a k ~ 0.3.
-        struct Ref { k: f64, ratio_min: f64, ratio_max: f64 }
+        struct Ref {
+            k: f64,
+            ratio_min: f64,
+            ratio_max: f64,
+        }
         let refs = [
-            Ref { k: 0.05, ratio_min: 0.98, ratio_max: 1.20 },
-            Ref { k: 0.10, ratio_min: 1.00, ratio_max: 1.30 },
-            Ref { k: 0.30, ratio_min: 1.02, ratio_max: 2.50 }, // EH da boost ~6%
-            Ref { k: 1.00, ratio_min: 2.00, ratio_max: 15.0 },
-            Ref { k: 3.00, ratio_min: 5.00, ratio_max: 60.0 },
+            Ref {
+                k: 0.05,
+                ratio_min: 0.98,
+                ratio_max: 1.20,
+            },
+            Ref {
+                k: 0.10,
+                ratio_min: 1.00,
+                ratio_max: 1.30,
+            },
+            Ref {
+                k: 0.30,
+                ratio_min: 1.02,
+                ratio_max: 2.50,
+            }, // EH da boost ~6%
+            Ref {
+                k: 1.00,
+                ratio_min: 2.00,
+                ratio_max: 15.0,
+            },
+            Ref {
+                k: 3.00,
+                ratio_min: 5.00,
+                ratio_max: 60.0,
+            },
         ];
         let k_vals: Vec<f64> = refs.iter().map(|r| r.k).collect();
         let result = halofit_pk(&k_vals, &p_lin_z0, &c, 0.0);
@@ -478,7 +506,8 @@ mod tests {
             assert!(
                 ratio >= r_ref.ratio_min && ratio <= r_ref.ratio_max,
                 "k={k:.2}: P_nl/P_lin = {ratio:.3} fuera de [{}, {}]",
-                r_ref.ratio_min, r_ref.ratio_max
+                r_ref.ratio_min,
+                r_ref.ratio_max
             );
         }
     }

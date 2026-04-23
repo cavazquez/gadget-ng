@@ -23,10 +23,6 @@ pub use config::{
     PerformanceSection, RunConfig, SfcKind, SimulationSection, SnapshotFormat, SolverKind,
     TimestepCriterion, TimestepSection, TransferKind, UnitsSection, G_KPC_MSUN_KMPS,
 };
-pub use transfer_fn::{
-    amplitude_for_sigma8, sigma_from_pk_bins, sigma_sq_unit, tophat_window,
-    transfer_eh_nowiggle, EisensteinHuParams,
-};
 pub use cosmology::{
     adaptive_dt_cosmo, cosmo_consistency_error, density_contrast_rms, g_code_consistent,
     gravity_coupling_qksl, growth_factor_d, growth_factor_d_ratio, growth_rate_f, hubble_param,
@@ -44,6 +40,10 @@ pub use ic_2lpt::{zeldovich_2lpt_ics, zeldovich_2lpt_ics_with_variant, Psi2Varia
 pub use ic_zeldovich::internals as ic_zeldovich_internals;
 pub use ic_zeldovich::{zeldovich_ics, zeldovich_ics_with_convention, IcMomentumConvention};
 pub use particle::Particle;
+pub use transfer_fn::{
+    amplitude_for_sigma8, sigma_from_pk_bins, sigma_sq_unit, tophat_window, transfer_eh_nowiggle,
+    EisensteinHuParams,
+};
 pub use vec3::Vec3;
 
 #[cfg(feature = "simd")]

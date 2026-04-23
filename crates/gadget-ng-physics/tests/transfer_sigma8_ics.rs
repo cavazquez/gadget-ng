@@ -108,7 +108,7 @@ fn eh_config(seed: u64) -> RunConfig {
             omega_lambda: 0.685,
             h0: 0.1,
             a_init: 0.02,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -159,7 +159,7 @@ fn legacy_config(seed: u64) -> RunConfig {
             omega_lambda: 0.0,
             h0: 0.1,
             a_init: 0.02,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -196,7 +196,8 @@ fn eh_transfer_high_k_suppressed() {
     assert!(
         t_high < t_intermediate,
         "T(10) = {:.6} ≥ T(0.1) = {:.6} — la función de transferencia no suprime alto k",
-        t_high, t_intermediate
+        t_high,
+        t_intermediate
     );
 
     assert!(
@@ -227,7 +228,9 @@ fn sigma8_normalization_matches_target() {
     assert!(
         rel_err < 1e-3,
         "σ₈ recuperado = {:.6} vs target = {:.6} (error relativo = {:.4}%)",
-        sigma8_recovered, sigma8_target, rel_err * 100.0
+        sigma8_recovered,
+        sigma8_target,
+        rel_err * 100.0
     );
 }
 
@@ -268,7 +271,10 @@ fn eh_spectrum_differs_from_power_law() {
 
     // Al menos un bin de P(k) debe diferir entre los dos casos.
     let any_different = pk_eh.iter().zip(pk_pl.iter()).any(|(b_eh, b_pl)| {
-        b_eh.pk.is_finite() && b_pl.pk.is_finite() && b_eh.pk > 0.0 && b_pl.pk > 0.0
+        b_eh.pk.is_finite()
+            && b_pl.pk.is_finite()
+            && b_eh.pk > 0.0
+            && b_pl.pk > 0.0
             && (b_eh.pk - b_pl.pk).abs() / (b_eh.pk + b_pl.pk) > 0.01
     });
     assert!(
@@ -289,12 +295,24 @@ fn legacy_amplitude_still_works() {
     assert_eq!(parts.len(), N_PART, "Número incorrecto de partículas");
 
     for p in &parts {
-        assert!(p.position.x >= 0.0 && p.position.x < BOX,
-            "x = {} fuera de [0, {})", p.position.x, BOX);
-        assert!(p.position.y >= 0.0 && p.position.y < BOX,
-            "y = {} fuera de [0, {})", p.position.y, BOX);
-        assert!(p.position.z >= 0.0 && p.position.z < BOX,
-            "z = {} fuera de [0, {})", p.position.z, BOX);
+        assert!(
+            p.position.x >= 0.0 && p.position.x < BOX,
+            "x = {} fuera de [0, {})",
+            p.position.x,
+            BOX
+        );
+        assert!(
+            p.position.y >= 0.0 && p.position.y < BOX,
+            "y = {} fuera de [0, {})",
+            p.position.y,
+            BOX
+        );
+        assert!(
+            p.position.z >= 0.0 && p.position.z < BOX,
+            "z = {} fuera de [0, {})",
+            p.position.z,
+            BOX
+        );
     }
 }
 
@@ -311,15 +329,21 @@ fn positions_in_box_with_eh() {
     for p in &parts {
         assert!(
             p.position.x >= 0.0 && p.position.x < BOX,
-            "x = {} fuera de [0, {})", p.position.x, BOX
+            "x = {} fuera de [0, {})",
+            p.position.x,
+            BOX
         );
         assert!(
             p.position.y >= 0.0 && p.position.y < BOX,
-            "y = {} fuera de [0, {})", p.position.y, BOX
+            "y = {} fuera de [0, {})",
+            p.position.y,
+            BOX
         );
         assert!(
             p.position.z >= 0.0 && p.position.z < BOX,
-            "z = {} fuera de [0, {})", p.position.z, BOX
+            "z = {} fuera de [0, {})",
+            p.position.z,
+            BOX
         );
     }
 }
@@ -335,13 +359,20 @@ fn pm_run_stable_with_eh_ics() {
     let mut a = cfg.cosmology.a_init;
     let dt = cfg.simulation.dt;
 
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
 
     for _ in 0..10 {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -359,11 +390,15 @@ fn pm_run_stable_with_eh_ics() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "Posición NaN/Inf en PM+EH en gid={}: {:?}", p.global_id, p.position
+            "Posición NaN/Inf en PM+EH en gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "Velocidad NaN/Inf en PM+EH en gid={}: {:?}", p.global_id, p.velocity
+            "Velocidad NaN/Inf en PM+EH en gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -395,7 +430,11 @@ fn treepm_run_stable_with_eh_ics() {
     for _ in 0..10 {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -413,11 +452,15 @@ fn treepm_run_stable_with_eh_ics() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "Posición NaN/Inf en TreePM+EH en gid={}: {:?}", p.global_id, p.position
+            "Posición NaN/Inf en TreePM+EH en gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "Velocidad NaN/Inf en TreePM+EH en gid={}: {:?}", p.global_id, p.velocity
+            "Velocidad NaN/Inf en TreePM+EH en gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }

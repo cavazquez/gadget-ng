@@ -107,7 +107,7 @@ fn build_ic(n: usize) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -140,7 +140,11 @@ fn median_ratio(pk0: &[PkBin], pk1: &[PkBin]) -> f64 {
     }
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = ratios.len() / 2;
-    if ratios.len() % 2 == 1 { ratios[mid] } else { 0.5 * (ratios[mid - 1] + ratios[mid]) }
+    if ratios.len() % 2 == 1 {
+        ratios[mid]
+    } else {
+        0.5 * (ratios[mid - 1] + ratios[mid])
+    }
 }
 
 fn vrms(parts: &[gadget_ng_core::Particle]) -> f64 {
@@ -158,7 +162,10 @@ fn evolve_fixed_dt(
     coupling_fn: impl Fn(f64) -> f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..500_000 {
@@ -167,7 +174,11 @@ fn evolve_fixed_dt(
         }
         let g_cosmo = coupling_fn(a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -192,7 +203,10 @@ fn evolve_adaptive(
     dt_max: f64,
 ) -> (f64, usize) {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     let mut n_steps = 0_usize;
@@ -214,7 +228,11 @@ fn evolve_adaptive(
         let dt = adaptive_dt_cosmo(c, a, acc_max, softening, 0.025, 0.025, dt_max);
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -296,9 +314,8 @@ fn phase49_coupling_ab_short() {
     );
 
     // G/a debe ser MUCHO peor (ratio ≥ 10× la teoría, o NaN/Inf/no-finito).
-    let old_is_bad = !ratio_old.is_finite()
-        || ratio_old > 10.0 * expected
-        || v1_old > 1e3 * v1_qksl;
+    let old_is_bad =
+        !ratio_old.is_finite() || ratio_old > 10.0 * expected || v1_old > 1e3 * v1_qksl;
     assert!(
         old_is_bad,
         "G/a debería divergir vs G·a³: ratio_old={ratio_old:.3e} ratio_qksl={ratio_qksl:.3e}"
@@ -336,9 +353,7 @@ fn phase49_coupling_ab_long() {
     let lin1 = linear_bins(&pk1_qksl, n);
     let ratio = median_ratio(&lin0, &lin1);
 
-    println!(
-        "[QKSL] a={a_qksl:.4}  P ratio={ratio:.3}  teoría={expected:.3}  v={v1:.3e}"
-    );
+    println!("[QKSL] a={a_qksl:.4}  P ratio={ratio:.3}  teoría={expected:.3}  v={v1:.3e}");
 
     // G·a³ debe producir resultados finitos y razonables.
     assert!(ratio.is_finite(), "P(k) ratio no finito con G·a³");
@@ -397,22 +412,29 @@ fn phase49_adaptive_dt_stable() {
     println!("  pk0 bins: {}  pk1 bins: {}", pk0.len(), pk1.len());
 
     // Condiciones de estabilidad (no físicas — solo numérica):
-    assert!(a_final >= a_target * 0.99, "No alcanzó a_target={a_target}: {a_final:.4}");
+    assert!(
+        a_final >= a_target * 0.99,
+        "No alcanzó a_target={a_target}: {a_final:.4}"
+    );
     assert!(v1.is_finite(), "v_rms no finito: {v1}");
     assert!(n_steps > 0, "Sin pasos ejecutados");
 
     // Al menos 2 bins con P(k) > 0 y finito.
-    let finite_bins = pk1.iter().filter(|b| b.pk > 0.0 && b.pk.is_finite()).count();
-    assert!(finite_bins >= 2, "Solo {finite_bins} bins finitos en P(k) final");
+    let finite_bins = pk1
+        .iter()
+        .filter(|b| b.pk > 0.0 && b.pk.is_finite())
+        .count();
+    assert!(
+        finite_bins >= 2,
+        "Solo {finite_bins} bins finitos en P(k) final"
+    );
 
     // v_rms no debe ser NaN ni negativo.
     assert!(!v1.is_nan(), "v_rms es NaN");
 
     // El número de pasos debe ser razonable (adaptive debería usar más que fixed).
     assert!(n_steps < 2_000_000, "Demasiados pasos: {n_steps}");
-    println!(
-        "  Bins con P(k)>0: {finite_bins}  Estabilidad: OK"
-    );
+    println!("  Bins con P(k)>0: {finite_bins}  Estabilidad: OK");
 }
 
 // ── TEST 4 — Evolución del fondo cosmológico (pura) ──────────────────────────
@@ -437,7 +459,10 @@ fn phase49_background_evolution() {
         let h_02 = hubble_param(c, 0.02);
         let h_10 = hubble_param(c, 0.10);
         let h_50 = hubble_param(c, 0.50);
-        assert!(h_02 > h_10 && h_10 > h_50, "H(a) debe decrecer en [0.02, 0.5]");
+        assert!(
+            h_02 > h_10 && h_10 > h_50,
+            "H(a) debe decrecer en [0.02, 0.5]"
+        );
         println!("  H(a=0.02)={h_02:.3}  H(a=0.10)={h_10:.3}  H(a=0.50)={h_50:.3}");
     }
 
@@ -472,9 +497,7 @@ fn phase49_background_evolution() {
         }
 
         let rel_err = (a_large - a_ref).abs() / a_ref;
-        println!(
-            "  a_ref={a_ref:.6}  a_advance_rk4={a_large:.6}  rel_err={rel_err:.4e}"
-        );
+        println!("  a_ref={a_ref:.6}  a_advance_rk4={a_large:.6}  rel_err={rel_err:.4e}");
         assert!(
             rel_err < 0.005,
             "advance_a error > 0.5 %: a_ref={a_ref:.6} a_rk4={a_large:.6} err={rel_err:.4e}"
@@ -485,9 +508,18 @@ fn phase49_background_evolution() {
     for &a_test in &[0.02_f64, 0.05, 0.10, 0.30, 0.50] {
         let dt = 1.0e-3;
         let (drift, kh1, kh2) = c.drift_kick_factors(a_test, dt);
-        assert!(drift > 0.0 && drift.is_finite(), "drift no positivo en a={a_test}: {drift}");
-        assert!(kh1 > 0.0 && kh1.is_finite(), "kick_half1 no positivo en a={a_test}: {kh1}");
-        assert!(kh2 > 0.0 && kh2.is_finite(), "kick_half2 no positivo en a={a_test}: {kh2}");
+        assert!(
+            drift > 0.0 && drift.is_finite(),
+            "drift no positivo en a={a_test}: {drift}"
+        );
+        assert!(
+            kh1 > 0.0 && kh1.is_finite(),
+            "kick_half1 no positivo en a={a_test}: {kh1}"
+        );
+        assert!(
+            kh2 > 0.0 && kh2.is_finite(),
+            "kick_half2 no positivo en a={a_test}: {kh2}"
+        );
         // drift ≈ dt/a² y kick ≈ dt/(2a) → drift/kick ≈ 2/a
         let ratio = drift / (kh1 + kh2);
         let expected_ratio = 1.0 / a_test; // dt/a² / (dt/a) = 1/a
@@ -496,8 +528,10 @@ fn phase49_background_evolution() {
             ratio_err < 0.01,
             "drift/kick ratio incorrecto en a={a_test}: {ratio:.4} vs 1/a={expected_ratio:.4}"
         );
-        println!("  a={a_test:.3}: drift={drift:.4e} kick={:.4e} ratio_check={ratio_err:.4e}",
-                 kh1 + kh2);
+        println!(
+            "  a={a_test:.3}: drift={drift:.4e} kick={:.4e} ratio_check={ratio_err:.4e}",
+            kh1 + kh2
+        );
     }
 
     // ── EdS: para Ω_m=1, Ω_Λ=0 → D(a) ∝ a exacto.

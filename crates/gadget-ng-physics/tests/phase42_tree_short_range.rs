@@ -49,10 +49,10 @@ use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
     cosmology::{growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
+    Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -97,7 +97,9 @@ const EPS_PHYSICAL_MPC_H: [f64; 3] = [0.01, 0.02, 0.05];
 enum SolverVariant {
     PmOnly,
     /// TreePM periódico con softening Plummer `ε` en unidades internas (`L/BOX_MPC_H`).
-    TreePmPeriodic { eps_phys_mpc_h: f64 },
+    TreePmPeriodic {
+        eps_phys_mpc_h: f64,
+    },
 }
 
 impl SolverVariant {
@@ -143,7 +145,10 @@ fn n_grid() -> usize {
             }
         }
     }
-    if std::env::var("PHASE42_QUICK").map(|v| v == "1").unwrap_or(false) {
+    if std::env::var("PHASE42_QUICK")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
         N_QUICK
     } else {
         N_DEFAULT
@@ -209,7 +214,7 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -683,11 +688,7 @@ fn growth_ratio_low_k(
         if k > k_max_hmpc {
             break;
         }
-        if let Some(j) = ic
-            .ks_hmpc
-            .iter()
-            .position(|&k_ic| (k_ic - k).abs() < 1e-9)
-        {
+        if let Some(j) = ic.ks_hmpc.iter().position(|&k_ic| (k_ic - k).abs() < 1e-9) {
             let p_ev = ev.pk_corrected[i];
             let p_ic = ic.pk_corrected[j];
             if p_ic > 0.0 && p_ev > 0.0 {

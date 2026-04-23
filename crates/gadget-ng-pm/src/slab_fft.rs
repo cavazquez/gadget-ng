@@ -1,4 +1,5 @@
 //! FFT 3D distribuida mediante descomposición de slabs en el eje Z (Fase 20).
+#![allow(clippy::needless_range_loop)]
 //!
 //! ## Arquitectura
 //!
@@ -52,7 +53,7 @@ impl SlabLayout {
     /// Construye el layout para un rank dado. Requiere `nm % n_ranks == 0`.
     pub fn new(nm: usize, rank: usize, n_ranks: usize) -> Self {
         assert!(
-            nm % n_ranks == 0,
+            nm.is_multiple_of(n_ranks),
             "pm_slab requiere pm_grid_size ({nm}) divisible por n_ranks ({n_ranks})"
         );
         let nz_local = nm / n_ranks;
@@ -256,8 +257,7 @@ pub fn alltoall_transpose_fwd<R: ParallelRuntime + ?Sized>(
         for iz_local_r_src in 0..nz {
             let kz_global = r_src * nz + iz_local_r_src;
             for p_local in 0..nk {
-                pencils[p_local * nm + kz_global] =
-                    data_src[iz_local_r_src * nk + p_local];
+                pencils[p_local * nm + kz_global] = data_src[iz_local_r_src * nk + p_local];
             }
         }
     }
@@ -316,8 +316,7 @@ pub fn alltoall_transpose_bwd<R: ParallelRuntime + ?Sized>(
                 let p_global = p_lo + p_local_at_r_src;
                 let iy = p_global / nm;
                 let ix = p_global % nm;
-                slab[iz_local * nm2 + iy * nm + ix] =
-                    data_src[iz_local * nk + p_local_at_r_src];
+                slab[iz_local * nm2 + iy * nm + ix] = data_src[iz_local * nk + p_local_at_r_src];
             }
         }
     }
@@ -372,7 +371,7 @@ pub fn apply_poisson_kernel_pencils(
 
         // For n_ranks > 1, kz iterates over ALL kz (0..nm) after the transpose.
         // For n_ranks == 1, same (nz == nm).
-        let kz_count = if layout.n_ranks == 1 { nm } else { nm };
+        let kz_count = nm;
         for kz_idx in 0..kz_count {
             let kz = dk * freq_index(kz_idx, nm) as f64;
             let k2 = kx * kx + ky * ky + kz * kz;
@@ -559,7 +558,10 @@ mod tests {
             assert!(
                 (a.re - b.re).abs() < 1e-12 && (a.im - b.im).abs() < 1e-12,
                 "transpose roundtrip error en {i}: got ({},{}) expected ({},{})",
-                a.re, a.im, b.re, b.im
+                a.re,
+                a.im,
+                b.re,
+                b.im
             );
         }
     }
@@ -580,8 +582,7 @@ mod tests {
             for iy in 0..nm {
                 for ix in 0..nm {
                     let x = ix as f64 / nm as f64;
-                    density[iz * nm2 + iy * nm + ix] =
-                        1.0 + (2.0 * std::f64::consts::PI * x).cos();
+                    density[iz * nm2 + iy * nm + ix] = 1.0 + (2.0 * std::f64::consts::PI * x).cos();
                 }
             }
         }
@@ -594,7 +595,8 @@ mod tests {
             assert!(
                 (fx_s[i] - fx_d[i]).abs() < 1e-10,
                 "fx slab != serial en {i}: {:.6e} vs {:.6e}",
-                fx_d[i], fx_s[i]
+                fx_d[i],
+                fx_s[i]
             );
             assert!(
                 (fy_s[i] - fy_d[i]).abs() < 1e-10,

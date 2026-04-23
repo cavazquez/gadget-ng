@@ -150,7 +150,10 @@ fn figure8_initial_conditions_symmetric() {
     let ps = figure8_ics();
 
     // Momento lineal total = 0 (v₁ + v₂ + v₃ = 0 por construcción).
-    let p_tot: Vec3 = ps.iter().map(|p| p.velocity * p.mass).fold(Vec3::zero(), |a, b| a + b);
+    let p_tot: Vec3 = ps
+        .iter()
+        .map(|p| p.velocity * p.mass)
+        .fold(Vec3::zero(), |a, b| a + b);
     assert!(
         p_tot.norm() < 1e-12,
         "|p_total| = {:.4e} (debe ser 0)",

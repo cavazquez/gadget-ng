@@ -97,7 +97,14 @@ fn level_histogram_not_degenerate_plummer() {
     }
 
     let mut h_state = HierarchicalState::new(N);
-    h_state.init_from_accels(&parts, EPS2, DT_BASE, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        DT_BASE,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     // Realizar un solo paso y examinar el histograma.
     let stats = hierarchical_kdk_step(
@@ -147,7 +154,14 @@ fn level_histogram_jerk_not_degenerate_plummer() {
     }
 
     let mut h_state = HierarchicalState::new(N);
-    h_state.init_from_accels(&parts, EPS2, DT_BASE, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        DT_BASE,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     // Primer paso con Acceleration (solo para poblar prev_acc de forma significativa).
     hierarchical_kdk_step(
@@ -204,7 +218,14 @@ fn force_evals_nonzero_plummer() {
     }
 
     let mut h_state = HierarchicalState::new(N);
-    h_state.init_from_accels(&parts, EPS2, DT_BASE, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        DT_BASE,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
 
     let stats = hierarchical_kdk_step(
         &mut parts,

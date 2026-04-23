@@ -234,7 +234,10 @@ fn plummer_evolved_virial_ratio_near_half() {
     let dt = t_cross / 100.0;
     let n_steps = (t_evolve / dt).ceil() as usize;
 
-    let bh = BarnesHutGravity { theta: THETA, ..Default::default() };
+    let bh = BarnesHutGravity {
+        theta: THETA,
+        ..Default::default()
+    };
     let eps2 = EPS * EPS;
 
     use gadget_ng_core::GravitySolver;

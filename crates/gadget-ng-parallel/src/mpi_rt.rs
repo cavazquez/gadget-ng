@@ -394,7 +394,11 @@ impl ParallelRuntime for MpiRuntime {
     fn alltoallv_f64(&self, sends: &[Vec<f64>]) -> Vec<Vec<f64>> {
         let world = self.world();
         let size = world.size() as usize;
-        assert_eq!(sends.len(), size, "alltoallv_f64: sends.len() debe ser igual a world.size()");
+        assert_eq!(
+            sends.len(),
+            size,
+            "alltoallv_f64: sends.len() debe ser igual a world.size()"
+        );
 
         // Paso 1: intercambiar conteos via Alltoall (mensajes fijos de 1 Count por rango).
         let send_counts: Vec<Count> = sends.iter().map(|v| v.len() as Count).collect();
@@ -601,7 +605,7 @@ impl ParallelRuntime for MpiRuntime {
         }
 
         // Vecinos en anillo periódico.
-        let left_rank  = ((rank as i64 - 1).rem_euclid(size as i64)) as usize;
+        let left_rank = ((rank as i64 - 1).rem_euclid(size as i64)) as usize;
         let right_rank = (rank + 1) % size;
 
         // Partículas que son halo para el vecino izquierdo (z ∈ [z_lo, z_lo + halo_width)).
@@ -620,7 +624,7 @@ impl ParallelRuntime for MpiRuntime {
 
         // Intercambio via alltoallv (maneja el anillo periódico sin restricción de vecinos lineales).
         let mut sends: Vec<Vec<f64>> = (0..size).map(|_| Vec::new()).collect();
-        sends[left_rank]  = pack::pack_halo(&buf_left);
+        sends[left_rank] = pack::pack_halo(&buf_left);
         sends[right_rank] = pack::pack_halo(&buf_right);
 
         let received = self.alltoallv_f64(&sends);

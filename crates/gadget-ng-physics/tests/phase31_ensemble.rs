@@ -40,10 +40,9 @@ use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
     cosmology::{gravity_coupling_qksl, CosmologyParams},
-    transfer_eh_nowiggle,
-    wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -91,13 +90,7 @@ fn eh_params() -> EisensteinHuParams {
 }
 
 /// Configuración ΛCDM genérica, parametrizada por resolución y opciones.
-fn make_config(
-    seed: u64,
-    grid: usize,
-    nm: usize,
-    use_2lpt: bool,
-    use_treepm: bool,
-) -> RunConfig {
+fn make_config(seed: u64, grid: usize, nm: usize, use_2lpt: bool, use_treepm: bool) -> RunConfig {
     let mut gravity = GravitySection {
         solver: gadget_ng_core::SolverKind::Pm,
         pm_grid_size: nm,
@@ -146,7 +139,7 @@ fn make_config(
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -161,22 +154,24 @@ fn measure_pk(parts: &[gadget_ng_core::Particle], nm: usize) -> Vec<PkBin> {
 }
 
 /// Evolución PM cosmológica con malla parametrizada.
-fn run_pm_n(
-    parts: &mut Vec<gadget_ng_core::Particle>,
-    n_steps: usize,
-    dt: f64,
-    nm: usize,
-) -> f64 {
+fn run_pm_n(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64, nm: usize) -> f64 {
     let n = parts.len();
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver { grid_size: nm, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: nm,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -200,14 +195,22 @@ fn run_treepm_n(
 ) -> f64 {
     let n = parts.len();
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let treepm = TreePmSolver { grid_size: nm, box_size: BOX, r_split: 0.0 };
+    let treepm = TreePmSolver {
+        grid_size: nm,
+        box_size: BOX,
+        r_split: 0.0,
+    };
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, acc| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -249,8 +252,7 @@ fn ensemble_mean_cv(pk_sets: &[Vec<PkBin>]) -> f64 {
             continue;
         }
         let mean = vals.iter().sum::<f64>() / vals.len() as f64;
-        let var =
-            vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / vals.len() as f64;
+        let var = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / vals.len() as f64;
         if mean > 0.0 {
             cv_sum += var.sqrt() / mean;
             cv_count += 1;
@@ -289,8 +291,7 @@ fn ensemble_cv_improves_with_resolution() {
     let pk_s: Vec<_> = SEEDS
         .iter()
         .map(|&s| {
-            let parts =
-                build_particles(&make_config(s, GRID_S, NM_S, true, false)).unwrap();
+            let parts = build_particles(&make_config(s, GRID_S, NM_S, true, false)).unwrap();
             measure_pk(&parts, NM_S)
         })
         .collect();
@@ -298,8 +299,7 @@ fn ensemble_cv_improves_with_resolution() {
     let pk_l: Vec<_> = SEEDS
         .iter()
         .map(|&s| {
-            let parts =
-                build_particles(&make_config(s, GRID_L, NM_L, true, false)).unwrap();
+            let parts = build_particles(&make_config(s, GRID_L, NM_L, true, false)).unwrap();
             measure_pk(&parts, NM_L)
         })
         .collect();
@@ -314,8 +314,12 @@ fn ensemble_cv_improves_with_resolution() {
          N={}³: {} bins de k, CV medio = {:.4}\n\
          N={}³: {} bins de k, CV medio = {:.4}\n\
          Mejora relativa de bins: {:.0}%, mejora CV: {:.2}",
-        GRID_S, n_bins_s, cv_s,
-        GRID_L, n_bins_l, cv_l,
+        GRID_S,
+        n_bins_s,
+        cv_s,
+        GRID_L,
+        n_bins_l,
+        cv_l,
         (n_bins_l as f64 / n_bins_s as f64 - 1.0) * 100.0,
         cv_s - cv_l
     );
@@ -331,8 +335,16 @@ fn ensemble_cv_improves_with_resolution() {
     );
 
     // Ambos CVs deben ser finitos y positivos
-    assert!(cv_s.is_finite() && cv_s >= 0.0, "CV(N=8³) no válido: {:.4}", cv_s);
-    assert!(cv_l.is_finite() && cv_l >= 0.0, "CV(N=16³) no válido: {:.4}", cv_l);
+    assert!(
+        cv_s.is_finite() && cv_s >= 0.0,
+        "CV(N=8³) no válido: {:.4}",
+        cv_s
+    );
+    assert!(
+        cv_l.is_finite() && cv_l >= 0.0,
+        "CV(N=16³) no válido: {:.4}",
+        cv_l
+    );
 
     // Con 4 seeds, la mejora de CV tiene alta incertidumbre estadística.
     // Se aserta que GRID_L no empeora dramáticamente (tolerancia +0.25).
@@ -340,7 +352,10 @@ fn ensemble_cv_improves_with_resolution() {
         cv_l < cv_s + 0.25,
         "CV N={}³ = {:.4} supera notablemente CV N={}³ = {:.4} (+0.25)\n\
          Mayor resolución no debería incrementar la dispersión entre seeds",
-        GRID_L, cv_l, GRID_S, cv_s
+        GRID_L,
+        cv_l,
+        GRID_S,
+        cv_s
     );
 }
 
@@ -367,8 +382,7 @@ fn ensemble_spectral_shape_at_n16_stable() {
     let pk_sets: Vec<_> = SEEDS
         .iter()
         .map(|&s| {
-            let parts =
-                build_particles(&make_config(s, GRID_L, NM_L, true, false)).unwrap();
+            let parts = build_particles(&make_config(s, GRID_L, NM_L, true, false)).unwrap();
             measure_pk(&parts, NM_L)
         })
         .collect();
@@ -439,10 +453,17 @@ fn ensemble_spectral_shape_at_n16_stable() {
          max error de ratio = {:.4} ({:.1}%)\n\
          k_bins [int]: {:?}\n\
          n_modes: {:?}",
-        GRID_L, NM_S,
-        n_ok, n_total, frac * 100.0,
-        max_err, max_err * 100.0,
-        k_vals.iter().map(|k| format!("{:.3}", k)).collect::<Vec<_>>(),
+        GRID_L,
+        NM_S,
+        n_ok,
+        n_total,
+        frac * 100.0,
+        max_err,
+        max_err * 100.0,
+        k_vals
+            .iter()
+            .map(|k| format!("{:.3}", k))
+            .collect::<Vec<_>>(),
         n_modes
     );
 
@@ -452,7 +473,9 @@ fn ensemble_spectral_shape_at_n16_stable() {
         frac >= 0.60,
         "Solo {}/{} pares ({:.0}%) dentro del 30% de EH (k ≤ k_Nyq_Phase30).\n\
          Con ensemble de 4 seeds se esperaba ≥ 60% (vs 50% en Phase 30 con 1 seed/N=8³)",
-        n_ok, n_total, frac * 100.0
+        n_ok,
+        n_total,
+        frac * 100.0
     );
 }
 
@@ -491,7 +514,10 @@ fn lpt2_vs_1lpt_ensemble_consistent() {
         all_diffs.extend(diffs);
     }
 
-    assert!(!all_diffs.is_empty(), "No hay bins válidos para 2LPT vs 1LPT");
+    assert!(
+        !all_diffs.is_empty(),
+        "No hay bins válidos para 2LPT vs 1LPT"
+    );
 
     let mean_diff = all_diffs.iter().sum::<f64>() / all_diffs.len() as f64;
     let max_diff = all_diffs.iter().cloned().fold(0.0_f64, f64::max);
@@ -502,9 +528,14 @@ fn lpt2_vs_1lpt_ensemble_consistent() {
          max  |P2/P1 - 1| = {:.4} ({:.2}%)\n\
          max por seed: {:?}",
         GRID_L,
-        mean_diff, mean_diff * 100.0,
-        max_diff, max_diff * 100.0,
-        per_seed_max.iter().map(|v| format!("{:.4}", v)).collect::<Vec<_>>()
+        mean_diff,
+        mean_diff * 100.0,
+        max_diff,
+        max_diff * 100.0,
+        per_seed_max
+            .iter()
+            .map(|v| format!("{:.4}", v))
+            .collect::<Vec<_>>()
     );
 
     assert!(
@@ -531,10 +562,8 @@ fn pm_treepm_ensemble_converge_at_n16() {
     let mut per_seed_max: Vec<f64> = Vec::new();
 
     for &s in SEEDS.iter() {
-        let mut pm_parts =
-            build_particles(&make_config(s, GRID_L, NM_L, true, false)).unwrap();
-        let mut tp_parts =
-            build_particles(&make_config(s, GRID_L, NM_L, true, true)).unwrap();
+        let mut pm_parts = build_particles(&make_config(s, GRID_L, NM_L, true, false)).unwrap();
+        let mut tp_parts = build_particles(&make_config(s, GRID_L, NM_L, true, true)).unwrap();
 
         run_pm_n(&mut pm_parts, N_STEPS, DT, NM_L);
         run_treepm_n(&mut tp_parts, N_STEPS, DT, NM_L);
@@ -559,7 +588,10 @@ fn pm_treepm_ensemble_converge_at_n16() {
         all_linear_errors.extend(errs);
     }
 
-    assert!(!all_linear_errors.is_empty(), "No hay bins lineales válidos para PM vs TreePM");
+    assert!(
+        !all_linear_errors.is_empty(),
+        "No hay bins lineales válidos para PM vs TreePM"
+    );
 
     let global_mean = all_linear_errors.iter().sum::<f64>() / all_linear_errors.len() as f64;
     let max_err = all_linear_errors.iter().cloned().fold(0.0_f64, f64::max);
@@ -570,17 +602,24 @@ fn pm_treepm_ensemble_converge_at_n16() {
          max en el ensemble           = {:.4} ({:.2}%)\n\
          max por seed: {:?}\n\
          (Phase 30 N=8³ 1 seed: 27.3%, tolerancia 35%)",
-        GRID_L, N_STEPS,
-        global_mean, global_mean * 100.0,
-        max_err, max_err * 100.0,
-        per_seed_max.iter().map(|v| format!("{:.4}", v)).collect::<Vec<_>>()
+        GRID_L,
+        N_STEPS,
+        global_mean,
+        global_mean * 100.0,
+        max_err,
+        max_err * 100.0,
+        per_seed_max
+            .iter()
+            .map(|v| format!("{:.4}", v))
+            .collect::<Vec<_>>()
     );
 
     assert!(
         global_mean < 0.25,
         "PM vs TreePM: media del ensemble = {:.4} > 0.25 en N={}³\n\
          Con mayor resolución se esperaba convergencia < 25%",
-        global_mean, GRID_L
+        global_mean,
+        GRID_L
     );
 }
 
@@ -612,10 +651,8 @@ fn lpt2_vs_1lpt_evolved_states_similar() {
     let mut all_diffs: Vec<f64> = Vec::new();
 
     for &seed in &SEEDS[..2] {
-        let mut p1 =
-            build_particles(&make_config(seed, GRID_L, NM_L, false, false)).unwrap();
-        let mut p2 =
-            build_particles(&make_config(seed, GRID_L, NM_L, true, false)).unwrap();
+        let mut p1 = build_particles(&make_config(seed, GRID_L, NM_L, false, false)).unwrap();
+        let mut p2 = build_particles(&make_config(seed, GRID_L, NM_L, true, false)).unwrap();
 
         run_pm_n(&mut p1, N_STEPS, DT, NM_L);
         run_pm_n(&mut p2, N_STEPS, DT, NM_L);
@@ -646,8 +683,13 @@ fn lpt2_vs_1lpt_evolved_states_similar() {
             "\n[phase31 evolucionado 1LPT vs 2LPT, seed={}, N={}³, {} pasos PM]\n\
              mean |P_1/P_2 - 1| = {:.4} ({:.2}%)  max = {:.4} ({:.2}%)\n\
              (test 3 comparó ICs iniciales: max < 10%  →  este test compara tras {} pasos)",
-            seed, GRID_L, N_STEPS,
-            seed_mean, seed_mean * 100.0, seed_max, seed_max * 100.0,
+            seed,
+            GRID_L,
+            N_STEPS,
+            seed_mean,
+            seed_mean * 100.0,
+            seed_max,
+            seed_max * 100.0,
             N_STEPS
         );
 
@@ -662,7 +704,8 @@ fn lpt2_vs_1lpt_evolved_states_similar() {
 
     println!(
         "\n[phase31 evolucionado 1LPT vs 2LPT ensemble] media global = {:.4} ({:.2}%)",
-        ensemble_mean, ensemble_mean * 100.0
+        ensemble_mean,
+        ensemble_mean * 100.0
     );
 
     assert!(
@@ -685,24 +728,25 @@ fn n16_pm_stable_no_nan() {
     const N_STEPS: usize = 50;
     const DT: f64 = 0.001;
 
-    let mut parts =
-        build_particles(&make_config(SEED, GRID_L, NM_L, true, false)).unwrap();
+    let mut parts = build_particles(&make_config(SEED, GRID_L, NM_L, true, false)).unwrap();
     run_pm_n(&mut parts, N_STEPS, DT, NM_L);
 
     for p in &parts {
         assert!(
-            p.position.x.is_finite()
-                && p.position.y.is_finite()
-                && p.position.z.is_finite(),
+            p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
             "PM N={}³ {} pasos: posición NaN/Inf gid={}: {:?}",
-            GRID_L, N_STEPS, p.global_id, p.position
+            GRID_L,
+            N_STEPS,
+            p.global_id,
+            p.position
         );
         assert!(
-            p.velocity.x.is_finite()
-                && p.velocity.y.is_finite()
-                && p.velocity.z.is_finite(),
+            p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
             "PM N={}³ {} pasos: velocidad NaN/Inf gid={}: {:?}",
-            GRID_L, N_STEPS, p.global_id, p.velocity
+            GRID_L,
+            N_STEPS,
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -716,24 +760,25 @@ fn n16_treepm_stable_no_nan() {
     const N_STEPS: usize = 50;
     const DT: f64 = 0.001;
 
-    let mut parts =
-        build_particles(&make_config(SEED, GRID_L, NM_L, true, true)).unwrap();
+    let mut parts = build_particles(&make_config(SEED, GRID_L, NM_L, true, true)).unwrap();
     run_treepm_n(&mut parts, N_STEPS, DT, NM_L);
 
     for p in &parts {
         assert!(
-            p.position.x.is_finite()
-                && p.position.y.is_finite()
-                && p.position.z.is_finite(),
+            p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
             "TreePM N={}³ {} pasos: posición NaN/Inf gid={}: {:?}",
-            GRID_L, N_STEPS, p.global_id, p.position
+            GRID_L,
+            N_STEPS,
+            p.global_id,
+            p.position
         );
         assert!(
-            p.velocity.x.is_finite()
-                && p.velocity.y.is_finite()
-                && p.velocity.z.is_finite(),
+            p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
             "TreePM N={}³ {} pasos: velocidad NaN/Inf gid={}: {:?}",
-            GRID_L, N_STEPS, p.global_id, p.velocity
+            GRID_L,
+            N_STEPS,
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -748,33 +793,41 @@ fn n16_treepm_stable_no_nan() {
 fn ensemble_reproducibility_exact_by_seed() {
     const SEED: u64 = 999;
 
-    let parts_a =
-        build_particles(&make_config(SEED, GRID_L, NM_L, true, false)).unwrap();
-    let parts_b =
-        build_particles(&make_config(SEED, GRID_L, NM_L, true, false)).unwrap();
+    let parts_a = build_particles(&make_config(SEED, GRID_L, NM_L, true, false)).unwrap();
+    let parts_b = build_particles(&make_config(SEED, GRID_L, NM_L, true, false)).unwrap();
 
     let pk_a = measure_pk(&parts_a, NM_L);
     let pk_b = measure_pk(&parts_b, NM_L);
 
-    assert_eq!(pk_a.len(), pk_b.len(), "Diferente número de bins entre ejecuciones");
+    assert_eq!(
+        pk_a.len(),
+        pk_b.len(),
+        "Diferente número de bins entre ejecuciones"
+    );
 
     for (i, (ba, bb)) in pk_a.iter().zip(pk_b.iter()).enumerate() {
         assert_eq!(
             ba.pk.to_bits(),
             bb.pk.to_bits(),
             "P(k) no bit-idéntico en bin {}: {:.6e} vs {:.6e}",
-            i, ba.pk, bb.pk
+            i,
+            ba.pk,
+            bb.pk
         );
         assert_eq!(
             ba.k.to_bits(),
             bb.k.to_bits(),
             "k no bit-idéntico en bin {}: {:.6e} vs {:.6e}",
-            i, ba.k, bb.k
+            i,
+            ba.k,
+            bb.k
         );
     }
 
     println!(
         "\n[phase31 reproducibilidad N={}³] seed={}: {} bins bit-idénticos",
-        GRID_L, SEED, pk_a.len()
+        GRID_L,
+        SEED,
+        pk_a.len()
     );
 }

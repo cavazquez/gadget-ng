@@ -11,8 +11,8 @@ mod mpi_rt;
 pub use decompose::gid_block_range;
 pub use domain::SlabDecomposition;
 pub use halo3d::{
-    aabb_to_f64, compute_aabb_3d, f64_to_aabb, is_in_periodic_halo,
-    min_dist2_to_aabb_3d_periodic, minimum_image_scalar, Aabb3,
+    aabb_to_f64, compute_aabb_3d, f64_to_aabb, is_in_periodic_halo, min_dist2_to_aabb_3d_periodic,
+    minimum_image_scalar, Aabb3,
 };
 pub use serial::SerialRuntime;
 pub use sfc::{hilbert3, morton3, SfcDecomposition};

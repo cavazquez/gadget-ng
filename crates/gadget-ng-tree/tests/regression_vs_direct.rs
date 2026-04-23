@@ -16,14 +16,11 @@ fn two_particles_bh_matches_direct_theta_half() {
     let mut acc_d = vec![Vec3::zero(); 2];
     let mut acc_bh = vec![Vec3::zero(); 2];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.5, ..Default::default() }.accelerations_for_indices(
-        &pos,
-        &mass,
-        eps2,
-        g,
-        &idx,
-        &mut acc_bh,
-    );
+    BarnesHutGravity {
+        theta: 0.5,
+        ..Default::default()
+    }
+    .accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_bh);
     for i in 0..2 {
         assert_relative_eq!(acc_bh[i].x, acc_d[i].x, epsilon = 1e-10);
         assert_relative_eq!(acc_bh[i].y, acc_d[i].y, epsilon = 1e-10);
@@ -69,14 +66,11 @@ fn barnes_hut_theta_zero_matches_direct() {
     let mut acc_d = vec![Vec3::zero(); n];
     let mut acc_bh = vec![Vec3::zero(); n];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.0, ..Default::default() }.accelerations_for_indices(
-        &pos,
-        &mass,
-        eps2,
-        g,
-        &idx,
-        &mut acc_bh,
-    );
+    BarnesHutGravity {
+        theta: 0.0,
+        ..Default::default()
+    }
+    .accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_bh);
     for i in 0..n {
         assert_relative_eq!(acc_bh[i].x, acc_d[i].x, epsilon = 1e-11);
         assert_relative_eq!(acc_bh[i].y, acc_d[i].y, epsilon = 1e-11);
@@ -99,14 +93,11 @@ fn barnes_hut_theta_half_mean_relative_error_small_on_strong_accel() {
     let mut acc_d = vec![Vec3::zero(); n];
     let mut acc_bh = vec![Vec3::zero(); n];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.5, ..Default::default() }.accelerations_for_indices(
-        &pos,
-        &mass,
-        eps2,
-        g,
-        &idx,
-        &mut acc_bh,
-    );
+    BarnesHutGravity {
+        theta: 0.5,
+        ..Default::default()
+    }
+    .accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_bh);
     let max_ad = acc_d.iter().map(|a| a.norm()).fold(0.0_f64, f64::max);
     let thresh = (1e-9_f64).max(0.01 * max_ad);
     let mut sum_rel = 0.0_f64;
@@ -152,14 +143,11 @@ fn barnes_hut_theta_quarter_mean_relative_error_under_1pct() {
     let mut acc_d = vec![Vec3::zero(); n];
     let mut acc_bh = vec![Vec3::zero(); n];
     DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_d);
-    BarnesHutGravity { theta: 0.25, ..Default::default() }.accelerations_for_indices(
-        &pos,
-        &mass,
-        eps2,
-        g,
-        &idx,
-        &mut acc_bh,
-    );
+    BarnesHutGravity {
+        theta: 0.25,
+        ..Default::default()
+    }
+    .accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut acc_bh);
     let max_ad = acc_d.iter().map(|a| a.norm()).fold(0.0_f64, f64::max);
     let thresh = (1e-9_f64).max(0.01 * max_ad);
     let mut sum_rel = 0.0_f64;

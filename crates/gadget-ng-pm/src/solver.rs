@@ -62,7 +62,8 @@ impl GravitySolver for PmSolver {
             .map(|&i| global_positions[i])
             .collect();
         #[cfg(feature = "rayon")]
-        let acc = cic::interpolate_rayon(&fx_grid, &fy_grid, &fz_grid, &active_pos, self.box_size, nm);
+        let acc =
+            cic::interpolate_rayon(&fx_grid, &fy_grid, &fz_grid, &active_pos, self.box_size, nm);
         #[cfg(not(feature = "rayon"))]
         let acc = cic::interpolate(&fx_grid, &fy_grid, &fz_grid, &active_pos, self.box_size, nm);
 

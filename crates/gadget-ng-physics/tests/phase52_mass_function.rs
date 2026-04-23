@@ -159,9 +159,7 @@ fn phase52_multiplicity_normalization() {
         prev_st = fst;
     }
 
-    println!(
-        "[phase52] ∫ f(σ) d ln σ⁻¹:  PS = {int_ps:.4}  ST = {int_st:.4}  (esperado ≈ 1)"
-    );
+    println!("[phase52] ∫ f(σ) d ln σ⁻¹:  PS = {int_ps:.4}  ST = {int_st:.4}  (esperado ≈ 1)");
 
     // PS con factor 2: ∫_0^∞ √(2/π)·ν·e^{-ν²/2} dν = 1 exactamente.
     assert!(
@@ -187,7 +185,10 @@ fn phase52_hmf_table_z0() {
     assert_eq!(table.len(), 25, "Tabla debe tener 25 bins");
 
     println!("[phase52] Tabla HMF z=0 (Planck 2018):");
-    println!("  {:>10}  {:>8}  {:>10}  {:>10}", "log10(M)", "σ", "n_PS", "n_ST");
+    println!(
+        "  {:>10}  {:>8}  {:>10}  {:>10}",
+        "log10(M)", "σ", "n_PS", "n_ST"
+    );
     for bin in table.iter().step_by(5) {
         println!(
             "  {:>10.2}  {:>8.4}  {:>10.3e}  {:>10.3e}",
@@ -209,10 +210,26 @@ fn phase52_hmf_table_z0() {
 
     // Verificar que todos los bins tienen valores finitos y positivos
     for bin in &table {
-        assert!(bin.sigma.is_finite() && bin.sigma > 0.0, "σ inválido: {:?}", bin.sigma);
-        assert!(bin.n_ps.is_finite() && bin.n_ps >= 0.0, "n_PS inválido: {:?}", bin.n_ps);
-        assert!(bin.n_st.is_finite() && bin.n_st >= 0.0, "n_ST inválido: {:?}", bin.n_st);
-        assert!(bin.dlns_inv_dlnm >= 0.0, "d ln σ⁻¹ / d ln M negativo: {:?}", bin.dlns_inv_dlnm);
+        assert!(
+            bin.sigma.is_finite() && bin.sigma > 0.0,
+            "σ inválido: {:?}",
+            bin.sigma
+        );
+        assert!(
+            bin.n_ps.is_finite() && bin.n_ps >= 0.0,
+            "n_PS inválido: {:?}",
+            bin.n_ps
+        );
+        assert!(
+            bin.n_st.is_finite() && bin.n_st >= 0.0,
+            "n_ST inválido: {:?}",
+            bin.n_st
+        );
+        assert!(
+            bin.dlns_inv_dlnm >= 0.0,
+            "d ln σ⁻¹ / d ln M negativo: {:?}",
+            bin.dlns_inv_dlnm
+        );
     }
 
     // σ decrece monótonamente con M en la tabla
@@ -329,7 +346,10 @@ fn phase52_hmf_cluster_abundance() {
         let ratio = n_st_clusters / n_ps_clusters;
         println!("[phase52] ST/PS para M>10¹⁴: ratio = {ratio:.2}");
         // Ratio típico 1.1–3× para cúmulos
-        assert!(ratio > 0.5, "ST debería dar ≥ 0.5× los halos de PS a alta masa");
+        assert!(
+            ratio > 0.5,
+            "ST debería dar ≥ 0.5× los halos de PS a alta masa"
+        );
     }
 }
 
@@ -360,7 +380,7 @@ fn phase52_fof_vs_hmf_qualitative() {
 
     // ── Config de simulación ─────────────────────────────────────────────────
     let box_size = 200.0_f64; // Mpc/h — grande para tener halos
-    let n_side = 16_usize;    // 16³ = 4096 partículas (debug rápido)
+    let n_side = 16_usize; // 16³ = 4096 partículas (debug rápido)
     let omega_m = 0.315_f64;
     let sigma8 = 0.811_f64;
 

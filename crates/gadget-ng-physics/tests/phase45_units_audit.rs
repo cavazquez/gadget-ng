@@ -31,13 +31,12 @@ use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     build_particles,
     cosmology::{
-        gravity_coupling_qksl, growth_factor_d_ratio, growth_rate_f, hubble_param,
-        CosmologyParams,
+        gravity_coupling_qksl, growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams,
     },
-    wrap_position, zeldovich_ics_with_convention, CosmologySection, GravitySection,
-    GravitySolver, IcKind, IcMomentumConvention, InitialConditionsSection, NormalizationMode,
-    OutputSection, Particle, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    wrap_position, zeldovich_ics_with_convention, CosmologySection, GravitySection, GravitySolver,
+    IcKind, IcMomentumConvention, InitialConditionsSection, NormalizationMode, OutputSection,
+    Particle, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_treepm::TreePmSolver;
@@ -120,7 +119,7 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -128,7 +127,12 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
 }
 
 /// Genera ICs 1LPT con la convención solicitada.
-fn ics_1lpt_with(cfg: &RunConfig, n: usize, seed: u64, conv: IcMomentumConvention) -> Vec<Particle> {
+fn ics_1lpt_with(
+    cfg: &RunConfig,
+    n: usize,
+    seed: u64,
+    conv: IcMomentumConvention,
+) -> Vec<Particle> {
     let IcKind::Zeldovich {
         spectral_index,
         amplitude,
@@ -147,8 +151,21 @@ fn ics_1lpt_with(cfg: &RunConfig, n: usize, seed: u64, conv: IcMomentumConventio
     let rescale = matches!(normalization_mode, NormalizationMode::Z0Sigma8);
     let n_p = cfg.simulation.particle_count;
     zeldovich_ics_with_convention(
-        cfg, n, seed, amplitude, spectral_index, transfer, sigma8, omega_b, h, t_cmb,
-        box_size_mpc_h, rescale, 0, n_p, conv,
+        cfg,
+        n,
+        seed,
+        amplitude,
+        spectral_index,
+        transfer,
+        sigma8,
+        omega_b,
+        h,
+        t_cmb,
+        box_size_mpc_h,
+        rescale,
+        0,
+        n_p,
+        conv,
     )
 }
 
@@ -519,10 +536,10 @@ fn kick_convention_probe() {
     let v0 = v_rms(&parts_ic);
 
     enum KickConv {
-        Current,       // g = G/a, kick = ∫dt/a
+        Current,        // g = G/a, kick = ∫dt/a
         QkslCompensate, // g = G·a³, kick = ∫dt/a
-        QkslPlain,     // g = G·a², kick = dt (plano)
-        NewtonianFlat, // g = G, kick = dt
+        QkslPlain,      // g = G·a², kick = dt (plano)
+        NewtonianFlat,  // g = G, kick = dt
     }
 
     fn evolve_with(

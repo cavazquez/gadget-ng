@@ -23,13 +23,10 @@
 use gadget_ng_analysis::pk_correction::{correct_pk, correct_pk_with_shot_noise, RnModel};
 use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
-    amplitude_for_sigma8,
-    build_particles,
+    amplitude_for_sigma8, build_particles,
     cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle,
-    wrap_position,
-    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
     SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
@@ -61,7 +58,12 @@ const SEED: u64 = 42;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn eh() -> EisensteinHuParams {
-    EisensteinHuParams { omega_m: OMEGA_M, omega_b: OMEGA_B, h: H_DIMLESS, t_cmb: T_CMB }
+    EisensteinHuParams {
+        omega_m: OMEGA_M,
+        omega_b: OMEGA_B,
+        h: H_DIMLESS,
+        t_cmb: T_CMB,
+    }
 }
 
 fn cosmo() -> CosmologyParams {
@@ -112,7 +114,7 @@ fn build_config(n: usize, seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -128,7 +130,10 @@ fn evolve_pm_qksl(
     dt: f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver { grid_size: n_mesh, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: n_mesh,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..100_000 {
@@ -137,7 +142,11 @@ fn evolve_pm_qksl(
         }
         let g_cosmo = gravity_coupling_qksl(G, a);
         let (drift, kh, kh2) = c.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half: kh, kick_half2: kh2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half: kh,
+            kick_half2: kh2,
+        };
         a = c.advance_a(a, dt);
         leapfrog_cosmo_kdk_step(parts, cf, &mut scratch, |ps, out| {
             let pos: Vec<Vec3> = ps.iter().map(|p| p.position).collect();
@@ -200,7 +209,11 @@ fn median_rel_err_vs_ref(corr_bins: &[PkBin], ref_fn: &dyn Fn(f64) -> f64) -> f6
     }
     errs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = errs.len() / 2;
-    if errs.len() % 2 == 1 { errs[mid] } else { 0.5 * (errs[mid - 1] + errs[mid]) }
+    if errs.len() % 2 == 1 {
+        errs[mid]
+    } else {
+        0.5 * (errs[mid - 1] + errs[mid])
+    }
 }
 
 fn phase47_dir() -> PathBuf {
@@ -243,7 +256,10 @@ fn phase47_pk_correction_at_ics() {
 
     // Referencia: ICs Legacy tienen amplitud z=0, so P_ref = P_EH(k, z=0).
     let lin = linear_bins(&pk_corr, N_MESH);
-    assert!(!lin.is_empty(), "No hay bins lineales después de la corrección");
+    assert!(
+        !lin.is_empty(),
+        "No hay bins lineales después de la corrección"
+    );
 
     let err = median_rel_err_vs_ref(&lin, &eh_pk_z0);
 
@@ -311,7 +327,10 @@ fn phase47_pk_growth_qksl() {
         .map(|(b0, b1)| b1.pk / b0.pk)
         .collect();
 
-    assert!(!ratios.is_empty(), "No hay bins para calcular ratio de P(k)");
+    assert!(
+        !ratios.is_empty(),
+        "No hay bins para calcular ratio de P(k)"
+    );
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median_ratio = if ratios.len() % 2 == 1 {
         ratios[ratios.len() / 2]
@@ -369,7 +388,11 @@ fn shot_noise_correction_is_proportional() {
     // correct_pk_without_sn da 2×P_shot / (A × R).
     // correct_pk_with_sn da 1×P_shot / (A × R).
     // Ratio = 0.5.
-    let bins_2shot = vec![PkBin { k: 50.0, pk: 2.0 * p_shot, n_modes: 20 }];
+    let bins_2shot = vec![PkBin {
+        k: 50.0,
+        pk: 2.0 * p_shot,
+        n_modes: 20,
+    }];
     let out_std = correct_pk(&bins_2shot, BOX, n, None, &model);
     let out_sn = correct_pk_with_shot_noise(&bins_2shot, BOX, n, None, n_particles, &model);
 
@@ -380,7 +403,11 @@ fn shot_noise_correction_is_proportional() {
     );
 
     // Bin donde P >> P_shot → las dos correcciones son casi iguales (< 1%).
-    let bins_large = vec![PkBin { k: 1.0, pk: p_shot * 1e8, n_modes: 20 }];
+    let bins_large = vec![PkBin {
+        k: 1.0,
+        pk: p_shot * 1e8,
+        n_modes: 20,
+    }];
     let out_large_std = correct_pk(&bins_large, BOX, n, None, &model);
     let out_large_sn = correct_pk_with_shot_noise(&bins_large, BOX, n, None, n_particles, &model);
     let rel_diff = (out_large_std[0].pk - out_large_sn[0].pk).abs() / out_large_std[0].pk;
@@ -390,9 +417,16 @@ fn shot_noise_correction_is_proportional() {
     );
 
     // Bin donde P < P_shot → pk corregida debe ser cero (no negativa).
-    let bins_subshot = vec![PkBin { k: 200.0, pk: 0.1 * p_shot, n_modes: 10 }];
+    let bins_subshot = vec![PkBin {
+        k: 200.0,
+        pk: 0.1 * p_shot,
+        n_modes: 10,
+    }];
     let out_sub = correct_pk_with_shot_noise(&bins_subshot, BOX, n, None, n_particles, &model);
-    assert_eq!(out_sub[0].pk, 0.0, "P < P_shot: pk debería ser 0 (no negativa)");
+    assert_eq!(
+        out_sub[0].pk, 0.0,
+        "P < P_shot: pk debería ser 0 (no negativa)"
+    );
 
     let ag = a_grid(BOX, n);
     let r = model.evaluate(n);

@@ -27,11 +27,9 @@
 //!    El desplazamiento total con 2LPT difiere del 1LPT (Ψ² ≠ 0).
 
 use gadget_ng_core::{
-    build_particles,
-    cosmology::CosmologyParams,
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    build_particles, cosmology::CosmologyParams, wrap_position, CosmologySection, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -96,7 +94,7 @@ fn lpt2_config(seed: u64) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -106,7 +104,10 @@ fn lpt2_config(seed: u64) -> RunConfig {
 /// Configuración 1LPT equivalente (mismos parámetros, `use_2lpt = false`).
 fn lpt1_config(seed: u64) -> RunConfig {
     let mut cfg = lpt2_config(seed);
-    if let IcKind::Zeldovich { ref mut use_2lpt, .. } = cfg.initial_conditions.kind {
+    if let IcKind::Zeldovich {
+        ref mut use_2lpt, ..
+    } = cfg.initial_conditions.kind
+    {
         *use_2lpt = false;
     }
     cfg
@@ -128,17 +129,20 @@ fn lpt2_reproducible() {
         assert_eq!(
             a.position.x.to_bits(),
             b.position.x.to_bits(),
-            "x difiere en gid={}", a.global_id
+            "x difiere en gid={}",
+            a.global_id
         );
         assert_eq!(
             a.position.y.to_bits(),
             b.position.y.to_bits(),
-            "y difiere en gid={}", a.global_id
+            "y difiere en gid={}",
+            a.global_id
         );
         assert_eq!(
             a.position.z.to_bits(),
             b.position.z.to_bits(),
-            "z difiere en gid={}", a.global_id
+            "z difiere en gid={}",
+            a.global_id
         );
     }
 }
@@ -169,15 +173,21 @@ fn lpt2_psi2_mean_near_zero() {
     let tol = 0.01 * BOX / GRID as f64;
     assert!(
         dx.abs() < tol,
-        "⟨Ψ²_x⟩ = {:.2e} no es ≈ 0 (tol = {:.2e})", dx, tol
+        "⟨Ψ²_x⟩ = {:.2e} no es ≈ 0 (tol = {:.2e})",
+        dx,
+        tol
     );
     assert!(
         dy.abs() < tol,
-        "⟨Ψ²_y⟩ = {:.2e} no es ≈ 0 (tol = {:.2e})", dy, tol
+        "⟨Ψ²_y⟩ = {:.2e} no es ≈ 0 (tol = {:.2e})",
+        dy,
+        tol
     );
     assert!(
         dz.abs() < tol,
-        "⟨Ψ²_z⟩ = {:.2e} no es ≈ 0 (tol = {:.2e})", dz, tol
+        "⟨Ψ²_z⟩ = {:.2e} no es ≈ 0 (tol = {:.2e})",
+        dz,
+        tol
     );
 }
 
@@ -193,26 +203,36 @@ fn lpt2_psi2_smaller_than_psi1() {
 
     // Desplazamiento 1LPT desde la retícula perfecta
     let d_grid = BOX / GRID as f64;
-    let psi1_rms_sq: f64 = parts_1lpt.iter().enumerate().map(|(gid, p)| {
-        let ix = gid / (GRID * GRID);
-        let iy = (gid % (GRID * GRID)) / GRID;
-        let iz = gid % GRID;
-        let qx = (ix as f64 + 0.5) * d_grid;
-        let qy = (iy as f64 + 0.5) * d_grid;
-        let qz = (iz as f64 + 0.5) * d_grid;
-        let dpx = (p.position.x - qx + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dpy = (p.position.y - qy + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dpz = (p.position.z - qz + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        dpx * dpx + dpy * dpy + dpz * dpz
-    }).sum::<f64>() / N_PART as f64;
+    let psi1_rms_sq: f64 = parts_1lpt
+        .iter()
+        .enumerate()
+        .map(|(gid, p)| {
+            let ix = gid / (GRID * GRID);
+            let iy = (gid % (GRID * GRID)) / GRID;
+            let iz = gid % GRID;
+            let qx = (ix as f64 + 0.5) * d_grid;
+            let qy = (iy as f64 + 0.5) * d_grid;
+            let qz = (iz as f64 + 0.5) * d_grid;
+            let dpx = (p.position.x - qx + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dpy = (p.position.y - qy + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dpz = (p.position.z - qz + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            dpx * dpx + dpy * dpy + dpz * dpz
+        })
+        .sum::<f64>()
+        / N_PART as f64;
 
     // Diferencia entre 2LPT y 1LPT ≈ (D₂/D₁²) Ψ²
-    let psi2_rms_sq: f64 = parts_1lpt.iter().zip(parts_2lpt.iter()).map(|(p1, p2)| {
-        let dpx = (p2.position.x - p1.position.x + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dpy = (p2.position.y - p1.position.y + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        let dpz = (p2.position.z - p1.position.z + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
-        dpx * dpx + dpy * dpy + dpz * dpz
-    }).sum::<f64>() / N_PART as f64;
+    let psi2_rms_sq: f64 = parts_1lpt
+        .iter()
+        .zip(parts_2lpt.iter())
+        .map(|(p1, p2)| {
+            let dpx = (p2.position.x - p1.position.x + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dpy = (p2.position.y - p1.position.y + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            let dpz = (p2.position.z - p1.position.z + BOX / 2.0).rem_euclid(BOX) - BOX / 2.0;
+            dpx * dpx + dpy * dpy + dpz * dpz
+        })
+        .sum::<f64>()
+        / N_PART as f64;
 
     let psi1_rms = psi1_rms_sq.sqrt();
     let psi2_rms = psi2_rms_sq.sqrt();
@@ -220,7 +240,8 @@ fn lpt2_psi2_smaller_than_psi1() {
     assert!(
         psi2_rms < psi1_rms,
         "|Ψ²|_rms = {:.4e} ≥ |Ψ¹|_rms = {:.4e} — corrección 2LPT no es subleading",
-        psi2_rms, psi1_rms
+        psi2_rms,
+        psi1_rms
     );
 }
 
@@ -235,15 +256,21 @@ fn lpt2_positions_in_box() {
     for p in &parts {
         assert!(
             p.position.x >= 0.0 && p.position.x < BOX,
-            "x = {} fuera de [0, {})", p.position.x, BOX
+            "x = {} fuera de [0, {})",
+            p.position.x,
+            BOX
         );
         assert!(
             p.position.y >= 0.0 && p.position.y < BOX,
-            "y = {} fuera de [0, {})", p.position.y, BOX
+            "y = {} fuera de [0, {})",
+            p.position.y,
+            BOX
         );
         assert!(
             p.position.z >= 0.0 && p.position.z < BOX,
-            "z = {} fuera de [0, {})", p.position.z, BOX
+            "z = {} fuera de [0, {})",
+            p.position.z,
+            BOX
         );
     }
 }
@@ -258,11 +285,15 @@ fn lpt2_no_nan_inf() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "Posición NaN/Inf en gid={}: {:?}", p.global_id, p.position
+            "Posición NaN/Inf en gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "Velocidad NaN/Inf en gid={}: {:?}", p.global_id, p.velocity
+            "Velocidad NaN/Inf en gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -278,13 +309,20 @@ fn lpt2_pm_run_stable() {
     let mut a = cfg.cosmology.a_init;
     let dt = cfg.simulation.dt;
 
-    let pm = PmSolver { grid_size: NM, box_size: BOX };
+    let pm = PmSolver {
+        grid_size: NM,
+        box_size: BOX,
+    };
     let mut scratch = vec![Vec3::zero(); N_PART];
 
     for _ in 0..10 {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -302,11 +340,15 @@ fn lpt2_pm_run_stable() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "Posición NaN/Inf PM+2LPT gid={}: {:?}", p.global_id, p.position
+            "Posición NaN/Inf PM+2LPT gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "Velocidad NaN/Inf PM+2LPT gid={}: {:?}", p.global_id, p.velocity
+            "Velocidad NaN/Inf PM+2LPT gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -338,7 +380,11 @@ fn lpt2_treepm_run_stable() {
     for _ in 0..10 {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -356,11 +402,15 @@ fn lpt2_treepm_run_stable() {
     for p in &parts {
         assert!(
             p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
-            "Posición NaN/Inf TreePM+2LPT gid={}: {:?}", p.global_id, p.position
+            "Posición NaN/Inf TreePM+2LPT gid={}: {:?}",
+            p.global_id,
+            p.position
         );
         assert!(
             p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
-            "Velocidad NaN/Inf TreePM+2LPT gid={}: {:?}", p.global_id, p.velocity
+            "Velocidad NaN/Inf TreePM+2LPT gid={}: {:?}",
+            p.global_id,
+            p.velocity
         );
     }
 }
@@ -387,11 +437,15 @@ fn lpt2_vs_1lpt_differ() {
 
     // Comparación bit-a-bit: detecta cualquier diferencia floating-point.
     // La corrección 2LPT (~3×10⁻⁵) >> epsilon de máquina (2×10⁻¹⁶).
-    let differ_count = parts_1lpt.iter().zip(parts_2lpt.iter()).filter(|(p1, p2)| {
-        p1.position.x.to_bits() != p2.position.x.to_bits()
-            || p1.position.y.to_bits() != p2.position.y.to_bits()
-            || p1.position.z.to_bits() != p2.position.z.to_bits()
-    }).count();
+    let differ_count = parts_1lpt
+        .iter()
+        .zip(parts_2lpt.iter())
+        .filter(|(p1, p2)| {
+            p1.position.x.to_bits() != p2.position.x.to_bits()
+                || p1.position.y.to_bits() != p2.position.y.to_bits()
+                || p1.position.z.to_bits() != p2.position.z.to_bits()
+        })
+        .count();
 
     assert!(
         differ_count > N_PART / 2,

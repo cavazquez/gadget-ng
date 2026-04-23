@@ -230,7 +230,7 @@ pub fn exchange_force_halos_z<R: ParallelRuntime + ?Sized>(
         // recv_from_left_side[left] = plano nm-1 del rank izquierdo (añadir como plano "-1").
         // recv_from_right_side[right] = plano 0 del rank derecho (añadir como plano "nz_local").
         // Extender el array con estos halos (prepend y append).
-        let halo_left = &recv_from_left_side[left];  // plano a prepend
+        let halo_left = &recv_from_left_side[left]; // plano a prepend
         let halo_right = &recv_from_right_side[right]; // plano a append
 
         let old_len = comp.len();
@@ -284,13 +284,7 @@ pub fn interpolate_slab_local(
     let force_nz = forces[0].len() / nm2;
 
     // Determinar offset: si hay (nz+2) planos, offset=1; si (nz+1), offset=0 o 1.
-    let halo_offset: i64 = if force_nz == expected_nz {
-        1
-    } else if force_nz == nz_local + 1 {
-        0
-    } else {
-        0
-    };
+    let halo_offset: i64 = if force_nz == expected_nz { 1 } else { 0 };
 
     let z_lo = layout.z_lo_idx as i64;
     let n = positions.len();
@@ -423,10 +417,10 @@ mod tests {
         let nm2 = nm * nm;
         let nz = layout0.nz_local;
         // Sumar solo los planos propios (sin ghost right).
-        let mass0: f64 = den0[0..nz * nm2].iter().sum::<f64>()
-            + den0[nz * nm2..].iter().sum::<f64>(); // incluyendo ghost
-        let mass1: f64 = den1[0..nz * nm2].iter().sum::<f64>()
-            + den1[nz * nm2..].iter().sum::<f64>();
+        let mass0: f64 =
+            den0[0..nz * nm2].iter().sum::<f64>() + den0[nz * nm2..].iter().sum::<f64>(); // incluyendo ghost
+        let mass1: f64 =
+            den1[0..nz * nm2].iter().sum::<f64>() + den1[nz * nm2..].iter().sum::<f64>();
 
         let total = mass0 + mass1;
         let expected: f64 = masses.iter().sum();
@@ -448,9 +442,17 @@ mod tests {
         let masses = vec![1.0_f64; n];
         let density = cic::assign(&pos, &masses, box_size, nm);
         let [fx, fy, fz] = forces_from_slab(&density, &layout, 1.0, box_size, None, &rt);
-        for (i, (&a, &b, &c)) in fx.iter().zip(fy.iter()).zip(fz.iter()).map(|((a, b), c)| (a, b, c)).enumerate() {
-            assert!(a.is_finite() && b.is_finite() && c.is_finite(),
-                "NaN/Inf en celda {i}: fx={a} fy={b} fz={c}");
+        for (i, (&a, &b, &c)) in fx
+            .iter()
+            .zip(fy.iter())
+            .zip(fz.iter())
+            .map(|((a, b), c)| (a, b, c))
+            .enumerate()
+        {
+            assert!(
+                a.is_finite() && b.is_finite() && c.is_finite(),
+                "NaN/Inf en celda {i}: fx={a} fy={b} fz={c}"
+            );
         }
     }
 }

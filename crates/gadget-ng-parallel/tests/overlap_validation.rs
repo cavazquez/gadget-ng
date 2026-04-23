@@ -29,7 +29,10 @@ fn overlap_produces_same_data_as_blocking_serial() {
     // En serial ambos devuelven vec![vec![]] (sin rangos remotos)
     assert_eq!(recv_blocking, recv_overlap);
     // El overlap_work debe haberse ejecutado
-    assert!(work_called, "overlap_work debe ejecutarse en el path serial");
+    assert!(
+        work_called,
+        "overlap_work debe ejecutarse en el path serial"
+    );
 }
 
 /// Verifica que la implementación serial llama a overlap_work exactamente una vez.
@@ -43,7 +46,10 @@ fn overlap_work_called_exactly_once_serial() {
         call_count += 1;
     });
 
-    assert_eq!(call_count, 1, "overlap_work debe llamarse exactamente 1 vez");
+    assert_eq!(
+        call_count, 1,
+        "overlap_work debe llamarse exactamente 1 vez"
+    );
 }
 
 /// Verifica que el path bloqueante y no-bloqueante producen resultados vacíos

@@ -7,8 +7,8 @@
 //!   - Conservación de momento angular: |ΔL|/|L₀| < 1e-6
 
 use gadget_ng_core::Vec3;
-use gadget_ng_tree::{accel_from_let, RemoteMultipoleNode, RmnSoa};
 use gadget_ng_tree::LetTree;
+use gadget_ng_tree::{accel_from_let, RemoteMultipoleNode, RmnSoa};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -23,12 +23,18 @@ fn make_rmn(cx: f64, cy: f64, cz: f64, mass: f64) -> RemoteMultipoleNode {
 }
 
 fn make_rmn_full(
-    cx: f64, cy: f64, cz: f64, mass: f64,
-    quad: [f64; 6], oct: [f64; 7],
+    cx: f64,
+    cy: f64,
+    cz: f64,
+    mass: f64,
+    quad: [f64; 6],
+    oct: [f64; 7],
 ) -> RemoteMultipoleNode {
     RemoteMultipoleNode {
         com: Vec3::new(cx, cy, cz),
-        mass, quad, oct,
+        mass,
+        quad,
+        oct,
         half_size: 0.5,
     }
 }
@@ -70,11 +76,7 @@ fn soa_force_rms_error_monopole_only() {
     let mut max_rms = 0.0_f64;
     for k in 0..20 {
         let t = k as f64 * 0.25;
-        let pos_i = Vec3::new(
-            (t * 2.1).cos() * 1.5,
-            (t * 1.7).sin() * 2.0,
-            t * 0.3 - 3.0,
-        );
+        let pos_i = Vec3::new((t * 2.1).cos() * 1.5, (t * 1.7).sin() * 2.0, t * 0.3 - 3.0);
         let a_soa = soa.accel(pos_i, g, eps2);
         let a_aos = accel_from_let(pos_i, &rmns, g, eps2);
         max_rms = max_rms.max(rms_relative(a_soa, a_aos));
@@ -94,7 +96,7 @@ fn soa_force_rms_error_quad_oct() {
     let n_rmn = 500;
 
     let quad_base = [0.12, -0.05, 0.03, 0.08, -0.02, -0.20];
-    let oct_base  = [0.01, -0.005, 0.003, 0.008, -0.002, 0.007, -0.001];
+    let oct_base = [0.01, -0.005, 0.003, 0.008, -0.002, 0.007, -0.001];
 
     let rmns: Vec<RemoteMultipoleNode> = (0..n_rmn)
         .map(|k| {
@@ -144,7 +146,7 @@ fn let_tree_soa_vs_flat_rms() {
     let n_rmn = 200;
 
     let quad_base = [0.08, -0.03, 0.02, 0.05, -0.01, -0.13];
-    let oct_base  = [0.005, -0.003, 0.002, 0.004, -0.001, 0.003, -0.0005];
+    let oct_base = [0.005, -0.003, 0.002, 0.004, -0.001, 0.003, -0.0005];
 
     let rmns: Vec<RemoteMultipoleNode> = (0..n_rmn)
         .map(|k| {
@@ -172,7 +174,7 @@ fn let_tree_soa_vs_flat_rms() {
             t * 0.2 + 2.0,
         );
         let a_tree = let_tree.walk_accel(pos_i, g, eps2, theta);
-        let a_soa  = soa.accel(pos_i, g, eps2);
+        let a_soa = soa.accel(pos_i, g, eps2);
 
         // El LetTree usa multipolo agregado → error de árbol esperado;
         // comparamos contra SoA (referencia exacta).
@@ -204,7 +206,7 @@ fn soa_simulation_momentum_conservation() {
     // Posiciones en esfera de radio 2.
     let mut pos: Vec<Vec3> = (0..n)
         .map(|k| {
-            let phi   = k as f64 * std::f64::consts::TAU / n as f64;
+            let phi = k as f64 * std::f64::consts::TAU / n as f64;
             let theta = std::f64::consts::PI * 0.5;
             Vec3::new(
                 2.0 * theta.sin() * phi.cos(),

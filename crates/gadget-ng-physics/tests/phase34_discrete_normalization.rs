@@ -128,16 +128,14 @@ fn loglog_slope(xs: &[f64], ys: &[f64]) -> f64 {
 /// Directorio donde se vuelcan los JSONs reproducibles.
 fn phase34_dir() -> PathBuf {
     // `target/` es estable entre invocaciones; los scripts de análisis lo leen.
-    let mut d = PathBuf::from(
-        std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
-            // Heurística: `target/` en la raíz del workspace.
-            let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            p.pop();
-            p.pop();
-            p.push("target");
-            p.to_string_lossy().to_string()
-        }),
-    );
+    let mut d = PathBuf::from(std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
+        // Heurística: `target/` en la raíz del workspace.
+        let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        p.pop();
+        p.pop();
+        p.push("target");
+        p.to_string_lossy().to_string()
+    }));
     d.push("phase34");
     let _ = fs::create_dir_all(&d);
     d
@@ -210,11 +208,7 @@ fn white_noise_real(n: usize, seed: u64, sigma: f64) -> Vec<f64> {
 ///
 /// Aplica la misma normalización que `gadget_ng_analysis::power_spectrum`:
 /// `P_m(k_bin) = ⟨|δ̂|²⟩_bin · (V/N³)²`.
-fn pk_from_delta_kspace_no_cic(
-    delta_k: &[Complex<f64>],
-    n: usize,
-    box_size: f64,
-) -> Vec<PkBin> {
+fn pk_from_delta_kspace_no_cic(delta_k: &[Complex<f64>], n: usize, box_size: f64) -> Vec<PkBin> {
     let n_nyq = n / 2;
     let k_fund = 2.0 * PI / box_size;
     let n_bins = n_nyq;
@@ -476,7 +470,7 @@ fn make_config(seed: u64, n: usize) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -526,8 +520,7 @@ fn particles_from_delta_kspace(
 fn grid_roundtrip_preserves_amplitude_with_known_convention() {
     let n = 16usize;
     let samples = white_noise_real(n, 12345, 1.0);
-    let mut buf: Vec<Complex<f64>> =
-        samples.iter().map(|&v| Complex::new(v, 0.0)).collect();
+    let mut buf: Vec<Complex<f64>> = samples.iter().map(|&v| Complex::new(v, 0.0)).collect();
     fft3d_forward(&mut buf, n);
     ifft3d_normalized(&mut buf, n);
     let max_err: f64 = samples
@@ -625,7 +618,11 @@ fn single_mode_recovered_with_correct_amplitude() {
         }),
     );
 
-    assert!(max_im < 1e-10, "IFFT no devolvió campo real: max|Im| = {:.3e}", max_im);
+    assert!(
+        max_im < 1e-10,
+        "IFFT no devolvió campo real: max|Im| = {:.3e}",
+        max_im
+    );
     assert!(
         max_cos_err < 1e-9,
         "Patrón cos no coincide: max_err = {:.3e}",
@@ -998,9 +995,5 @@ fn offset_stable_across_seeds() {
         "Al menos 4 seeds deben dar A finito, sólo {} válidos",
         a_list.len()
     );
-    assert!(
-        c < 0.10,
-        "CV(A) entre seeds = {:.4} ≥ 0.10",
-        c
-    );
+    assert!(c < 0.10, "CV(A) entre seeds = {:.4} ≥ 0.10", c);
 }

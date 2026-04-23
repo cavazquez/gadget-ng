@@ -382,7 +382,10 @@ pub fn fit_nfw_concentration(
     let r200 = r200_from_m200(m200, rho_crit);
 
     // Seleccionar bins con partículas
-    let good: Vec<&DensityBin> = bins.iter().filter(|b| b.n_part > 0 && b.rho > 0.0).collect();
+    let good: Vec<&DensityBin> = bins
+        .iter()
+        .filter(|b| b.n_part > 0 && b.rho > 0.0)
+        .collect();
     if good.len() < 3 {
         return None;
     }
@@ -438,7 +441,10 @@ pub fn fit_nfw_concentration(
 
     let r_s = r200 / best_c;
     Some(NfwFitResult {
-        profile: NfwProfile { rho_s: best_rho_s, r_s },
+        profile: NfwProfile {
+            rho_s: best_rho_s,
+            r_s,
+        },
         chi2_red: best_chi2,
         n_bins_used: good.len(),
     })
@@ -496,17 +502,20 @@ mod tests {
     /// tolerancia relativa respecto a x²/2 es ~4x/3. Para x=1e-8: tolerancia ~1.3e-8.
     #[test]
     fn g_nfw_small_x_limit() {
-        let x = 1e-8_f64;   // suficientemente pequeño para que 4x/3 < 1e-7
+        let x = 1e-8_f64; // suficientemente pequeño para que 4x/3 < 1e-7
         let g = g_nfw(x);
         let g_approx = x * x / 2.0;
         let rel_err = (g / g_approx - 1.0).abs();
-        assert!(rel_err < 1e-6, "g_nfw({x:.0e}) = {g:.6e} vs x²/2 = {g_approx:.6e}; err={rel_err:.2e}");
+        assert!(
+            rel_err < 1e-6,
+            "g_nfw({x:.0e}) = {g:.6e} vs x²/2 = {g_approx:.6e}; err={rel_err:.2e}"
+        );
     }
 
     /// c(M) de Duffy+2008: c decrece con M y con z.
     #[test]
     fn concentration_duffy_trends() {
-        let c_low_m  = concentration_duffy2008(1e11, 0.0);
+        let c_low_m = concentration_duffy2008(1e11, 0.0);
         let c_high_m = concentration_duffy2008(1e15, 0.0);
         let c_z0 = concentration_duffy2008(1e13, 0.0);
         let c_z1 = concentration_duffy2008(1e13, 1.0);
@@ -515,8 +524,14 @@ mod tests {
         assert!(c_z0 > c_z1, "c debe decrecer con z");
 
         // Rango físico para Duffy+2008: c ∈ [2, 20] en el rango M ∈ [10¹¹, 10¹⁵]
-        assert!(c_low_m  > 2.0 && c_low_m  < 25.0, "c(10¹¹) = {c_low_m:.2}  fuera de [2, 25]");
-        assert!(c_high_m > 1.0 && c_high_m < 10.0, "c(10¹⁵) = {c_high_m:.2} fuera de [1, 10]");
+        assert!(
+            c_low_m > 2.0 && c_low_m < 25.0,
+            "c(10¹¹) = {c_low_m:.2}  fuera de [2, 25]"
+        );
+        assert!(
+            c_high_m > 1.0 && c_high_m < 10.0,
+            "c(10¹⁵) = {c_high_m:.2} fuera de [1, 10]"
+        );
 
         println!("[nfw_test] Duffy c: M=10¹¹ → {c_low_m:.2}, M=10¹⁵ → {c_high_m:.2}");
         println!("[nfw_test] Duffy c: z=0 → {c_z0:.2}, z=1 → {c_z1:.2}");
@@ -525,24 +540,40 @@ mod tests {
     /// ρ(r) decrece con r.
     #[test]
     fn density_decreasing_with_radius() {
-        let profile = NfwProfile { rho_s: 1e7, r_s: 0.3 };
+        let profile = NfwProfile {
+            rho_s: 1e7,
+            r_s: 0.3,
+        };
         let radii = [0.01, 0.1, 0.3, 1.0, 5.0, 20.0];
         for w in radii.windows(2) {
             let rho1 = profile.density(w[0]);
             let rho2 = profile.density(w[1]);
-            assert!(rho2 < rho1, "ρ(r) no decrece: ρ({:.2}) = {rho2:.3e} ≥ ρ({:.2}) = {rho1:.3e}", w[1], w[0]);
+            assert!(
+                rho2 < rho1,
+                "ρ(r) no decrece: ρ({:.2}) = {rho2:.3e} ≥ ρ({:.2}) = {rho1:.3e}",
+                w[1],
+                w[0]
+            );
         }
     }
 
     /// M(<r) es creciente con r.
     #[test]
     fn mass_enclosed_increasing_with_radius() {
-        let profile = NfwProfile { rho_s: 1e7, r_s: 0.3 };
+        let profile = NfwProfile {
+            rho_s: 1e7,
+            r_s: 0.3,
+        };
         let radii = [0.01, 0.1, 0.3, 1.0, 5.0, 20.0];
         for w in radii.windows(2) {
             let m1 = profile.mass_enclosed(w[0]);
             let m2 = profile.mass_enclosed(w[1]);
-            assert!(m2 > m1, "M(<r) no crece: M({:.2}) = {m2:.3e} ≤ M({:.2}) = {m1:.3e}", w[1], w[0]);
+            assert!(
+                m2 > m1,
+                "M(<r) no crece: M({:.2}) = {m2:.3e} ≤ M({:.2}) = {m1:.3e}",
+                w[1],
+                w[0]
+            );
         }
     }
 
@@ -569,7 +600,11 @@ mod tests {
         // p(r) ∝ r² ρ(r) — máximo en r = r_s (vértice del perfil NFW en 3D)
         let p_fun = |r: f64| r * r * profile.density(r);
         let p_max = {
-            let p_rs   = if r_s >= r_min && r_s <= r_max { p_fun(r_s) } else { 0.0 };
+            let p_rs = if r_s >= r_min && r_s <= r_max {
+                p_fun(r_s)
+            } else {
+                0.0
+            };
             p_rs.max(p_fun(r_min)).max(p_fun(r_max))
         };
 
@@ -579,9 +614,13 @@ mod tests {
 
         while accepted < n_particles {
             // LCG simple (Knuth)
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let u1 = (seed >> 32) as f64 / u32::MAX as f64;
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let u2 = (seed >> 32) as f64 / u32::MAX as f64;
 
             let r = r_min + u1 * (r_max - r_min);
@@ -606,7 +645,8 @@ mod tests {
             assert!(
                 ratio > 0.3 && ratio < 3.0,
                 "ρ_med/ρ_NFW = {ratio:.3} fuera de [0.3, 3] en r = {:.3} Mpc/h (n_part={})",
-                bin.r, bin.n_part
+                bin.r,
+                bin.n_part
             );
             n_good += 1;
         }
@@ -635,7 +675,11 @@ mod tests {
         let r_s_true = profile_true.r_s;
         let p_fun_t = |r: f64| r * r * profile_true.density(r);
         let p_max_t = {
-            let p_rs  = if r_s_true >= r_min && r_s_true <= r_max { p_fun_t(r_s_true) } else { 0.0 };
+            let p_rs = if r_s_true >= r_min && r_s_true <= r_max {
+                p_fun_t(r_s_true)
+            } else {
+                0.0
+            };
             p_rs.max(p_fun_t(r_min)).max(p_fun_t(r_max))
         };
 
@@ -643,9 +687,13 @@ mod tests {
         let mut seed: u64 = 0xDEADBEEFCAFE;
         let mut accepted = 0;
         while accepted < n_particles {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let u1 = (seed >> 32) as f64 / u32::MAX as f64;
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let u2 = (seed >> 32) as f64 / u32::MAX as f64;
             let r = r_min + u1 * (r_max - r_min);
             let p = p_fun_t(r) / p_max_t;

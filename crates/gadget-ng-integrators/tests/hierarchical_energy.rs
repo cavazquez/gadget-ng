@@ -10,8 +10,8 @@
 //! - Período `T = 2π * r / v_c ≈ 8.886`.
 //! - El softening es pequeño comparado con `r`, de modo que la órbita se mantiene estable.
 
-use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_core::TimestepCriterion;
+use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_integrators::{
     aarseth_bin, hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState,
 };
@@ -101,7 +101,14 @@ fn run_hierarchical(steps: u64, dt: f64, eta: f64, max_level: u32) -> f64 {
     }
 
     let mut h_state = HierarchicalState::new(n);
-    h_state.init_from_accels(&parts, EPS2, dt, eta, max_level, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        eta,
+        max_level,
+        TimestepCriterion::Acceleration,
+    );
 
     for _ in 0..steps {
         hierarchical_kdk_step(
@@ -218,7 +225,14 @@ fn second_order_drift_better_than_first_order() {
         p.acceleration = a;
     }
     let mut st1 = HierarchicalState::new(n);
-    st1.init_from_accels(&parts1, EPS2, dt, eta, max_level, TimestepCriterion::Acceleration);
+    st1.init_from_accels(
+        &parts1,
+        EPS2,
+        dt,
+        eta,
+        max_level,
+        TimestepCriterion::Acceleration,
+    );
     for _ in 0..steps {
         hierarchical_kdk_step_first_order(
             &mut parts1,

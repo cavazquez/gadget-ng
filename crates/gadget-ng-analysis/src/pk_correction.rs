@@ -266,7 +266,7 @@ pub fn correct_pk(
 /// - `box_size_internal`: tamaño de caja (mismas unidades que `power_spectrum`).
 /// - `n`                : lado del grid de densidad.
 /// - `box_mpc_h`        : tamaño físico en Mpc (opcional; si `Some(L)` se
-///                        re-escala P(k) a `(Mpc/h)³`).
+///   re-escala P(k) a `(Mpc/h)³`).
 /// - `n_particles`      : número total de partículas.
 /// - `model`            : modelo R(N) a usar.
 pub fn correct_pk_with_shot_noise(
@@ -314,9 +314,9 @@ pub fn correct_pk_with_shot_noise(
 /// - `n`        : lado del grid (potencia de 2 recomendada; N³ partículas).
 /// - `seeds`    : semillas aleatorias a promediar (≥ 1).
 /// - `box_size` : tamaño de caja interna (usar `1.0` para consistencia con
-///                Phase 35).
+///   Phase 35).
 /// - `box_mpc_h`: tamaño de caja en Mpc (mismo parámetro que
-///                `build_spectrum_fn`; tipicamente 100).
+///   `build_spectrum_fn`; tipicamente 100).
 /// - `sigma8`   : normalización del espectro (tipicamente `0.8`).
 /// - `n_s`      : índice espectral (tipicamente `0.965`).
 /// - `eh`       : parámetros cosmológicos Eisenstein-Hu.
@@ -369,8 +369,7 @@ pub fn measure_rn(
                 Some(box_mpc_h),
             );
             let delta_k = internals::generate_delta_kspace(n, seed, spec);
-            let [psi_x, psi_y, psi_z] =
-                internals::delta_to_displacement(&delta_k, n, box_size);
+            let [psi_x, psi_y, psi_z] = internals::delta_to_displacement(&delta_k, n, box_size);
             let cell = box_size / n as f64;
             let mass = 1.0 / (n * n * n) as f64;
             let mut pos = Vec::with_capacity(n * n * n);
@@ -379,19 +378,15 @@ pub fn measure_rn(
                 for iy in 0..n {
                     for iz in 0..n {
                         let idx = ix * n * n + iy * n + iz;
-                        let x = ((ix as f64 + 0.5) * cell + psi_x[idx])
-                            .rem_euclid(box_size);
-                        let y = ((iy as f64 + 0.5) * cell + psi_y[idx])
-                            .rem_euclid(box_size);
-                        let z = ((iz as f64 + 0.5) * cell + psi_z[idx])
-                            .rem_euclid(box_size);
+                        let x = ((ix as f64 + 0.5) * cell + psi_x[idx]).rem_euclid(box_size);
+                        let y = ((iy as f64 + 0.5) * cell + psi_y[idx]).rem_euclid(box_size);
+                        let z = ((iz as f64 + 0.5) * cell + psi_z[idx]).rem_euclid(box_size);
                         pos.push(Vec3::new(x, y, z));
                         mas.push(mass);
                     }
                 }
             }
-            let pk_bins =
-                crate::power_spectrum::power_spectrum(&pos, &mas, box_size, n);
+            let pk_bins = crate::power_spectrum::power_spectrum(&pos, &mas, box_size, n);
             let ratios: Vec<f64> = pk_bins
                 .iter()
                 .filter(|b| b.n_modes >= 8 && b.pk > 0.0 && b.k <= k_max)
@@ -425,8 +420,7 @@ pub fn measure_rn(
     let cv = if valid.len() < 2 {
         0.0
     } else {
-        let var = valid.iter().map(|v| (v - r_mean).powi(2)).sum::<f64>()
-            / valid.len() as f64;
+        let var = valid.iter().map(|v| (v - r_mean).powi(2)).sum::<f64>() / valid.len() as f64;
         var.sqrt() / r_mean.abs()
     };
     (r_mean, cv)
@@ -446,11 +440,7 @@ mod tests {
         for (n, r_table) in m.table.iter() {
             let r_fit = m.evaluate_model(*n);
             let rel = (r_fit - *r_table).abs() / r_table;
-            assert!(
-                rel < 0.20,
-                "N={n}: |fit - tabla| = {:.3} (> 20 %)",
-                rel
-            );
+            assert!(rel < 0.20, "N={n}: |fit - tabla| = {:.3} (> 20 %)", rel);
         }
     }
 
@@ -489,8 +479,16 @@ mod tests {
     #[test]
     fn correct_pk_scales_linearly() {
         let bins = vec![
-            PkBin { k: 1.0, pk: 100.0, n_modes: 10 },
-            PkBin { k: 2.0, pk: 200.0, n_modes: 20 },
+            PkBin {
+                k: 1.0,
+                pk: 100.0,
+                n_modes: 10,
+            },
+            PkBin {
+                k: 2.0,
+                pk: 200.0,
+                n_modes: 20,
+            },
         ];
         let m = RnModel::phase35_default();
         let out = correct_pk(&bins, 1.0, 32, None, &m);
@@ -504,7 +502,11 @@ mod tests {
 
     #[test]
     fn correct_pk_applies_box_unit_conversion() {
-        let bins = vec![PkBin { k: 1.0, pk: 1.0, n_modes: 1 }];
+        let bins = vec![PkBin {
+            k: 1.0,
+            pk: 1.0,
+            n_modes: 1,
+        }];
         let m = RnModel::phase35_default();
         let a = a_grid(1.0, 32);
         let r = m.evaluate(32);

@@ -72,7 +72,13 @@ fn total_energy(parts: &[Particle]) -> f64 {
 /// Ejecuta `steps` pasos jerárquicos con el criterio dado y devuelve
 /// `(|ΔE/E₀|_final, closure)` donde `closure` es la distancia orbital
 /// respecto a la posición inicial tras `orbits` órbitas completas.
-fn run_kepler(criterion: TimestepCriterion, steps: u64, dt: f64, eta: f64, max_level: u32) -> (f64, f64) {
+fn run_kepler(
+    criterion: TimestepCriterion,
+    steps: u64,
+    dt: f64,
+    eta: f64,
+    max_level: u32,
+) -> (f64, f64) {
     let mut parts = two_body_circular();
 
     // Inicializar aceleraciones.
@@ -203,7 +209,14 @@ fn step_stats_levels_not_degenerate() {
     }
 
     let mut h_state = HierarchicalState::new(parts.len());
-    h_state.init_from_accels(&parts, EPS2, dt, eta, max_level, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        &parts,
+        EPS2,
+        dt,
+        eta,
+        max_level,
+        TimestepCriterion::Acceleration,
+    );
 
     let mut all_stats: Vec<StepStats> = Vec::new();
     for _ in 0..20 {
@@ -214,10 +227,10 @@ fn step_stats_levels_not_degenerate() {
             EPS2,
             eta,
             max_level,
-        TimestepCriterion::Acceleration,
-        None,
-        None,
-        gravity_two_body,
+            TimestepCriterion::Acceleration,
+            None,
+            None,
+            gravity_two_body,
         );
         all_stats.push(stats);
     }

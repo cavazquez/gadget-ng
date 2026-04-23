@@ -26,8 +26,8 @@ use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::ParallelRuntime;
 use gadget_ng_pm::{slab_pm, SlabLayout};
 
-use crate::short_range::ShortRangeParamsPeriodic;
 use crate::short_range;
+use crate::short_range::ShortRangeParamsPeriodic;
 
 // ── Parámetros ─────────────────────────────────────────────────────────────────
 
@@ -238,8 +238,7 @@ pub fn pm_scatter_gather_accels<R: ParallelRuntime + ?Sized>(
         let t_pm = Instant::now();
         let positions: Vec<Vec3> = local.iter().map(|p| p.position).collect();
         let masses: Vec<f64> = local.iter().map(|p| p.mass).collect();
-        let mut density_ext =
-            slab_pm::deposit_slab_extended(&positions, &masses, layout, box_size);
+        let mut density_ext = slab_pm::deposit_slab_extended(&positions, &masses, layout, box_size);
         slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
         let mut forces =
             slab_pm::forces_from_slab(&density_ext, layout, g, box_size, Some(r_split), rt);
@@ -310,10 +309,10 @@ pub fn pm_scatter_gather_accels<R: ParallelRuntime + ?Sized>(
 
     let t_pm = Instant::now();
 
-    let mut density_ext =
-        slab_pm::deposit_slab_extended(&slab_pos, &slab_mass, layout, box_size);
+    let mut density_ext = slab_pm::deposit_slab_extended(&slab_pos, &slab_mass, layout, box_size);
     slab_pm::exchange_density_halos_z(&mut density_ext, layout, rt);
-    let mut forces = slab_pm::forces_from_slab(&density_ext, layout, g, box_size, Some(r_split), rt);
+    let mut forces =
+        slab_pm::forces_from_slab(&density_ext, layout, g, box_size, Some(r_split), rt);
     slab_pm::exchange_force_halos_z(&mut forces, layout, rt);
     let acc_slab = slab_pm::interpolate_slab_local(&slab_pos, &forces, layout, box_size);
 
@@ -342,8 +341,7 @@ pub fn pm_scatter_gather_accels<R: ParallelRuntime + ?Sized>(
     //
     // Construir mapa global_id → acc_pm desde los datos recibidos.
 
-    let mut lr_map: HashMap<usize, Vec3> =
-        HashMap::with_capacity(n_local);
+    let mut lr_map: HashMap<usize, Vec3> = HashMap::with_capacity(n_local);
     for data in gather_recv.iter() {
         let n = data.len() / 4;
         for i in 0..n {
@@ -377,7 +375,7 @@ pub fn halo_stats(halo_particles: &[Particle]) -> HaloStats {
     let n = halo_particles.len();
     HaloStats {
         n_particles: n,
-        bytes: n * std::mem::size_of::<Particle>(),
+        bytes: std::mem::size_of_val(halo_particles),
     }
 }
 
@@ -428,7 +426,8 @@ mod tests {
         short_range_accels_slab(&params, &mut out);
         assert!(
             out[0].x.abs() < 1e-14 && out[0].y.abs() < 1e-14 && out[0].z.abs() < 1e-14,
-            "fuerza no nula con una sola partícula: {:?}", out[0]
+            "fuerza no nula con una sola partícula: {:?}",
+            out[0]
         );
     }
 
@@ -437,7 +436,7 @@ mod tests {
         // Partícula local en z=0.1, halo en z=0.2 (dentro de r_cut=0.5).
         // Fuerza SR debe ser no nula.
         let local = make_particle(0, Vec3::new(0.5, 0.5, 0.1), 1.0);
-        let halo  = make_particle(1, Vec3::new(0.5, 0.5, 0.2), 1.0);
+        let halo = make_particle(1, Vec3::new(0.5, 0.5, 0.2), 1.0);
         let params = SlabShortRangeParams {
             local_particles: &[local],
             halo_particles: &[halo],
@@ -449,10 +448,7 @@ mod tests {
         let mut out = vec![Vec3::zero()];
         short_range_accels_slab(&params, &mut out);
         // La fuerza debe apuntar en +z (hacia el halo).
-        assert!(
-            out[0].z > 0.0,
-            "fuerza SR esperada en +z, got {:?}", out[0]
-        );
+        assert!(out[0].z > 0.0, "fuerza SR esperada en +z, got {:?}", out[0]);
     }
 
     #[test]
@@ -461,7 +457,7 @@ mod tests {
         // Sin minimum_image: distancia = 0.9 (fuera de r_cut=0.5 → fuerza ≈ 0).
         // Con minimum_image: distancia = 0.1 (dentro → fuerza ≠ 0).
         let local = make_particle(0, Vec3::new(0.5, 0.5, 0.05), 1.0);
-        let halo  = make_particle(1, Vec3::new(0.5, 0.5, 0.95), 1.0);
+        let halo = make_particle(1, Vec3::new(0.5, 0.5, 0.95), 1.0);
         let r_split = 0.1_f64;
         let r_cut = 5.0 * r_split; // 0.5
 
@@ -485,7 +481,8 @@ mod tests {
         // La fuerza debe apuntar en -z (hacia el halo a través del borde periódico).
         assert!(
             out[0].z < 0.0,
-            "fuerza periódica debe apuntar en -z (imagen más cercana en z=-0.05), got {:?}", out[0]
+            "fuerza periódica debe apuntar en -z (imagen más cercana en z=-0.05), got {:?}",
+            out[0]
         );
     }
 

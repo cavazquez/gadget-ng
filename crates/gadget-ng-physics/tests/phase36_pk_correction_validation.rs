@@ -19,11 +19,10 @@
 use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
 use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::CosmologyParams,
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    amplitude_for_sigma8, build_particles, cosmology::CosmologyParams, transfer_eh_nowiggle,
+    wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -106,7 +105,7 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -185,8 +184,7 @@ fn cpt92_g(a: f64) -> f64 {
     let a3 = a.powi(3);
     let om_a = OMEGA_M / (OMEGA_M + OMEGA_L * a3);
     let ol_a = OMEGA_L * a3 / (OMEGA_M + OMEGA_L * a3);
-    2.5 * om_a
-        / (om_a.powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0))
+    2.5 * om_a / (om_a.powf(4.0 / 7.0) - ol_a + (1.0 + om_a / 2.0) * (1.0 + ol_a / 70.0))
 }
 
 /// `D(a)` en la convención CPT92 (no normalizada). Para tomar ratios basta
@@ -683,5 +681,8 @@ fn pk_correction_no_nan_inf() {
             "per_snapshot": per_config,
         }),
     );
-    assert!(total_bins >= 100, "Muy pocos bins verificados: {total_bins}");
+    assert!(
+        total_bins >= 100,
+        "Muy pocos bins verificados: {total_bins}"
+    );
 }

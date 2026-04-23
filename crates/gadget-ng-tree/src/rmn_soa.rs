@@ -1,4 +1,5 @@
 //! Representación **SoA (Structure of Arrays)** para lotes de [`RemoteMultipoleNode`].
+#![allow(clippy::too_many_arguments)]
 //!
 //! ## Motivación
 //!
@@ -283,10 +284,10 @@ unsafe fn hadd_m256d(v: std::arch::x86_64::__m256d) -> f64 {
     use std::arch::x86_64::*;
     // [v0,v1,v2,v3]
     let hi128 = _mm256_extractf128_pd(v, 1); // [v2, v3]
-    let lo128 = _mm256_castpd256_pd128(v);   // [v0, v1]
-    let s128 = _mm_add_pd(lo128, hi128);     // [v0+v2, v1+v3]
+    let lo128 = _mm256_castpd256_pd128(v); // [v0, v1]
+    let s128 = _mm_add_pd(lo128, hi128); // [v0+v2, v1+v3]
     let s128h = _mm_unpackhi_pd(s128, s128); // [v1+v3, v1+v3]
-    let total = _mm_add_pd(s128, s128h);     // [v0+v1+v2+v3, ...]
+    let total = _mm_add_pd(s128, s128h); // [v0+v1+v2+v3, ...]
     _mm_cvtsd_f64(total)
 }
 
@@ -577,8 +578,7 @@ unsafe fn accel_p15_avx2_range(
         let rinv_slice = &mut r_inv_buf[..chunk_len];
 
         // Pass 1: AVX2 monopolar + almacena r_inv
-        let (ax1, ay1, az1) =
-            mono_pass_avx2(xi, yi, zi, cx, cy, cz, mass, neg_g, eps2, rinv_slice);
+        let (ax1, ay1, az1) = mono_pass_avx2(xi, yi, zi, cx, cy, cz, mass, neg_g, eps2, rinv_slice);
         total_ax += ax1;
         total_ay += ay1;
         total_az += az1;
@@ -635,7 +635,14 @@ impl RmnSoa {
     /// Kernel Fase 14 (fusionado con target_feature, sin intrinsics explícitos).
     /// Disponible para benchmarks comparativos directos.
     #[inline]
-    pub fn accel_range_p14(&self, pos_i: Vec3, start: usize, len: usize, g: f64, eps2: f64) -> Vec3 {
+    pub fn accel_range_p14(
+        &self,
+        pos_i: Vec3,
+        start: usize,
+        len: usize,
+        g: f64,
+        eps2: f64,
+    ) -> Vec3 {
         if len == 0 {
             return Vec3::zero();
         }
@@ -973,7 +980,7 @@ impl RmnSoa {
         eps2: f64,
         tile_size: usize,
     ) -> [Vec3; 4] {
-        debug_assert!(tile_size >= 1 && tile_size <= 4);
+        debug_assert!((1..=4).contains(&tile_size));
         if len == 0 {
             return [Vec3::zero(); 4];
         }
@@ -1001,8 +1008,7 @@ impl RmnSoa {
         // Fallback escalar: tile_size llamadas individuales
         let mut result = [Vec3::zero(); 4];
         for k in 0..tile_size {
-            result[k] =
-                accel_soa_scalar(pos[k].x, pos[k].y, pos[k].z, start, len, self, g, eps2);
+            result[k] = accel_soa_scalar(pos[k].x, pos[k].y, pos[k].z, start, len, self, g, eps2);
         }
         result
     }
@@ -1058,7 +1064,14 @@ mod tests {
         let eps2 = 0.01_f64.powi(2);
         let pos_i = Vec3::new(1.0, 2.0, 3.0);
         let rmns: Vec<RemoteMultipoleNode> = (0..16)
-            .map(|k| make_rmn(k as f64 * 0.5, -(k as f64), k as f64 * 0.3, 1.0 + k as f64 * 0.1))
+            .map(|k| {
+                make_rmn(
+                    k as f64 * 0.5,
+                    -(k as f64),
+                    k as f64 * 0.3,
+                    1.0 + k as f64 * 0.1,
+                )
+            })
             .collect();
         let soa = RmnSoa::from_slice(&rmns);
         let a_soa = soa.accel(pos_i, g, eps2);
@@ -1096,8 +1109,9 @@ mod tests {
 
     #[test]
     fn soa_from_slice_length() {
-        let rmns: Vec<RemoteMultipoleNode> =
-            (0..100).map(|k| make_rmn(k as f64, 0.0, 0.0, 1.0)).collect();
+        let rmns: Vec<RemoteMultipoleNode> = (0..100)
+            .map(|k| make_rmn(k as f64, 0.0, 0.0, 1.0))
+            .collect();
         let soa = RmnSoa::from_slice(&rmns);
         assert_eq!(soa.len, 100);
         assert_eq!(soa.cx.len(), 100);
@@ -1109,8 +1123,9 @@ mod tests {
         let g = 1.0;
         let eps2 = 0.01;
         let pos_i = Vec3::new(1.0, 1.0, 1.0);
-        let rmns: Vec<RemoteMultipoleNode> =
-            (0..20).map(|k| make_rmn(k as f64 * 0.4, 0.0, 0.0, 1.0)).collect();
+        let rmns: Vec<RemoteMultipoleNode> = (0..20)
+            .map(|k| make_rmn(k as f64 * 0.4, 0.0, 0.0, 1.0))
+            .collect();
         let soa = RmnSoa::from_slice(&rmns);
         let a_full = soa.accel(pos_i, g, eps2);
         let a_range = soa.accel_range(pos_i, 0, 20, g, eps2);
@@ -1247,8 +1262,9 @@ mod tests {
         let g = 1.0;
         let eps2 = 0.01;
         let pos_i = Vec3::new(0.0, 5.0, 0.0);
-        let rmns: Vec<RemoteMultipoleNode> =
-            (0..32).map(|k| make_rmn(k as f64 * 0.3, 0.0, 0.0, 1.0)).collect();
+        let rmns: Vec<RemoteMultipoleNode> = (0..32)
+            .map(|k| make_rmn(k as f64 * 0.3, 0.0, 0.0, 1.0))
+            .collect();
         let soa = RmnSoa::from_slice(&rmns);
 
         // Comparar sub-rango [8, 24)

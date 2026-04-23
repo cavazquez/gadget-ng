@@ -382,7 +382,15 @@ pub fn mass_function_table(
                 0.0
             };
 
-            HmfBin { log10_m, m_msun_h: m, r_hmpc: r, sigma, dlns_inv_dlnm: dlns_inv, n_ps, n_st }
+            HmfBin {
+                log10_m,
+                m_msun_h: m,
+                r_hmpc: r,
+                sigma,
+                dlns_inv_dlnm: dlns_inv,
+                n_ps,
+                n_st,
+            }
         })
         .collect()
 }
@@ -421,7 +429,12 @@ mod tests {
         let m_r8 = p.rho_bar_m() * (4.0 / 3.0) * PI * 8.0_f64.powi(3);
         let sigma = sigma_m(m_r8, &p, 0.0);
         let rel_err = (sigma / p.sigma8 - 1.0).abs();
-        assert!(rel_err < 0.02, "σ(R=8) = {sigma:.4} vs σ₈ = {} err={:.2}%", p.sigma8, rel_err * 100.0);
+        assert!(
+            rel_err < 0.02,
+            "σ(R=8) = {sigma:.4} vs σ₈ = {} err={:.2}%",
+            p.sigma8,
+            rel_err * 100.0
+        );
     }
 
     /// σ(M) es monótonamente decreciente con M.
@@ -431,8 +444,14 @@ mod tests {
         let masses = [1e10, 1e11, 1e12, 1e13, 1e14, 1e15];
         let sigmas: Vec<f64> = masses.iter().map(|&m| sigma_m(m, &p, 0.0)).collect();
         for i in 1..sigmas.len() {
-            assert!(sigmas[i] < sigmas[i-1],
-                "σ no monótona: σ[{}]={:.4} σ[{}]={:.4}", i, sigmas[i], i-1, sigmas[i-1]);
+            assert!(
+                sigmas[i] < sigmas[i - 1],
+                "σ no monótona: σ[{}]={:.4} σ[{}]={:.4}",
+                i,
+                sigmas[i],
+                i - 1,
+                sigmas[i - 1]
+            );
         }
     }
 
@@ -441,9 +460,9 @@ mod tests {
     fn sigma_decreases_with_redshift() {
         let p = planck();
         let m = 1e13_f64;
-        let s_z0  = sigma_m(m, &p, 0.0);
-        let s_z1  = sigma_m(m, &p, 1.0);
-        let s_z3  = sigma_m(m, &p, 3.0);
+        let s_z0 = sigma_m(m, &p, 0.0);
+        let s_z1 = sigma_m(m, &p, 1.0);
+        let s_z3 = sigma_m(m, &p, 3.0);
         assert!(s_z0 > s_z1, "σ(z=0)={s_z0:.4} debe ser > σ(z=1)={s_z1:.4}");
         assert!(s_z1 > s_z3, "σ(z=1)={s_z1:.4} debe ser > σ(z=3)={s_z3:.4}");
     }
@@ -455,10 +474,17 @@ mod tests {
         let table = mass_function_table(&p, 1e13, 1e15, 10, 0.0);
         // A masas grandes (σ ≪ δ_c), ST corrige hacia arriba respecto a PS.
         let high_m = &table[table.len() - 2];
-        assert!(high_m.n_st >= high_m.n_ps * 0.5,
-            "ST no debe ser mucho menor que PS a masas altas");
-        println!("[hmf_test] log10M={:.2}  n_PS={:.3e}  n_ST={:.3e}  ratio={:.2}",
-            high_m.log10_m, high_m.n_ps, high_m.n_st, high_m.n_st / high_m.n_ps.max(1e-99));
+        assert!(
+            high_m.n_st >= high_m.n_ps * 0.5,
+            "ST no debe ser mucho menor que PS a masas altas"
+        );
+        println!(
+            "[hmf_test] log10M={:.2}  n_PS={:.3e}  n_ST={:.3e}  ratio={:.2}",
+            high_m.log10_m,
+            high_m.n_ps,
+            high_m.n_st,
+            high_m.n_st / high_m.n_ps.max(1e-99)
+        );
     }
 
     /// La tabla tiene los campos correctos y coherentes.
@@ -473,8 +499,12 @@ mod tests {
             assert!(bin.n_ps >= 0.0);
             assert!(bin.n_st >= 0.0);
             // R(M) debe ser razonable (0.01 – 50 Mpc/h para 10¹⁰–10¹⁵ M_sun/h)
-            assert!(bin.r_hmpc > 0.01 && bin.r_hmpc < 100.0,
-                "R={:.3} fuera de rango para M={:.3e}", bin.r_hmpc, bin.m_msun_h);
+            assert!(
+                bin.r_hmpc > 0.01 && bin.r_hmpc < 100.0,
+                "R={:.3} fuera de rango para M={:.3e}",
+                bin.r_hmpc,
+                bin.m_msun_h
+            );
         }
     }
 

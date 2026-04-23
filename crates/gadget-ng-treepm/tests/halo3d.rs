@@ -10,10 +10,10 @@
 //! 7. `halo_3d_catches_diagonal_periodic` — halo 3D incluye partícula diagonal
 //! 8. `compute_aabb_3d_correctness` — AABB real de un conjunto de partículas
 
+use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::halo3d::{
     compute_aabb_3d, is_in_periodic_halo, min_dist2_to_aabb_3d_periodic, Aabb3,
 };
-use gadget_ng_core::{Particle, Vec3};
 
 fn make_aabb(xlo: f64, xhi: f64, ylo: f64, yhi: f64, zlo: f64, zhi: f64) -> Aabb3 {
     Aabb3 {

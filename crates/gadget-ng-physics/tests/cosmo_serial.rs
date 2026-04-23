@@ -24,12 +24,10 @@
 //!    que con `a = 1` sobre el mismo par de partículas.
 
 use gadget_ng_core::{
-    build_particles, build_particles_for_gid_range,
-    cosmology::CosmologyParams,
-    density_contrast_rms, hubble_param, peculiar_vrms,
-    CosmologySection, GravitySection, IcKind, InitialConditionsSection,
-    OutputSection, PerformanceSection, Particle, RunConfig, SimulationSection, TimestepSection,
-    UnitsSection, Vec3,
+    build_particles, build_particles_for_gid_range, cosmology::CosmologyParams,
+    density_contrast_rms, hubble_param, peculiar_vrms, CosmologySection, GravitySection, IcKind,
+    InitialConditionsSection, OutputSection, Particle, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 
@@ -506,7 +504,10 @@ fn cosmo_perturbed_lattice_gid_range_consistent() {
     assert_eq!(lo.len() + hi.len(), all.len());
 
     for (i, p) in all.iter().enumerate() {
-        let found = lo.iter().chain(hi.iter()).find(|q| q.global_id == p.global_id);
+        let found = lo
+            .iter()
+            .chain(hi.iter())
+            .find(|q| q.global_id == p.global_id);
         let q = found.expect(&format!("gid {} no encontrado en rangos", p.global_id));
         assert!(
             (q.position.x - p.position.x).abs() < 1e-14

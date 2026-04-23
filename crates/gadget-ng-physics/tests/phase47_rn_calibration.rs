@@ -79,10 +79,7 @@ fn phase47_rn_calibration_campaign() {
             r_mean.is_finite() && r_mean > 0.0,
             "N={n}: R(N) no finito o negativo: {r_mean}"
         );
-        assert!(
-            cv.is_finite(),
-            "N={n}: CV no finito: {cv}"
-        );
+        assert!(cv.is_finite(), "N={n}: CV no finito: {cv}");
 
         // Validar retrocompatibilidad para N=32 y N=64.
         if let Some(&(_, r_phase35)) = model35.table.iter().find(|(m, _)| *m == n) {
@@ -94,10 +91,7 @@ fn phase47_rn_calibration_campaign() {
             );
         }
 
-        println!(
-            "N={n:3}: R(N) = {r_mean:.6e}  CV = {:.1}%",
-            cv * 100.0
-        );
+        println!("N={n:3}: R(N) = {r_mean:.6e}  CV = {:.1}%", cv * 100.0);
         r_vec.push((n, r_mean));
         results.push(json!({
             "n": n,
@@ -108,18 +102,24 @@ fn phase47_rn_calibration_campaign() {
     }
 
     // ── Monotonicidad ────────────────────────────────────────────────────────
-    let r32 = r_vec.iter().find(|(n, _)| *n == 32).map(|(_, r)| *r).unwrap();
-    let r64 = r_vec.iter().find(|(n, _)| *n == 64).map(|(_, r)| *r).unwrap();
-    let r128 = r_vec.iter().find(|(n, _)| *n == 128).map(|(_, r)| *r).unwrap();
+    let r32 = r_vec
+        .iter()
+        .find(|(n, _)| *n == 32)
+        .map(|(_, r)| *r)
+        .unwrap();
+    let r64 = r_vec
+        .iter()
+        .find(|(n, _)| *n == 64)
+        .map(|(_, r)| *r)
+        .unwrap();
+    let r128 = r_vec
+        .iter()
+        .find(|(n, _)| *n == 128)
+        .map(|(_, r)| *r)
+        .unwrap();
 
-    assert!(
-        r32 > r64,
-        "R(32)={r32:.6} debe ser > R(64)={r64:.6}"
-    );
-    assert!(
-        r64 > r128,
-        "R(64)={r64:.6} debe ser > R(128)={r128:.6}"
-    );
+    assert!(r32 > r64, "R(32)={r32:.6} debe ser > R(64)={r64:.6}");
+    assert!(r64 > r128, "R(64)={r64:.6} debe ser > R(128)={r128:.6}");
 
     // ── Ajuste ley de potencia sobre {32,64,128} ──────────────────────────────
     let log_ns: Vec<f64> = N_VALUES.iter().map(|&n| (n as f64).ln()).collect();
@@ -128,9 +128,7 @@ fn phase47_rn_calibration_campaign() {
     let (alpha_meas, _c_meas) = ols_slope_intercept(&log_ns, &log_rs);
     let alpha_neg = -alpha_meas; // el slope es negativo: R ∝ N^{-alpha}
 
-    println!(
-        "Fit {{32,64,128}}: alpha = {alpha_neg:.4} (Phase35 ≈ 1.871)"
-    );
+    println!("Fit {{32,64,128}}: alpha = {alpha_neg:.4} (Phase35 ≈ 1.871)");
     assert!(
         (alpha_neg - 1.871).abs() < 0.25,
         "Exponente alpha={alpha_neg:.4} difiere de Phase35 (1.871) en más de 0.25"
@@ -171,7 +169,10 @@ fn phase47_default_has_n128_entry() {
     assert!(has_128, "phase47_default() debe incluir N=128 en la tabla");
 
     let r128 = m.evaluate(128);
-    assert!(r128 > 0.0 && r128.is_finite(), "R(128) debe ser finito y positivo");
+    assert!(
+        r128 > 0.0 && r128.is_finite(),
+        "R(128) debe ser finito y positivo"
+    );
 
     // El valor de tabla para N=128 debe ser razonable (entre 10x y 0.1x del fit).
     let r128_fit = m.evaluate_model(128);
@@ -195,11 +196,13 @@ fn shot_noise_correction_reduces_pk_at_high_k() {
     let n_particles = n * n * n;
 
     // Bin sintético con P_measured ≫ P_shot (k bajo).
-    let bins_low_k = vec![PkBin { k: 1.0, pk: 1e6, n_modes: 50 }];
+    let bins_low_k = vec![PkBin {
+        k: 1.0,
+        pk: 1e6,
+        n_modes: 50,
+    }];
     let out_std = correct_pk(&bins_low_k, box_size, n, None, &model);
-    let out_sn = correct_pk_with_shot_noise(
-        &bins_low_k, box_size, n, None, n_particles, &model
-    );
+    let out_sn = correct_pk_with_shot_noise(&bins_low_k, box_size, n, None, n_particles, &model);
     // A bajo k, shot noise ≪ señal: diferencia < 1%.
     let p_shot = box_size.powi(3) / n_particles as f64;
     let expected_diff = p_shot / bins_low_k[0].pk;
@@ -211,10 +214,12 @@ fn shot_noise_correction_reduces_pk_at_high_k() {
 
     // Bin donde P_measured ≈ 2 × P_shot: el resultado debe ser ~mitad.
     let pk_2shot = 2.0 * p_shot;
-    let bins_high_k = vec![PkBin { k: 100.0, pk: pk_2shot, n_modes: 50 }];
-    let out_high = correct_pk_with_shot_noise(
-        &bins_high_k, box_size, n, None, n_particles, &model
-    );
+    let bins_high_k = vec![PkBin {
+        k: 100.0,
+        pk: pk_2shot,
+        n_modes: 50,
+    }];
+    let out_high = correct_pk_with_shot_noise(&bins_high_k, box_size, n, None, n_particles, &model);
     let out_high_std = correct_pk(&bins_high_k, box_size, n, None, &model);
     // Con shot noise, pk_signal = 2*P_shot - P_shot = P_shot → la mitad.
     let ratio = out_high[0].pk / out_high_std[0].pk;

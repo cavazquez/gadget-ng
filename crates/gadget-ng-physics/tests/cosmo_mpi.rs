@@ -36,11 +36,9 @@
 //!    comóvil: con `a=0.5` la fuerza efectiva es el doble que con `a=1`.
 
 use gadget_ng_core::{
-    build_particles,
-    cosmology::CosmologyParams,
-    CosmologySection, GravitySection, IcKind, InitialConditionsSection,
-    OutputSection, PerformanceSection, Particle, RunConfig, SimulationSection, TimestepSection,
-    UnitsSection, Vec3,
+    build_particles, cosmology::CosmologyParams, CosmologySection, GravitySection, IcKind,
+    InitialConditionsSection, OutputSection, Particle, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, UnitsSection, Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_tree::{accel_from_let, pack_let_nodes, unpack_let_nodes, Octree};
@@ -57,11 +55,17 @@ fn lcg_positions(n: usize, seed: u64) -> Vec<Vec3> {
     let mut s = seed;
     (0..n)
         .map(|_| {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let x = ((s >> 33) as f64) / (u32::MAX as f64);
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let y = ((s >> 33) as f64) / (u32::MAX as f64);
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let z = ((s >> 33) as f64) / (u32::MAX as f64);
             Vec3::new(x, y, z)
         })
@@ -74,15 +78,16 @@ fn uniform_masses(n: usize) -> Vec<f64> {
 
 /// Aceleración directa N² con constante gravitatoria `g` y suavizado `eps2`.
 fn direct_accel_single(pos_i: Vec3, all_pos: &[Vec3], masses: &[f64], g: f64, eps2: f64) -> Vec3 {
-    all_pos.iter().zip(masses.iter()).enumerate().fold(
-        Vec3::zero(),
-        |acc, (j, (pj, &mj))| {
+    all_pos
+        .iter()
+        .zip(masses.iter())
+        .enumerate()
+        .fold(Vec3::zero(), |acc, (j, (pj, &mj))| {
             let dr = *pj - pos_i;
             let r2 = dr.dot(dr) + eps2;
             let r3 = r2.sqrt() * r2;
             acc + dr * (g * mj / r3)
-        },
-    )
+        })
 }
 
 /// Config mínimo EdS para tests.
@@ -115,7 +120,7 @@ fn eds_config(n: usize) -> RunConfig {
             omega_lambda: 0.0,
             h0: 0.1,
             a_init: 1.0,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -200,11 +205,20 @@ fn cosmo_sfc_let_force_no_nan() {
     // AABB del dominio local (para exportar LET desde árbol remoto).
     let target_aabb = [
         local_pos.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),
-        local_pos.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max),
+        local_pos
+            .iter()
+            .map(|p| p.x)
+            .fold(f64::NEG_INFINITY, f64::max),
         local_pos.iter().map(|p| p.y).fold(f64::INFINITY, f64::min),
-        local_pos.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max),
+        local_pos
+            .iter()
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max),
         local_pos.iter().map(|p| p.z).fold(f64::INFINITY, f64::min),
-        local_pos.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max),
+        local_pos
+            .iter()
+            .map(|p| p.z)
+            .fold(f64::NEG_INFINITY, f64::max),
     ];
     let let_nodes = tree_remote.export_let(target_aabb, THETA);
     let packed = pack_let_nodes(&let_nodes);
@@ -255,7 +269,11 @@ fn cosmo_sfc_let_vrms_distributed() {
     let mut sum_v2_dist = 0.0_f64;
     for rank in 0..3 {
         let lo = rank * chunk;
-        let hi = if rank < 2 { lo + chunk } else { particles.len() };
+        let hi = if rank < 2 {
+            lo + chunk
+        } else {
+            particles.len()
+        };
         let local_sum: f64 = particles[lo..hi]
             .iter()
             .map(|p| {
@@ -332,11 +350,20 @@ fn cosmo_sfc_let_force_vs_allgather() {
     let tree_remote = Octree::build(remote_pos, remote_mass);
     let target_aabb = [
         local_pos.iter().map(|p| p.x).fold(f64::INFINITY, f64::min),
-        local_pos.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max),
+        local_pos
+            .iter()
+            .map(|p| p.x)
+            .fold(f64::NEG_INFINITY, f64::max),
         local_pos.iter().map(|p| p.y).fold(f64::INFINITY, f64::min),
-        local_pos.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max),
+        local_pos
+            .iter()
+            .map(|p| p.y)
+            .fold(f64::NEG_INFINITY, f64::max),
         local_pos.iter().map(|p| p.z).fold(f64::INFINITY, f64::min),
-        local_pos.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max),
+        local_pos
+            .iter()
+            .map(|p| p.z)
+            .fold(f64::NEG_INFINITY, f64::max),
     ];
     let let_nodes = tree_remote.export_let(target_aabb, THETA);
     let packed = pack_let_nodes(&let_nodes);
@@ -391,7 +418,11 @@ fn cosmo_sfc_let_no_explosion() {
     for _ in 0..n_steps {
         let g_cosmo = G / a;
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
-        let cf = CosmoFactors { drift, kick_half, kick_half2 };
+        let cf = CosmoFactors {
+            drift,
+            kick_half,
+            kick_half2,
+        };
         a = cosmo.advance_a(a, dt);
 
         leapfrog_cosmo_kdk_step(&mut parts, cf, &mut scratch, |ps, acc| {
@@ -400,9 +431,8 @@ fn cosmo_sfc_let_no_explosion() {
             let mass_l: Vec<f64> = ps.iter().map(|p| p.mass).collect();
             let tree = Octree::build(&pos_l, &mass_l);
             for (li, a_out) in acc.iter_mut().enumerate() {
-                *a_out = tree.walk_accel(
-                    ps[li].position, li, g_cosmo, EPS2, THETA, &pos_l, &mass_l,
-                );
+                *a_out =
+                    tree.walk_accel(ps[li].position, li, g_cosmo, EPS2, THETA, &pos_l, &mass_l);
                 // Sin nodos remotos (simulación P=1).
             }
         });
@@ -410,27 +440,19 @@ fn cosmo_sfc_let_no_explosion() {
 
     for p in &parts {
         assert!(
-            p.position.x.is_finite()
-                && p.position.y.is_finite()
-                && p.position.z.is_finite(),
+            p.position.x.is_finite() && p.position.y.is_finite() && p.position.z.is_finite(),
             "Posición no finita en gid={}: {:?}",
             p.global_id,
             p.position
         );
         assert!(
-            p.velocity.x.is_finite()
-                && p.velocity.y.is_finite()
-                && p.velocity.z.is_finite(),
+            p.velocity.x.is_finite() && p.velocity.y.is_finite() && p.velocity.z.is_finite(),
             "Velocidad no finita en gid={}: {:?}",
             p.global_id,
             p.velocity
         );
     }
-    assert!(
-        a > 1.0,
-        "Factor de escala no creció: a={:.6}",
-        a
-    );
+    assert!(a > 1.0, "Factor de escala no creció: a={:.6}", a);
 }
 
 // ── Test 8: g_cosmo aplicado explícitamente ───────────────────────────────────

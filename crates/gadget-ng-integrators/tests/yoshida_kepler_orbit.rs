@@ -85,17 +85,12 @@ fn yoshida4_kepler_one_period_conservation() {
     let dt = T_PERIOD / 200.0;
     let (de_kdk, dl_kdk, close_kdk) =
         run_orbit(dt, 1, |p, dt, s| leapfrog_kdk_step(p, dt, s, force_kepler));
-    let (de_yos, dl_yos, close_yos) = run_orbit(dt, 1, |p, dt, s| {
-        yoshida4_kdk_step(p, dt, s, force_kepler)
-    });
+    let (de_yos, dl_yos, close_yos) =
+        run_orbit(dt, 1, |p, dt, s| yoshida4_kdk_step(p, dt, s, force_kepler));
 
     println!("Kepler 1 período @ dt=T/200:");
-    println!(
-        "  KDK    : |ΔE/E|={de_kdk:.3e}  |ΔL/L|={dl_kdk:.3e}  |Δr|={close_kdk:.3e}"
-    );
-    println!(
-        "  Yoshida: |ΔE/E|={de_yos:.3e}  |ΔL/L|={dl_yos:.3e}  |Δr|={close_yos:.3e}"
-    );
+    println!("  KDK    : |ΔE/E|={de_kdk:.3e}  |ΔL/L|={dl_kdk:.3e}  |Δr|={close_kdk:.3e}");
+    println!("  Yoshida: |ΔE/E|={de_yos:.3e}  |ΔL/L|={dl_yos:.3e}  |Δr|={close_yos:.3e}");
 
     // En órbita circular exacta, |ΔE/E| de KDK ya satura a precisión de máquina
     // (~1e-14) a dt=T/200, por lo que no discrimina. El cierre orbital (error de
@@ -129,9 +124,8 @@ fn yoshida4_kepler_dt_sweep() {
     let n_periods: u32 = 10;
     let dir = results_dir();
     let _ = fs::create_dir_all(&dir);
-    let mut csv = String::from(
-        "system,integrator,dt,n_periods,dE_rel_final,dL_rel_final,closure\n",
-    );
+    let mut csv =
+        String::from("system,integrator,dt,n_periods,dE_rel_final,dL_rel_final,closure\n");
     for &dt in &dts {
         let (de_k, dl_k, cl_k) = run_orbit(dt, n_periods, |p, dt, s| {
             leapfrog_kdk_step(p, dt, s, force_kepler)
@@ -139,12 +133,8 @@ fn yoshida4_kepler_dt_sweep() {
         let (de_y, dl_y, cl_y) = run_orbit(dt, n_periods, |p, dt, s| {
             yoshida4_kdk_step(p, dt, s, force_kepler)
         });
-        println!(
-            "dt={dt:.4e} KDK: |ΔE/E|={de_k:.3e} |ΔL/L|={dl_k:.3e} close={cl_k:.3e}"
-        );
-        println!(
-            "dt={dt:.4e} YOS: |ΔE/E|={de_y:.3e} |ΔL/L|={dl_y:.3e} close={cl_y:.3e}"
-        );
+        println!("dt={dt:.4e} KDK: |ΔE/E|={de_k:.3e} |ΔL/L|={dl_k:.3e} close={cl_k:.3e}");
+        println!("dt={dt:.4e} YOS: |ΔE/E|={de_y:.3e} |ΔL/L|={dl_y:.3e} close={cl_y:.3e}");
         csv.push_str(&format!(
             "kepler,leapfrog,{dt},{n_periods},{de_k},{dl_k},{cl_k}\n"
         ));

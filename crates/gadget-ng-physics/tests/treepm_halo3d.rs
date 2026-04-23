@@ -64,8 +64,14 @@ fn halo3d_x_border_interaction() {
     };
     assert!(
         is_in_periodic_halo(
-            [neighbor.position.x, neighbor.position.y, neighbor.position.z],
-            &aabb_local, r_cut, box_size
+            [
+                neighbor.position.x,
+                neighbor.position.y,
+                neighbor.position.z
+            ],
+            &aabb_local,
+            r_cut,
+            box_size
         ),
         "halo 3D debe incluir partícula x=0.99 en el halo de x=0.01 con r_cut={r_cut}"
     );
@@ -112,8 +118,14 @@ fn halo3d_y_border_interaction() {
     };
     assert!(
         is_in_periodic_halo(
-            [neighbor.position.x, neighbor.position.y, neighbor.position.z],
-            &aabb_local, r_cut, box_size
+            [
+                neighbor.position.x,
+                neighbor.position.y,
+                neighbor.position.z
+            ],
+            &aabb_local,
+            r_cut,
+            box_size
         ),
         "halo 3D debe incluir partícula y=0.99 con r_cut={r_cut}"
     );
@@ -155,8 +167,14 @@ fn halo3d_z_border_interaction() {
     };
     assert!(
         is_in_periodic_halo(
-            [neighbor.position.x, neighbor.position.y, neighbor.position.z],
-            &aabb_local, r_cut, box_size
+            [
+                neighbor.position.x,
+                neighbor.position.y,
+                neighbor.position.z
+            ],
+            &aabb_local,
+            r_cut,
+            box_size
         ),
         "halo 3D debe incluir partícula z=0.99 con r_cut={r_cut}"
     );
@@ -198,7 +216,7 @@ fn halo3d_diagonal_xyz_interaction() {
     let dx = minimum_image(local_p.position.x - neighbor.position.x, box_size);
     let dy = minimum_image(local_p.position.y - neighbor.position.y, box_size);
     let dz = minimum_image(local_p.position.z - neighbor.position.z, box_size);
-    let d_diag = (dx*dx + dy*dy + dz*dz).sqrt();
+    let d_diag = (dx * dx + dy * dy + dz * dz).sqrt();
     assert!(
         d_diag < r_cut,
         "distancia diagonal periódica={d_diag:.4} debe ser < r_cut={r_cut}"
@@ -211,8 +229,14 @@ fn halo3d_diagonal_xyz_interaction() {
     };
     assert!(
         is_in_periodic_halo(
-            [neighbor.position.x, neighbor.position.y, neighbor.position.z],
-            &aabb_local, r_cut, box_size
+            [
+                neighbor.position.x,
+                neighbor.position.y,
+                neighbor.position.z
+            ],
+            &aabb_local,
+            r_cut,
+            box_size
         ),
         "halo 3D debe capturar partícula diagonal (0.99,0.99,0.99) con r_cut={r_cut}"
     );
@@ -272,7 +296,10 @@ fn halo3d_vs_1d_uniform_slab_equivalent() {
     let included_1d_b = pb[2] < z_hi_slab + r_cut; // false (0.65 > 0.6)
     let included_3d_b = is_in_periodic_halo(pb, &aabb_slab, r_cut, box_size);
     assert!(!included_1d_b, "Caso B: 1D debe excluir z=0.65");
-    assert!(!included_3d_b, "Caso B: 3D debe excluir z=0.65 (equivalencia con 1D para Z-slab)");
+    assert!(
+        !included_3d_b,
+        "Caso B: 3D debe excluir z=0.65 (equivalencia con 1D para Z-slab)"
+    );
 }
 
 // ── Test 6: partición de fuerza F_lr + F_sr = F_Newton ───────────────────────
@@ -307,7 +334,8 @@ fn halo3d_force_partition_erf_erfc() {
     // erfc(x) para x ≈ 0.014 → erfc ≈ 0.984 con la aproximación usada.
     assert!(
         (f_sr / f_newton - 1.0).abs() < 0.05,
-        "fuerza SR para r << r_split debe ≈ Newton (5% tol): f_sr/f_N = {:.6}", f_sr / f_newton
+        "fuerza SR para r << r_split debe ≈ Newton (5% tol): f_sr/f_N = {:.6}",
+        f_sr / f_newton
     );
 
     // Fuerza SR para r >> r_cut: erfc(x) ≈ 0, fuerza debe ser muy pequeña.
@@ -316,7 +344,8 @@ fn halo3d_force_partition_erf_erfc() {
     let f_newton_far = g * mass_j / (r_far * r_far);
     assert!(
         f_sr_far / f_newton_far < 0.01,
-        "fuerza SR en r=r_cut debe ser ≈0: ratio={:.4}", f_sr_far / f_newton_far
+        "fuerza SR en r=r_cut debe ser ≈0: ratio={:.4}",
+        f_sr_far / f_newton_far
     );
 }
 
@@ -326,8 +355,8 @@ fn halo3d_force_partition_erf_erfc() {
 /// No valida física cuantitativa, solo ausencia de divergencias.
 #[test]
 fn cosmo_treepm_3d_halo_no_explosion() {
-    use gadget_ng_pm::{slab_fft::SlabLayout, slab_pm};
     use gadget_ng_parallel::SerialRuntime;
+    use gadget_ng_pm::{slab_fft::SlabLayout, slab_pm};
 
     let n_side = 3usize;
     let box_size = 1.0_f64;
@@ -371,9 +400,11 @@ fn cosmo_treepm_3d_halo_no_explosion() {
         let local_pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
         let local_mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
-        let mut density_ext = slab_pm::deposit_slab_extended(&local_pos, &local_mass, &layout, box_size);
+        let mut density_ext =
+            slab_pm::deposit_slab_extended(&local_pos, &local_mass, &layout, box_size);
         slab_pm::exchange_density_halos_z(&mut density_ext, &layout, &rt);
-        let mut forces = slab_pm::forces_from_slab(&density_ext, &layout, g_cosmo, box_size, Some(r_split), &rt);
+        let mut forces =
+            slab_pm::forces_from_slab(&density_ext, &layout, g_cosmo, box_size, Some(r_split), &rt);
         slab_pm::exchange_force_halos_z(&mut forces, &layout, &rt);
         let acc_lr = slab_pm::interpolate_slab_local(&local_pos, &forces, &layout, box_size);
 
@@ -399,7 +430,9 @@ fn cosmo_treepm_3d_halo_no_explosion() {
             assert!(
                 a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
                 "Test 7: NaN/Inf en acc[{k}] = ({:.4e}, {:.4e}, {:.4e})",
-                a.x, a.y, a.z
+                a.x,
+                a.y,
+                a.z
             );
         }
 
@@ -428,7 +461,8 @@ fn halo3d_no_double_counting() {
         let erf_v = 1.0 - erfc_v;
         assert!(
             (erf_v + erfc_v - 1.0).abs() < 1e-6,
-            "erf+erfc=1 para d={d}: sum={:.8}", erf_v + erfc_v
+            "erf+erfc=1 para d={d}: sum={:.8}",
+            erf_v + erfc_v
         );
     }
 
@@ -465,7 +499,10 @@ fn halo3d_no_double_counting() {
 
     // Compute AABB de la partícula local (usada para validar el criterio del halo 3D).
     let aabb_center = compute_aabb_3d(&[local_center.clone()]);
-    assert!(aabb_center.is_valid(), "AABB de partícula central debe ser válida");
+    assert!(
+        aabb_center.is_valid(),
+        "AABB de partícula central debe ser válida"
+    );
 
     let r_split2 = dx * 0.4; // ≈ 0.133
 

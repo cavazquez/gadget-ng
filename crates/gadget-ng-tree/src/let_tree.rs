@@ -56,15 +56,15 @@ pub fn let_tree_prof_begin() {
 pub fn let_tree_prof_end() -> (u64, u64) {
     LT_PROF_ACTIVE.store(false, Ordering::Release);
     let calls = LT_LEAF_CALLS.load(Ordering::Relaxed);
-    let rmn   = LT_LEAF_RMN_COUNT.load(Ordering::Relaxed);
+    let rmn = LT_LEAF_RMN_COUNT.load(Ordering::Relaxed);
     (calls, rmn)
 }
 
 /// Lee y devuelve los contadores de profiling tileados (Fase 16).
 /// Devuelve `(tile_calls, tile_i_count)`.
 pub fn let_tree_tile_prof_read() -> (u64, u64) {
-    let calls  = LT_TILE_CALLS.load(Ordering::Relaxed);
-    let i_cnt  = LT_TILE_I_COUNT.load(Ordering::Relaxed);
+    let calls = LT_TILE_CALLS.load(Ordering::Relaxed);
+    let i_cnt = LT_TILE_I_COUNT.load(Ordering::Relaxed);
     (calls, i_cnt)
 }
 
@@ -255,7 +255,7 @@ impl LetTree {
         }
 
         let start = node.leaf_start as usize;
-        let len   = node.leaf_count as usize;
+        let len = node.leaf_count as usize;
         self.leaf_soa.accel_range(pos_i, start, len, g, eps2)
     }
 
@@ -354,7 +354,9 @@ impl LetTree {
 
         let start = node.leaf_start as usize;
         let len = node.leaf_count as usize;
-        let result = self.leaf_soa.accel_range_4xi(pos, start, len, g, eps2, tile_size);
+        let result = self
+            .leaf_soa
+            .accel_range_4xi(pos, start, len, g, eps2, tile_size);
         for k in 0..tile_size {
             acc[k] += result[k];
         }
@@ -438,6 +440,7 @@ impl<'a> BuildCtx<'a> {
         }
 
         let child_half = half_size * 0.5;
+        #[allow(clippy::needless_range_loop)]
         for oct in 0..8usize {
             if groups[oct].is_empty() {
                 continue;
@@ -497,9 +500,24 @@ fn octant_of(pos: Vec3, center: Vec3) -> usize {
 #[inline]
 fn child_center_of(center: Vec3, child_half: f64, oct: usize) -> Vec3 {
     Vec3::new(
-        center.x + if oct & 1 != 0 { child_half } else { -child_half },
-        center.y + if oct & 2 != 0 { child_half } else { -child_half },
-        center.z + if oct & 4 != 0 { child_half } else { -child_half },
+        center.x
+            + if oct & 1 != 0 {
+                child_half
+            } else {
+                -child_half
+            },
+        center.y
+            + if oct & 2 != 0 {
+                child_half
+            } else {
+                -child_half
+            },
+        center.z
+            + if oct & 4 != 0 {
+                child_half
+            } else {
+                -child_half
+            },
     )
 }
 
@@ -543,14 +561,14 @@ fn aggregate_multipoles(
     let mut quad = [0.0f64; 6];
     for &i in indices {
         let n = &rmns[i];
-        for k in 0..6 {
-            quad[k] += n.quad[k];
+        for (k, q) in quad.iter_mut().enumerate() {
+            *q += n.quad[k];
         }
         if n.mass != 0.0 {
             let s = n.com - com;
             let dq = outer_traceless(s, n.mass);
-            for k in 0..6 {
-                quad[k] += dq[k];
+            for (k, q) in quad.iter_mut().enumerate() {
+                *q += dq[k];
             }
         }
     }
@@ -561,14 +579,14 @@ fn aggregate_multipoles(
     let mut oct = [0.0f64; 7];
     for &i in indices {
         let n = &rmns[i];
-        for k in 0..7 {
-            oct[k] += n.oct[k];
+        for (k, o) in oct.iter_mut().enumerate() {
+            *o += n.oct[k];
         }
         if n.mass != 0.0 {
             let s = n.com - com;
             let do_ = outer3_tf(s, n.mass);
-            for k in 0..7 {
-                oct[k] += do_[k];
+            for (k, o) in oct.iter_mut().enumerate() {
+                *o += do_[k];
             }
         }
     }

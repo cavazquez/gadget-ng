@@ -14,7 +14,7 @@
 //! 8. `sr_sfc_equals_slab3d_p1`            — SR-SFC coincide bit-a-bit con treepm_slab_3d en P=1
 
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_parallel::{halo3d::is_in_periodic_halo, SerialRuntime, ParallelRuntime};
+use gadget_ng_parallel::{halo3d::is_in_periodic_halo, ParallelRuntime, SerialRuntime};
 use gadget_ng_pm::{slab_fft::SlabLayout, slab_pm};
 use gadget_ng_treepm::{
     distributed::{
@@ -46,11 +46,12 @@ fn run_pm_serial(
 ) -> Vec<Vec3> {
     let rt = SerialRuntime;
     let layout = SlabLayout::new(nm, 0, 1);
-    let pos:  Vec<Vec3> = particles.iter().map(|p| p.position).collect();
-    let mass: Vec<f64>  = particles.iter().map(|p| p.mass).collect();
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
     let mut density = slab_pm::deposit_slab_extended(&pos, &mass, &layout, box_size);
     slab_pm::exchange_density_halos_z(&mut density, &layout, &rt);
-    let mut forces = slab_pm::forces_from_slab(&density, &layout, g_cosmo, box_size, Some(r_split), &rt);
+    let mut forces =
+        slab_pm::forces_from_slab(&density, &layout, g_cosmo, box_size, Some(r_split), &rt);
     slab_pm::exchange_force_halos_z(&mut forces, &layout, &rt);
     slab_pm::interpolate_slab_local(&pos, &forces, &layout, box_size)
 }
@@ -62,8 +63,8 @@ fn run_pm_serial(
 #[test]
 fn sr_sfc_vs_slab_p1_equal() {
     let box_size = 1.0_f64;
-    let r_split  = 0.05_f64;
-    let eps2     = 1e-6_f64;
+    let r_split = 0.05_f64;
+    let eps2 = 1e-6_f64;
 
     // N=8 partículas en grilla 2³
     let particles: Vec<Particle> = (0..8)
@@ -71,14 +72,20 @@ fn sr_sfc_vs_slab_p1_equal() {
             let ix = i % 2;
             let iy = (i / 2) % 2;
             let iz = i / 4;
-            make_particle(i, (ix as f64 + 0.5) * 0.5, (iy as f64 + 0.5) * 0.5, (iz as f64 + 0.5) * 0.5, 1.0 / 8.0)
+            make_particle(
+                i,
+                (ix as f64 + 0.5) * 0.5,
+                (iy as f64 + 0.5) * 0.5,
+                (iz as f64 + 0.5) * 0.5,
+                1.0 / 8.0,
+            )
         })
         .collect();
 
     // En P=1, halos = [] para ambos paths.
     let sfc_params = SfcShortRangeParams {
         local_particles: &particles,
-        halo_particles:  &[],
+        halo_particles: &[],
         eps2,
         g: 1.0,
         r_split,
@@ -86,16 +93,16 @@ fn sr_sfc_vs_slab_p1_equal() {
     };
     let slab_params = SlabShortRangeParams {
         local_particles: &particles,
-        halo_particles:  &[],
+        halo_particles: &[],
         eps2,
         g: 1.0,
         r_split,
         box_size,
     };
 
-    let mut out_sfc  = vec![Vec3::zero(); particles.len()];
+    let mut out_sfc = vec![Vec3::zero(); particles.len()];
     let mut out_slab = vec![Vec3::zero(); particles.len()];
-    short_range_accels_sfc (&sfc_params,  &mut out_sfc);
+    short_range_accels_sfc(&sfc_params, &mut out_sfc);
     short_range_accels_slab(&slab_params, &mut out_slab);
 
     for (k, (a_sfc, a_slab)) in out_sfc.iter().zip(out_slab.iter()).enumerate() {
@@ -119,10 +126,10 @@ fn sr_sfc_no_double_counting_pm() {
 
     // Partición analítica: erf+erfc=1 para todo x.
     for d in [0.01_f64, 0.02, 0.05, 0.08, 0.15, 0.30, 0.50] {
-        let x    = d / (std::f64::consts::SQRT_2 * r_split);
+        let x = d / (std::f64::consts::SQRT_2 * r_split);
         let erfc = erfc_approx(x);
-        let erf  = 1.0 - erfc;
-        let sum  = erf + erfc;
+        let erf = 1.0 - erfc;
+        let sum = erf + erfc;
         assert!(
             (sum - 1.0).abs() < 1e-6,
             "Test 2: erf+erfc=1 para d={d:.3}: sum={sum:.8}"
@@ -133,7 +140,7 @@ fn sr_sfc_no_double_counting_pm() {
     let p = make_particle(0, 0.5, 0.5, 0.5, 1.0);
     let params = SfcShortRangeParams {
         local_particles: &[p],
-        halo_particles:  &[],
+        halo_particles: &[],
         eps2: 1e-6,
         g: 1.0,
         r_split,
@@ -154,15 +161,15 @@ fn sr_sfc_no_double_counting_pm() {
 /// En P=1 el halo es vacío; el árbol calcula fuerzas locales. Sin NaN/Inf.
 #[test]
 fn sr_sfc_no_explosion_cosmological() {
-    let n_side  = 3usize;
+    let n_side = 3usize;
     let box_size = 1.0_f64;
-    let nm       = 6usize;
-    let r_split  = 2.5 * box_size / nm as f64;
-    let r_cut    = 5.0 * r_split;
-    let g_cosmo  = 1.0_f64;
-    let eps2     = 1e-6_f64;
+    let nm = 6usize;
+    let r_split = 2.5 * box_size / nm as f64;
+    let r_cut = 5.0 * r_split;
+    let g_cosmo = 1.0_f64;
+    let eps2 = 1e-6_f64;
 
-    let dx   = box_size / n_side as f64;
+    let dx = box_size / n_side as f64;
     let mass = 1.0_f64 / (n_side * n_side * n_side) as f64;
 
     let mut particles: Vec<Particle> = (0..n_side)
@@ -194,7 +201,7 @@ fn sr_sfc_no_explosion_cosmological() {
         // SR árbol (SFC path).
         let sr_params = SfcShortRangeParams {
             local_particles: &particles,
-            halo_particles:  &halos,
+            halo_particles: &halos,
             eps2,
             g: g_cosmo,
             r_split,
@@ -217,11 +224,11 @@ fn sr_sfc_no_explosion_cosmological() {
         let dt = 0.01_f64;
         for p in particles.iter_mut() {
             p.velocity.x += acc[0].x * dt * 0.5;
-            p.position.x  = (p.position.x + p.velocity.x * dt).rem_euclid(box_size);
+            p.position.x = (p.position.x + p.velocity.x * dt).rem_euclid(box_size);
             p.velocity.y += acc[0].y * dt * 0.5;
-            p.position.y  = (p.position.y + p.velocity.y * dt).rem_euclid(box_size);
+            p.position.y = (p.position.y + p.velocity.y * dt).rem_euclid(box_size);
             p.velocity.z += acc[0].z * dt * 0.5;
-            p.position.z  = (p.position.z + p.velocity.z * dt).rem_euclid(box_size);
+            p.position.z = (p.position.z + p.velocity.z * dt).rem_euclid(box_size);
         }
     }
 }
@@ -236,9 +243,9 @@ fn sr_sfc_no_explosion_cosmological() {
 #[test]
 fn sr_sfc_pm_force_return_by_global_id() {
     let box_size = 1.0_f64;
-    let nm       = 8usize;
-    let r_split  = 2.5 * box_size / nm as f64;
-    let g_cosmo  = 1.0_f64;
+    let nm = 8usize;
+    let r_split = 2.5 * box_size / nm as f64;
+    let g_cosmo = 1.0_f64;
 
     // N=8 partículas con global_ids no consecutivos para probar el lookup.
     let particles: Vec<Particle> = vec![
@@ -270,10 +277,7 @@ fn sr_sfc_pm_force_return_by_global_id() {
         .iter()
         .map(|p| (p.global_id, p.acceleration))
         .collect();
-    let acc_lr_via_map: Vec<Vec3> = particles
-        .iter()
-        .map(|p| lr_map[&p.global_id])
-        .collect();
+    let acc_lr_via_map: Vec<Vec3> = particles.iter().map(|p| lr_map[&p.global_id]).collect();
 
     // El retorno por global_id debe ser bit-a-bit idéntico a la referencia.
     for (k, (a_ref, a_map)) in acc_lr_ref.iter().zip(acc_lr_via_map.iter()).enumerate() {
@@ -295,15 +299,18 @@ fn sr_sfc_pm_force_return_by_global_id() {
 #[test]
 fn sr_sfc_x_border_periodic() {
     let box_size = 1.0_f64;
-    let r_split  = 0.05_f64;
-    let r_cut    = 5.0 * r_split; // 0.25
+    let r_split = 0.05_f64;
+    let r_cut = 5.0 * r_split; // 0.25
 
-    let local  = make_particle(0, 0.02, 0.5, 0.5, 1.0);
-    let halo   = make_particle(1, 0.98, 0.5, 0.5, 1.0);
+    let local = make_particle(0, 0.02, 0.5, 0.5, 1.0);
+    let halo = make_particle(1, 0.98, 0.5, 0.5, 1.0);
 
     // Verificar que el halo 3D cubriría este caso.
     use gadget_ng_parallel::halo3d::Aabb3;
-    let aabb_local = Aabb3 { lo: [0.0, 0.0, 0.0], hi: [0.5, 1.0, 1.0] };
+    let aabb_local = Aabb3 {
+        lo: [0.0, 0.0, 0.0],
+        hi: [0.5, 1.0, 1.0],
+    };
     assert!(
         is_in_periodic_halo([0.98, 0.5, 0.5], &aabb_local, r_cut, box_size),
         "halo 3D debe incluir x=0.98 en halo de dominio SFC con xhi=0.5"
@@ -311,7 +318,7 @@ fn sr_sfc_x_border_periodic() {
 
     let params = SfcShortRangeParams {
         local_particles: &[local],
-        halo_particles:  &[halo],
+        halo_particles: &[halo],
         eps2: 1e-8,
         g: 1.0,
         r_split,
@@ -325,7 +332,11 @@ fn sr_sfc_x_border_periodic() {
         "Test 5: fuerza debe ser no nula (d_x=0.04 < r_cut={r_cut})"
     );
     // La imagen periódica más cercana de x=0.98 es x=-0.02 → fuerza en -x.
-    assert!(out[0].x < 0.0, "Test 5: fuerza en -x, got fx={:.4e}", out[0].x);
+    assert!(
+        out[0].x < 0.0,
+        "Test 5: fuerza en -x, got fx={:.4e}",
+        out[0].x
+    );
 }
 
 // ── Test 6: interacción borde y periódico en SR-SFC ──────────────────────────
@@ -333,15 +344,18 @@ fn sr_sfc_x_border_periodic() {
 #[test]
 fn sr_sfc_y_border_periodic() {
     let box_size = 1.0_f64;
-    let r_split  = 0.05_f64;
-    let r_cut    = 5.0 * r_split; // 0.25
+    let r_split = 0.05_f64;
+    let r_cut = 5.0 * r_split; // 0.25
 
-    let local  = make_particle(0, 0.5, 0.02, 0.5, 1.0);
-    let halo   = make_particle(1, 0.5, 0.98, 0.5, 1.0);
+    let local = make_particle(0, 0.5, 0.02, 0.5, 1.0);
+    let halo = make_particle(1, 0.5, 0.98, 0.5, 1.0);
 
     // Verificar cobertura halo 3D.
     use gadget_ng_parallel::halo3d::Aabb3;
-    let aabb_local = Aabb3 { lo: [0.0, 0.0, 0.0], hi: [1.0, 0.5, 1.0] };
+    let aabb_local = Aabb3 {
+        lo: [0.0, 0.0, 0.0],
+        hi: [1.0, 0.5, 1.0],
+    };
     assert!(
         is_in_periodic_halo([0.5, 0.98, 0.5], &aabb_local, r_cut, box_size),
         "halo 3D debe incluir y=0.98 en halo de dominio SFC con yhi=0.5"
@@ -349,7 +363,7 @@ fn sr_sfc_y_border_periodic() {
 
     let params = SfcShortRangeParams {
         local_particles: &[local],
-        halo_particles:  &[halo],
+        halo_particles: &[halo],
         eps2: 1e-8,
         g: 1.0,
         r_split,
@@ -359,7 +373,11 @@ fn sr_sfc_y_border_periodic() {
     short_range_accels_sfc(&params, &mut out);
 
     assert!(out[0].norm() > 0.0, "Test 6: fuerza debe ser no nula");
-    assert!(out[0].y < 0.0, "Test 6: fuerza en -y, got fy={:.4e}", out[0].y);
+    assert!(
+        out[0].y < 0.0,
+        "Test 6: fuerza en -y, got fy={:.4e}",
+        out[0].y
+    );
 }
 
 // ── Test 7: conservación de momento (|Δp| pequeño) ────────────────────────────
@@ -373,8 +391,8 @@ fn sr_sfc_y_border_periodic() {
 #[test]
 fn sr_sfc_momentum_conservation() {
     let box_size = 1.0_f64;
-    let r_split  = 0.15_f64;
-    let eps2     = 1e-6_f64;
+    let r_split = 0.15_f64;
+    let eps2 = 1e-6_f64;
 
     // 8 partículas no simétricas.
     let particles: Vec<Particle> = vec![
@@ -390,7 +408,7 @@ fn sr_sfc_momentum_conservation() {
 
     let params = SfcShortRangeParams {
         local_particles: &particles,
-        halo_particles:  &[],
+        halo_particles: &[],
         eps2,
         g: 1.0,
         r_split,
@@ -401,12 +419,12 @@ fn sr_sfc_momentum_conservation() {
 
     // Σ mᵢ aᵢ debe ser ≈ 0 (momento total conservado) porque cada par contribuye
     // fuerzas iguales y opuestas (Newton III).
-    let (px, py, pz) = out.iter().zip(particles.iter()).fold(
-        (0.0_f64, 0.0_f64, 0.0_f64),
-        |(px, py, pz), (a, p)| {
+    let (px, py, pz) = out
+        .iter()
+        .zip(particles.iter())
+        .fold((0.0_f64, 0.0_f64, 0.0_f64), |(px, py, pz), (a, p)| {
             (px + p.mass * a.x, py + p.mass * a.y, pz + p.mass * a.z)
-        },
-    );
+        });
     let dp = (px * px + py * py + pz * pz).sqrt();
     assert!(
         dp < 1e-10,
@@ -422,8 +440,8 @@ fn sr_sfc_momentum_conservation() {
 #[test]
 fn sr_sfc_equals_slab3d_p1() {
     let box_size = 1.0_f64;
-    let r_split  = 0.08_f64;
-    let eps2     = 1e-6_f64;
+    let r_split = 0.08_f64;
+    let eps2 = 1e-6_f64;
 
     let particles: Vec<Particle> = vec![
         make_particle(0, 0.15, 0.25, 0.35, 1.0),
@@ -435,8 +453,11 @@ fn sr_sfc_equals_slab3d_p1() {
     // Path SR-SFC (Fase 23): sin halos en P=1.
     let sfc_params = SfcShortRangeParams {
         local_particles: &particles,
-        halo_particles:  &[],
-        eps2, g: 1.0, r_split, box_size,
+        halo_particles: &[],
+        eps2,
+        g: 1.0,
+        r_split,
+        box_size,
     };
     let mut out_sfc = vec![Vec3::zero(); particles.len()];
     short_range_accels_sfc(&sfc_params, &mut out_sfc);
@@ -444,8 +465,11 @@ fn sr_sfc_equals_slab3d_p1() {
     // Path SR-slab (Fase 21/22): sin halos en P=1.
     let slab_params = SlabShortRangeParams {
         local_particles: &particles,
-        halo_particles:  &[],
-        eps2, g: 1.0, r_split, box_size,
+        halo_particles: &[],
+        eps2,
+        g: 1.0,
+        r_split,
+        box_size,
     };
     let mut out_slab = vec![Vec3::zero(); particles.len()];
     short_range_accels_slab(&slab_params, &mut out_slab);

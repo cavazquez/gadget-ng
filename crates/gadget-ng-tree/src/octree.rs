@@ -236,7 +236,7 @@ fn quad_accel(r: Vec3, q: [f64; 6], g: f64) -> Vec3 {
 /// Fórmula: `a_α = G · [(Q·r)_α / (|r|²+ε²)^(5/2) − 5/2 · (r^T Q r) · r_α / (|r|²+ε²)^(7/2)]`
 #[inline]
 pub(crate) fn quad_accel_softened(r: Vec3, q: [f64; 6], g: f64, eps2: f64) -> Vec3 {
-    let r2 = r.dot(r) + eps2;  // Plummer softened
+    let r2 = r.dot(r) + eps2; // Plummer softened
     if r2 < 1e-300 {
         return Vec3::zero();
     }
@@ -266,7 +266,7 @@ pub(crate) fn quad_accel_softened(r: Vec3, q: [f64; 6], g: f64, eps2: f64) -> Ve
 /// Fórmula: `a^(oct)_α = G · [−O_{αβγ} r_β r_γ / (2(r²+ε²)^(7/2)) + (7/6) O_{βγδ} r_β r_γ r_δ r_α / (r²+ε²)^(9/2)]`
 #[inline]
 pub(crate) fn oct_accel_softened(r: Vec3, o: [f64; 7], g: f64, eps2: f64) -> Vec3 {
-    let r2 = r.dot(r) + eps2;  // Plummer softened
+    let r2 = r.dot(r) + eps2; // Plummer softened
     if r2 < 1e-300 {
         return Vec3::zero();
     }
@@ -727,8 +727,12 @@ impl Octree {
                 let a_mono_mag = g * node.mass / (d_com * d_com + eps2);
                 // Norma de Frobenius del tensor cuadrupolar STF (Q es simétrico).
                 let q = &node.quad;
-                let q_frob2 =
-                    q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] + q[4] * q[4] + q[5] * q[5];
+                let q_frob2 = q[0] * q[0]
+                    + q[1] * q[1]
+                    + q[2] * q[2]
+                    + q[3] * q[3]
+                    + q[4] * q[4]
+                    + q[5] * q[5];
                 let q_frob = q_frob2.sqrt();
                 let quad_mag = match mac_softening {
                     MacSoftening::Bare => {

@@ -34,10 +34,10 @@ use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
 use gadget_ng_core::{
     amplitude_for_sigma8, build_particles,
     cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
+    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
+    Vec3,
 };
 use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
 use gadget_ng_pm::PmSolver;
@@ -162,7 +162,7 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-                auto_g: false,
+            auto_g: false,
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
@@ -341,9 +341,24 @@ impl SnapshotResult {
             "z0_sigma8" => "z0_sigma8",
             _ => return None,
         };
-        let ks: Vec<f64> = v.get("ks_hmpc")?.as_array()?.iter().filter_map(|x| x.as_f64()).collect();
-        let pc: Vec<f64> = v.get("pk_corrected_mpc_h3")?.as_array()?.iter().filter_map(|x| x.as_f64()).collect();
-        let pr: Vec<f64> = v.get("pk_reference_mpc_h3")?.as_array()?.iter().filter_map(|x| x.as_f64()).collect();
+        let ks: Vec<f64> = v
+            .get("ks_hmpc")?
+            .as_array()?
+            .iter()
+            .filter_map(|x| x.as_f64())
+            .collect();
+        let pc: Vec<f64> = v
+            .get("pk_corrected_mpc_h3")?
+            .as_array()?
+            .iter()
+            .filter_map(|x| x.as_f64())
+            .collect();
+        let pr: Vec<f64> = v
+            .get("pk_reference_mpc_h3")?
+            .as_array()?
+            .iter()
+            .filter_map(|x| x.as_f64())
+            .collect();
         Some(Self {
             n: v.get("n")?.as_u64()? as usize,
             seed: v.get("seed")?.as_u64()?,
@@ -500,7 +515,10 @@ fn matrix() -> &'static [SnapshotResult] {
     CELL.get_or_init(|| {
         // Si existe una corrida previa en disco y `PHASE41_USE_CACHE=1`,
         // deserializamos el JSON completo para evitar re-ejecutar la matriz.
-        if std::env::var("PHASE41_USE_CACHE").map(|v| v == "1").unwrap_or(false) {
+        if std::env::var("PHASE41_USE_CACHE")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+        {
             let mut path = phase41_dir();
             path.push("per_snapshot_metrics.json");
             if path.exists() {
@@ -536,10 +554,7 @@ fn find_opt<'a>(
     a_target: f64,
 ) -> Option<&'a SnapshotResult> {
     m.iter().find(|r| {
-        r.n == n
-            && r.seed == seed
-            && r.mode == mode
-            && (r.a_target - a_target).abs() < 1e-9
+        r.n == n && r.seed == seed && r.mode == mode && (r.a_target - a_target).abs() < 1e-9
     })
 }
 
@@ -712,10 +727,7 @@ fn pk_correction_valid_beyond_ic_at_high_resolution() {
             "median_err_corrected_a010": err_010,
             "avg_evolved_err": avg,
         }));
-        if best_evolved_n
-            .map(|(_, e)| avg < e)
-            .unwrap_or(true)
-        {
+        if best_evolved_n.map(|(_, e)| avg < e).unwrap_or(true) {
             best_evolved_n = Some((n, avg));
         }
     }
@@ -780,9 +792,7 @@ fn linear_growth_recovered_low_k() {
                     }),
                 );
                 // Mejor N = el que minimiza el error a a=0.05 (régimen lineal más temprano)
-                if (a_t - 0.05).abs() < 1e-9
-                    && best.map(|(_, e)| rel_err < e).unwrap_or(true)
-                {
+                if (a_t - 0.05).abs() < 1e-9 && best.map(|(_, e)| rel_err < e).unwrap_or(true) {
                     best = Some((n, rel_err));
                 }
             }

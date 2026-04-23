@@ -160,8 +160,7 @@ mod tests {
     #[test]
     fn cosmo_flat_equals_newtonian() {
         let make_particle = || {
-            let mut p =
-                Particle::new(0, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.5, 0.0));
+            let mut p = Particle::new(0, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.5, 0.0));
             p.acceleration = Vec3::zero();
             p
         };

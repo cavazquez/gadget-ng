@@ -187,15 +187,15 @@ fn scatter_gather_p1_equals_phase23() {
     let r_split = 0.04;
 
     // Path Fase 24: scatter/gather
-    let (acc_sg, _) =
-        pm_scatter_gather_accels(&particles, &layout, 1.0, r_split, box_size, &rt);
+    let (acc_sg, _) = pm_scatter_gather_accels(&particles, &layout, 1.0, r_split, box_size, &rt);
 
     // Path Fase 23: deposit → FFT → interpolate directamente
     let positions: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
     let mut density_ext = slab_pm::deposit_slab_extended(&positions, &masses, &layout, box_size);
     slab_pm::exchange_density_halos_z(&mut density_ext, &layout, &rt);
-    let mut forces = slab_pm::forces_from_slab(&density_ext, &layout, 1.0, box_size, Some(r_split), &rt);
+    let mut forces =
+        slab_pm::forces_from_slab(&density_ext, &layout, 1.0, box_size, Some(r_split), &rt);
     slab_pm::exchange_force_halos_z(&mut forces, &layout, &rt);
     let acc_p23 = slab_pm::interpolate_slab_local(&positions, &forces, &layout, box_size);
 
@@ -206,8 +206,12 @@ fn scatter_gather_p1_equals_phase23() {
                 && (a_sg.y - a_p23.y).abs() < 1e-14
                 && (a_sg.z - a_p23.z).abs() < 1e-14,
             "acc_pm[{i}] Fase24 != Fase23: sg=({:.8},{:.8},{:.8}) p23=({:.8},{:.8},{:.8})",
-            a_sg.x, a_sg.y, a_sg.z,
-            a_p23.x, a_p23.y, a_p23.z
+            a_sg.x,
+            a_sg.y,
+            a_sg.z,
+            a_p23.x,
+            a_p23.y,
+            a_p23.z
         );
     }
 }
