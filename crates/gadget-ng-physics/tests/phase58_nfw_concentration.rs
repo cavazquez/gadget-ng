@@ -146,6 +146,8 @@ fn run_simulation() -> Phase58Result {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     };
 
     let mut parts = build_particles(&cfg).expect("[phase58] ICs no deben fallar");

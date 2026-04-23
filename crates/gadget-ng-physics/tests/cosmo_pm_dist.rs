@@ -195,17 +195,16 @@ fn distributed_pm_no_explosion_eds() {
         .map(|i| {
             let t = i as f64 / n as f64;
             let perturb = 0.02 * (t * 13.7 + 1.0).sin();
-            Particle {
-                global_id: i,
-                mass: 1.0 / n as f64,
-                position: Vec3::new(
+            Particle::new(
+                i,
+                1.0 / n as f64,
+                Vec3::new(
                     (t + perturb).rem_euclid(1.0),
                     (t * 2.3 + perturb * 0.5).rem_euclid(1.0),
                     (t * 1.7 + perturb * 0.3).rem_euclid(1.0),
                 ),
-                velocity: Vec3::new(0.0, 0.0, 0.0),
-                acceleration: Vec3::zero(),
-            }
+                Vec3::new(0.0, 0.0, 0.0),
+            )
         })
         .collect();
 

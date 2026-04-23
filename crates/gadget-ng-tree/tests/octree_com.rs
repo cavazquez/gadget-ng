@@ -28,6 +28,8 @@ fn root_mass_and_com_match_particles() {
         cosmology: Default::default(),
         units: Default::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();

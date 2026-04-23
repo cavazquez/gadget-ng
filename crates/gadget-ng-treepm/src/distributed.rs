@@ -387,13 +387,7 @@ mod tests {
     use gadget_ng_core::Vec3;
 
     fn make_particle(id: usize, pos: Vec3, mass: f64) -> Particle {
-        Particle {
-            position: pos,
-            velocity: Vec3::zero(),
-            acceleration: Vec3::zero(),
-            mass,
-            global_id: id,
-        }
+        Particle::new(id, mass, pos, Vec3::zero())
     }
 
     #[test]

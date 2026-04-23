@@ -113,6 +113,8 @@ fn eh_config(seed: u64) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 
@@ -165,6 +167,8 @@ fn legacy_config(seed: u64) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

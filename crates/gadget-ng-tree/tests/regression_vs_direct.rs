@@ -51,6 +51,8 @@ fn lattice_cfg(n: usize, seed: u64) -> RunConfig {
         cosmology: Default::default(),
         units: Default::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

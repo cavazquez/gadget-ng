@@ -28,6 +28,8 @@ fn lattice_config() -> RunConfig {
         cosmology: Default::default(),
         units: Default::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

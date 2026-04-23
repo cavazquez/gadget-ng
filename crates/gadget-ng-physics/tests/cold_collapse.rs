@@ -80,6 +80,8 @@ fn collapse_config() -> RunConfig {
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

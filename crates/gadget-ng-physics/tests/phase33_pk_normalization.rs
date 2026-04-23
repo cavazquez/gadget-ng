@@ -126,6 +126,8 @@ fn make_config(seed: u64, grid: usize, nm: usize) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

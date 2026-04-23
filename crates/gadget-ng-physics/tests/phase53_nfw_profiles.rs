@@ -381,6 +381,8 @@ fn phase53_density_profile_from_fof_halo() {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deben fallar");

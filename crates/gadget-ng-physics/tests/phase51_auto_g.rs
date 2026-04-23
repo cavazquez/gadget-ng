@@ -92,6 +92,8 @@ fn base_cfg(g_override: f64, auto_g: bool) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

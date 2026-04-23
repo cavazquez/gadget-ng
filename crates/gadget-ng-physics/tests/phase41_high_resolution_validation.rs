@@ -167,6 +167,8 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

@@ -74,6 +74,8 @@ fn eds_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCon
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 
@@ -112,6 +114,8 @@ fn lcdm_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCo
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

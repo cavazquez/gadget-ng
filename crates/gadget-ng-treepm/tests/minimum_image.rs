@@ -18,13 +18,7 @@ use gadget_ng_treepm::{
 // ── Utilidades ────────────────────────────────────────────────────────────────
 
 fn make_particle(id: usize, x: f64, y: f64, z: f64, mass: f64) -> Particle {
-    Particle {
-        position: Vec3::new(x, y, z),
-        velocity: Vec3::zero(),
-        acceleration: Vec3::zero(),
-        mass,
-        global_id: id,
-    }
+    Particle::new(id, mass, Vec3::new(x, y, z), Vec3::zero())
 }
 
 // ── Test 1: minimum_image básico ──────────────────────────────────────────────

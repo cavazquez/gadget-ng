@@ -123,6 +123,8 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

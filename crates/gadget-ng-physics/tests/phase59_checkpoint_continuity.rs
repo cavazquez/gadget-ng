@@ -67,6 +67,8 @@ fn build_initial_particles() -> Vec<Particle> {
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     };
     build_particles(&cfg).expect("ICs no deben fallar")
 }

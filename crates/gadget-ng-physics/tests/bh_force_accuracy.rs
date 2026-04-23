@@ -65,6 +65,8 @@ fn make_config_uniform_sphere() -> RunConfig {
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 
@@ -91,6 +93,8 @@ fn make_config_plummer() -> RunConfig {
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 
@@ -878,6 +882,8 @@ fn make_config_plummer_a(a: f64, seed: u64) -> RunConfig {
         cosmology: CosmologySection::default(),
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

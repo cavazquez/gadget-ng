@@ -138,6 +138,8 @@ fn build_ic(n: usize, g_override: f64) -> RunConfig {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     }
 }
 

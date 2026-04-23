@@ -23,13 +23,7 @@ fn make_aabb(xlo: f64, xhi: f64, ylo: f64, yhi: f64, zlo: f64, zhi: f64) -> Aabb
 }
 
 fn make_particle(x: f64, y: f64, z: f64) -> Particle {
-    Particle {
-        position: Vec3::new(x, y, z),
-        velocity: Vec3::zero(),
-        acceleration: Vec3::zero(),
-        mass: 1.0,
-        global_id: 0,
-    }
+    Particle::new(0, 1.0, Vec3::new(x, y, z), Vec3::zero())
 }
 
 // ── Test 1: punto dentro del AABB → distancia 0 ───────────────────────────────

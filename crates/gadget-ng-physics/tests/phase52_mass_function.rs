@@ -437,6 +437,8 @@ fn phase52_fof_vs_hmf_qualitative() {
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
+        insitu_analysis: Default::default(),
+        sph: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deberían fallar");
