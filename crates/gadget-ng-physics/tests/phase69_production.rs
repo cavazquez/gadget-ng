@@ -1,4 +1,4 @@
-//! Phase G3 — Infraestructura de corrida de producción N=256³.
+//! Phase 69 — Infraestructura de corrida de producción N=256³.
 //!
 //! Tests de smoke/validación con N reducido que verifican:
 //!

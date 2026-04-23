@@ -1,4 +1,4 @@
-# Phase G4 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh
+# Phase 70 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh
 
 **Fecha:** abril 2026  
 **Estimación original:** 5+ sesiones (simplificado a 2 niveles: ~2 sesiones)  
@@ -7,7 +7,7 @@
 **Archivos clave:**
 - `crates/gadget-ng-pm/src/amr.rs` (nuevo)
 - `crates/gadget-ng-pm/src/lib.rs` (actualizado)
-- `crates/gadget-ng-physics/tests/phase_g4_amr_pm.rs` (nuevo)
+- `crates/gadget-ng-physics/tests/phase70_amr_pm.rs` (nuevo)
 
 ---
 

@@ -195,7 +195,7 @@ pub fn build_merger_forest(
     }
 }
 
-// ── Historia de Acreción de Masa (MAH) — Phase G5 ────────────────────────────
+// ── Historia de Acreción de Masa (MAH) — Phase 67 ────────────────────────────
 
 /// Historia de acreción de masa a lo largo de la rama principal de un halo.
 ///

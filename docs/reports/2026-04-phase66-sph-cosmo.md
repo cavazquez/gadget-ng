@@ -1,4 +1,4 @@
-# Phase G2 — SPH Cosmológico integrado al motor
+# Phase 66 — SPH Cosmológico integrado al motor
 
 **Fecha:** 2026-04-23  
 **Crates afectados:** `gadget-ng-core`, `gadget-ng-sph`, `gadget-ng-cli`  

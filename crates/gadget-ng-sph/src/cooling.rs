@@ -1,4 +1,4 @@
-//! Enfriamiento radiativo atómico H+He (Phase G2).
+//! Enfriamiento radiativo atómico H+He (Phase 66).
 //!
 //! ## Modelo
 //!

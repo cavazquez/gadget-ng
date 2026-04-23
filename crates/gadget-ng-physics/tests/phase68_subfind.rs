@@ -1,4 +1,4 @@
-//! Phase G1 — SUBFIND: identificación de subestructura dentro de halos FoF.
+//! Phase 68 — SUBFIND: identificación de subestructura dentro de halos FoF.
 //!
 //! Tests:
 //! 1. `subfind_single_isolated_cluster` — cluster esférico → 1 subhalo, masa correcta.

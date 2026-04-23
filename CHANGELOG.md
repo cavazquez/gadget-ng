@@ -15,7 +15,7 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 - `RunConfig { ... }` → agregados `insitu_analysis: Default::default()` y `sph: Default::default()` en todos los tests afectados.
 - Reporte: [`docs/reports/2026-04-fix-struct-literals.md`](docs/reports/2026-04-fix-struct-literals.md).
 
-### Phase G4 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh
+### Phase 70 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh
 
 - Nuevo módulo `crates/gadget-ng-pm/src/amr.rs` con:
   - `AmrParams { delta_refine, patch_cells_base, nm_patch, max_patches, zero_pad }`.
@@ -29,38 +29,38 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 - Exportados desde `gadget-ng-pm`: `amr_pm_accels`, `amr_pm_accels_with_stats`, `AmrParams`, `AmrStats`, `PatchGrid`.
 - Zero-padding: densidad del parche se extiende a `2nm³` antes de la FFT para simular condiciones de borde no periódicas (Hockney & Eastwood 1988).
 - Peso de transición en bordes: corrección del parche se aplica con `w = (1-2|f-0.5|)³` para suavizar la transición entre base y parche.
-- 7 tests en [`crates/gadget-ng-physics/tests/phase_g4_amr_pm.rs`](crates/gadget-ng-physics/tests/phase_g4_amr_pm.rs) + 7 tests unitarios en `gadget-ng-pm --lib`.
-- Reporte: [`docs/reports/2026-04-phase-g4-amr-pm.md`](docs/reports/2026-04-phase-g4-amr-pm.md).
+- 7 tests en [`crates/gadget-ng-physics/tests/phase70_amr_pm.rs`](crates/gadget-ng-physics/tests/phase70_amr_pm.rs) + 7 tests unitarios en `gadget-ng-pm --lib`.
+- Reporte: [`docs/reports/2026-04-phase70-amr-pm.md`](docs/reports/2026-04-phase70-amr-pm.md).
 
-### Phase G3 — Infraestructura corrida de producción N=256³
+### Phase 69 — Infraestructura corrida de producción N=256³
 
 - `configs/production_256.toml`: configuración completa ΛCDM Planck18 para N=256³ con TreePM+SFC, block timesteps jerárquicos, 2LPT+E-H, HDF5, análisis in-situ.
 - `configs/production_256_test.toml`: versión reducida N=32³ para CI smoke tests (<60 s).
 - `scripts/run_production_256.sh`: script de producción con detección de checkpoint, soporte MPI (`N_RANKS`), post-proceso Python opcional, logging con timestamp.
 - `docs/notebooks/postprocess_pk.py`: post-proceso P(k,z) desde archivos in-situ; genera `pk_evolution.json` y `pk_evolution.png`.
 - `docs/notebooks/postprocess_hmf.py`: post-proceso HMF n(M,z) con comparación Sheth-Tormen analítica; genera `hmf_evolution.json` y `hmf_evolution.png`.
-- 6 tests en [`crates/gadget-ng-physics/tests/phase_g3_production.rs`](crates/gadget-ng-physics/tests/phase_g3_production.rs): parseo de configs, ICs N=32³ sin NaN, parámetros físicos, masa consistente, σ₈ no trivial.
-- Reporte: [`docs/reports/2026-04-phase-g3-production.md`](docs/reports/2026-04-phase-g3-production.md).
+- 6 tests en [`crates/gadget-ng-physics/tests/phase69_production.rs`](crates/gadget-ng-physics/tests/phase69_production.rs): parseo de configs, ICs N=32³ sin NaN, parámetros físicos, masa consistente, σ₈ no trivial.
+- Reporte: [`docs/reports/2026-04-phase69-production.md`](docs/reports/2026-04-phase69-production.md).
 
-### Phase G1 — SUBFIND: subestructura dentro de halos FoF
+### Phase 68 — SUBFIND: subestructura dentro de halos FoF
 
 - Nuevo módulo `crates/gadget-ng-analysis/src/subfind.rs` con `SubfindParams`, `SubhaloRecord`, `local_density_sph` y `find_subhalos`.
 - Algoritmo: estimación de densidad SPH local (kernel Wendland C2, k-vecinos), walk de densidad descendente con Union-Find, filtrado por energía de enlace gravitacional (suma directa O(N²)).
 - Flag `--subfind` y `--subfind-min-particles` en `gadget-ng analyze`; resultados escritos en campo `subfind` del `results.json`.
 - Exportados desde `gadget-ng-analysis`: `find_subhalos`, `local_density_sph`, `SubfindParams`, `SubhaloRecord`.
-- 6 tests en [`crates/gadget-ng-physics/tests/phase_g1_subfind.rs`](crates/gadget-ng-physics/tests/phase_g1_subfind.rs): cluster aislado, dos subclusters, conservación de masa, energía negativa, defaults, densidad concentrada.
-- Reporte: [`docs/reports/2026-04-phase-g1-subfind.md`](docs/reports/2026-04-phase-g1-subfind.md).
+- 6 tests en [`crates/gadget-ng-physics/tests/phase68_subfind.rs`](crates/gadget-ng-physics/tests/phase68_subfind.rs): cluster aislado, dos subclusters, conservación de masa, energía negativa, defaults, densidad concentrada.
+- Reporte: [`docs/reports/2026-04-phase68-subfind.md`](docs/reports/2026-04-phase68-subfind.md).
 
-### Phase G5 — Merger Trees: validación MAH (McBride+2009)
+### Phase 67 — Merger Trees: validación MAH (McBride+2009)
 
 - Nuevas funciones en `crates/gadget-ng-analysis/src/merger_tree.rs`: `MassAccretionHistory`, `mah_main_branch(forest, root_id, redshifts)`, `mah_mcbride2009(m0, z, alpha, beta)`.
 - Nuevo subcomando CLI `gadget-ng mah`: lee merger tree JSON, extrae MAH a lo largo de la rama principal, calcula ajuste analítico y escribe `mah.json`.
 - Nuevo archivo `crates/gadget-ng-cli/src/mah_cmd.rs`.
 - Exportados desde `gadget-ng-analysis`: `mah_main_branch`, `mah_mcbride2009`, `MassAccretionHistory`.
-- 6 tests en [`crates/gadget-ng-physics/tests/phase_g5_mah.rs`](crates/gadget-ng-physics/tests/phase_g5_mah.rs): MAH monótona, McBride en z=0, trivial, merge detectado, snapshot único, McBride decrece con z.
-- Reporte: [`docs/reports/2026-04-phase-g5-merger-tree-mah.md`](docs/reports/2026-04-phase-g5-merger-tree-mah.md).
+- 6 tests en [`crates/gadget-ng-physics/tests/phase67_mah.rs`](crates/gadget-ng-physics/tests/phase67_mah.rs): MAH monótona, McBride en z=0, trivial, merge detectado, snapshot único, McBride decrece con z.
+- Reporte: [`docs/reports/2026-04-phase67-merger-tree-mah.md`](docs/reports/2026-04-phase67-merger-tree-mah.md).
 
-### Phase G2 — SPH Cosmológico integrado al motor
+### Phase 66 — SPH Cosmológico integrado al motor
 
 - `gadget-ng-core/src/particle.rs`: nuevo enum `ParticleType { DarkMatter, Gas }` (default: DM); campos `ptype`, `internal_energy`, `smoothing_length` con `#[serde(default)]`; constructores `Particle::new_gas(...)` e `is_gas()`.
 - `gadget-ng-core/src/config.rs`: nuevos `CoolingKind { None, AtomicHHe }` y `SphSection { enabled, gamma, alpha_visc, n_neigh, cooling, t_floor_k, gas_fraction }`; campo `pub sph: SphSection` en `RunConfig`.
@@ -68,8 +68,8 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 - `crates/gadget-ng-sph/src/cooling.rs` (nuevo): `cooling_rate_atomic`, `apply_cooling`, `u_to_temperature`, `temperature_to_u`.
 - `crates/gadget-ng-cli/src/engine.rs`: macro `maybe_sph!(cf)` disponible para inserción en loops de stepping.
 - `crates/gadget-ng-parallel/src/pack.rs`: actualizado para inicializar campos SPH en gather global.
-- 5 tests en [`crates/gadget-ng-physics/tests/phase_g2_sph_cosmo.rs`](crates/gadget-ng-physics/tests/phase_g2_sph_cosmo.rs): defaults, conservación energía 50 pasos, cooling monotóno, KDK acotado, ParticleType.
-- Reporte: [`docs/reports/2026-04-phase-g2-sph-cosmo.md`](docs/reports/2026-04-phase-g2-sph-cosmo.md).
+- 5 tests en [`crates/gadget-ng-physics/tests/phase66_sph_cosmo.rs`](crates/gadget-ng-physics/tests/phase66_sph_cosmo.rs): defaults, conservación energía 50 pasos, cooling monotóno, KDK acotado, ParticleType.
+- Reporte: [`docs/reports/2026-04-phase66-sph-cosmo.md`](docs/reports/2026-04-phase66-sph-cosmo.md).
 
 ### Phase 65 — HDF5 paralelo MPI-IO
 

@@ -1,4 +1,4 @@
-# Phase G3 — Corrida de producción N=256³ end-to-end
+# Phase 69 — Corrida de producción N=256³ end-to-end
 
 **Fecha:** abril 2026  
 **Estimación original:** 2–3 sesiones  
@@ -10,7 +10,7 @@
 - `scripts/run_production_256.sh`
 - `docs/notebooks/postprocess_pk.py`
 - `docs/notebooks/postprocess_hmf.py`
-- `crates/gadget-ng-physics/tests/phase_g3_production.rs`
+- `crates/gadget-ng-physics/tests/phase69_production.rs`
 
 ---
 

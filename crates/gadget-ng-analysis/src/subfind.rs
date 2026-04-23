@@ -1,4 +1,4 @@
-//! SUBFIND: identificación de subestructura dentro de halos FoF (Phase G1).
+//! SUBFIND: identificación de subestructura dentro de halos FoF (Phase 68).
 //!
 //! ## Algoritmo
 //!

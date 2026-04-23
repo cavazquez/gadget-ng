@@ -129,7 +129,7 @@ enum Commands {
         /// Tamaño físico de la caja en Mpc/h (para unidades de c(M) y ξ(r)).
         #[arg(long)]
         box_size_mpc_h: Option<f64>,
-        /// Ejecutar SUBFIND sobre cada halo para identificar subestructura (Phase G1).
+        /// Ejecutar SUBFIND sobre cada halo para identificar subestructura (Phase 68).
         #[arg(long, default_value_t = false)]
         subfind: bool,
         /// Número mínimo de partículas de halo para ejecutar SUBFIND (default: 50).

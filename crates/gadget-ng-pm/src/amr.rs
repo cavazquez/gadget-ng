@@ -1,4 +1,4 @@
-//! AMR-PM: refinamiento adaptativo de la malla Particle-Mesh (Phase G4).
+//! AMR-PM: refinamiento adaptativo de la malla Particle-Mesh (Phase 70).
 //!
 //! ## Diseño
 //!

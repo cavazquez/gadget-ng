@@ -2,7 +2,7 @@
 # Corrida de TEST para G3 — N = 32³ (CI / smoke test)
 #
 # Misma configuración física que production_256.toml pero con N reducido para
-# que corra en CI (<60 s). Se usa en phase_g3_production.rs.
+# que corra en CI (<60 s). Se usa en phase69_production.rs.
 # ─────────────────────────────────────────────────────────────────────────────
 
 [simulation]

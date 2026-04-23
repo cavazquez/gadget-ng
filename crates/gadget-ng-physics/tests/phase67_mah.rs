@@ -1,4 +1,4 @@
-//! Phase G5 — Merger Trees: validación de Historia de Acreción de Masa (MAH).
+//! Phase 67 — Merger Trees: validación de Historia de Acreción de Masa (MAH).
 //!
 //! Tests:
 //! 1. `mah_main_branch_monotone`  — la MAH crece o se mantiene de snapshot a snapshot.

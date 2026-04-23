@@ -1,4 +1,4 @@
-//! Phase G4 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh.
+//! Phase 70 — AMR-PM: refinamiento adaptativo de la malla Particle-Mesh.
 //!
 //! Tests de validación física:
 //!

@@ -1,4 +1,4 @@
-//! Subcomando `gadget-ng mah` — Historia de Acreción de Masa (Phase G5).
+//! Subcomando `gadget-ng mah` — Historia de Acreción de Masa (Phase 67).
 
 use crate::error::CliError;
 use gadget_ng_analysis::{mah_main_branch, mah_mcbride2009, MergerForest};

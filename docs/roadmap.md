@@ -27,11 +27,11 @@
 | 63 | 📈 Análisis in-situ en loop stepping |
 | 64 | 🖼️ Proyecciones adicionales + mapa de densidad Viridis + PNG |
 | 65 | 💾 HDF5 paralelo MPI-IO (colectivo, layout GADGET-4) |
-| **G2** | 💧 **SPH cosmológico integrado**: `ParticleType`, `internal_energy`, `smoothing_length` en `Particle`; `sph_cosmo_kdk_step`, enfriamiento atómico H+He, hook `maybe_sph!` en motor |
-| **G5** | 🌳 **MAH Merger Trees**: `MassAccretionHistory`, `mah_main_branch`, `mah_mcbride2009`, CLI `gadget-ng mah` |
-| **G1** | 🔍 **SUBFIND**: `local_density_sph`, `find_subhalos`, `SubhaloRecord`, flag `--subfind` en `gadget-ng analyze` |
-| **G3** | 🚀 **Producción N=256³**: `configs/production_256.toml`, `scripts/run_production_256.sh`, notebooks Python P(k)/HMF, smoke tests N=32³ |
-| **G4** | 🔲 **AMR-PM**: `PatchGrid`, `amr_pm_accels`, zero-padding, identificación de parches por sobredensidad, 2 niveles jerárquicos |
+| **Phase 66** | 💧 **SPH cosmológico integrado**: `ParticleType`, `internal_energy`, `smoothing_length` en `Particle`; `sph_cosmo_kdk_step`, enfriamiento atómico H+He, hook `maybe_sph!` en motor |
+| **Phase 67** | 🌳 **MAH Merger Trees**: `MassAccretionHistory`, `mah_main_branch`, `mah_mcbride2009`, CLI `gadget-ng mah` |
+| **Phase 68** | 🔍 **SUBFIND**: `local_density_sph`, `find_subhalos`, `SubhaloRecord`, flag `--subfind` en `gadget-ng analyze` |
+| **Phase 69** | 🚀 **Producción N=256³**: `configs/production_256.toml`, `scripts/run_production_256.sh`, notebooks Python P(k)/HMF, smoke tests N=32³ |
+| **Phase 70** | 🔲 **AMR-PM**: `PatchGrid`, `amr_pm_accels`, zero-padding, identificación de parches por sobredensidad, 2 niveles jerárquicos |
 
 ---
 

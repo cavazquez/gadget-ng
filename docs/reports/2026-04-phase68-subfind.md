@@ -1,4 +1,4 @@
-# Phase G1 — SUBFIND: subestructura dentro de halos FoF
+# Phase 68 — SUBFIND: subestructura dentro de halos FoF
 
 **Fecha:** 2026-04-23  
 **Crates afectados:** `gadget-ng-analysis`, `gadget-ng-cli`  

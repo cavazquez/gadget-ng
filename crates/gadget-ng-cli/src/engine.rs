@@ -1193,7 +1193,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-    // Macro local para el paso SPH cosmológico (Phase G2).
+    // Macro local para el paso SPH cosmológico (Phase 66).
     // Solo actúa si `cfg.sph.enabled` es true; de lo contrario es un no-op.
     macro_rules! maybe_sph {
         ($cf:expr) => {

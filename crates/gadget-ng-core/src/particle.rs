@@ -21,7 +21,7 @@ pub struct Particle {
     pub velocity: Vec3,
     #[serde(skip)]
     pub acceleration: Vec3,
-    /// Tipo de partícula (Phase G2). Default: `DarkMatter`.
+    /// Tipo de partícula (Phase 66). Default: `DarkMatter`.
     #[serde(default)]
     pub ptype: ParticleType,
     /// Energía interna específica u [unidades internas]. `0.0` para DM.

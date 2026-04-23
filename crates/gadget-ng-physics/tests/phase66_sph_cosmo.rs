@@ -1,4 +1,4 @@
-//! Phase G2 — SPH cosmológico integrado al motor.
+//! Phase 66 — SPH cosmológico integrado al motor.
 //!
 //! Tests de validación:
 //! 1. `sph_energy_conservation_100steps` — lattice de gas uniforme, conservación E_tot.

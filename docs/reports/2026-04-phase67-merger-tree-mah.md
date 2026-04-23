@@ -1,4 +1,4 @@
-# Phase G5 — Merger Trees: validación de Historia de Acreción de Masa (MAH)
+# Phase 67 — Merger Trees: validación de Historia de Acreción de Masa (MAH)
 
 **Fecha:** 2026-04-23  
 **Crates afectados:** `gadget-ng-analysis`, `gadget-ng-cli`  

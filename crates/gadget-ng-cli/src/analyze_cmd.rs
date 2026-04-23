@@ -35,7 +35,7 @@ pub struct AnalyzeParams<'a> {
     pub cosmology: Option<(f64, f64, f64)>,
     /// Tamaño físico de la caja en Mpc/h (para unidades de c(M)).
     pub box_size_mpc_h: Option<f64>,
-    /// Ejecutar SUBFIND sobre cada halo (Phase G1). Desactivado por defecto.
+    /// Ejecutar SUBFIND sobre cada halo (Phase 68). Desactivado por defecto.
     pub subfind: bool,
     /// Número mínimo de partículas de halo para correr SUBFIND.
     pub subfind_min_particles: usize,
@@ -190,7 +190,7 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
     }
     eprintln!("[analyze] c(M): {} halos con ajuste NFW", cm_table.len());
 
-    // ── SUBFIND (Phase G1) ────────────────────────────────────────────────────
+    // ── SUBFIND (Phase 68) ────────────────────────────────────────────────────
     let mut subfind_results: Vec<serde_json::Value> = Vec::new();
     if params.subfind {
         let sfparams = SubfindParams {

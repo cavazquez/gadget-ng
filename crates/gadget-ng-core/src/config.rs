@@ -23,7 +23,7 @@ pub struct RunConfig {
     /// Análisis in-situ durante el loop `stepping` (opcional; desactivado por defecto).
     #[serde(default)]
     pub insitu_analysis: InsituAnalysisSection,
-    /// Módulo SPH cosmológico (Phase G2; opcional; desactivado por defecto).
+    /// Módulo SPH cosmológico (Phase 66; opcional; desactivado por defecto).
     #[serde(default)]
     pub sph: SphSection,
 }
@@ -1073,7 +1073,7 @@ pub enum CoolingKind {
     AtomicHHe,
 }
 
-/// Configuración del módulo SPH cosmológico (Phase G2).
+/// Configuración del módulo SPH cosmológico (Phase 66).
 ///
 /// Añadir `[sph]` al TOML:
 ///
