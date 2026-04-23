@@ -1,7 +1,7 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–74 completadas.  
-> Phases 71–74: Bispectrum B(k), spin λ, perfiles σ_v(r), HDF5 GADGET-4 estándar.  
+> **Estado al 23 de abril de 2026:** Phases 1–81 completadas.  
+> Phases 75–81: P(k,μ) RSD, assembly bias, catálogo HDF5, feedback SN, validación N=128³, AMR 3 niveles, RT M1.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -36,6 +36,13 @@
 | **Phase 72** | 🌀 **Spin de halos λ**: `halo_spin`, `compute_halo_spins`; λ Peebles + λ' Bullock |
 | **Phase 73** | 🌊 **Perfiles de velocidad σ_v(r)**: `velocity_profile`, `velocity_anisotropy` β(r), `sigma_1d`; binning log/lineal |
 | **Phase 74** | 💾 **HDF5 GADGET-4 estándar completo**: `Gadget4Header` 22 atributos, unidades físicas; compatible con yt/pynbody/h5py |
+| **Phase 75** | 📡 **P(k,μ) + multipoles RSD**: P₀/P₂/P₄ en espacio de redshift, factor Kaiser, integración in-situ |
+| **Phase 76** | 🧲 **Assembly bias**: correlación Spearman spin/c vs δ_env, sesgo por cuartiles |
+| **Phase 77** | 📋 **Catálogo de halos HDF5**: compatible con yt/Caesar, JSONL fallback |
+| **Phase 78** | 💥 **Stellar feedback SN**: ley Schmidt-Kennicutt, kicks estocásticos v_kick=350 km/s |
+| **Phase 79** | ✅ **Validación N=128³**: config completa, script MPI, notebook σ₈/P(k)/HMF, 6 smoke tests |
+| **Phase 80** | 🔲 **AMR 3 niveles**: jerarquía recursiva N-nivel, umbral escalado por nivel |
+| **Phase 81** | ☀️ **Transferencia radiativa M1**: solver HLL, fotoionización HI, fotocalentamiento SPH |
 
 ---
 
@@ -45,8 +52,7 @@ Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
-| AMR jerárquico | AMR de 3+ niveles recursivos + comunicación MPI de parches | 3–4 sesiones |
-| RT | Transferencia radiativa (M1 closure, Morel) | 5–8 sesiones |
+| MPI RT | Transferencia radiativa distribuida (MPI para el campo de radiación) | 3–4 sesiones |
 | Stellar feedback | Kick estocástico SN en gas SPH cercano | 2–3 sesiones |
 | Validación producción | Corrida N=128³ completa hasta z=0, HMF vs Tinker | 2–3 sesiones |
 ---

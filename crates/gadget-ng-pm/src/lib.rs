@@ -21,7 +21,9 @@ pub mod slab_pm;
 pub mod solver;
 
 pub use amr::{
-    amr_pm_accels, amr_pm_accels_with_stats, AmrParams, AmrStats, PatchGrid,
+    amr_pm_accels, amr_pm_accels_multilevel, amr_pm_accels_multilevel_with_stats,
+    amr_pm_accels_with_stats, build_amr_hierarchy, identify_refinement_patches,
+    AmrLevel, AmrMultilevelStats, AmrParams, AmrStats, PatchGrid,
 };
 pub use pencil_fft::{solve_forces_pencil2d, PencilLayout2D};
 pub use slab_fft::SlabLayout;

@@ -1213,9 +1213,22 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
                     gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
                 }
+                // Phase 78: Feedback estelar estocástico
+                if cfg.sph.feedback.enabled {
+                    let sfr = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
+                    let mut fb_seed = tpm_step_count.wrapping_mul(2654435761).wrapping_add(rank as u64);
+                    gadget_ng_sph::apply_sn_feedback(
+                        &mut local,
+                        &sfr,
+                        &cfg.sph.feedback,
+                        cfg.simulation.dt,
+                        &mut fb_seed,
+                    );
+                }
             }
         };
     }
+
 
     // ── Acumuladores de tiempos por fase ─────────────────────────────────────
     let mut acc_comm_ns: u64 = 0;

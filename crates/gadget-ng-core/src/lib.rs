@@ -21,8 +21,8 @@ pub use config::{
     CosmologySection, CoolingKind, DecompositionConfig, GravitySection, IcKind,
     InitialConditionsSection, InsituAnalysisSection, IntegratorKind, MacSoftening,
     NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, RunConfig, SfcKind,
-    SimulationSection, SnapshotFormat, SolverKind, SphSection, TimestepCriterion, TimestepSection,
-    TransferKind, UnitsSection, G_KPC_MSUN_KMPS,
+    FeedbackSection, RtSection, SimulationSection, SnapshotFormat, SolverKind, SphSection,
+    TimestepCriterion, TimestepSection, TransferKind, UnitsSection, G_KPC_MSUN_KMPS,
 };
 pub use cosmology::{
     adaptive_dt_cosmo, cosmo_consistency_error, density_contrast_rms, g_code_consistent,

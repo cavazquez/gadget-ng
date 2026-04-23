@@ -4,10 +4,11 @@
 //! escribiendo `insitu_NNNNNN.json` en `<output_dir>/`.
 
 use gadget_ng_analysis::{
-    analyse, two_point_correlation_fft, AnalysisParams, XiBin,
+    analyse, compute_pk_multipoles, two_point_correlation_fft,
+    AnalysisParams, LosAxis, PkRsdParams, XiBin,
 };
+use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin};
 use gadget_ng_core::{InsituAnalysisSection, Particle};
-use gadget_ng_analysis::PkBin;
 use serde::Serialize;
 use std::path::Path;
 
@@ -21,6 +22,12 @@ pub struct InsituResult {
     pub m_total_halos: f64,
     pub power_spectrum: Vec<PkBinOut>,
     pub xi_r: Vec<XiBinOut>,
+    /// P(k,μ) en espacio de redshift. Vacío si `pk_rsd_bins == 0`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pk_rsd: Vec<PkRsdBinOut>,
+    /// Multipoles P₀/P₂/P₄. Vacío si `pk_rsd_bins == 0`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pk_multipoles: Vec<PkMultipoleOut>,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,6 +52,34 @@ impl From<&PkBin> for PkBinOut {
 impl From<&XiBin> for XiBinOut {
     fn from(b: &XiBin) -> Self {
         Self { r: b.r, xi: b.xi }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PkRsdBinOut {
+    pub k: f64,
+    pub mu: f64,
+    pub pk: f64,
+    pub n_modes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PkMultipoleOut {
+    pub k: f64,
+    pub p0: f64,
+    pub p2: f64,
+    pub p4: f64,
+}
+
+impl From<&PkRsdBin> for PkRsdBinOut {
+    fn from(b: &PkRsdBin) -> Self {
+        Self { k: b.k, mu: b.mu, pk: b.pk, n_modes: b.n_modes }
+    }
+}
+
+impl From<&PkMultipoleBin> for PkMultipoleOut {
+    fn from(b: &PkMultipoleBin) -> Self {
+        Self { k: b.k, p0: b.p0, p2: b.p2, p4: b.p4 }
     }
 }
 
@@ -98,6 +133,32 @@ pub fn maybe_run_insitu(
                 Vec::new()
             };
 
+            // Phase 75: P(k,μ) en espacio de redshift
+            let (pk_rsd_out, pk_multipoles_out) = if cfg.pk_rsd_bins > 0 {
+                let positions: Vec<_> = particles.iter().map(|p| p.position).collect();
+                let velocities: Vec<_> = particles.iter().map(|p| p.velocity).collect();
+                let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+                let h_a = 100.0; // H(a) en km/s/Mpc — aproximación para in-situ
+                let rsd_params = PkRsdParams {
+                    n_k_bins: cfg.pk_mesh / 2,
+                    n_mu_bins: cfg.pk_rsd_bins,
+                    los: LosAxis::Z,
+                    scale_factor: a,
+                    hubble_a: h_a,
+                };
+                let rsd_bins = compute_pk_multipoles(
+                    &positions, &velocities, &masses, box_size, cfg.pk_mesh, &rsd_params,
+                );
+                let pk_rsd_raw = gadget_ng_analysis::pk_redshift_space(
+                    &positions, &velocities, &masses, box_size, cfg.pk_mesh, &rsd_params,
+                );
+                let rsd_out: Vec<PkRsdBinOut> = pk_rsd_raw.iter().map(PkRsdBinOut::from).collect();
+                let mult_out: Vec<PkMultipoleOut> = rsd_bins.iter().map(PkMultipoleOut::from).collect();
+                (rsd_out, mult_out)
+            } else {
+                (Vec::new(), Vec::new())
+            };
+
             let z = if a > 0.0 { 1.0 / a - 1.0 } else { f64::INFINITY };
 
             let insitu = InsituResult {
@@ -108,6 +169,8 @@ pub fn maybe_run_insitu(
                 m_total_halos,
                 power_spectrum: result.power_spectrum.iter().map(PkBinOut::from).collect(),
                 xi_r,
+                pk_rsd: pk_rsd_out,
+                pk_multipoles: pk_multipoles_out,
             };
 
             let path = out_dir.join(format!("insitu_{step:06}.json"));

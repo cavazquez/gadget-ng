@@ -2,6 +2,7 @@
 mod bincode_writer;
 mod error;
 pub mod gadget4_attrs;
+pub mod halo_catalog_hdf5;
 #[cfg(feature = "hdf5")]
 mod hdf5_writer;
 pub mod hdf5_parallel_writer;
@@ -16,6 +17,12 @@ mod writer;
 
 pub use error::SnapshotError;
 pub use gadget4_attrs::{Gadget4Header, KMS_IN_CMS, KPC_IN_CM, MSUN_IN_G};
+pub use halo_catalog_hdf5::{
+    read_halo_catalog_jsonl, write_halo_catalog_hdf5, write_halo_catalog_jsonl,
+    HaloCatalogEntry, HaloCatalogHeader, SubhaloCatalogEntry,
+};
+#[cfg(feature = "hdf5")]
+pub use halo_catalog_hdf5::read_halo_catalog_hdf5;
 #[cfg(feature = "hdf5")]
 pub use gadget4_attrs::{read_gadget4_header, write_gadget4_header};
 pub use provenance::Provenance;

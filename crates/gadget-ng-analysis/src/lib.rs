@@ -23,7 +23,9 @@
 //! println!("{} halos encontrados", result.halos.len());
 //! ```
 
+pub mod assembly_bias;
 pub mod bispectrum;
+pub mod pk_rsd;
 pub mod catalog;
 pub mod correlation;
 pub mod fof;
@@ -65,6 +67,13 @@ pub use pk_correction::{a_grid, correct_pk, correct_pk_with_shot_noise, measure_
 pub use power_spectrum::PkBin;
 pub use bispectrum::{
     bispectrum_equilateral, bispectrum_isosceles, reduced_bispectrum, BkBin, BkIsoscelesBin,
+};
+pub use assembly_bias::{
+    compute_assembly_bias, spearman_correlation, AssemblyBiasParams, AssemblyBiasResult,
+};
+pub use pk_rsd::{
+    compute_pk_multipoles, kaiser_multipole_ratios, pk_multipoles, pk_redshift_space,
+    LosAxis, PkMultipoleBin, PkRsdBin, PkRsdParams,
 };
 pub use halo_spin::{compute_halo_spins, halo_spin, HaloSpin, SpinParams};
 pub use subfind::{find_subhalos, local_density_sph, SubfindParams, SubhaloRecord};

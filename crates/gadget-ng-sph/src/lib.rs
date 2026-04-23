@@ -12,6 +12,7 @@
 //! - Integrador **leapfrog KDK** combinado (gravedad + SPH + energía interna).
 pub mod cooling;
 pub mod density;
+pub mod feedback;
 pub mod forces;
 pub mod integrator;
 pub mod kernel;
@@ -19,6 +20,7 @@ pub mod particle;
 
 pub use cooling::{apply_cooling, cooling_rate_atomic, temperature_to_u, u_to_temperature};
 pub use density::{compute_density, GAMMA};
+pub use feedback::{apply_sn_feedback, compute_sfr, total_sn_energy_injection};
 pub use forces::compute_sph_forces;
 pub use integrator::{sph_cosmo_kdk_step, sph_kdk_step};
 pub use kernel::{grad_w, w};

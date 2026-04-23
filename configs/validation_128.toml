@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 79 — Corrida de validación N = 128³ (ΛCDM Planck18)
+#
+# Configuración para una simulación cosmológica completa desde z=49 hasta z=0.
+# Resolución de 128³ partículas ≈ 2×10⁶ partículas, caja de 200 Mpc/h.
+#
+# Objetivo: validar P(k,z=0) vs CLASS y HMF vs Tinker08, y medir σ₈ de la
+# simulación para confirmar coherencia con el valor de input (σ₈=0.811).
+#
+# Tiempo estimado: ~2-4 horas en 8 núcleos.
+# Para CI smoke test usar validation_128_test.toml (N=32³, 20 pasos).
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count     = 2097152           # 128³ = 2,097,152 partículas DM
+box_size           = 200.0             # Mpc/h
+dt                 = 0.002             # paso cosmológico adaptativo
+num_steps          = 512               # desde z≈49 (a=0.02) hasta z≈0 (a=1)
+softening          = 0.15              # Mpc/h (≈1/25 del espaciado inter-partícula)
+physical_softening = true              # softening físico constante
+seed               = 42
+
+[initial_conditions]
+kind = { zeldovich = {
+    seed            = 31415,
+    grid_size       = 128,
+    spectral_index  = 0.9649,          # Planck 2018
+    transfer        = "eisenstein_hu",
+    sigma8          = 0.8111,          # Planck 2018
+    omega_b         = 0.0490,
+    h               = 0.6736,
+    t_cmb           = 2.7255,
+    box_size_mpc_h  = 200.0,
+    use_2lpt        = true,
+    normalization_mode = "z0_sigma8"
+} }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.3153
+omega_lambda = 0.6847
+h0           = 0.1                     # H₀/100 (= h × 100 km/s/Mpc)
+a_init       = 0.02                    # z_init ≈ 49
+auto_g       = true
+
+[gravity]
+solver          = "tree_pm"
+opening_theta   = 0.5
+pm_grid         = 256                  # 2× partículas por eje
+softening       = 0.15
+
+[timestep]
+criterion       = "jerk"
+eta             = 0.025
+dt_max          = 0.01
+dt_min          = 1e-6
+hierarchical    = true                 # block timesteps (Phase 56)
+
+[output]
+format          = "hdf5"
+snapshot_every  = 50                   # ~10 snapshots: z≈3,2,1.5,1,0.75,0.5,0.25,0.1,0.05,0
+out_dir         = "runs/validation_128/snapshots"
+
+[performance]
+num_threads     = 8
+checkpoint_every = 100                 # checkpoints cada 100 pasos (~12 GB/checkpoint)
+checkpoint_dir  = "runs/validation_128/checkpoints"
+
+[insitu_analysis]
+enabled      = true
+interval     = 50
+pk_mesh      = 256
+fof_b        = 0.2
+fof_min_part = 20
+xi_bins      = 20
+pk_rsd_bins  = 8                       # Phase 75: P(k,μ)
+output_dir   = "runs/validation_128/analysis"

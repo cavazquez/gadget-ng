@@ -8,6 +8,87 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 81 — Transferencia radiativa M1 (nuevo crate `gadget-ng-rt`)
+
+- Nuevo crate `crates/gadget-ng-rt/` con solver M1 completo:
+  - `m1.rs`: `RadiationField` (grid E, Fx/Fy/Fz), `M1Params`, `m1_update` (solver HLL),
+    `eddington_factor` (cierre M1: f→1/3 isótropo, f→1 streaming libre).
+  - `coupling.rs`: `photoionization_rate`, `apply_photoheating`, `deposit_gas_emission`,
+    `radiation_gas_coupling_step` (splitting de operadores gas↔rad).
+  - Velocidad de luz reducida `c_red = c / c_red_factor` (default: 100×).
+  - Fuente implícita linealizada para absorción: estabilidad para κ·dt > 1.
+- Nueva sección `[rt]` en `RunConfig` (`RtSection`: enabled, c_red_factor, kappa_abs, rt_mesh, substeps).
+- 15 tests unitarios: eddington_factor (isótropo/streaming/monótono), conservación energía en vacío,
+  decaimiento por absorción, fotocalentamiento, emisión del gas.
+- Reporte: [`docs/reports/2026-04-phase81-radiative-transfer-m1.md`](docs/reports/2026-04-phase81-radiative-transfer-m1.md).
+
+### Phase 80 — AMR 3 niveles jerárquico recursivo
+
+- Extensión de `crates/gadget-ng-pm/src/amr.rs` con soporte multi-nivel:
+  - `AmrLevel { patches, child_levels, depth }`: árbol de niveles de refinamiento.
+  - `AmrParams` extendido con `max_levels: usize` y `refine_factor: f64`.
+  - `amr_pm_accels_multilevel(...)`: solver AMR N-nivel recursivo.
+  - `amr_pm_accels_multilevel_with_stats(...)`: versión instrumentada.
+  - `build_amr_hierarchy(...)`: construcción recursiva del árbol.
+  - Umbral por nivel: `δ_refine × factor^l` con corrección ponderada suave.
+- `max_levels=1` preserva el comportamiento exacto de Phase 70.
+- 4 tests nuevos (11 total en `amr::tests`): multilevel sin NaN, stats correctas.
+- Reporte: [`docs/reports/2026-04-phase80-amr3-multilevel.md`](docs/reports/2026-04-phase80-amr3-multilevel.md).
+
+### Phase 79 — Validación producción N=128³
+
+- `configs/validation_128.toml`: N=128³, ΛCDM Planck18, z_ini≈49, 512 pasos, TreePM + análisis in-situ.
+- `configs/validation_128_test.toml`: versión N=32³ para CI (<30s).
+- `scripts/run_validation_128.sh`: script con soporte `--resume`, `--mpi N`, `--post`.
+- `docs/notebooks/validate_pk_hmf.py`: P(k) vs Eisenstein-Hu, σ₈ medida vs input (tol. 5%), HMF.
+- 6 smoke tests en `crates/gadget-ng-physics/tests/phase79_validation.rs`.
+- Reporte: [`docs/reports/2026-04-phase79-validation.md`](docs/reports/2026-04-phase79-validation.md).
+
+### Phase 78 — Stellar feedback: kicks estocásticos de supernovas
+
+- Nuevo módulo `crates/gadget-ng-sph/src/feedback.rs`:
+  - `compute_sfr(particles, cfg)`: ley Schmidt-Kennicutt con umbral `rho_sf`.
+  - `apply_sn_feedback(particles, sfr, cfg, dt, seed)`: kick estocástico con `p = 1-exp(-sfr×dt/m)`.
+  - `total_sn_energy_injection(...)`: monitoreo de energía inyectada.
+- Nueva sección `[sph.feedback]` en `SphSection` (`FeedbackSection`: enabled, v_kick_km_s, eps_sn, rho_sf, sfr_min).
+- Hook integrado en `maybe_sph!` de `engine.rs` (Phase 66).
+- 8 tests en `feedback::tests`.
+- Reporte: [`docs/reports/2026-04-phase78-stellar-feedback.md`](docs/reports/2026-04-phase78-stellar-feedback.md).
+
+### Phase 77 — Catálogo de halos HDF5 por snapshot
+
+- Nuevo módulo `crates/gadget-ng-io/src/halo_catalog_hdf5.rs`:
+  - Structs `HaloCatalogEntry`, `SubhaloCatalogEntry`, `HaloCatalogHeader`.
+  - `write_halo_catalog_hdf5(...)` / `read_halo_catalog_hdf5(...)` (feature `hdf5`).
+  - `write_halo_catalog_jsonl(...)` / `read_halo_catalog_jsonl(...)` (siempre disponible).
+  - Estructura `/Header`, `/Halos/{Mass,Pos,Vel,R200,Spin_Peebles,Npart}`, `/Subhalos/`.
+- Compatible con yt, h5py, Caesar, rockstar-galaxies.
+- 4 tests (+ 1 con feature hdf5): roundtrip JSONL, header creation, serialización.
+- Reporte: [`docs/reports/2026-04-phase77-halo-catalog-hdf5.md`](docs/reports/2026-04-phase77-halo-catalog-hdf5.md).
+
+### Phase 76 — Assembly bias: spin/c vs entorno
+
+- Nuevo módulo `crates/gadget-ng-analysis/src/assembly_bias.rs`:
+  - `compute_assembly_bias(...)`: correlación Spearman λ/c vs δ_env + sesgo por cuartiles.
+  - Campo suavizado con filtro top-hat esférico en k-space (`W(kR) = 3[sin-cos]/x³`).
+  - `AssemblyBiasResult { spearman_lambda, spearman_concentration, bias_vs_lambda, ... }`.
+  - `spearman_correlation(x, y)`: coeficiente de Spearman exportado.
+- 9 tests: correlaciones perfectas/inversas, monotonía, filtro top-hat, serialización.
+- Reporte: [`docs/reports/2026-04-phase76-assembly-bias.md`](docs/reports/2026-04-phase76-assembly-bias.md).
+
+### Phase 75 — P(k,μ) + multipoles P₀/P₂/P₄ en espacio de redshift
+
+- Nuevo módulo `crates/gadget-ng-analysis/src/pk_rsd.rs`:
+  - `pk_redshift_space(...)`: P(k,μ) con desplazamiento RSD (Hamilton 1992).
+  - `pk_multipoles(...)`: P₀/P₂/P₄ integrando sobre μ con polinomios de Legendre.
+  - `compute_pk_multipoles(...)`: combinado posiciones → multipoles.
+  - `kaiser_multipole_ratios(β)`: ratios teóricos Kaiser para validación.
+  - `LosAxis { X, Y, Z }`, `PkRsdBin`, `PkMultipoleBin`, `PkRsdParams`.
+- Integración in-situ: campo `pk_rsd_bins` en `InsituAnalysisSection`; campos
+  `pk_rsd` y `pk_multipoles` en `insitu_NNNNNN.json`.
+- 7 tests unitarios.
+- Reporte: [`docs/reports/2026-04-phase75-pk-rsd.md`](docs/reports/2026-04-phase75-pk-rsd.md).
+
 ### Phase 74 — Output HDF5 con atributos estándar GADGET-4
 
 - Nuevo módulo `crates/gadget-ng-io/src/gadget4_attrs.rs` con:

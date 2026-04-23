@@ -26,6 +26,9 @@ pub struct RunConfig {
     /// Módulo SPH cosmológico (Phase 66; opcional; desactivado por defecto).
     #[serde(default)]
     pub sph: SphSection,
+    /// Solver de transferencia radiativa M1 (Phase 81; opcional; desactivado por defecto).
+    #[serde(default)]
+    pub rt: RtSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1110,6 +1113,9 @@ pub struct SphSection {
     /// Fracción de partículas inicializadas como gas (default: 0.0).
     #[serde(default)]
     pub gas_fraction: f64,
+    /// Configuración del feedback estelar (Phase 78).
+    #[serde(default)]
+    pub feedback: FeedbackSection,
 }
 
 fn default_gamma() -> f64 { 5.0 / 3.0 }
@@ -1127,6 +1133,81 @@ impl Default for SphSection {
             cooling: CoolingKind::None,
             t_floor_k: default_t_floor_k(),
             gas_fraction: 0.0,
+            feedback: FeedbackSection::default(),
+        }
+    }
+}
+
+/// Configuración del feedback estelar por supernovas (Phase 78).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedbackSection {
+    /// Activa el feedback estelar (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Velocidad del kick de SN en km/s (default: 350 km/s).
+    #[serde(default = "default_v_kick")]
+    pub v_kick_km_s: f64,
+    /// Eficiencia de energía SN ε_SN: fracción de E_SN=10⁵¹ erg transferida (default: 0.1).
+    #[serde(default = "default_eps_sn")]
+    pub eps_sn: f64,
+    /// Densidad umbral para SFR en unidades internas (default: 0.1).
+    #[serde(default = "default_rho_sf")]
+    pub rho_sf: f64,
+    /// SFR mínima para activar el feedback (default: 1e-4 en unidades internas).
+    #[serde(default = "default_sfr_min")]
+    pub sfr_min: f64,
+}
+
+fn default_v_kick() -> f64 { 350.0 }
+fn default_eps_sn() -> f64 { 0.1 }
+fn default_rho_sf() -> f64 { 0.1 }
+fn default_sfr_min() -> f64 { 1e-4 }
+
+impl Default for FeedbackSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            v_kick_km_s: default_v_kick(),
+            eps_sn: default_eps_sn(),
+            rho_sf: default_rho_sf(),
+            sfr_min: default_sfr_min(),
+        }
+    }
+}
+
+/// Configuración del solver de transferencia radiativa M1 (Phase 81).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RtSection {
+    /// Activa el solver de transferencia radiativa M1 (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Factor de reducción de la velocidad de la luz (default: 100.0).
+    #[serde(default = "default_c_red_factor")]
+    pub c_red_factor: f64,
+    /// Opacidad de absorción κ_abs en unidades internas (default: 1.0).
+    #[serde(default = "default_kappa_abs")]
+    pub kappa_abs: f64,
+    /// Número de celdas del grid de radiación por lado (default: 32).
+    #[serde(default = "default_rt_mesh")]
+    pub rt_mesh: usize,
+    /// Número de sub-pasos del solver M1 por paso de simulación (default: 5).
+    #[serde(default = "default_rt_substeps")]
+    pub substeps: usize,
+}
+
+fn default_c_red_factor() -> f64 { 100.0 }
+fn default_kappa_abs() -> f64 { 1.0 }
+fn default_rt_mesh() -> usize { 32 }
+fn default_rt_substeps() -> usize { 5 }
+
+impl Default for RtSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            c_red_factor: default_c_red_factor(),
+            kappa_abs: default_kappa_abs(),
+            rt_mesh: default_rt_mesh(),
+            substeps: default_rt_substeps(),
         }
     }
 }
@@ -1167,6 +1248,9 @@ pub struct InsituAnalysisSection {
     /// Número de bins para ξ(r). `0` → no calcular ξ(r). Default: 0.
     #[serde(default)]
     pub xi_bins: usize,
+    /// Número de bins en μ para P(k,μ) en espacio de redshift. `0` → no calcular. Default: 0.
+    #[serde(default)]
+    pub pk_rsd_bins: usize,
     /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
     /// Si es `None` se usa `<out_dir>/insitu/`.
     #[serde(default)]
@@ -1187,6 +1271,7 @@ impl Default for InsituAnalysisSection {
             fof_b: default_fof_b(),
             fof_min_part: default_fof_min_part(),
             xi_bins: 0,
+            pk_rsd_bins: 0,
             output_dir: None,
         }
     }
