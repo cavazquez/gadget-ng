@@ -69,7 +69,7 @@ fn build_initial_particles() -> Vec<Particle> {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(),
+        rt: Default::default(), reionization: Default::default(),
     };
     build_particles(&cfg).expect("ICs no deben fallar")
 }

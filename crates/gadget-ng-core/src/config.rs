@@ -29,6 +29,9 @@ pub struct RunConfig {
     /// Solver de transferencia radiativa M1 (Phase 81; opcional; desactivado por defecto).
     #[serde(default)]
     pub rt: RtSection,
+    /// Reionización del Universo: fuentes UV puntuales (Phase 89; opcional).
+    #[serde(default)]
+    pub reionization: ReionizationSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1212,6 +1215,53 @@ impl Default for RtSection {
     }
 }
 
+// ── ReionizationSection ───────────────────────────────────────────────────────
+
+/// Configuración del módulo de reionización del Universo (Phase 89).
+///
+/// ```toml
+/// [reionization]
+/// enabled = true
+/// n_sources = 4          # número de fuentes UV
+/// uv_luminosity = 1.0    # luminosidad por fuente [unidades internas]
+/// z_start = 12.0
+/// z_end   = 6.0
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReionizationSection {
+    /// Activa el módulo (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Número de fuentes UV homogéneamente distribuidas (default: 0).
+    #[serde(default)]
+    pub n_sources: usize,
+    /// Luminosidad UV por fuente en unidades internas (default: 1.0).
+    #[serde(default = "default_uv_luminosity")]
+    pub uv_luminosity: f64,
+    /// Redshift de inicio de la reionización (default: 12.0).
+    #[serde(default = "default_z_reion_start")]
+    pub z_start: f64,
+    /// Redshift de fin de la reionización (default: 6.0).
+    #[serde(default = "default_z_reion_end")]
+    pub z_end: f64,
+}
+
+fn default_uv_luminosity() -> f64 { 1.0 }
+fn default_z_reion_start() -> f64 { 12.0 }
+fn default_z_reion_end() -> f64 { 6.0 }
+
+impl Default for ReionizationSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            n_sources: 0,
+            uv_luminosity: default_uv_luminosity(),
+            z_start: default_z_reion_start(),
+            z_end: default_z_reion_end(),
+        }
+    }
+}
+
 // ── InsituAnalysisSection ─────────────────────────────────────────────────────
 
 /// Configuración del análisis in-situ ejecutado durante el loop `stepping` (Phase 63).
@@ -1260,6 +1310,9 @@ pub struct InsituAnalysisSection {
     /// Radio de suavizado para el campo de densidad del entorno (unidades internas). Default: 5.0.
     #[serde(default = "default_ab_smooth_r")]
     pub assembly_bias_smooth_r: f64,
+    /// Activar cálculo del perfil de temperatura del IGM T(z). Default: false.
+    #[serde(default)]
+    pub igm_temp_enabled: bool,
     /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
     /// Si es `None` se usa `<out_dir>/insitu/`.
     #[serde(default)]
@@ -1285,6 +1338,7 @@ impl Default for InsituAnalysisSection {
             bispectrum_bins: 0,
             assembly_bias_enabled: false,
             assembly_bias_smooth_r: default_ab_smooth_r(),
+            igm_temp_enabled: false,
             output_dir: None,
         }
     }

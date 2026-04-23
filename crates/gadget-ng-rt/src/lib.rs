@@ -37,8 +37,10 @@
 
 pub mod chemistry;
 pub mod coupling;
+pub mod igm_temp;
 pub mod m1;
 pub mod mpi;
+pub mod reionization;
 
 pub use chemistry::{
     alpha_hii, alpha_heii, alpha_heiii,
@@ -56,4 +58,14 @@ pub use m1::{
 pub use mpi::{
     allreduce_radiation, exchange_radiation_halos, m1_update_slab,
     RadiationFieldSlab, RtRuntime,
+};
+#[cfg(feature = "mpi")]
+pub use mpi::{allreduce_radiation_mpi, exchange_radiation_halos_mpi};
+pub use reionization::{
+    compute_reionization_state, deposit_uv_sources, reionization_step, stromgren_radius,
+    ReionizationParams, ReionizationState, UvSource, ALPHA_B,
+};
+pub use igm_temp::{
+    compute_igm_temp_all, compute_igm_temp_profile, temperature_from_particle,
+    IgmTempBin, IgmTempParams,
 };

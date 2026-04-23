@@ -30,7 +30,7 @@ fn root_mass_and_com_match_particles() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(),
+        rt: Default::default(), reionization: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();

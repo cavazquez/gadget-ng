@@ -14,3 +14,8 @@ wgpu = "29.0.1"
 
 [dev-dependencies]
 tempfile = "3"
+criterion.workspace = true
+
+[[bench]]
+name = "gpu_vs_cpu"
+harness = false

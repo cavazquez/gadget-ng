@@ -739,6 +739,7 @@ dependencies = [
 name = "gadget-ng-gpu"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "pollster",
  "tempfile",
  "wgpu",
@@ -818,6 +819,7 @@ dependencies = [
  "criterion",
  "gadget-ng-core",
  "gadget-ng-parallel",
+ "mpi",
  "rayon",
  "rustfft",
  "tempfile",
@@ -830,6 +832,7 @@ dependencies = [
  "approx",
  "gadget-ng-core",
  "gadget-ng-sph",
+ "mpi",
  "serde",
 ]
 

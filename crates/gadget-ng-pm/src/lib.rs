@@ -30,6 +30,10 @@ pub use amr_mpi::{
     amr_pm_accels_multilevel_mpi, broadcast_patch_forces, build_amr_hierarchy_mpi,
     AmrPatchMessage, AmrRuntime,
 };
+#[cfg(feature = "mpi")]
+pub use amr_mpi::{
+    amr_pm_accels_multilevel_mpi_real, broadcast_patch_forces_mpi, build_amr_hierarchy_mpi_real,
+};
 pub use pencil_fft::{solve_forces_pencil2d, PencilLayout2D};
 pub use slab_fft::SlabLayout;
 pub use solver::PmSolver;

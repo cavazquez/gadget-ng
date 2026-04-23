@@ -31,3 +31,4 @@ __pycache__
 # Phase 14 binarios
 experiments/nbody/phase14_soa_simd/gadget-ng-baseline
 experiments/nbody/phase14_soa_simd/gadget-ng-soa-simd
+bench_results/*.json

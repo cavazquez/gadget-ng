@@ -35,6 +35,9 @@ pub struct InsituResult {
     /// Assembly bias (Spearman spin/concentración vs entorno). None si no activado.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assembly_bias: Option<AssemblyBiasOut>,
+    /// Perfil de temperatura del IGM T(z). None si `igm_temp_enabled == false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub igm_temp: Option<gadget_ng_rt::IgmTempBin>,
 }
 
 /// Salida de un bin del bispectrum.
@@ -251,6 +254,27 @@ pub fn maybe_run_insitu(
 
             let z = if a > 0.0 { 1.0 / a - 1.0 } else { f64::INFINITY };
 
+            // Perfil de temperatura IGM (Phase 90)
+            let igm_temp_out = if cfg.igm_temp_enabled {
+                let gas_particles: Vec<&Particle> = particles
+                    .iter()
+                    .filter(|p| p.internal_energy > 0.0)
+                    .collect();
+                if gas_particles.is_empty() {
+                    None
+                } else {
+                    let chem_neutral = vec![
+                        gadget_ng_rt::ChemState::neutral();
+                        gas_particles.len()
+                    ];
+                    let gas_owned: Vec<Particle> = gas_particles.iter().map(|p| (*p).clone()).collect();
+                    let params = gadget_ng_rt::IgmTempParams::default();
+                    Some(gadget_ng_rt::compute_igm_temp_profile(&gas_owned, &chem_neutral, 0.0, z, &params))
+                }
+            } else {
+                None
+            };
+
             let insitu = InsituResult {
                 step,
                 a,
@@ -263,6 +287,7 @@ pub fn maybe_run_insitu(
                 pk_multipoles: pk_multipoles_out,
                 bk_equilateral: bk_equilateral_out,
                 assembly_bias: assembly_bias_out,
+                igm_temp: igm_temp_out,
             };
 
             let path = out_dir.join(format!("insitu_{step:06}.json"));

@@ -284,6 +284,138 @@ pub fn m1_update_slab(slab: &mut RadiationFieldSlab, dt: f64, params: &M1Params)
     slab.flux_z = local_rf.flux_z;
 }
 
+// ── Implementaciones MPI reales (feature = "mpi") ────────────────────────────
+
+/// Suma global del campo de radiación con MPI real (`MPI_Allreduce`).
+///
+/// Equivalente a `allreduce_radiation` pero usa el communicator MPI real.
+/// Requiere compilar con `--features mpi`.
+///
+/// # Argumentos
+/// - `rad`   — campo local (modificado in-place con la suma global)
+/// - `world` — communicator MPI (p. ej. `universe.world()` de `rsmpi`)
+#[cfg(feature = "mpi")]
+pub fn allreduce_radiation_mpi<C: mpi::collective::CommunicatorCollectives>(
+    rad: &mut RadiationField,
+    world: &C,
+) {
+    use mpi::collective::SystemOperation;
+    let e_send  = rad.energy_density.clone();
+    let fx_send = rad.flux_x.clone();
+    let fy_send = rad.flux_y.clone();
+    let fz_send = rad.flux_z.clone();
+    world.all_reduce_into(&e_send[..],  &mut rad.energy_density[..], SystemOperation::sum());
+    world.all_reduce_into(&fx_send[..], &mut rad.flux_x[..],         SystemOperation::sum());
+    world.all_reduce_into(&fy_send[..], &mut rad.flux_y[..],         SystemOperation::sum());
+    world.all_reduce_into(&fz_send[..], &mut rad.flux_z[..],         SystemOperation::sum());
+}
+
+/// Intercambia capas halo ghost entre ranks vecinos con MPI real (`MPI_Send`/`MPI_Recv`).
+///
+/// Envía la primera capa local (iy=0) al rank k-1 y la última (iy=ny_local-1) al rank k+1.
+/// Recibe las capas correspondientes de los vecinos y las almacena en los halos del slab.
+///
+/// Usa patrón odd-even de dos rondas para evitar deadlock (análogo a `point_to_point_exchange`
+/// en `gadget-ng-parallel`).
+///
+/// # Argumentos
+/// - `slab`  — slab local (halos actualizados in-place)
+/// - `world` — communicator MPI
+#[cfg(feature = "mpi")]
+pub fn exchange_radiation_halos_mpi<C: mpi::traits::Communicator>(
+    slab: &mut RadiationFieldSlab,
+    world: &C,
+) {
+    use mpi::traits::*;
+
+    let rank    = world.rank() as usize;
+    let size    = world.size() as usize;
+    let nx      = slab.nx;
+    let nz      = slab.nz;
+    let ny_loc  = slab.ny_local;
+
+    if size == 1 {
+        // Serial: condición periódica
+        let rt = RtRuntime::serial();
+        exchange_radiation_halos(slab, &rt);
+        return;
+    }
+
+    let layer_len = nx * nz;
+    // Cada capa se empaqueta como [energy, flux_x, flux_y, flux_z] → 4 × layer_len f64
+    let pack_size = 4 * layer_len;
+
+    // Empaquetar primera y última capas locales
+    let mut send_to_left  = vec![0.0f64; pack_size]; // primera capa → halo superior del vecino izquierdo
+    let mut send_to_right = vec![0.0f64; pack_size]; // última capa  → halo inferior del vecino derecho
+
+    for iz in 0..nz {
+        for ix in 0..nx {
+            let flat = iz * nx + ix;
+            let si_first = slab.idx_local(ix, 0, iz);
+            let si_last  = slab.idx_local(ix, ny_loc - 1, iz);
+            send_to_left[flat]              = slab.energy[si_first];
+            send_to_left[layer_len + flat]  = slab.flux_x[si_first];
+            send_to_left[2*layer_len+flat]  = slab.flux_y[si_first];
+            send_to_left[3*layer_len+flat]  = slab.flux_z[si_first];
+            send_to_right[flat]             = slab.energy[si_last];
+            send_to_right[layer_len + flat] = slab.flux_x[si_last];
+            send_to_right[2*layer_len+flat] = slab.flux_y[si_last];
+            send_to_right[3*layer_len+flat] = slab.flux_z[si_last];
+        }
+    }
+
+    let left_rank  = ((rank as i64 - 1).rem_euclid(size as i64)) as i32;
+    let right_rank = ((rank + 1) % size) as i32;
+
+    let mut recv_from_left  = vec![0.0f64; pack_size];
+    let mut recv_from_right = vec![0.0f64; pack_size];
+
+    // Ronda 1: ranks pares envían →derecha (última capa), luego reciben ←izquierda
+    //          ranks impares primero reciben ←izquierda, luego envían →derecha
+    if rank % 2 == 0 {
+        world.process_at_rank(right_rank).send(&send_to_right[..]);
+        let (v, _) = world.process_at_rank(left_rank).receive_vec::<f64>();
+        recv_from_left = v;
+    } else {
+        let (v, _) = world.process_at_rank(left_rank).receive_vec::<f64>();
+        recv_from_left = v;
+        world.process_at_rank(right_rank).send(&send_to_right[..]);
+    }
+    world.barrier();
+
+    // Ronda 2: ranks pares envían ←izquierda (primera capa), luego reciben →derecha
+    //          ranks impares primero reciben →derecha, luego envían ←izquierda
+    if rank % 2 == 0 {
+        world.process_at_rank(left_rank).send(&send_to_left[..]);
+        let (v, _) = world.process_at_rank(right_rank).receive_vec::<f64>();
+        recv_from_right = v;
+    } else {
+        let (v, _) = world.process_at_rank(right_rank).receive_vec::<f64>();
+        recv_from_right = v;
+        world.process_at_rank(left_rank).send(&send_to_left[..]);
+    }
+    world.barrier();
+
+    // Desempaquetar: recv_from_left → halo inferior (iy_slab = 0)
+    //                recv_from_right → halo superior (iy_slab = ny_loc + 1)
+    for iz in 0..nz {
+        for ix in 0..nx {
+            let flat = iz * nx + ix;
+            let hi_lo = slab.idx_slab(ix, 0, iz);
+            let hi_hi = slab.idx_slab(ix, ny_loc + 1, iz);
+            slab.energy[hi_lo]  = recv_from_left[flat];
+            slab.flux_x[hi_lo]  = recv_from_left[layer_len + flat];
+            slab.flux_y[hi_lo]  = recv_from_left[2*layer_len+flat];
+            slab.flux_z[hi_lo]  = recv_from_left[3*layer_len+flat];
+            slab.energy[hi_hi]  = recv_from_right[flat];
+            slab.flux_x[hi_hi]  = recv_from_right[layer_len + flat];
+            slab.flux_y[hi_hi]  = recv_from_right[2*layer_len+flat];
+            slab.flux_z[hi_hi]  = recv_from_right[3*layer_len+flat];
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -355,6 +487,52 @@ mod tests {
         for i in 0..global_orig.n_cells() {
             assert_eq!(global_orig.energy_density[i], global_rt.energy_density[i]);
         }
+    }
+
+    // ── Tests con feature mpi (single-rank = serial idéntico) ─────────────────
+
+    #[cfg(feature = "mpi")]
+    use std::sync::OnceLock;
+
+    #[cfg(feature = "mpi")]
+    static MPI_UNIVERSE: OnceLock<mpi::environment::Universe> = OnceLock::new();
+
+    #[cfg(feature = "mpi")]
+    fn get_mpi_world() -> mpi::topology::SimpleCommunicator {
+        MPI_UNIVERSE.get_or_init(|| mpi::initialize().unwrap()).world()
+    }
+
+    #[cfg(feature = "mpi")]
+    #[test]
+    fn allreduce_radiation_mpi_single_rank() {
+        use mpi::traits::Communicator;
+        let world = get_mpi_world();
+        if world.size() > 1 { return; } // solo en serial
+
+        let n = 4;
+        let mut rf = make_uniform_rf(n, 2.0);
+        let e_before = rf.energy_density.clone();
+        allreduce_radiation_mpi(&mut rf, &world);
+        // Con 1 rank, allreduce suma sobre 1 elemento → mismo valor
+        assert_eq!(rf.energy_density, e_before);
+    }
+
+    #[cfg(feature = "mpi")]
+    #[test]
+    fn exchange_halos_mpi_single_rank_periodic() {
+        use mpi::traits::Communicator;
+        let world = get_mpi_world();
+        if world.size() > 1 { return; }
+
+        let n = 4;
+        let global = make_uniform_rf(n, 3.0);
+        let mut slab = RadiationFieldSlab::from_global(&global, 0, 1);
+        exchange_radiation_halos_mpi(&mut slab, &world);
+
+        // Single rank: halos periódicos
+        let e_first = slab.energy[slab.idx_local(0, 0, 0)];
+        let e_halo_hi = slab.energy[slab.idx_slab(0, n + 1, 0)];
+        assert_eq!(e_halo_hi, e_first);
     }
 
     #[test]

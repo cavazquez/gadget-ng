@@ -51,4 +51,18 @@ if [ -n "$BIN" ]; then
     mpirun --oversubscribe -n 2 "$BIN" --test-threads=1
 fi
 
+echo "== Tests de integración --release (Phase 66 SPH, 63 in-situ, 70 AMR) =="
+cargo test -p gadget-ng-physics --test phase66_sph_cosmo --release -- --test-threads=1
+cargo test -p gadget-ng-physics --test phase63_insitu_analysis --release -- --test-threads=1
+cargo test -p gadget-ng-physics --test phase70_amr_pm --release -- --test-threads=1
+
+echo "== MPI RT real (feature mpi, release) =="
+cargo test -p gadget-ng-rt --features mpi --release
+
+echo "== MPI AMR real (feature mpi, release) =="
+cargo test -p gadget-ng-pm --features mpi --release
+
+echo "== Benchmark GPU vs CPU (dry-run, sin GPU requerida) =="
+cargo build -p gadget-ng-gpu --benches --release
+
 echo "check_release.sh: OK"

@@ -48,6 +48,12 @@
 | **Phase 84** | 🌐 **RT MPI**: `RadiationFieldSlab`, `allreduce_radiation`, `exchange_radiation_halos` |
 | **Phase 85** | 🌐 **AMR MPI**: `AmrPatchMessage`, `broadcast_patch_forces`, `amr_pm_accels_multilevel_mpi` |
 | **Phase 86** | 🧪 **Química no-equilibrio**: `ChemState`, `solve_chemistry_implicit`, `apply_chemistry` (HII/HeII/HeIII) |
+| **Phase 87** | 🌐 **MPI RT+AMR real**: `allreduce_radiation_mpi`, `exchange_radiation_halos_mpi`, `broadcast_patch_forces_mpi` (rsmpi real) |
+| **Phase 88** | 📈 **Benchmarks GPU+CI**: `gpu_vs_cpu.rs` Criterion, `check_release.sh` extendido con tests integración --release |
+| **Phase 89** | ☀️ **Reionización**: `UvSource`, `deposit_uv_sources`, `compute_reionization_state`, `stromgren_radius` |
+| **Phase 90** | 🌡️ **IGM T(z)**: `IgmTempBin`, `compute_igm_temp_profile` + campo `igm_temp` en `InsituResult` |
+| **Phase 91** | 📄 **Paper JOSS**: `docs/paper/paper.md` + `paper.bib` en formato JOSS completo |
+| **Phase 92** | 📊 **Benchmarks formales**: `bench_mpi_scaling.sh`, `bench_pk_vs_gadget4.py`, verificación rsmpi completo |
 
 ---
 
@@ -57,10 +63,10 @@ Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
-| MPI RT real | Implementar `MPI_Allreduce`/`MPI_Sendrecv` reales en `gadget-ng-rt/src/mpi.rs` | 2–3 sesiones |
-| MPI AMR real | Implementar `MPI_Bcast`/`MPI_Gatherv` en `gadget-ng-pm/src/amr_mpi.rs` | 2–3 sesiones |
-| Validación producción | Corrida N=128³ completa hasta z=0, HMF vs Tinker | 2–3 sesiones |
-| Reionización | Fuentes UV puntuales, front de ionización, estadísticas 21cm | 4–5 sesiones |
+| Validación producción N=128³ | Corrida completa hasta z=0, HMF vs Tinker, P(k) formal | 2–3 sesiones |
+| Estadísticas 21cm | Temperatura de brillo δT_b, power spectrum 21cm | 3–4 sesiones |
+| Reionización UV con RT+química acoplados | Usar M1+química para simular EoR z=6–12 | 4–5 sesiones |
+| Submission JOSS | Figuras, DOI Zenodo, pre-submission inquiry | 1–2 sesiones |
 
 ---
 

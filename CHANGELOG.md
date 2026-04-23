@@ -8,6 +8,68 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 92 — Benchmarks formales MPI scaling + P(k) vs GADGET-4
+
+- Nuevo script `scripts/bench_mpi_scaling.sh`: mide el tiempo de pared para simulaciones
+  con 1, 2, 4, 8 ranks MPI; genera `bench_results/scaling_<timestamp>.json` con speedup y eficiencia.
+- Nuevo script `docs/notebooks/bench_pk_vs_gadget4.py`:
+  - Función de transferencia analítica de Eisenstein & Hu (1998).
+  - Cálculo de sigma_8 por integración numérica con ventana top-hat.
+  - Comparación cuantitativa con valores de referencia de GADGET-4 (Springel et al. 2021).
+- Verificado que `MpiRuntime` en `gadget-ng-parallel` usa rsmpi real en todas las operaciones
+  (sin stubs): `allreduce`, `allgatherv`, `alltoallv`, `alltoallv_overlap`, `scatter`.
+
+### Phase 91 — Paper draft JOSS
+
+- Nuevo `docs/paper/paper.md`: borrador completo en formato JOSS con secciones
+  Summary, Statement of need, Algorithms, Performance, Validation, References.
+  Describe el stack completo: TreePM, SPH, AMR-PM, RT M1, química, MPI, GPU.
+- Nuevo `docs/paper/paper.bib`: 15 referencias BibTeX (GADGET-4, RAMSES, Barnes-Hut,
+  Eisenstein-Hu, Tinker, NFW, Ludlow, etc.).
+
+### Phase 90 — Perfil de temperatura del IGM T(z)
+
+- Nuevo módulo `crates/gadget-ng-rt/src/igm_temp.rs`:
+  - `IgmTempBin { z, t_mean, t_median, t_sigma, t_p16, t_p84, n_particles }` — estadísticas T(z).
+  - `IgmTempParams { delta_max, gamma }` — umbral de densidad IGM (δ < 10×media por defecto).
+  - `compute_igm_temp_profile(particles, chem_states, mean_density, z, params)` — filtrado + estadísticas.
+  - `compute_igm_temp_all(particles, chem_states, z, gamma)` — sin filtro de densidad.
+  - `temperature_from_particle(u, chem, gamma)` — wrapper sobre `ChemState::temperature_from_internal_energy`.
+- Nuevo campo `igm_temp_enabled: bool` en `InsituAnalysisSection`.
+- Nuevo campo `igm_temp: Option<IgmTempBin>` en `InsituResult` (in-situ analysis).
+
+### Phase 89 — Reionización del Universo: fuentes UV puntuales
+
+- Nuevo módulo `crates/gadget-ng-rt/src/reionization.rs`:
+  - `UvSource { pos: Vec3, luminosity: f64 }` — fuente UV puntual.
+  - `ReionizationState { x_hii_mean, x_hii_sigma, ionized_volume_fraction, z, n_sources }`.
+  - `deposit_uv_sources(rad, sources, box_size, dt)` — depósito CIC/NGP en grid M1.
+  - `compute_reionization_state(chem_states, z, n_sources)` — agrega estadísticas de ionización.
+  - `reionization_step(rad, chem_states, sources, m1_params, dt, box_size, z)` — paso completo.
+  - `stromgren_radius(n_ion_rate, n_h)` — radio de Strömgren analítico.
+- Nueva sección `[reionization]` en `RunConfig` con `ReionizationSection`.
+
+### Phase 88 — Benchmarks GPU vs CPU + CI --release extendido
+
+- Nuevo `crates/gadget-ng-gpu/benches/gpu_vs_cpu.rs` (Criterion):
+  - Grupos: `gravity_cpu`, `gravity_gpu`, `gravity_comparison`.
+  - N ∈ {100, 250, 500, 1000}, con SKIP elegante si no hay GPU.
+- `crates/gadget-ng-gpu/Cargo.toml`: añadido `criterion` dev-dep y `[[bench]]`.
+- `scripts/check_release.sh`: añadidos tests de integración Phase 66/63/70 en `--release`,
+  tests MPI RT/AMR con `--features mpi`, y build de benchmarks GPU.
+
+### Phase 87 — MPI RT real + MPI AMR real
+
+- `crates/gadget-ng-rt/Cargo.toml`: nuevo feature `mpi = ["dep:mpi"]`.
+- `crates/gadget-ng-rt/src/mpi.rs` (bajo `#[cfg(feature = "mpi")]`):
+  - `allreduce_radiation_mpi<C: CommunicatorCollectives>` — sum real via rsmpi.
+  - `exchange_radiation_halos_mpi<C: Communicator>` — halo exchange real (odd-even p2p).
+- `crates/gadget-ng-pm/Cargo.toml`: nuevo feature `mpi = ["dep:mpi"]`.
+- `crates/gadget-ng-pm/src/amr_mpi.rs` (bajo `#[cfg(feature = "mpi")]`):
+  - `broadcast_patch_forces_mpi<C>` — serialización + MPI_Bcast real de parches AMR.
+  - `amr_pm_accels_multilevel_mpi_real<C>` — pipeline: allreduce densidad + broadcast fuerzas.
+  - `build_amr_hierarchy_mpi_real<C>` — allreduce densidad antes de construir jerarquía.
+
 ### Phase 86 — Química de no-equilibrio HII/HeII/HeIII
 
 - Nuevo módulo `crates/gadget-ng-rt/src/chemistry.rs`:

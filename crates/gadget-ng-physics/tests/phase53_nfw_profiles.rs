@@ -383,7 +383,7 @@ fn phase53_density_profile_from_fof_halo() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(),
+        rt: Default::default(), reionization: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deben fallar");

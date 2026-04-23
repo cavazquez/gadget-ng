@@ -5,10 +5,15 @@ edition.workspace = true
 license.workspace = true
 description = "Transferencia radiativa M1 para gadget-ng (Phase 81)"
 
+[features]
+default = []
+mpi = ["dep:mpi"]
+
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
 gadget-ng-sph  = { path = "../gadget-ng-sph" }
 serde.workspace = true
+mpi = { workspace = true, optional = true }
 
 [dev-dependencies]
 approx = "0.5"
