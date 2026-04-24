@@ -1,6 +1,6 @@
 # 🌌 gadget-ng
 
-> Simulador **N-body cosmológico** en Rust, inspirado conceptualmente en la
+> Simulador **N-body + SPH + MHD cosmológico** en Rust, inspirado conceptualmente en la
 > arquitectura y prácticas de [GADGET-4](https://wwwmpa.mpa-garching.mpg.de/gadget4/),
 > sin compartir código ni historial git con el proyecto original.
 >
@@ -9,18 +9,19 @@
 > (`Legacy`/`Z0Sigma8`) → integrador leapfrog/Yoshida4 con factores de
 > drift/kick cosmológicos → PM periódico / TreePM / Barnes–Hut / Direct, con
 > versiones distribuidas (allreduce, slab alltoall, pencil 2D, scatter-gather)
-> → análisis in-situ (FoF, P(k), HMF Press-Schechter/Sheth-Tormen, perfiles NFW,
-> función de correlación ξ(r), relación c(M) Ludlow+2016)
+> → SPH cosmológico con gas + DM + estrellas + metales + SN feedback + AGN
+> → MHD ideal + SRMHD + turbulencia Ornstein-Uhlenbeck + reconexión Sweet-Parker
+>    + Braginskii + plasma de dos fluidos T_e ≠ T_i
+> → transferencia radiativa M1 + reionización EoR z=6–12 + estadísticas 21cm
+> → rayos cósmicos + conducción térmica anisótropa + polvo intersticial + RT UV
+> → análisis in-situ (FoF, P(k), P_B(k), HMF, ξ(r), c(M) Ludlow+2016)
 > → corrección absoluta de `P(k)` vía `pk_correction` (Phase 34–36)
-> → validación externa contra CLASS (Phase 38) → unidades QKSL canónicas
-> y `G` auto-consistente (Phase 45–51) → Halofit no-lineal (Phase 48)
-> → función de masa de halos y perfiles NFW (Phase 52–53) → validación
-> cuantitativa D²(a) y FoF vs HMF hasta z=0 (Phase 54–55)
-> → block timesteps jerárquicos acoplados al árbol LET distribuido (Phase 56)
+> → validación externa contra CLASS (Phase 38)
+> → block timesteps jerárquicos + LET distribuido (Phase 56)
 > → solver PM GPU CUDA/HIP opcional (Phase 57)
-> → restart/checkpoint robusto bit-a-bit (Phase 59)
-> → domain decomposition adaptativa por costo (Phase 60)
 > → CLI `analyze` con pipeline completo FoF+P(k)+ξ(r)+c(M) y render PPM**.
+>
+> **Estado:** Phases 1–150 completadas · >2 300 líneas de física nueva · 48 tests nuevos en Phases 142–150.
 
 ## 🧰 Herramientas y tecnologías
 
@@ -33,6 +34,8 @@
 [![🌐 HDF5](https://img.shields.io/badge/🌐_HDF5-1.10%2B-blue)](https://www.hdfgroup.org/solutions/hdf5/)
 [![📊 NumPy](https://img.shields.io/badge/📊_NumPy-SciPy%2FMatplotlib-blue?logo=numpy&logoColor=white)](https://numpy.org/)
 [![🔭 CLASS](https://img.shields.io/badge/🔭_CLASS-classy_3.3%2B-green)](https://lesgourg.github.io/class_public/class.html)
+[![🧲 MHD](https://img.shields.io/badge/🧲_MHD-Ideal%2BSRMHD%2BTurbulencia-blueviolet)](crates/gadget-ng-mhd/)
+[![⚛️ Plasma2F](https://img.shields.io/badge/⚛️_Plasma-2_Fluidos_T_e≠T_i-teal)](crates/gadget-ng-mhd/src/two_fluid.rs)
 [![🧪 GitHub_Actions](https://img.shields.io/badge/🧪_GitHub_Actions-CI-lightgrey?logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![📜 License](https://img.shields.io/badge/📜_License-GPL--3.0-blue)](LICENSE)
 
@@ -43,11 +46,15 @@
 | ⚡ **GPU (wgpu)** | `wgpu` con shaders WGSL (Vulkan / Metal / DX12 / WebGPU) |
 | 🟢 **GPU CUDA** | Solver PM NVIDIA CUDA + cuFFT; kernels CIC + Poisson + FFT 3D; degradación elegante sin toolchain |
 | 🔴 **GPU HIP/ROCm** | Solver PM AMD HIP + rocFFT; misma arquitectura que CUDA; `CUDA_SKIP` / `HIP_SKIP` para CI |
-| 🗜️ **I/O** | JSONL, `bincode`, `hdf5` estilo GADGET, `msgpack`, `netcdf` |
+| 🧲 **MHD** | MHD ideal SPH, SRMHD, Braginskii, reconexión Sweet-Parker, turbulencia Ornstein-Uhlenbeck, flux-freeze ICM |
+| ⚛️ **Plasma 2 fluidos** | `T_e ≠ T_i`, acoplamiento Coulomb implícito, jets AGN relativistas, espectro P_B(k) |
+| 💫 **Física bariónica** | SPH Wendland C2, cooling metálico, SF estocástica, vientos, SN Ia+II, AGN bimodal, rayos cósmicos, polvo |
+| 🌅 **Radiación** | RT M1 (HLL + Levermore), reionización EoR z=6–12, señal 21cm δT_b, T(z) IGM, absorción UV por polvo |
+| 🗜️ **I/O** | JSONL, `bincode`, `hdf5` estilo GADGET-4 (22 attrs, yt/pynbody compatible), `msgpack`, `netcdf` |
 | 🔭 **Cosmología de referencia** | `classy` 3.3+ (CLASS) para validación externa (Phase 38), Eisenstein–Hu interno |
 | 📊 **Postproceso** | Python 3.10+, NumPy, SciPy, Matplotlib — mirrors de `pk_correction` y figuras por fase |
 | 🖼️ **Visualización PPM** | `render_ppm` + `write_ppm` sin dependencias externas; salida P6 legible por GIMP/ImageMagick |
-| 🧪 **CI / calidad** | GitHub Actions, `cargo fmt`, `cargo clippy -D warnings`, `cargo test --release` |
+| 🧪 **CI / calidad** | GitHub Actions, `cargo fmt`, `cargo clippy --workspace` (0 warnings), `cargo test --release` |
 | 📁 **Experimentos** | TOML + orquestadores Bash + volcados JSON cacheables en `target/phaseNN/` |
 
 ---
@@ -65,12 +72,17 @@
 9. [Corrección absoluta de `P(k)` (`pk_correction`)](#corrección-absoluta-de-pk-pk_correction)
 10. [Convención de ICs y validación dinámica (Phase 37–42)](#convención-de-ics-y-validación-dinámica-phase-3742)
 11. [Análisis post-procesamiento (Phase 56–60 + Rápidas)](#análisis-post-procesamiento-phase-5660--rápidas)
-12. [Tests automáticos](#tests-automáticos)
-13. [Reportes técnicos](#reportes-técnicos)
-14. [Features opcionales](#features-opcionales)
-15. [Calidad y CI](#calidad-y-ci)
-16. [Estructura de experimentos](#estructura-de-experimentos)
-17. [Licencia](#licencia)
+12. [Estadísticas avanzadas y transferencia radiativa (Phases 71–82)](#estadísticas-avanzadas-y-transferencia-radiativa-phases-7182)
+13. [Reionización y RT (Phases 87–92)](#reionización-y-rt-phases-8792)
+14. [Estadísticas 21cm y EoR (Phases 94–95)](#estadísticas-21cm-y-eor-phases-9495)
+15. [Feedback AGN (Phase 96)](#feedback-agn-phase-96)
+16. [MHD Completo + Plasma 2F (Phases 123–150)](#mhd-completo--plasma-2f-phases-123150)
+17. [Tests automáticos](#tests-automáticos)
+18. [Reportes técnicos](#reportes-técnicos)
+19. [Features opcionales](#features-opcionales)
+20. [Calidad y CI](#calidad-y-ci)
+21. [Estructura de experimentos](#estructura-de-experimentos)
+22. [Licencia](#licencia)
 
 ---
 
@@ -100,8 +112,18 @@
 | **Visualización** | Render CPU a PNG, proyecciones XY/XZ/YZ, colormap Viridis; `render_ppm`/`write_ppm` PPM sin dependencias externas |
 | **📊 CLI `analyze`** | `gadget-ng analyze`: FoF + P(k) + ξ(r) + c(M) desde cualquier snapshot → `results.json` estructurado |
 | **Configuración** | TOML + variables de entorno `GADGET_NG_*` |
-| **Snapshots** | JSONL (default), **bincode** o **HDF5** estilo GADGET + `provenance.json`; formato auto-seleccionado por feature flag |
+| **Snapshots** | JSONL (default), **bincode** o **HDF5** estilo GADGET-4 (22 attrs, yt/pynbody compatible) + `provenance.json` |
 | **Unidades físicas** | Sección `[units]` opcional: kpc/M☉/km·s⁻¹ y `G` coherente; `auto_g = true` calcula `G = 3Ω_mH₀²/(8π)` automáticamente (Phase 50–51) |
+| **🧲 MHD ideal** | Ecuación de inducción SPH, limpieza de div-B Dedner, presión + tensor Maxwell, ICs magnetizadas BFieldKind{None,Uniform,Random,Spiral}, CFL Alfvén (Phase 123–132) |
+| **⚡ SRMHD** | MHD especial-relativista: factor de Lorentz γ, primitivización Newton-Raphson, advance_srmhd; jets AGN bipolares v_jet=0.3–0.9c (Phase 139 + 148) |
+| **🌪️ Turbulencia MHD** | Forzado Ornstein-Uhlenbeck, espectro k^{-5/3}, semilla reproducible, números de Mach sónico y Alfvénico (Phase 140) |
+| **🔁 Reconexión** | Modelo Sweet-Parker SPH: B antiparalelos en 2h → libera ΔE_heat, reduce \|B\| (Phase 145) |
+| **🌡️ Braginskii** | Viscosidad anisótropa π_ij = −η (b̂⊗b̂ − δ/3) ∇·v; máxima difusión ∥B, nula ⊥B (Phase 146) |
+| **⚛️ Plasma 2F** | T_e independiente de T_i; acoplamiento Coulomb implícito ν_ei ∝ n_e/T_e^{3/2}; Particle.t_electron (Phase 149) |
+| **❄️ Flux-freeze ICM** | B ∝ ρ^{2/3} en celdas con β > β_freeze; conservación de flujo magnético en fases de baja ionización (Phase 138) |
+| **📡 P_B(k)** | Espectro de potencia magnético por bins logarítmicos de k ∝ 2π/h_i; diagnóstico de magnetogénesis primordial (Phase 147) |
+| **💥 Conducción anisótropa** | Difusión térmica y CR ∥B con factores kappa_par/kappa_perp; supresión CR por β_plasma (Phase 133) |
+| **🌑 Polvo + RT UV** | Ratio polvo/gas D/G, absorción UV kappa_dust×D/G×ρ×h, M1Params.sigma_dust; τ_dust en coupling (Phase 130 + 137) |
 
 ---
 
@@ -313,17 +335,25 @@ gadget-ng/
 │   │                           # NFW + c(M) Duffy/Bhattacharya/Ludlow+2016 (Phase 53/58);
 │   │                           # ξ(r) FFT + pares Davis-Peebles (Phase 58)
 │   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan;
-│   │                           # ⭐ stellar feedback estocástico (Phase 78)
+│   │                           # ⭐ stellar feedback (Phase 78); AGN Bondi (Phase 96/100);
+│   │                           # metales/SFR/SN Ia+II (Phase 109–115); CRs (Phase 117);
+│   │                           # conducción Spitzer (Phase 121); gas molecular (Phase 122)
+│   ├── gadget-ng-mhd           # 🧲 MHD ideal + SRMHD + turbulencia + reconexión +
+│   │                           # Braginskii + flux-freeze + P_B(k) + jets AGN + plasma 2F
+│   │                           # (Phases 123–150); benchmarks Criterion avanzados
 │   ├── gadget-ng-rt            # 🌅 Transferencia radiativa M1 (Phase 81):
-│   │                           # solver Godunov HLL, cierre Levermore 1984, acoplamiento SPH
+│   │                           # solver Godunov HLL, cierre Levermore 1984, acoplamiento SPH;
+│   │                           # reionización EoR + fuentes UV + 21cm + T(z) IGM (Phase 89–95);
+│   │                           # absorción UV por polvo (Phase 137)
 │   ├── gadget-ng-vis           # Visualización CPU: proyecciones, Viridis, PNG;
 │   │                           # 🖼️ render_ppm / write_ppm PPM sin dependencias (Phase Rápidas)
 │   ├── gadget-ng-physics       # Tests de validación física/cosmológica (Kepler,
 │   │                           # Plummer, PM, TreePM, ICs, ensembles, pk_correction,
-│   │                           # checkpoint Phase 59, rebalanceo adaptativo Phase 60)
+│   │                           # checkpoint Phase 59, rebalanceo adaptativo Phase 60,
+│   │                           # Phases 97–150: SPH bariónica, MHD, SRMHD, plasma 2F)
 │   └── gadget-ng-cli           # Binario gadget-ng (clap), subcomandos config/snapshot/
 │                               # stepping/analyse/analyze/visualize;
-│                               # RT M1 + SPH acoplados al stepping (Phase 82/83)
+│                               # macros maybe_sph!/maybe_mhd!/maybe_rt! en engine.rs;
 ├── examples/                   # Configuraciones TOML comentadas
 ├── experiments/nbody/          # Benchmarks y resultados por fase (60+ experimentos)
 └── docs/reports/               # Reportes técnicos de cada fase (60+ reportes)
@@ -425,6 +455,58 @@ gadget-ng/
 | **94** | 📡 Estadísticas 21cm: `brightness_temperature`, P(k)₂₁cm, `Cm21Output` in-situ | ✅ |
 | **95** | 🌌 EoR z=6–12: `maybe_reionization!` en engine, `uv_from_halos`, test fase completa | ✅ |
 | **96** | 🕳️ Feedback AGN: `BlackHole`, `bondi_accretion_rate`, `apply_agn_feedback`, `AgnSection` | ✅ |
+| **97–99** | SPH avanzado: `Particle.z_metal`, `MetalCooling`, enriquecimiento Q, SN Ia DTD; `apply_metal_cooling`, `compute_metallicity` | ✅ |
+| **100** | AGN con halos FoF: AGN en halos masivos, `bondi_agn_halo`, `agn_halos_from_fof` | ✅ |
+| **101** | Fix softening comóvil→físico: `epsilon_phys = epsilon_comoving * a`, corrección unitaria | ✅ |
+| **102** | HDF5 layout GADGET-4 completo: grupos `/PartType0-5`, atributos Header, campos Bfld, ChemAb | ✅ |
+| **103** | Domain decomp con coste medido: `cpu_time_tree_ns` por partícula, SFC ponderado | ✅ |
+| **104** | CLI extendida: `gadget-ng postprocess`, `--phases`, logging estructurado JSON | ✅ |
+| **105** | JSONL con campos SPH: `u_therm`, `rho`, `h_sml`, `z_metal`, `sfr`, `t_star` | ✅ |
+| **106** | Restart con SPH state completo: `u_therm`, `rho`, campos MHD en checkpoint | ✅ |
+| **107** | Merger trees con FoF real: árbol de fusiones usando IDs de halos FoF, `MergerTree`, `progenitor_map` | ✅ |
+| **108** | Vientos galácticos: `apply_galactic_winds`, `v_wind ∝ σ_dm`, mass-loading `η_w` | ✅ |
+| **109** | Metales en Particle + `ParticleType::Star`: `z_alpha`, `z_fe`, spawning de partículas estelares | ✅ |
+| **110** | Enriquecimiento químico SPH: yields O+Fe de SNII+SNIa distribuidos a vecinos SPH | ✅ |
+| **111** | Enfriamiento por metales (`MetalCooling`): tablas Z-dependientes, interp. bilineal | ✅ |
+| **112** | Partículas estelares reales (spawning): `spawn_star_particles`, SSP Kroupa | ✅ |
+| **113** | SN Ia con DTD power-law: `snia_rate_dtd`, yields Fe, calor térmico | ✅ |
+| **114** | ISM Multifase fría-caliente: `TwoPhaseISM`, fracción fría `x_cold`, `u_hot` vs `u_cold` | ✅ |
+| **115** | Vientos estelares pre-SN: `apply_stellar_winds`, masa perdida via `mass_loss_rate` | ✅ |
+| **116** | Modo radio AGN (bubble feedback): `inject_agn_bubble`, cavidades de entalpía | ✅ |
+| **117** | Rayos cósmicos básicos: `Particle.e_cr`, `inject_cr_sn`, difusión isotrópica | ✅ |
+| **118** | Función de luminosidad y colores galácticos: `galaxy_luminosity`, magnitudes B/V/R | ✅ |
+| **119** | Enfriamiento tabulado Sutherland-Dopita 1993: `cooling_sd93`, grilla [T, Z] | ✅ |
+| **120** | Engine integration bariónica: `maybe_sph!` coordina SPH+quím+metales+feedback por paso | ✅ |
+| **121** | Conducción térmica ICM Spitzer: `apply_spitzer_conduction`, κ ∝ T^{5/2} anisótropo | ✅ |
+| **122** | Gas molecular HI→H₂: `MolecularFraction`, umbral de densidad, shielding UV | ✅ |
+| **123** | 🧲 Crate `gadget-ng-mhd` + `b_field` en Particle + ecuación de inducción SPH | ✅ |
+| **124** | Presión magnética + tensor Maxwell en fuerzas SPH: `f_lorentz`, `p_mag = B²/2` | ✅ |
+| **125** | Dedner div-B cleaning: `psi_div` advectado, decaimiento `ch/cp²`, residuos < 1 % | ✅ |
+| **126** | Integración MHD en engine + macro `maybe_mhd!` + validación onda Alfvén | ✅ |
+| **127** | ICs magnetizadas + CFL magnético: `BFieldKind`, `alfven_dt`, `cfl_mhd` | ✅ |
+| **128** | Validación MHD 3D Alfvén + Brio-Wu 1D: tests de onda y choque MHD | ✅ |
+| **129** | Acoplamiento CR–B: difusión CR suprimida por β_plasma, `diffuse_cr_anisotropic` | ✅ |
+| **130** | Polvo intersticial básico: `Particle.dust_fraction`, `apply_dust_growth`, D/G ratio | ✅ |
+| **131** | HDF5 campos MHD + SPH completos: `/Bfld`, `/DivB`, `/Psi`, `/ECr`, `/Dust` en snapshot | ✅ |
+| **132** | Benchmark MHD Criterion + CFL unificado: `bench mhd`, `cfl_mhd` unifica dt | ✅ |
+| **133** | MHD anisótropo: difusión térmica + CR paralela a B, `kappa_par/kappa_perp` | ✅ |
+| **134** | Cooling magnético: `apply_magnetic_cooling`, emisión sincrotrón ∝ B² γ_e² | ✅ |
+| **135** | Resistividad numérica artificial: `apply_artificial_resistivity`, `alpha_b` adaptativo | ✅ |
+| **136** | MHD cosmológico end-to-end: `lcdm_mhd_N64`, crecimiento de B de semilla, test B_rms(a) | ✅ |
+| **137** | Polvo + RT: absorción UV kappa_dust×D/G×ρ×h, M1Params.sigma_dust, τ_dust | ✅ |
+| **138** | Freeze-out de B en ICM: `apply_flux_freeze`, B ∝ ρ^{2/3}, `beta_freeze` | ✅ |
+| **139** | SRMHD — MHD especial-relativista: γ Lorentz, primitivización NR, `advance_srmhd` | ✅ |
+| **140** | Turbulencia MHD: forzado Ornstein-Uhlenbeck, P_B(k) ∝ k^{-5/3}, semilla reproducible | ✅ |
+| **141** | Tests de integración MHD avanzados (Phases 133–140); 48 tests; 0 regresiones | ✅ |
+| **142** | Engine: RMHD + turbulencia en `maybe_mhd!`/`maybe_sph!`; hooks B+plasma | ✅ |
+| **143** | Benchmarks Criterion avanzados: turbulencia, flux-freeze, SRMHD primitivas | ✅ |
+| **144** | Clippy cero warnings en todo el workspace: 15+ lints corregidos | ✅ |
+| **145** | Reconexión magnética Sweet-Parker: `apply_magnetic_reconnection`, `sweet_parker_rate` | ✅ |
+| **146** | Viscosidad Braginskii anisótropa: `apply_braginskii_viscosity`, tensor π_ij | ✅ |
+| **147** | Corrida cosmológica MHD completa + P_B(k): `magnetic_power_spectrum`, test end-to-end | ✅ |
+| **148** | Jets AGN relativistas: `inject_relativistic_jet`, halos FoF masivos, v_jet 0.3–0.9c | ✅ |
+| **149** | Plasma de dos fluidos T_e ≠ T_i: `apply_electron_ion_coupling`, `mean_te_over_ti` | ✅ |
+| **150** | Reportes 142–149, CHANGELOG, roadmap, commit final | ✅ |
 
 ---
 
@@ -1077,6 +1159,38 @@ con contexto, metodología, resultados y limitaciones.
 | [`phase60-adaptive-rebalance`](docs/reports/2026-04-phase60-adaptive-rebalance.md) | 🔀 Domain decomposition adaptativa por costo |
 | [`rapidas-analyze-vis`](docs/reports/2026-04-rapidas-analyze-vis.md) | 📊🖼️ CLI `analyze` + PPM rendering sin dependencias |
 
+### MHD + Física bariónica avanzada (Phases 123–150)
+
+| Reporte | Tema |
+|---------|------|
+| [`phase123-mhd-crate`](docs/reports/2026-04-phase123-mhd-crate.md) | 🧲 Crate gadget-ng-mhd + inducción SPH |
+| [`phase124-mhd-forces`](docs/reports/2026-04-phase124-mhd-forces.md) | Presión magnética + tensor Maxwell |
+| [`phase125-dedner-divb`](docs/reports/2026-04-phase125-dedner-divb.md) | Cleaning div-B Dedner |
+| [`phase126-mhd-engine`](docs/reports/2026-04-phase126-mhd-engine.md) | Integración en engine + onda Alfvén |
+| [`phase127-magnetic-ics`](docs/reports/2026-04-phase127-magnetic-ics.md) | ICs magnetizadas + CFL magnético |
+| [`phase128-mhd-validation`](docs/reports/2026-04-phase128-mhd-validation.md) | Validación Alfvén 3D + Brio-Wu 1D |
+| [`phase129-cr-b-coupling`](docs/reports/2026-04-phase129-cr-b-coupling.md) | CR suprimidos por β_plasma |
+| [`phase130-dust`](docs/reports/2026-04-phase130-dust.md) | 🌑 Polvo intersticial básico D/G |
+| [`phase131-hdf5-mhd`](docs/reports/2026-04-phase131-hdf5-mhd.md) | HDF5 campos MHD+SPH (Bfld, Psi, ECr, Dust) |
+| [`phase132-mhd-bench`](docs/reports/2026-04-phase132-mhd-bench.md) | Benchmarks Criterion MHD + CFL unificado |
+| [`phase133-anisotropic-mhd`](docs/reports/2026-04-phase133-anisotropic-mhd.md) | Difusión ∥B térmica y CR anisótropa |
+| [`phase134-magnetic-cooling`](docs/reports/2026-04-phase134-magnetic-cooling.md) | Cooling magnético (sincrotrón) |
+| [`phase135-artificial-resistivity`](docs/reports/2026-04-phase135-artificial-resistivity.md) | Resistividad artificial α_b adaptativo |
+| [`phase136-cosmo-mhd`](docs/reports/2026-04-phase136-cosmo-mhd.md) | MHD cosmológico end-to-end, B_rms(a) |
+| [`phase137-dust-rt`](docs/reports/2026-04-phase137-dust-rt.md) | Polvo + RT UV: absorción kappa_dust×D/G |
+| [`phase138-flux-freeze`](docs/reports/2026-04-phase138-flux-freeze.md) | ❄️ Flux-freeze B en ICM, beta_freeze |
+| [`phase139-srmhd`](docs/reports/2026-04-phase139-srmhd.md) | ⚡ SRMHD: factor de Lorentz γ, primitivas NR |
+| [`phase140-turbulence`](docs/reports/2026-04-phase140-turbulence.md) | 🌪️ Turbulencia O-U, P_B(k) ∝ k^{-5/3} |
+| [`phase141-tests`](docs/reports/2026-04-phase141-tests.md) | Tests integración MHD avanzados (48 tests) |
+| [`phase142-engine-rmhd-turb`](docs/reports/2026-04-phase142-engine-rmhd-turb.md) | Engine: RMHD + turbulencia integrados |
+| [`phase143-advanced-bench`](docs/reports/2026-04-phase143-advanced-bench.md) | Benchmarks Criterion: turb, flux-freeze, SRMHD |
+| [`phase144-clippy`](docs/reports/2026-04-phase144-clippy.md) | Clippy 0 warnings en todo el workspace |
+| [`phase145-reconnection`](docs/reports/2026-04-phase145-reconnection.md) | 🔁 Reconexión Sweet-Parker: B antiparalelos |
+| [`phase146-braginskii`](docs/reports/2026-04-phase146-braginskii.md) | 🌡️ Viscosidad Braginskii anisótropa π_ij |
+| [`phase147-mhd-cosmo-full`](docs/reports/2026-04-phase147-mhd-cosmo-full.md) | Corrida MHD completa + P_B(k) end-to-end |
+| [`phase148-rmhd-jets`](docs/reports/2026-04-phase148-rmhd-jets.md) | 🕳️ Jets AGN relativistas desde halos FoF |
+| [`phase149-two-fluid`](docs/reports/2026-04-phase149-two-fluid.md) | ⚛️ Plasma 2F: T_e ≠ T_i, Coulomb implícito |
+
 ### Meta
 
 | Reporte | Tema |
@@ -1272,6 +1386,141 @@ let params = AgnParams { eps_feedback: 0.05, m_seed: 1e5, v_kick_agn: 500.0 };
 let mdot = bondi_accretion_rate(&bh, rho_gas, c_sound);
 apply_agn_feedback(&mut particles, &[bh], &params, dt);
 ```
+
+---
+
+## MHD Completo + Plasma 2F (Phases 123–150)
+
+El crate `gadget-ng-mhd` implementa un stack MHD completo acoplado al motor SPH.
+
+### Configuración TOML MHD
+
+```toml
+[mhd]
+enabled             = true
+alpha_b             = 0.5        # resistividad artificial adaptativa
+beta_freeze         = 0.1        # umbral de flux-freeze en ICM
+relativistic_mhd    = false      # activar SRMHD (Lorentz γ)
+v_rel_threshold     = 0.1        # v/c mínima para régimen relativista
+reconnection_enabled = true
+f_reconnection      = 0.01       # fracción de E_mag liberada por reconexión
+eta_braginskii      = 0.05       # coeficiente de viscosidad Braginskii
+jet_enabled         = false      # jets AGN bipolares desde halos FoF
+v_jet               = 0.5        # fracción de c para el jet (SRMHD)
+n_jet_halos         = 1          # número de halos AGN activos
+
+[mhd.initial_b_field]
+kind = "uniform"
+value = [1.0e-6, 0.0, 0.0]      # B_0 en unidades internas
+
+[turbulence]
+enabled         = true
+amplitude       = 0.01
+correlation_time = 0.1
+k_min           = 1
+k_max           = 4
+spectral_index  = 1.666          # Kolmogorov -5/3
+
+[two_fluid]
+enabled      = true
+nu_ei_coeff  = 1.0               # factor sobre ν_ei Coulomb
+t_e_init_k   = 1.0e4             # T_e inicial en Kelvin
+```
+
+### Funciones públicas clave (`gadget-ng-mhd`)
+
+```rust
+// Turbulencia Ornstein-Uhlenbeck
+gadget_ng_mhd::apply_turbulent_forcing(&mut particles, &cfg.turbulence, dt, step as u64);
+
+// Flux-freeze ICM (B ∝ ρ^{2/3})
+gadget_ng_mhd::apply_flux_freeze(&mut particles, rho_ref, cfg.mhd.beta_freeze);
+
+// SRMHD — avanza campos relativistas
+gadget_ng_mhd::advance_srmhd(&mut particles, dt, C_LIGHT);
+
+// Reconexión Sweet-Parker
+gadget_ng_mhd::apply_magnetic_reconnection(&mut particles, f_rec, gamma, dt);
+// Tasa teórica de reconexión
+gadget_ng_mhd::sweet_parker_rate(v_alfven, l_rec, eta_eff);
+
+// Viscosidad Braginskii anisótropa
+gadget_ng_mhd::apply_braginskii_viscosity(&mut particles, eta, dt);
+
+// Espectro de potencia magnético P_B(k)
+let bins = gadget_ng_mhd::magnetic_power_spectrum(&particles, box_size, n_bins);
+// bins[i].k_center, .power
+
+// Jets AGN relativistas desde halos FoF
+gadget_ng_mhd::inject_relativistic_jet(&mut particles, &halo_centers, v_jet_frac, n_jet_halos, c, b_jet);
+
+// Plasma de dos fluidos — acoplamiento Coulomb
+gadget_ng_mhd::apply_electron_ion_coupling(&mut particles, &cfg.two_fluid, dt);
+// diagnóstico T_e/T_i
+let ratio = gadget_ng_mhd::mean_te_over_ti(&particles);
+```
+
+### Reportes técnicos MHD (Phases 123–150)
+
+| Reporte | Tema |
+|---------|------|
+| [`phase123-mhd-crate`](docs/reports/2026-04-phase123-mhd-crate.md) | Crate gadget-ng-mhd + inducción SPH |
+| [`phase124-mhd-forces`](docs/reports/2026-04-phase124-mhd-forces.md) | Presión magnética + tensor Maxwell |
+| [`phase125-dedner-divb`](docs/reports/2026-04-phase125-dedner-divb.md) | Cleaning div-B Dedner |
+| [`phase126-mhd-engine`](docs/reports/2026-04-phase126-mhd-engine.md) | Integración en engine + onda Alfvén |
+| [`phase127-magnetic-ics`](docs/reports/2026-04-phase127-magnetic-ics.md) | ICs magnetizadas + CFL |
+| [`phase128-mhd-validation`](docs/reports/2026-04-phase128-mhd-validation.md) | Validación Alfvén 3D + Brio-Wu 1D |
+| [`phase129-cr-b-coupling`](docs/reports/2026-04-phase129-cr-b-coupling.md) | CR suprimidos por β_plasma |
+| [`phase130-dust`](docs/reports/2026-04-phase130-dust.md) | Polvo intersticial D/G |
+| [`phase131-hdf5-mhd`](docs/reports/2026-04-phase131-hdf5-mhd.md) | HDF5 con campos MHD + SPH |
+| [`phase132-mhd-bench`](docs/reports/2026-04-phase132-mhd-bench.md) | Benchmark Criterion + CFL unificado |
+| [`phase133-anisotropic-mhd`](docs/reports/2026-04-phase133-anisotropic-mhd.md) | Difusión ∥B térmica + CR |
+| [`phase134-magnetic-cooling`](docs/reports/2026-04-phase134-magnetic-cooling.md) | Cooling magnético sincrotrón |
+| [`phase135-artificial-resistivity`](docs/reports/2026-04-phase135-artificial-resistivity.md) | Resistividad artificial α_b |
+| [`phase136-cosmo-mhd`](docs/reports/2026-04-phase136-cosmo-mhd.md) | MHD cosmológico end-to-end |
+| [`phase137-dust-rt`](docs/reports/2026-04-phase137-dust-rt.md) | Polvo + RT UV |
+| [`phase138-flux-freeze`](docs/reports/2026-04-phase138-flux-freeze.md) | Freeze-out de B en ICM |
+| [`phase139-srmhd`](docs/reports/2026-04-phase139-srmhd.md) | SRMHD: γ Lorentz + primitivización NR |
+| [`phase140-turbulence`](docs/reports/2026-04-phase140-turbulence.md) | Turbulencia O-U + P_B(k) |
+| [`phase141-tests`](docs/reports/2026-04-phase141-tests.md) | 48 tests de integración avanzados |
+| [`phase142-engine-rmhd-turb`](docs/reports/2026-04-phase142-engine-rmhd-turb.md) | Engine: RMHD + turbulencia integrados |
+| [`phase143-advanced-bench`](docs/reports/2026-04-phase143-advanced-bench.md) | Benchmarks Criterion avanzados |
+| [`phase144-clippy`](docs/reports/2026-04-phase144-clippy.md) | Clippy 0 warnings workspace |
+| [`phase145-reconnection`](docs/reports/2026-04-phase145-reconnection.md) | Reconexión magnética Sweet-Parker |
+| [`phase146-braginskii`](docs/reports/2026-04-phase146-braginskii.md) | Viscosidad Braginskii anisótropa |
+| [`phase147-mhd-cosmo-full`](docs/reports/2026-04-phase147-mhd-cosmo-full.md) | Corrida MHD cosmológica + P_B(k) |
+| [`phase148-rmhd-jets`](docs/reports/2026-04-phase148-rmhd-jets.md) | Jets AGN relativistas desde halos FoF |
+| [`phase149-two-fluid`](docs/reports/2026-04-phase149-two-fluid.md) | Plasma 2F: T_e ≠ T_i, acoplamiento Coulomb |
+
+---
+
+## Tests MHD y plasma (Phases 142–150)
+
+```bash
+# Tests de cada phase MHD/plasma
+cargo test -p gadget-ng-physics --test phase142_engine_rmhd_turb  --release
+cargo test -p gadget-ng-physics --test phase143_advanced_bench    --release
+cargo test -p gadget-ng-physics --test phase144_clippy_clean      --release
+cargo test -p gadget-ng-physics --test phase145_reconnection      --release
+cargo test -p gadget-ng-physics --test phase146_braginskii        --release
+cargo test -p gadget-ng-physics --test phase147_mhd_cosmo_full    --release
+cargo test -p gadget-ng-physics --test phase148_rmhd_jets         --release
+cargo test -p gadget-ng-physics --test phase149_two_fluid         --release
+
+# Benchmarks Criterion MHD avanzados
+cargo bench -p gadget-ng-mhd --bench advanced_bench
+```
+
+Tests de validación cubiertos en Phases 142–150:
+
+- **Phase 142**: `TwoFluidSection` defaults, turbulent forcing, flux-freeze, SRMHD sub-threshold, reconexión y Braginskii sin panics.
+- **Phase 143**: correctitud de funciones benchmarked: `turb_n100_nonzero`, `flux_freeze_n1000_no_crash`, `conserved_to_primitive_1000_iter_finite`.
+- **Phase 144**: 0 regresiones tras limpieza Clippy: `braginskii_eta_zero_is_noop`, `particle_constructors_t_electron_zero`.
+- **Phase 145**: liberación de calor para B antiparalelos, sin calor para B paralelos, decremento de |B|, f_rec=0 es noop, `sweet_parker_rate` fórmula.
+- **Phase 146**: transferencia de momentum ∥B, η=0 es noop, conservación de momentum, anisotropía ⊥B nula.
+- **Phase 147**: `power_spectrum_has_variation`, B_rms ≠ 0, E_mag finita, max_v < c tras evolución MHD.
+- **Phase 148**: inyección v_jet, B alineado con eje, energía relativista, n_jet=0 noop, v_jet=0 noop.
+- **Phase 149**: T_e inicialización, acoplamiento reduce brecha, T_e ≥ 0, equilibrio T_e/T_i → 1, non-gas ignorados.
 
 ---
 
