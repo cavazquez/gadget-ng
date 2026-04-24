@@ -8,7 +8,7 @@
 use gadget_ng_core::{Particle, Vec3};
 
 /// Agujero negro supermasivo (SMBH) en la simulación.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BlackHole {
     /// Posición en la caja de simulación.
     pub pos: Vec3,

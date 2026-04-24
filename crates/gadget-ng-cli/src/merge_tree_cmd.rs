@@ -2,9 +2,19 @@
 //!
 //! Lee catálogos de halos JSONL y snapshots de partículas, construye el merger tree
 //! con [`build_merger_forest`] y escribe el resultado en JSON.
+//!
+//! ## Phase 107: membresía FoF real
+//!
+//! Anteriormente, todos los `ParticleSnapshot` tenían `halo_idx = None`, lo que
+//! hacía que el algoritmo de matching por partículas no funcionara. Ahora se usa
+//! [`particle_snapshots_from_catalog`] para asignar `halo_idx` real a cada
+//! partícula mediante proximidad al centro de masa del halo más cercano dentro
+//! de su radio de virial `r_vir`.
 
 use crate::error::CliError;
-use gadget_ng_analysis::{build_merger_forest, FofHalo, MergerForest, ParticleSnapshot};
+use gadget_ng_analysis::{
+    build_merger_forest, particle_snapshots_from_catalog, FofHalo, MergerForest, ParticleSnapshot,
+};
 use gadget_ng_core::SnapshotFormat;
 use std::path::Path;
 
@@ -55,19 +65,24 @@ pub fn run_merge_tree(
         let snap_data = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, snap_dir)
             .map_err(CliError::Snapshot)?;
 
-        // Construir ParticleSnapshot con IDs y halo_idx.
-        // Como no tenemos info de membresía, asignamos halo_idx = None para todas
-        // (la membresía exacta requeriría re-ejecutar FoF, que no es el objetivo aquí).
-        // Los IDs se usan para tracking entre snapshots.
-        let part_snapshots: Vec<ParticleSnapshot> = snap_data
-            .particles
-            .iter()
-            .enumerate()
-            .map(|(i, _p)| ParticleSnapshot {
-                id: i as u64,
-                halo_idx: None,
-            })
-            .collect();
+        // Phase 107: construir ParticleSnapshot con halo_idx real mediante
+        // asignación por proximidad al COM del halo dentro de r_vir.
+        // Usar el box_size del snapshot; si no está disponible, inferir.
+        let box_size = snap_data.box_size;
+        let positions: Vec<gadget_ng_core::Vec3> =
+            snap_data.particles.iter().map(|p| p.position).collect();
+        let global_ids: Vec<u64> =
+            snap_data.particles.iter().map(|p| p.global_id as u64).collect();
+
+        let part_snapshots = if halos.is_empty() {
+            // Sin halos: todas las partículas son campo
+            global_ids
+                .iter()
+                .map(|&id| ParticleSnapshot { id, halo_idx: None })
+                .collect()
+        } else {
+            particle_snapshots_from_catalog(&positions, &global_ids, &halos, box_size)
+        };
 
         catalogs.push((halos, part_snapshots));
     }

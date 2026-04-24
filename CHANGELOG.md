@@ -8,6 +8,40 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 108 — Vientos galácticos
+
+- `WindParams` en `FeedbackSection` con `enabled`, `v_wind_km_s`, `mass_loading`, `t_decoupling_myr`.
+- `apply_galactic_winds(particles, sfr, cfg, dt, seed) -> Vec<usize>` en `feedback.rs`.
+- Modelo Springel & Hernquist (2003): kick estocástico con probabilidad `p = 1 - exp(-η·SFR·dt/m)`.
+- `WindParams` re-exportado desde `gadget-ng-core`.
+- `#[serde(default)]` en `FeedbackSection.wind` para compatibilidad TOML retroactiva.
+- 8 tests en `phase108_galactic_winds.rs`.
+
+### Phase 107 — Merger Trees con FoF real
+
+- `find_halos_with_membership(...)` en `fof.rs`: retorna `(Vec<FofHalo>, Vec<Option<usize>>)`.
+- `particle_snapshots_from_catalog(...)` asigna `halo_idx` por proximidad COM + r_vir.
+- `run_merge_tree` en `merge_tree_cmd.rs` usa membresía real (antes: todos `halo_idx = None`).
+- Merger trees ahora detectan fusiones correctamente.
+- 6 tests en `phase107_merger_trees.rs`.
+
+### Phase 106 — Restart con SPH state completo
+
+- `BlackHole` (gadget-ng-sph) ahora implementa `Serialize`/`Deserialize`.
+- `ChemState` (gadget-ng-rt) ahora implementa `Serialize`/`Deserialize`.
+- `CheckpointMeta` ampliada con `has_agn_state` y `has_chem_state`.
+- `save_checkpoint` escribe `agn_bhs.json` y `chem_states.json` si los vectores no están vacíos.
+- `load_checkpoint` retorna `Option<Vec<BlackHole>>` y `Option<Vec<ChemState>>`.
+- Motor restaura BHs y chem states desde checkpoint al reanudar.
+- 6 tests en `phase106_restart_sph.rs`.
+
+### Phase 105 — JSONL con campos SPH
+
+- `ParticleRecord` extendido con `internal_energy`, `smoothing_length`, `ptype` (`#[serde(default)]`).
+- `From<&Particle>` y `into_particle()` mapeados bidireccionalmente.
+- Compatibilidad retroactiva: JSONL sin campos SPH se leen con defaults (0.0, 0.0, DarkMatter).
+- 6 tests en `phase105_jsonl_sph.rs` + 4 tests unitarios adicionales en `snapshot.rs`.
+
 ### Phase 104 — Análisis post-proceso CLI extendido
 
 - `AnalyzeParams` extendido con `cm21`, `igm_temp`, `agn_stats`, `eor_state: bool` (Phase 104).

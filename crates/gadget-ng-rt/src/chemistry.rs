@@ -72,7 +72,7 @@ const U_CODE_TO_ERG_G: f64 = 1e10;
 /// Estado de ionización de un elemento de gas (Phase 86).
 ///
 /// Todas las fracciones son adimensionales (número relativo al total de H).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChemState {
     /// Fracción de HI.
     pub x_hi: f64,

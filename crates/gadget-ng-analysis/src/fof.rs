@@ -241,6 +241,136 @@ pub fn find_halos(
     halos
 }
 
+/// Como [`find_halos`] pero además devuelve la membresía por partícula.
+///
+/// Retorna `(halos, membership)` donde `membership[i] = Some(halo_idx)` si la
+/// partícula `i` pertenece al halo `halo_idx`, o `None` si es campo.
+/// El orden de `halos` es por masa descendente (mismo que `find_halos`).
+///
+/// # Phase 107
+///
+/// Esta función habilita la construcción de [`crate::merger_tree::ParticleSnapshot`]
+/// con `halo_idx` real, resolviendo el bug donde todos los snapshots usaban `None`.
+pub fn find_halos_with_membership(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    box_size: f64,
+    b: f64,
+    min_particles: usize,
+    rho_crit: f64,
+) -> (Vec<FofHalo>, Vec<Option<usize>>) {
+    let n = positions.len();
+    if n == 0 {
+        return (Vec::new(), Vec::new());
+    }
+
+    let l_mean = (box_size * box_size * box_size / n as f64).cbrt();
+    let ll = b * l_mean;
+    let ll2 = ll * ll;
+
+    let cll = CellList::build(positions, ll, box_size);
+    let nc = cll.nc;
+    let mut uf = Uf::new(n);
+
+    for ix in 0..nc {
+        for iy in 0..nc {
+            for iz in 0..nc {
+                for i in cll.iter_cell(ix, iy, iz) {
+                    for dix in -1..=1i32 {
+                        for diy in -1..=1i32 {
+                            for diz in -1..=1i32 {
+                                for j in cll.iter_cell(ix + dix, iy + diy, iz + diz) {
+                                    if j <= i {
+                                        continue;
+                                    }
+                                    let dx = periodic_diff(positions[i].x, positions[j].x, box_size);
+                                    let dy = periodic_diff(positions[i].y, positions[j].y, box_size);
+                                    let dz = periodic_diff(positions[i].z, positions[j].z, box_size);
+                                    if dx * dx + dy * dy + dz * dz < ll2 {
+                                        uf.union(i, j);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Construir grupos (raíz → lista de índices).
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        groups.entry(uf.find(i)).or_default().push(i);
+    }
+
+    // Calcular propiedades y filtrar.
+    let mut halos_with_members: Vec<(FofHalo, Vec<usize>)> = groups
+        .values()
+        .filter(|g| g.len() >= min_particles)
+        .enumerate()
+        .map(|(halo_id, members)| {
+            let h = halo_props(
+                halo_id, members, positions, velocities, masses, box_size, rho_crit,
+            );
+            (h, members.clone())
+        })
+        .collect();
+
+    // Ordenar por masa descendente.
+    halos_with_members.sort_by(|a, b| b.0.mass.partial_cmp(&a.0.mass).unwrap());
+
+    // Construir membresía por partícula.
+    let mut membership: Vec<Option<usize>> = vec![None; n];
+    for (new_idx, (h, members)) in halos_with_members.iter_mut().enumerate() {
+        h.halo_id = new_idx;
+        for &part_idx in members.iter() {
+            membership[part_idx] = Some(new_idx);
+        }
+    }
+
+    let halos = halos_with_members.into_iter().map(|(h, _)| h).collect();
+    (halos, membership)
+}
+
+/// Construye `ParticleSnapshot` para el merger tree asignando halo_idx desde
+/// un catálogo de halos mediante proximidad al centro de masa.
+///
+/// Para cada partícula, asigna el halo más cercano si la distancia al COM del
+/// halo es ≤ `r_vir`. Las partículas fuera de todo halo reciben `halo_idx = None`.
+///
+/// # Phase 107
+///
+/// Usado en [`super::merge_tree_cmd`] cuando solo se dispone del catálogo
+/// de halos JSONL (sin re-ejecutar FoF).
+pub fn particle_snapshots_from_catalog(
+    positions: &[Vec3],
+    global_ids: &[u64],
+    halos: &[FofHalo],
+    box_size: f64,
+) -> Vec<super::merger_tree::ParticleSnapshot> {
+    positions
+        .iter()
+        .zip(global_ids.iter())
+        .map(|(pos, &id)| {
+            let mut best_idx: Option<usize> = None;
+            let mut best_d2 = f64::INFINITY;
+            for (h_idx, h) in halos.iter().enumerate() {
+                let dx = periodic_diff(pos.x, h.x_com, box_size);
+                let dy = periodic_diff(pos.y, h.y_com, box_size);
+                let dz = periodic_diff(pos.z, h.z_com, box_size);
+                let d2 = dx * dx + dy * dy + dz * dz;
+                if d2 < h.r_vir * h.r_vir && d2 < best_d2 {
+                    best_d2 = d2;
+                    best_idx = Some(h_idx);
+                }
+            }
+            super::merger_tree::ParticleSnapshot { id, halo_idx: best_idx }
+        })
+        .collect()
+}
+
 /// Ejecuta FoF sobre el conjunto combinado `local + halos`, devolviendo solo los
 /// grupos cuya raíz Union-Find corresponde a una partícula local (índice < `n_local`).
 ///

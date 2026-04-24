@@ -46,7 +46,7 @@ pub use catalog::{
     AnalysisParams, AnalysisResult,
 };
 pub use correlation::{two_point_correlation_fft, two_point_correlation_pairs, XiBin};
-pub use fof::{find_halos_combined, FofHalo};
+pub use fof::{find_halos_combined, find_halos_with_membership, particle_snapshots_from_catalog, FofHalo};
 #[cfg(feature = "parallel")]
 pub use fof_parallel::find_halos_parallel;
 pub use halo_mass_function::{

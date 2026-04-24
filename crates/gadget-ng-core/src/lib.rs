@@ -21,7 +21,7 @@ pub use config::{
     CosmologySection, CoolingKind, DecompositionConfig, GravitySection, IcKind,
     InitialConditionsSection, InsituAnalysisSection, IntegratorKind, MacSoftening,
     NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, RunConfig, SfcKind,
-    FeedbackSection, RtSection, SimulationSection, SnapshotFormat, SolverKind, SphSection,
+    FeedbackSection, WindParams, RtSection, SimulationSection, SnapshotFormat, SolverKind, SphSection,
     TimestepCriterion, TimestepSection, TransferKind, UnitsSection, G_KPC_MSUN_KMPS,
 };
 pub use cosmology::{

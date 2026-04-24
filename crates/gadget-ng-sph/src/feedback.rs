@@ -30,7 +30,7 @@
 //! Springel & Hernquist (2003), MNRAS 339, 289;
 //! Dalla Vecchia & Schaye (2012), MNRAS 426, 140.
 
-use gadget_ng_core::{FeedbackSection, Particle, ParticleType};
+use gadget_ng_core::{FeedbackSection, Particle, ParticleType, WindParams};
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 
@@ -142,6 +142,64 @@ fn random_unit_vector(seed: &mut u64) -> (f64, f64, f64) {
     }
 }
 
+// ── Vientos galácticos (Phase 108) ─────────────────────────────────────────
+
+/// Aplica el modelo de vientos galácticos (Springel & Hernquist 2003).
+///
+/// Para cada partícula de gas con SFR activa:
+/// - Con probabilidad `p_wind = 1 - exp(-η × SFR × dt / mass)`, la partícula
+///   es lanzada como viento con velocidad `v_wind` en dirección aleatoria.
+/// - La energía cinética del viento se añade como kick de velocidad.
+/// - Se retorna el vector de índices de partículas lanzadas.
+///
+/// # Parámetros
+/// - `particles` — partículas de gas (mutables).
+/// - `sfr`       — tasas de formación estelar por partícula.
+/// - `cfg`       — parámetros del viento galáctico.
+/// - `dt`        — paso de tiempo en unidades internas.
+/// - `seed`      — semilla RNG (se actualiza in-place).
+pub fn apply_galactic_winds(
+    particles: &mut [Particle],
+    sfr: &[f64],
+    cfg: &WindParams,
+    dt: f64,
+    seed: &mut u64,
+) -> Vec<usize> {
+    let mut launched: Vec<usize> = Vec::new();
+    if !cfg.enabled {
+        return launched;
+    }
+
+    let v_wind = cfg.v_wind_km_s;
+    let eta = cfg.mass_loading;
+
+    for i in 0..particles.len() {
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
+        let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+        if sfr_i <= 0.0 {
+            continue;
+        }
+
+        let m = particles[i].mass.max(1e-30);
+        // Probabilidad de ser lanzado como viento en este paso.
+        let prob = 1.0 - (-(eta * sfr_i * dt) / m).exp();
+
+        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+
+        if rand_val < prob {
+            let (nx, ny, nz) = random_unit_vector(seed);
+            particles[i].velocity.x += v_wind * nx;
+            particles[i].velocity.y += v_wind * ny;
+            particles[i].velocity.z += v_wind * nz;
+            launched.push(i);
+        }
+    }
+    launched
+}
+
 /// Calcula la energía total inyectada por SN en un paso.
 ///
 /// Util para monitorear la conservación de energía.
@@ -214,6 +272,7 @@ mod tests {
             eps_sn: 0.1,
             rho_sf: 0.0,
             sfr_min: 0.0,
+            ..Default::default()
         };
         // Muchos pasos → algún kick debe aplicarse
         let mut kicked = false;
@@ -240,6 +299,7 @@ mod tests {
             sfr_min: 0.0,
             rho_sf: 0.0,
             eps_sn: 1.0,
+            ..Default::default()
         };
         // Forzar kick con sfr=1e10 para prob ≈ 1
         let mut p = gas_particle(0, 0.01);

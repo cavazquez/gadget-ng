@@ -1163,6 +1163,45 @@ pub struct FeedbackSection {
     /// SFR mínima para activar el feedback (default: 1e-4 en unidades internas).
     #[serde(default = "default_sfr_min")]
     pub sfr_min: f64,
+    /// Vientos galácticos (Phase 108). Default: desactivado.
+    #[serde(default)]
+    pub wind: WindParams,
+}
+
+/// Parámetros del modelo de vientos galácticos (Phase 108).
+///
+/// Basado en la prescripción de Springel & Hernquist (2003) MNRAS 339, 289.
+///
+/// La velocidad del viento es `v_wind_km_s` y el factor de carga de masa `η`
+/// determina cuánta masa se eyecta por unidad de masa estelar formada.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindParams {
+    /// Activa los vientos galácticos (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Velocidad terminal del viento en km/s (default: 480 km/s ≈ 2× v_SN).
+    #[serde(default = "default_v_wind")]
+    pub v_wind_km_s: f64,
+    /// Factor de carga de masa η = Ṁ_wind / SFR (default: 2.0).
+    #[serde(default = "default_mass_loading")]
+    pub mass_loading: f64,
+    /// Tiempo de desacoplamiento hidrológico en Myr (default: 0.0 = sin desacoplamiento).
+    #[serde(default)]
+    pub t_decoupling_myr: f64,
+}
+
+fn default_v_wind() -> f64 { 480.0 }
+fn default_mass_loading() -> f64 { 2.0 }
+
+impl Default for WindParams {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            v_wind_km_s: default_v_wind(),
+            mass_loading: default_mass_loading(),
+            t_decoupling_myr: 0.0,
+        }
+    }
 }
 
 fn default_v_kick() -> f64 { 350.0 }
@@ -1178,6 +1217,7 @@ impl Default for FeedbackSection {
             eps_sn: default_eps_sn(),
             rho_sf: default_rho_sf(),
             sfr_min: default_sfr_min(),
+            wind: WindParams::default(),
         }
     }
 }

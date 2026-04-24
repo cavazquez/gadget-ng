@@ -350,12 +350,20 @@ struct CheckpointMeta {
     /// desde las posiciones restauradas.  Siempre `false` en el archivo.
     #[serde(default)]
     sfc_state_saved: bool,
+    /// `true` si también se guardó `agn_bhs.json` (Phase 106).
+    #[serde(default)]
+    has_agn_state: bool,
+    /// `true` si también se guardó `chem_states.json` (Phase 106).
+    #[serde(default)]
+    has_chem_state: bool,
 }
 
 /// Guarda estado de checkpoint en `<out_dir>/checkpoint/`.
 ///
 /// Solo rank 0 escribe; el directorio se sobreescribe en cada checkpoint
 /// (siempre representa el último paso completado).
+///
+/// Phase 106: incluye estado AGN (`agn_bhs.json`) y química (`chem_states.json`).
 #[allow(clippy::too_many_arguments)]
 fn save_checkpoint<R: ParallelRuntime + ?Sized>(
     rt: &R,
@@ -366,6 +374,8 @@ fn save_checkpoint<R: ParallelRuntime + ?Sized>(
     h_state: Option<&HierarchicalState>,
     out_dir: &Path,
     cfg_hash: &str,
+    agn_bhs: &[gadget_ng_sph::BlackHole],
+    chem_states: &[gadget_ng_rt::ChemState],
 ) -> Result<(), CliError> {
     let ck_dir = out_dir.join("checkpoint");
     // Recopilar todas las partículas en rank 0 y escribir.
@@ -379,6 +389,20 @@ fn save_checkpoint<R: ParallelRuntime + ?Sized>(
         if let Some(hs) = h_state {
             hs.save(&ck_dir).map_err(|e| CliError::io(&ck_dir, e))?;
         }
+        // Phase 106: guardar estado AGN si hay agujeros negros activos.
+        let has_agn = !agn_bhs.is_empty();
+        if has_agn {
+            let agn_path = ck_dir.join("agn_bhs.json");
+            fs::write(&agn_path, serde_json::to_string_pretty(agn_bhs)?)
+                .map_err(|e| CliError::io(&agn_path, e))?;
+        }
+        // Phase 106: guardar estados de química si están activos.
+        let has_chem = !chem_states.is_empty();
+        if has_chem {
+            let chem_path = ck_dir.join("chem_states.json");
+            fs::write(&chem_path, serde_json::to_string_pretty(chem_states)?)
+                .map_err(|e| CliError::io(&chem_path, e))?;
+        }
         // meta.json del checkpoint (diferente al meta.json del snapshot).
         let meta = CheckpointMeta {
             schema_version: 1,
@@ -388,6 +412,8 @@ fn save_checkpoint<R: ParallelRuntime + ?Sized>(
             total_particles: total,
             has_hierarchical_state: h_state.is_some(),
             sfc_state_saved: false,
+            has_agn_state: has_agn,
+            has_chem_state: has_chem,
         };
         let meta_path = ck_dir.join("checkpoint.json");
         fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)
@@ -398,14 +424,25 @@ fn save_checkpoint<R: ParallelRuntime + ?Sized>(
 }
 
 /// Carga el estado de checkpoint desde `<resume_dir>/checkpoint/`.
-/// Devuelve `(partículas_locales, completed_step, a_current, h_state_opt)`.
+///
+/// Devuelve `(partículas_locales, completed_step, a_current, h_state_opt,
+///           agn_bhs_opt, chem_states_opt)`.
+///
+/// Phase 106: incluye estado AGN y química si fueron guardados.
 fn load_checkpoint<R: ParallelRuntime + ?Sized>(
     rt: &R,
     resume_dir: &Path,
     lo: usize,
     hi: usize,
     cfg_hash: &str,
-) -> Result<(Vec<Particle>, u64, f64, Option<HierarchicalState>), CliError> {
+) -> Result<(
+    Vec<Particle>,
+    u64,
+    f64,
+    Option<HierarchicalState>,
+    Option<Vec<gadget_ng_sph::BlackHole>>,
+    Option<Vec<gadget_ng_rt::ChemState>>,
+), CliError> {
     let ck_dir = resume_dir.join("checkpoint");
     let meta_path = ck_dir.join("checkpoint.json");
     let meta_str = fs::read_to_string(&meta_path).map_err(|e| CliError::io(&meta_path, e))?;
@@ -431,7 +468,25 @@ fn load_checkpoint<R: ParallelRuntime + ?Sized>(
     } else {
         None
     };
-    Ok((local, meta.completed_step, meta.a_current, h_state))
+    // Phase 106: cargar estado AGN si fue guardado.
+    let agn_bhs = if meta.has_agn_state {
+        let agn_path = ck_dir.join("agn_bhs.json");
+        let s = fs::read_to_string(&agn_path).map_err(|e| CliError::io(&agn_path, e))?;
+        let bhs: Vec<gadget_ng_sph::BlackHole> = serde_json::from_str(&s)?;
+        Some(bhs)
+    } else {
+        None
+    };
+    // Phase 106: cargar estados de química si fueron guardados.
+    let chem_states = if meta.has_chem_state {
+        let chem_path = ck_dir.join("chem_states.json");
+        let s = fs::read_to_string(&chem_path).map_err(|e| CliError::io(&chem_path, e))?;
+        let cs: Vec<gadget_ng_rt::ChemState> = serde_json::from_str(&s)?;
+        Some(cs)
+    } else {
+        None
+    };
+    Ok((local, meta.completed_step, meta.a_current, h_state, agn_bhs, chem_states))
 }
 
 pub fn cmd_config_print(cfg_path: &Path) -> Result<(), CliError> {
@@ -967,13 +1022,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // ── Inicialización de estado ──────────────────────────────────────────────
     // Si `resume_from` está presente, cargamos el checkpoint;
     // si no, construimos las condiciones iniciales desde la config.
+    // Phase 106: almacenar estado AGN y química cargados desde checkpoint, si aplica.
+    let mut resume_agn_bhs: Option<Vec<gadget_ng_sph::BlackHole>> = None;
+    let mut resume_chem_states: Option<Vec<gadget_ng_rt::ChemState>> = None;
+
     let (mut local, start_step, mut a_current, mut h_state_resume) =
         if let Some(resume_dir) = resume_from {
             rt.root_eprintln(&format!(
                 "[gadget-ng] Reanudando desde checkpoint en {:?}",
                 resume_dir.join("checkpoint")
             ));
-            let (p, completed, a, hs) = load_checkpoint(rt, resume_dir, lo, hi, &cfg_hash)?;
+            let (p, completed, a, hs, agn_opt, chem_opt) =
+                load_checkpoint(rt, resume_dir, lo, hi, &cfg_hash)?;
+            resume_agn_bhs = agn_opt;
+            resume_chem_states = chem_opt;
             (p, completed + 1, a, hs)
         } else {
             let p = build_particles_for_gid_range(cfg, lo, hi)?;
@@ -1156,29 +1218,36 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     // ── Estados de química SPH acoplados a EoR (Phase 95) ──────────────────────────
     // Vector paralelo a `local`: un ChemState por cada partícula de gas.
-    // Se inicializa en estado neutro y se actualiza en cada paso de reionización.
-    // Solo se usa si cfg.reionization.enabled; en caso contrario permanece vacío.
+    // Phase 106: si hay estado de química en checkpoint, restaurarlo; en caso
+    // contrario inicializar en estado neutro (o dejar vacío si EoR desactivado).
     let mut sph_chem_states: Vec<gadget_ng_rt::ChemState> = if cfg.reionization.enabled {
-        local
-            .iter()
-            .map(|p| {
-                if p.internal_energy > 0.0 {
-                    gadget_ng_rt::ChemState::neutral()
-                } else {
-                    gadget_ng_rt::ChemState::neutral() // DM: también neutral (irrelevante)
-                }
-            })
-            .collect()
+        if let Some(restored) = resume_chem_states.take() {
+            restored
+        } else {
+            local
+                .iter()
+                .map(|_| gadget_ng_rt::ChemState::neutral())
+                .collect()
+        }
     } else {
         Vec::new()
     };
 
     // Macro local para guardar checkpoint cuando toca.
+    // Phase 106: $agn_bhs y $chem son pasados explícitamente para evitar problemas
+    // de scope en las distintas rutas del motor (jerárquico, TreePM, PM, etc.).
     macro_rules! maybe_checkpoint {
-        ($step:expr, $hs:expr) => {
+        ($step:expr, $hs:expr, $agn_bhs:expr, $chem:expr) => {
             if checkpoint_interval > 0 && $step % checkpoint_interval == 0 {
-                save_checkpoint(rt, $step, a_current, &local, total, $hs, out_dir, &cfg_hash)?;
+                save_checkpoint(
+                    rt, $step, a_current, &local, total, $hs, out_dir, &cfg_hash,
+                    $agn_bhs, $chem,
+                )?;
             }
+        };
+        // Variante sin estado AGN/chem para rutas que no tienen SPH.
+        ($step:expr, $hs:expr) => {
+            maybe_checkpoint!($step, $hs, &[], &[]);
         };
     }
 
@@ -1304,8 +1373,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     }
 
 
-    // Agujeros negros activos durante la simulación (Phase 96 + FoF Phase 100)
-    let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> = Vec::new();
+    // Agujeros negros activos durante la simulación (Phase 96 + FoF Phase 100).
+    // Phase 106: si hay estado AGN en checkpoint, restaurarlo.
+    let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> =
+        resume_agn_bhs.take().unwrap_or_default();
 
     // Macro local para feedback AGN (Phase 96 + halos FoF Phase 100).
     // Coloca BH seeds en los N centros de halos más masivos (Phase 100).
