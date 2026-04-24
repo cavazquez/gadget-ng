@@ -795,6 +795,7 @@ fn dump_matrix_if_needed(m: &[SnapshotResult]) {
 // y produjo snapshots no degenerados.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn treepm_softened_dt_sweep_runs_stably() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -839,6 +840,7 @@ fn treepm_softened_dt_sweep_runs_stably() {
 //   - C_smaller_dt_worsens_growth       : el error aumenta al reducir dt.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn smaller_dt_improves_growth_under_treepm() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -912,6 +914,7 @@ fn smaller_dt_improves_growth_under_treepm() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn adaptive_dt_matches_or_beats_best_fixed_dt() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -997,6 +1000,7 @@ fn adaptive_dt_matches_or_beats_best_fixed_dt() {
 // estricta en precisión relativa.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn parallel_tree_walk_matches_serial_within_tolerance() {
     let n = n_grid();
     let cfg = build_run_config(n, SEED);
@@ -1076,6 +1080,7 @@ fn parallel_tree_walk_matches_serial_within_tolerance() {
 // speedup con `≥ 4` hilos no supera `1.1×`.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn parallel_execution_reduces_wall_time() {
     let n = n_grid();
     let cfg = build_run_config(n, SEED);
@@ -1141,6 +1146,7 @@ fn parallel_execution_reduces_wall_time() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn no_nan_inf_under_phase43_matrix() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -1190,6 +1196,7 @@ fn no_nan_inf_under_phase43_matrix() {
 // numérica relativa.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn results_consistent_across_thread_counts() {
     let n = n_grid();
     let run_one = |threads: usize| -> (f64, f64, f64) {

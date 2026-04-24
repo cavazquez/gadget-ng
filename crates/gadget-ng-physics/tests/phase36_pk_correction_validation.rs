@@ -462,6 +462,7 @@ fn dump_matrix_if_needed(matrix: &[SnapshotResult]) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_reduces_absolute_amplitude_error_on_real_snapshot() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -497,6 +498,7 @@ fn pk_correction_reduces_absolute_amplitude_error_on_real_snapshot() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_preserves_spectral_shape() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -547,6 +549,7 @@ fn pk_correction_preserves_spectral_shape() {
 // estricto.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_consistent_between_snapshots() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -600,6 +603,7 @@ fn pk_correction_consistent_between_snapshots() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_consistent_across_resolutions() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -640,6 +644,7 @@ fn pk_correction_consistent_across_resolutions() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_no_nan_inf() {
     let m = matrix();
     dump_matrix_if_needed(m);

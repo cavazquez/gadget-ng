@@ -6,9 +6,10 @@
 //! - Energía interna integrada por Euler explícito: `u += du_dt · dt`.
 
 use crate::density::compute_density;
-use crate::forces::compute_sph_forces;
+use crate::forces::{compute_sph_forces, compute_sph_forces_gadget2};
 use crate::kernel::{grad_w, w};
 use crate::particle::SphParticle;
+use crate::viscosity::compute_balsara_factors;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
 
 // ─── SPH cosmológico sobre gadget_ng_core::Particle ──────────────────────────
@@ -244,6 +245,111 @@ fn total_acceleration(p: &SphParticle) -> Vec3 {
         a += gas.acc_sph;
     }
     a
+}
+
+// ─── Integrador KDK Gadget-2 (entropía + Balsara) ────────────────────────────
+
+/// Un paso leapfrog KDK completo para SPH con formulación de **entropía** Gadget-2.
+///
+/// A diferencia de `sph_kdk_step` que evoluciona la energía interna `u`,
+/// este integrador evoluciona la **función entrópica** `A = P/ρ^γ`:
+///
+/// ```text
+/// dA_i/dt = (γ-1) / (2 ρ_i^(γ-1))  Σ_j m_j Π_ij v_ij · ∇W̄_ij
+/// ```
+///
+/// En regiones adiabáticas (sin viscosidad), `dA/dt = 0` exactamente → la
+/// entropía se conserva a nivel de máquina, eliminando la producción numérica
+/// de entropía del integrador energético clásico.
+///
+/// ## Flujo por paso
+///
+/// 1. Cálculo de fuerzas (densidad, Balsara, `compute_sph_forces_gadget2`).
+/// 2. Kick ½·dt: `v += (a_grav + a_sph)·dt/2`, `A += da_dt·dt/2`.
+/// 3. Drift dt: `r += v·dt`.
+/// 4. Gravedad + fuerzas SPH al nuevo tiempo.
+/// 5. Kick ½·dt final + sincronización P, u desde A.
+///
+/// # Parámetros
+///
+/// - `particles`: lista de partículas (DM + gas mezcladas).
+/// - `dt`: paso de tiempo.
+/// - `gravity_accel`: función que calcula la aceleración gravitatoria in-place.
+pub fn sph_kdk_step_gadget2<F>(particles: &mut [SphParticle], dt: f64, gravity_accel: F)
+where
+    F: Fn(&mut [SphParticle]),
+{
+    use crate::density::GAMMA;
+
+    let dt2 = 0.5 * dt;
+
+    // ── Fuerzas al tiempo actual ──────────────────────────────────────────────
+    compute_density(particles);
+    compute_balsara_factors(particles);
+    compute_sph_forces_gadget2(particles);
+
+    // ── Kick 1 (½ dt) ────────────────────────────────────────────────────────
+    for p in particles.iter_mut() {
+        let total_acc = total_acceleration(p);
+        p.velocity += total_acc * dt2;
+        if let Some(gas) = p.gas.as_mut() {
+            gas.entropy = (gas.entropy + gas.da_dt * dt2).max(0.0);
+        }
+    }
+
+    // ── Drift (dt) ───────────────────────────────────────────────────────────
+    for p in particles.iter_mut() {
+        p.position += p.velocity * dt;
+    }
+
+    // ── Fuerzas al nuevo tiempo ───────────────────────────────────────────────
+    gravity_accel(particles);
+    compute_density(particles);
+    // Después de re-calcular ρ, sincronizar P y u desde A actualizada
+    for p in particles.iter_mut() {
+        if let Some(gas) = p.gas.as_mut() {
+            gas.sync_from_entropy(GAMMA);
+        }
+    }
+    compute_balsara_factors(particles);
+    compute_sph_forces_gadget2(particles);
+
+    // ── Kick 2 (½ dt) ────────────────────────────────────────────────────────
+    for p in particles.iter_mut() {
+        let total_acc = total_acceleration(p);
+        p.velocity += total_acc * dt2;
+        if let Some(gas) = p.gas.as_mut() {
+            gas.entropy = (gas.entropy + gas.da_dt * dt2).max(0.0);
+            // Sincronizar P y u finales desde entropía
+            gas.sync_from_entropy(GAMMA);
+        }
+    }
+}
+
+/// Calcula el paso de tiempo de Courant hidrodinámica mínimo entre todas las partículas.
+///
+/// ```text
+/// dt_i = C_courant · h_i / max(max_vsig_i, c_s_i)
+/// ```
+///
+/// Usa `max_vsig` cuando está disponible (calculado por `compute_sph_forces_gadget2`).
+/// En condiciones de reposo (max_vsig = 0) cae back a la velocidad del sonido local,
+/// garantizando siempre un dt finito.
+///
+/// # Parámetros
+/// - `c_courant`: número de Courant (típico: 0.3).
+pub fn courant_dt(particles: &[SphParticle], c_courant: f64) -> f64 {
+    use crate::density::GAMMA;
+    particles
+        .iter()
+        .filter_map(|p| p.gas.as_ref())
+        .filter(|g| g.h_sml > 0.0 && g.rho > 0.0)
+        .map(|g| {
+            let cs = (GAMMA * g.pressure / g.rho).sqrt().max(0.0);
+            let vsig = g.max_vsig.max(cs).max(1e-300);
+            c_courant * g.h_sml / vsig
+        })
+        .fold(f64::INFINITY, f64::min)
 }
 
 #[cfg(test)]

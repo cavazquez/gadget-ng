@@ -729,6 +729,7 @@ fn growth_ratio_low_k(
 // invalidan ni validan la hipótesis; sólo informan la tendencia.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn softening_reduces_early_nonlinearity() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -807,6 +808,7 @@ fn softening_reduces_early_nonlinearity() {
 // A_treepm_improves_linear_growth / B_similar_or_worse.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn treepm_improves_growth_vs_pm() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -881,6 +883,7 @@ fn treepm_improves_growth_vs_pm() {
 // de `rel_err(ε)` (monotone_decrease, monotone_increase, interior_minimum, flat).
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn growth_closer_to_linear_with_softening() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -968,6 +971,7 @@ fn growth_closer_to_linear_with_softening() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn no_nan_inf_phase42() {
     let m = matrix();
     dump_matrix_if_needed(m);

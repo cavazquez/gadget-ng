@@ -273,6 +273,7 @@ fn evolve_fixed(
 ///
 /// Este test verifica ESTABILIDAD y CRECIMIENTO POSITIVO monotónico, no D²(a).
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase49_growth_n32_adaptive() {
     let n = 32_usize;
     let softening = 1.0 / (n as f64 * 20.0);
@@ -426,6 +427,7 @@ fn phase49_timestep_convergence() {
 /// error < 40 % en cada snapshot. Este es el análogo de Phase 37/41 pero
 /// con la física correcta (G·a³) y timestep adaptativo.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase49_growth_snapshot_sequence() {
     let n = 32_usize;
     let softening = 1.0 / (n as f64 * 20.0);

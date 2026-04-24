@@ -8,6 +8,64 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 166 — SPH Gadget-2: Entropía + Balsara + Colapso de Evrard
+
+Implementa la formulación SPH completa de **Springel & Hernquist (2002)** para
+replicar los tests hidrodinámicos del paper Gadget-2.
+
+#### A — Formulación de entropía (Springel & Hernquist 2002)
+
+- **`crates/gadget-ng-sph/src/particle.rs`** — se añaden a `GasData`:
+  - `entropy: f64` — función entrópica A_i = P_i/ρ_i^γ = (γ-1) u_i/ρ_i^(γ-1).
+  - `da_dt: f64` — tasa de cambio de entropía por calentamiento viscoso.
+  - `balsara: f64` — factor Balsara f_i ∈ [0,1] (inicializa en 1).
+  - `max_vsig: f64` — velocidad de señal máxima para condición de Courant.
+  - Métodos auxiliares: `sound_speed`, `init_entropy`, `sync_from_entropy`.
+- **`crates/gadget-ng-sph/src/density.rs`** — `compute_density` calcula y
+  almacena `gas.entropy = (γ-1) u / ρ^(γ-1)` tras determinar `h_sml`.
+
+#### B — Limitador de Balsara (Balsara 1995)
+
+- **`crates/gadget-ng-sph/src/viscosity.rs`** (nuevo) — `compute_balsara_factors`:
+  - Estimadores SPH para `∇·v` y `∇×v` usando el gradiente del kernel.
+  - Factor: `f_i = |∇·v| / (|∇·v| + |∇×v| + ε c_s/h)`.
+  - Suprime la viscosidad en cizallamiento; activa en shocks compresivos.
+  - Tests: `balsara_suppressed_in_shear_flow`, `balsara_active_in_compression`.
+
+#### C — Fuerzas Gadget-2 con viscosidad de velocidad de señal
+
+- **`crates/gadget-ng-sph/src/forces.rs`** — nueva función `compute_sph_forces_gadget2`:
+  - Viscosidad por velocidad de señal (Gadget-2 ec. 14):
+    `v_sig = α(c_i + c_j − 3 w_ij)/2` con `Π_ij = −v_sig·w_ij/ρ̄·(f_i+f_j)/2`.
+  - Calcula `da_dt` (calentamiento viscoso en entropía) y `max_vsig` (Courant).
+  - Gradiente viscoso promediado `∇W̄_ij = (∇W(h_i) + ∇W(h_j))/2`.
+
+#### D — Integrador KDK de entropía + función Courant
+
+- **`crates/gadget-ng-sph/src/integrator.rs`** — nueva función `sph_kdk_step_gadget2`:
+  - Evoluciona A (entropía) en lugar de u → conservación exacta en regiones
+    adiabáticas (dA/dt = 0 fuera de shocks).
+  - Ciclo: `compute_density → Balsara → fuerzas_gadget2 → kick₁ → drift →
+    gravity → compute_density → sync_from_entropy → Balsara → fuerzas → kick₂`.
+- Nueva función `courant_dt(particles, c_courant)`: calcula dt mínimo usando
+  `max(max_vsig, c_s)` como velocidad característica.
+
+#### E — Tests de validación Gadget-2
+
+- **`crates/gadget-ng-physics/tests/gadget2_sph_validation.rs`** (nuevo):
+  - `gadget2_entropy_initialized_correctly` — A = (γ-1) u/ρ^(γ-1) tras densidad.
+  - `gadget2_balsara_bounded` — f_i ∈ [0,1] siempre.
+  - `gadget2_courant_dt_positive` — dt de Courant > 0 y finito.
+  - `gadget2_single_step_bounded_energy` — energía acotada en un paso.
+  - `gadget2_sod_shock_compresses_right_region` *(#[ignore])* — Sod con entropía:
+    choque comprime ρ_right > ρ_R_init y masa conservada.
+  - `gadget2_entropy_monotonically_nondecreasing` *(#[ignore])* — S_total no decrece.
+  - `evrard_adiabatic_energy_conservation` *(#[ignore])* — Evrard: E_tot conservado
+    dentro del 10 % en los primeros pasos.
+  - `evrard_central_density_increases` *(#[ignore])* — densidad central crece.
+
+---
+
 ### Phase 165 — GPU Kernels Reales + MHD 3D Solenoidal
 
 #### Tarea A — Kernel CUDA/HIP de gravedad directa N² real

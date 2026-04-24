@@ -63,6 +63,10 @@ pub fn compute_density(particles: &mut [SphParticle]) {
         gas.rho = rho_sum(&pos, &mass, pi, h, n);
         // Presión adiabática P = (γ-1) ρ u
         gas.pressure = (GAMMA - 1.0) * gas.rho * gas.u;
+        // Función entrópica A = P / ρ^γ  (usada por el integrador Gadget-2)
+        if gas.rho > 0.0 {
+            gas.entropy = (GAMMA - 1.0) * gas.u / gas.rho.powf(GAMMA - 1.0);
+        }
     }
 }
 

@@ -21,7 +21,8 @@
 > → solver PM GPU CUDA/HIP opcional (Phase 57)
 > → CLI `analyze` con pipeline completo FoF+P(k)+ξ(r)+c(M) y render PPM**.
 >
-> **Estado:** Phases 1–150 completadas · >2 300 líneas de física nueva · 48 tests nuevos en Phases 142–150.
+> **Estado:** Phases 1–166 completadas · **SPH Gadget-2 completo** (entropía + Balsara + colapso de Evrard) ·
+> GPU kernels reales CUDA/HIP N² · MHD 3D solenoidal · `cargo test -p gadget-ng-physics` en ~3.5 min.
 
 ## 🧰 Herramientas y tecnologías
 
@@ -76,13 +77,14 @@
 13. [Reionización y RT (Phases 87–92)](#reionización-y-rt-phases-8792)
 14. [Estadísticas 21cm y EoR (Phases 94–95)](#estadísticas-21cm-y-eor-phases-9495)
 15. [Feedback AGN (Phase 96)](#feedback-agn-phase-96)
-16. [MHD Completo + Plasma 2F (Phases 123–150)](#mhd-completo--plasma-2f-phases-123150)
-17. [Tests automáticos](#tests-automáticos)
-18. [Reportes técnicos](#reportes-técnicos)
-19. [Features opcionales](#features-opcionales)
-20. [Calidad y CI](#calidad-y-ci)
-21. [Estructura de experimentos](#estructura-de-experimentos)
-22. [Licencia](#licencia)
+16. [SPH Gadget-2 (Phase 166)](#sph-gadget-2-phase-166)
+17. [MHD Completo + Plasma 2F (Phases 123–150)](#mhd-completo--plasma-2f-phases-123150)
+18. [Tests automáticos](#tests-automáticos)
+19. [Reportes técnicos](#reportes-técnicos)
+20. [Features opcionales](#features-opcionales)
+21. [Calidad y CI](#calidad-y-ci)
+22. [Estructura de experimentos](#estructura-de-experimentos)
+23. [Licencia](#licencia)
 
 ---
 
@@ -102,7 +104,7 @@
 | **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle** + normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
 | **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta, validado vs 🔭 CLASS (Phase 38) y en alta resolución hasta `N=128³` (Phase 41) |
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
-| **SPH** | Kernel Wendland C2, densidad adaptativa, viscosidad artificial Monaghan |
+| **SPH Gadget-2** | Kernel Wendland C2, densidad adaptativa; **entropía A=P/ρ^γ** (Springel & Hernquist 2002); **viscosidad de señal** + **limitador de Balsara** (∇·v, ∇×v); integrador KDK-entropía + `courant_dt`; validado en tubo de Sod + **colapso de Evrard** (Phase 166) |
 | **GPU** | Compute shader WGSL vía `wgpu` (Vulkan/Metal/DX12/WebGPU); fallback CPU automático |
 | **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL; HMF Press-Schechter/Sheth-Tormen; perfiles NFW + c(M) Duffy/Bhattacharya/Ludlow+2016; Halofit no-lineal (Takahashi+2012); función de correlación ξ(r) FFT + pares |
 | **🟢🔴 GPU PM** | Solver PM CUDA/HIP opcional (cuFFT/rocFFT); CIC+Poisson+FFT 3D en GPU; degradación elegante automática si no hay toolchain |
@@ -337,7 +339,8 @@ gadget-ng/
 │   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan;
 │   │                           # ⭐ stellar feedback (Phase 78); AGN Bondi (Phase 96/100);
 │   │                           # metales/SFR/SN Ia+II (Phase 109–115); CRs (Phase 117);
-│   │                           # conducción Spitzer (Phase 121); gas molecular (Phase 122)
+│   │                           # conducción Spitzer (Phase 121); gas molecular (Phase 122);
+│   │                           # 🌊 entropía A=P/ρ^γ + Balsara + visc. señal (Phase 166)
 │   ├── gadget-ng-mhd           # 🧲 MHD ideal + SRMHD + turbulencia + reconexión +
 │   │                           # Braginskii + flux-freeze + P_B(k) + jets AGN + plasma 2F
 │   │                           # (Phases 123–150); benchmarks Criterion avanzados
@@ -507,6 +510,8 @@ gadget-ng/
 | **148** | Jets AGN relativistas: `inject_relativistic_jet`, halos FoF masivos, v_jet 0.3–0.9c | ✅ |
 | **149** | Plasma de dos fluidos T_e ≠ T_i: `apply_electron_ion_coupling`, `mean_te_over_ti` | ✅ |
 | **150** | Reportes 142–149, CHANGELOG, roadmap, commit final | ✅ |
+| **165** | 🟢🔴 Kernels CUDA/HIP N² reales (`CudaDirectGravity::compute`, `HipDirectGravity::compute`); MHD 3D solenoidal `primordial_bfield_ic_3d` con ∇·B < 1e-14; 5 tests GPU activados | ✅ |
+| **166** | 🌊 **SPH Gadget-2**: entropía A=P/ρ^γ · limitador Balsara · viscosidad señal · `sph_kdk_step_gadget2` · `courant_dt`; test tubo de Sod + colapso de Evrard; ~50 tests lentos marcados `#[ignore]` → `cargo test -p gadget-ng-physics` en ~3.5 min | ✅ |
 
 ---
 
@@ -985,11 +990,14 @@ python docs/notebooks/postprocess_insitu.py \
 ## Tests automáticos
 
 ```bash
-# Tests unitarios de todos los crates
+# Tests unitarios de todos los crates (tests lentos marcados #[ignore] → ~3.5 min)
 cargo test
 
-# Tests de validación física (N-body + cosmología)
+# Tests de validación física (N-body + cosmología) — rápidos por defecto (~3.5 min)
 cargo test -p gadget-ng-physics --release
+
+# Incluir tests lentos (N=32³-64³, corridas largas):
+cargo test -p gadget-ng-physics --release -- --include-ignored
 
 # Tests específicos por fase
 cargo test -p gadget-ng-physics --test cosmo_serial                       # Fase 17a
@@ -1083,6 +1091,8 @@ Tests de validación cubiertos:
   partículas bit-idénticas en paso 20; `SfcDecomposition` reconstruida automáticamente.
 - **🔀 Rebalanceo adaptativo** (Phase 60): `should_rebalance` con `cost_pending` override;
   `rebalance_imbalance_threshold = 0.0` desactiva el costo (solo intervalo fijo).
+- **🌊 SPH Gadget-2** (Phase 166): entropía A=P/ρ^γ inicializada correctamente; Balsara 0 ≤ f ≤ 1;
+  `courant_dt` finito; paso KDK energía acotada; tubo de Sod + colapso de Evrard (lentos, `--include-ignored`).
 
 ---
 
@@ -1386,6 +1396,63 @@ let params = AgnParams { eps_feedback: 0.05, m_seed: 1e5, v_kick_agn: 500.0 };
 let mdot = bondi_accretion_rate(&bh, rho_gas, c_sound);
 apply_agn_feedback(&mut particles, &[bh], &params, dt);
 ```
+
+---
+
+## SPH Gadget-2 (Phase 166)
+
+### Formulación de entropía
+
+En lugar de integrar la energía interna `u`, el integrador `sph_kdk_step_gadget2` evoluciona
+la entropía termodinámica `A = P/ρ^γ` (Springel & Hernquist 2002, MNRAS 333:649).
+Esto garantiza segunda ley y conservación en flujos sin viscosidad.
+
+```rust
+use gadget_ng_sph::{sph_kdk_step_gadget2, courant_dt};
+
+// Avance KDK con entropía + Balsara + viscosidad de señal
+sph_kdk_step_gadget2(&mut particles, dt, |p| [0.0, 0.0, 0.0]);
+
+// Timestep Courant adaptativo
+let dt = courant_dt(&particles, 0.3);   // C_Courant = 0.3
+```
+
+### Limitador de Balsara
+
+Suprime la viscosidad artificial en flujos de cizalla pura (galaxias en rotación, discos),
+activándola solo donde hay compresión genuina:
+
+```
+f_i = |∇·v_i| / (|∇·v_i| + |∇×v_i| + ε · c_s/h)
+```
+
+### Viscosidad de señal (Gadget-2, Ec. 14)
+
+```
+v_sig = α(c_i + c_j − 3 w_ij) / 2    con  w_ij = min(v_ij·r̂_ij, 0)
+Π_ij  = −(f_i+f_j)/2 · v_sig · w_ij / (ρ̄_ij)
+```
+
+### Tests de validación SPH
+
+```bash
+# Tests rápidos: entropía, Balsara acotado, Courant positivo, paso energía acotada
+cargo test -p gadget-ng-physics --test gadget2_sph_validation --release
+
+# Tests lentos (Sod + Evrard — requieren --include-ignored):
+cargo test -p gadget-ng-physics --test gadget2_sph_validation --release -- --include-ignored
+```
+
+| Test | Descripción |
+|------|-------------|
+| `gadget2_entropy_initialized_correctly` | A_0 = (γ−1)·u/ρ^{γ−1} tras densidad inicial |
+| `gadget2_balsara_bounded` | 0 ≤ f_i ≤ 1 para todos los gas particles |
+| `gadget2_courant_dt_positive` | dt > 0 y finito desde velocidad de sonido |
+| `gadget2_single_step_bounded_energy` | E_total acotada tras un paso KDK |
+| `gadget2_sod_shock_compresses_right_region` *(ignore)* | tubo de Sod: región derecha se comprime |
+| `gadget2_entropy_monotonically_nondecreasing` *(ignore)* | 2ª ley: S no decrece en Sod |
+| `evrard_adiabatic_energy_conservation` *(ignore)* | colapso de Evrard: E_total acotada |
+| `evrard_central_density_increases` *(ignore)* | densidad central crece en colapso |
 
 ---
 

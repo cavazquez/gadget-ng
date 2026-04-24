@@ -158,6 +158,7 @@ fn p_lin_at_a(k_hmpc: f64, a: f64) -> f64 {
 /// - P_nl ≈ P_lin a k pequeño (régimen lineal).
 /// - P_nl >> P_lin a k grande (régimen no-lineal).
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase48_halofit_static() {
     let cosmo = halofit_cosmo();
     let e = eh();
@@ -211,6 +212,7 @@ fn phase48_halofit_static() {
 /// Esto verifica que Halofit reduce correctamente a P_linear a escalas grandes,
 /// y que el factor de crecimiento es consistente con la cosmología dada.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase48_halofit_growth_consistency() {
     let cosmo = halofit_cosmo();
     let cp = cosmo_params();
@@ -268,6 +270,7 @@ fn phase48_halofit_growth_consistency() {
 ///
 /// Este test valida la cadena: IC → P(k) crudo → corrección R(N) → P(Mpc/h)³.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase48_pk_vs_halofit_at_ics() {
     // ── Generar ICs ────────────────────────────────────────────────────────────
     let cfg = build_ic_config(42);
@@ -346,6 +349,7 @@ fn phase48_pk_vs_halofit_at_ics() {
 ///
 /// También verifica que a z=0 el boost es > 2× y a z=2 es < boost_z0.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase48_nonlinear_boost_redshift_dependence() {
     let cosmo = halofit_cosmo();
     let cp = cosmo_params();

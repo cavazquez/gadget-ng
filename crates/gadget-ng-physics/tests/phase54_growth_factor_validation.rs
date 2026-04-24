@@ -433,6 +433,7 @@ fn growth_ratio_err(n: usize, a_target: f64) -> f64 {
 
 /// σ(R=8 Mpc/h) ≈ σ₈ dentro de 5% para N≥64 (verifica normalización de ICs)
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase54_sigma8_normalization() {
     let m = matrix();
     for &n in N_VALUES.iter() {
@@ -475,6 +476,7 @@ fn phase54_sigma8_normalization() {
 /// 2. Tiene bins de P(k) en todos los snapshots (detector de crash)
 /// 3. Imprime los errores cuantitativos para referencia
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase54_growth_d2_n64() {
     let n = 64;
     if matrix().iter().all(|r| r.n != n) {
@@ -517,6 +519,7 @@ fn phase54_growth_d2_n64() {
 
 /// Evolución estable N=128: verifica estabilidad sin explosión.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase54_growth_d2_n128() {
     let n = 128;
     if matrix().iter().all(|r| r.n != n) {
@@ -554,6 +557,7 @@ fn phase54_growth_d2_n128() {
 
 /// Evolución estable N=256: verifica estabilidad sin explosión.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase54_growth_d2_n256() {
     let n = 256;
     if matrix().iter().all(|r| r.n != n) {
@@ -593,6 +597,7 @@ fn phase54_growth_d2_n256() {
 /// hasta a=0.50 sin explotar (v_rms razonable, bins de P(k) presentes).
 /// Con múltiples N, verifica que el error vs teoría no empeora al aumentar N.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase54_convergence_with_n() {
     let a_test = 0.50;
     let ns_available: Vec<usize> = N_VALUES

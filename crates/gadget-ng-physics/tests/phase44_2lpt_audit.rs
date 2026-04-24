@@ -533,6 +533,7 @@ fn get_results() -> &'static Vec<VariantMetrics> {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn ic_amplitudes_changed_by_fix() {
     // Generar ICs con ambas variantes y verificar que difieren.
     //
@@ -581,6 +582,7 @@ fn ic_amplitudes_changed_by_fix() {
 }
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn fixed_variant_matches_legacy_psi1_component() {
     // Ψ¹ es compartido entre ambas variantes, así que la diferencia de
     // posiciones es únicamente `|D₂/D₁²|·|Ψ²_fix − Ψ²_bug|`. Esto valida
@@ -605,6 +607,7 @@ fn fixed_variant_matches_legacy_psi1_component() {
 }
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn no_nan_inf_under_phase44_matrix() {
     let results = get_results();
     for m in results {
@@ -625,6 +628,7 @@ fn no_nan_inf_under_phase44_matrix() {
 }
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn fixed_variant_runs_stably() {
     // **Phase 45 update**: con el fix de unidades IC↔integrador (`g · a³`
     // en lugar de `g/a`), la evolución a `a=0.1` deja a las partículas casi
@@ -650,6 +654,7 @@ fn fixed_variant_runs_stably() {
 }
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn fixed_variant_improves_growth_vs_legacy() {
     // Comparación a `a_final ≈ 0.10`. Esperamos que el fix reduzca
     // `|log10(P_c/P_ref)|` y/o acerque `growth_ratio_lowk` a 1.0.

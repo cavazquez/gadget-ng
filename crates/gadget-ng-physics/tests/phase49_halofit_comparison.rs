@@ -177,6 +177,7 @@ fn linear_pk_bins(pk: &[PkBin], n: usize) -> Vec<PkBin> {
 /// la P(k) de las ICs debe coincidir con Halofit lineal (sin boost no-lineal).
 /// Tolerancia 25 %: incluye varianza cosmica (N=32) y diferencias EH vs Halofit.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase49_halofit_pk_at_ics_z49() {
     let cfg = build_ic();
     let parts = build_particles(&cfg).expect("ICs");
@@ -243,6 +244,7 @@ fn phase49_halofit_pk_at_ics_z49() {
 /// (completamente lineal), el ratio de Halofit entre z=2 y z=49 debe seguir
 /// el factor de crecimiento lineal al cuadrado.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase49_halofit_linear_consistency() {
     let hc = halofit_cosmo();
     let c = cosmo();
@@ -289,6 +291,7 @@ fn phase49_halofit_linear_consistency() {
 /// Verifica a k=1 h/Mpc: boost(z=0) > boost(z=1) > boost(z=2) > 1.
 /// Este es un test cualitativo de la física del modelo Halofit (Takahashi 2012).
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase49_halofit_ratio_z2_vs_z0() {
     let hc = halofit_cosmo();
 

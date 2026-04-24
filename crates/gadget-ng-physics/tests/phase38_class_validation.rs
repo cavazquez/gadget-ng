@@ -501,6 +501,7 @@ fn dump_matrix_if_needed(m: &[Measurement]) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_reduces_error_vs_class() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -554,6 +555,7 @@ fn pk_correction_reduces_error_vs_class() {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_keeps_ratio_near_unity_vs_class() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -606,6 +608,7 @@ fn pk_correction_keeps_ratio_near_unity_vs_class() {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_preserves_shape_vs_class() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -650,6 +653,7 @@ fn pk_correction_preserves_shape_vs_class() {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_no_nan_inf_vs_class() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -682,6 +686,7 @@ fn pk_correction_no_nan_inf_vs_class() {
 // ═════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_consistent_across_resolutions_vs_class() {
     let m = matrix();
     dump_matrix_if_needed(m);

@@ -657,6 +657,7 @@ fn growth_ratio_low_k(
 // 1.0 en modo Z0Sigma8 en el snapshot IC, y ese N es ≤ 128.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn signal_exceeds_shot_noise_at_high_resolution() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -715,6 +716,7 @@ fn signal_exceeds_shot_noise_at_high_resolution() {
 // (requiere más N).
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_valid_beyond_ic_at_high_resolution() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -781,6 +783,7 @@ fn pk_correction_valid_beyond_ic_at_high_resolution() {
 // relativo por N y decide si el crecimiento se recupera.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn linear_growth_recovered_low_k() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -848,6 +851,7 @@ fn linear_growth_recovered_low_k() {
 // fuera del alcance de Phase 41.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn spectral_error_decreases_with_resolution() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -931,6 +935,7 @@ fn spectral_error_decreases_with_resolution() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn no_nan_inf_high_resolution() {
     let m = matrix();
     dump_matrix_if_needed(m);

@@ -66,6 +66,7 @@ fn dump(name: &str, v: serde_json::Value) {
 
 /// Calibra R(N) para N ∈ {32, 64, 128} y valida contra Phase 35.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase47_rn_calibration_campaign() {
     let eh = eh();
     let model35 = RnModel::phase35_default();

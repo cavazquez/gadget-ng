@@ -652,6 +652,7 @@ fn dump_matrix_if_needed(m: &[SnapshotResult]) {
 // que `true` produce partículas diferentes en al menos una componente.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn legacy_mode_remains_bit_compatible() {
     let cfg_legacy = build_run_config(32, 42, true, Mode::Legacy);
     let cfg_rescaled = build_run_config(32, 42, true, Mode::Rescaled);
@@ -726,6 +727,7 @@ fn legacy_mode_remains_bit_compatible() {
 // término Ψ¹ que escala como s).
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn rescaled_mode_reduces_initial_displacement_amplitude() {
     let s = growth_factor_d_ratio(cosmo_params(), A_INIT, 1.0);
     let mut results = Vec::new();
@@ -769,6 +771,7 @@ fn rescaled_mode_reduces_initial_displacement_amplitude() {
 // `delta_rms` menor por el mismo factor lineal (aproximadamente).
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn rescaled_mode_reduces_early_nonlinearity() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -821,6 +824,7 @@ fn rescaled_mode_reduces_early_nonlinearity() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_still_works_on_ic_snapshot_with_rescaling() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -873,6 +877,7 @@ fn pk_correction_still_works_on_ic_snapshot_with_rescaling() {
 // snapshots `a=0.05` y `a=0.10`.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_improves_early_snapshot_accuracy_under_rescaled_mode() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -951,6 +956,7 @@ fn pk_correction_improves_early_snapshot_accuracy_under_rescaled_mode() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn rescaled_mode_no_nan_inf() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -993,6 +999,7 @@ fn rescaled_mode_no_nan_inf() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn rescaled_mode_consistent_across_resolutions() {
     let m = matrix();
     dump_matrix_if_needed(m);

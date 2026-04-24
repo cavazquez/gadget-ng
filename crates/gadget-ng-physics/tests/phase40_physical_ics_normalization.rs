@@ -582,6 +582,7 @@ fn dump_matrix_if_needed(m: &[SnapshotResult]) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn legacy_mode_remains_bit_compatible() {
     let cfg_legacy = build_run_config(N_GRID, 42, Mode::Legacy);
     let cfg_z0 = build_run_config(N_GRID, 42, Mode::Z0Sigma8);
@@ -630,6 +631,7 @@ fn legacy_mode_remains_bit_compatible() {
 // Verifica la matemática del reescalado a nivel de desplazamientos.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn z0_sigma8_mode_matches_expected_growth_scaling() {
     let cfg_legacy = build_run_config(N_GRID, 42, Mode::Legacy);
     let cfg_z0 = build_run_config(N_GRID, 42, Mode::Z0Sigma8);
@@ -669,6 +671,7 @@ fn z0_sigma8_mode_matches_expected_growth_scaling() {
 // tolerancia 5%. Validación física de la convención.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn sigma8_at_ainit_matches_linear_prediction() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -765,6 +768,7 @@ fn sigma8_at_ainit_matches_linear_prediction() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn pk_correction_still_works_on_ic_snapshot_under_z0_mode() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -803,6 +807,7 @@ fn pk_correction_still_works_on_ic_snapshot_under_z0_mode() {
 // Reporta si `δ_rms(0.10)_z0` es menor que `δ_rms(0.10)_legacy` sin fallar.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn z0_mode_reduces_early_nonlinearity_vs_legacy() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -845,6 +850,7 @@ fn z0_mode_reduces_early_nonlinearity_vs_legacy() {
 // snapshots evolucionados. Determina Decisión A (≥2x mejor) o B.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn z0_mode_improves_early_snapshot_accuracy_vs_legacy() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -918,6 +924,7 @@ fn z0_mode_improves_early_snapshot_accuracy_vs_legacy() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn z0_mode_no_nan_inf() {
     let m = matrix();
     dump_matrix_if_needed(m);

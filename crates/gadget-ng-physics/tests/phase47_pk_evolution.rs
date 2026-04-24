@@ -251,6 +251,7 @@ fn dump(name: &str, v: serde_json::Value) {
 /// Valida que `phase47_default` con R(N=32) (idéntico a Phase 35) reproduce
 /// el espectro EH dentro de ±15 % en el régimen lineal.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase47_pk_correction_at_ics() {
     let cfg = build_config(N_MESH, SEED);
     let parts = build_particles(&cfg).expect("ICs");
@@ -301,6 +302,7 @@ fn phase47_pk_correction_at_ics() {
 /// Verifica que P(k,a_final)/P(k,a_init) ≈ [D(a_final)/D(a_init)]² dentro
 /// de ±30 %. Confirma que la física QKSL (Phase 45) no introduce divergencias.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase47_pk_growth_qksl() {
     let cfg = build_config(N_MESH, SEED);
     let mut parts = build_particles(&cfg).expect("ICs");

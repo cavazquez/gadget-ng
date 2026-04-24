@@ -1,9 +1,17 @@
 # Validaciones Completas — gadget-ng
 
-**Fecha:** 2026-04-24 (actualizado Phase 165)  
-**Estado del proyecto:** Phases 1–165 completadas. Workspace compila y pasa `cargo test --workspace` sin ningún FAILED.  
+**Fecha:** 2026-04-23 (actualizado Phase 166)  
+**Estado del proyecto:** Phases 1–166 completadas. Workspace compila y pasa `cargo test --workspace` sin ningún FAILED.  
 **Propósito:** Inventario exhaustivo de **todas** las validaciones del proyecto: las existentes (pasando), las pendientes de implementación (marcadas con `[ ]`), y las de infraestructura HPC (detalladas en `docs/validation-plan-hpc.md`).
 
+> **Novedades Phase 166 — SPH Gadget-2 (Springel & Hernquist 2002):**
+> - Formulación de entropía A = P/ρ^γ en `GasData` + `compute_density`.
+> - `compute_balsara_factors` (módulo `viscosity.rs`): ∇·v y ∇×v vía SPH, f_i ∈ [0,1].
+> - `compute_sph_forces_gadget2`: viscosidad de velocidad de señal (Gadget-2 ec. 14) + Balsara.
+> - `sph_kdk_step_gadget2`: integrador KDK que evoluciona A; conservación exacta en regiones adiabáticas.
+> - `courant_dt`: timestep adaptativo C·h/max(v_sig, c_s).
+> - 8 tests nuevos en `gadget2_sph_validation.rs` (4 rápidos + Sod + entropía monotona + Evrard x2).
+>
 > **Novedades Phase 165:**
 > - `primordial_bfield_ic_3d` implementada y validada (MHD 3D solenoidal con ∇·B < 1e-14).
 > - Kernel CUDA/HIP N² real: `CudaDirectGravity::compute` y `HipDirectGravity::compute` llaman FFI real.
@@ -31,7 +39,7 @@
 | Barnes-Hut árbol | 7 | 1 | Media |
 | FMM octupolo | 5 | 0 | — |
 | PM / TreePM | 14 | 2 | Media |
-| SPH (hidrodinámica) | 12 | 2 | Media |
+| SPH (hidrodinámica) | 20 ✅ | 0 | — |
 | Cosmología ΛCDM | 31 | 3 | Alta |
 | MHD básico | 8 | 0 | — |
 | MHD avanzado (turb, recone, Braginskii) | 18 | 3 | Alta |
@@ -44,9 +52,9 @@
 | GPU (wgpu + CUDA/HIP) | 6 ✅ | 0 | — |
 | Block timesteps + MPI cosmo | 6 ✅ | 0 | — |
 | MHD cosmológico cuantitativo | 8 ✅ | 0 | — |
-| **TOTAL** | **~278** | **~24** | |
+| **TOTAL** | **~286** | **~16** | |
 
-El workspace tiene **0 tests fallando** en `cargo test --workspace` (compilación limpia post-Phase 165).
+El workspace tiene **0 tests fallando** en `cargo test --workspace` (compilación limpia post-Phase 166).
 
 **Tests que requieren hardware** (pasan en CI con skip automático; activar con hardware real):
 - `v1_gpu_tests::gpu_matches_cpu_direct_gravity_n1024` — CUDA/HIP kernel N² real

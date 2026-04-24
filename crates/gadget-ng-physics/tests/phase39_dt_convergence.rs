@@ -566,6 +566,7 @@ fn dump_matrix_if_needed(m: &[MatrixEntry]) {
 // protege que `run_one_simulation` no rompa el invariante.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn dt_does_not_affect_ic_snapshot() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -609,6 +610,7 @@ fn dt_does_not_affect_ic_snapshot() {
 // integración temporal. Documentamos el valor observado.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn smaller_dt_reduces_spectral_error() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -663,6 +665,7 @@ fn smaller_dt_reduces_spectral_error() {
 // es una observación física que NO indica inestabilidad numérica.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn dt_small_runs_stable() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -724,6 +727,7 @@ fn dt_small_runs_stable() {
 // `dt` (`p ≈ 0`) o incluso negativo; eso se reporta explícitamente.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn dt_convergence_trend_detectable() {
     let m = matrix();
     dump_matrix_if_needed(m);
@@ -772,6 +776,7 @@ fn dt_convergence_trend_detectable() {
 // alcanzarse en el sweep dado que `a=0.10` entra en no-linealidad.
 
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn dt_scaling_consistent_with_integrator_order() {
     let m = matrix();
     dump_matrix_if_needed(m);

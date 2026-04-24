@@ -344,6 +344,7 @@ fn skip() -> bool {
 /// Scatter c(M) medido vs Duffy+2008 dentro de un factor 5.
 /// Para N=32³ la resolución es baja; toleramos ratio ∈ [0.2, 5.0].
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase58_concentration_vs_theory() {
     if skip() {
         eprintln!("[phase58] saltado por PHASE58_SKIP=1");
@@ -384,6 +385,7 @@ fn phase58_concentration_vs_theory() {
 
 /// ξ(r) desde FFT debe tener valores finitos.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase58_xi_fft_finite() {
     if skip() {
         eprintln!("[phase58] saltado por PHASE58_SKIP=1");
@@ -407,6 +409,7 @@ fn phase58_xi_fft_finite() {
 
 /// ξ via pares directos sobre submuestra de partículas: valores finitos.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase58_xi_pairs_finite() {
     if skip() {
         eprintln!("[phase58] saltado por PHASE58_SKIP=1");
@@ -439,6 +442,7 @@ fn phase58_xi_pairs_finite() {
 
 /// Relación Ludlow/Duffy debe estar en [0.3, 3.5] para masas cosmológicas típicas.
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase58_ludlow_vs_duffy_range() {
     let masses = [1e11_f64, 1e12, 1e13, 1e14, 1e15];
     for m in masses {

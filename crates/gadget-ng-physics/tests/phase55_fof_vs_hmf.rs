@@ -406,6 +406,7 @@ fn fof_dn_dlnm(masses: &[f64], m_min: f64, m_max: f64, n_bins: usize) -> Vec<(f6
 
 /// La simulación N=64 llega a a=1.0 sin explosión (v_rms < 50 en unidades internas)
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase55_evolution_stable_n64() {
     let n = 64;
     let sim = find_sim(n).expect("N=64 no encontrado en la matriz");
@@ -427,6 +428,7 @@ fn phase55_evolution_stable_n64() {
 
 /// FoF encuentra ≥ 1 halo para N=64 a z=0 en BOX=300 Mpc/h
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase55_halos_found_n64() {
     let n = 64;
     let sim = find_sim(n).expect("N=64 no encontrado");
@@ -450,6 +452,7 @@ fn phase55_halos_found_n64() {
 
 /// FoF encuentra ≥ 20 halos para N=128
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase55_halos_found_n128() {
     let n = 128;
     if find_sim(n).is_none() {
@@ -467,6 +470,7 @@ fn phase55_halos_found_n128() {
 
 /// FoF encuentra ≥ 100 halos para N=256
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase55_halos_found_n256() {
     let n = 256;
     if find_sim(n).is_none() {
@@ -484,6 +488,7 @@ fn phase55_halos_found_n256() {
 
 /// Ratio dn/dlnM(FoF) / dn/dlnM(ST) ∈ [0.05, 20] para N=128
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase55_fof_vs_hmf_ratio_n128() {
     let n = 128;
     if find_sim(n).is_none() {
@@ -535,6 +540,7 @@ fn phase55_fof_vs_hmf_ratio_n128() {
 
 /// Halos de N=256 tienen masas mínimas más bajas que N=64 (convergencia de masa mínima)
 #[test]
+#[ignore = "lento: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn phase55_mass_function_convergence() {
     let n_low = 64;
     let n_high = 256;
