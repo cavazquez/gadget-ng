@@ -270,6 +270,58 @@ pub fn apply_cooling(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
     }
 }
 
+/// Cooling con supresión magnética por β-plasma (Phase 134).
+///
+/// `Λ_eff = Λ(T) / (1 + f_mag / β)` donde `β = 2μ₀ P_th / |B|²`.
+///
+/// Con `f_mag = 0` recupera `apply_cooling` estándar.
+/// Con `f_mag > 0` y B fuerte (β < 1): el cooling se suprime significativamente.
+pub fn apply_cooling_mhd(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
+    let gamma = cfg.gamma;
+    let t_floor_k = cfg.t_floor_k;
+    let u_floor = temperature_to_u(t_floor_k, gamma);
+    let f_mag = cfg.mag_suppress_cooling;
+
+    for p in particles.iter_mut() {
+        if p.ptype != ParticleType::Gas || p.internal_energy <= u_floor {
+            continue;
+        }
+        let h = p.smoothing_length.max(1e-10);
+        let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
+
+        let lambda = match cfg.cooling {
+            CoolingKind::None => 0.0,
+            CoolingKind::AtomicHHe => {
+                cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
+            }
+            CoolingKind::MetalCooling => {
+                cooling_rate_metal(p.internal_energy, rho_local, p.metallicity, gamma, t_floor_k)
+            }
+            CoolingKind::MetalTabular => {
+                cooling_rate_tabular(p.internal_energy, rho_local, p.metallicity, gamma, t_floor_k)
+            }
+        };
+        if lambda == 0.0 { continue; }
+
+        // Supresión magnética: β = 2 P_th / |B|² (con μ₀=1 en unidades internas)
+        let mag_suppression = if f_mag > 0.0 {
+            let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+            if b2 > 1e-60 {
+                let p_th = (gamma - 1.0) * rho_local * p.internal_energy;
+                let beta = 2.0 * p_th / b2;
+                1.0 / (1.0 + f_mag / beta.max(1e-10))
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+
+        let du_dt = -lambda * X_H * X_H * rho_local * mag_suppression;
+        p.internal_energy = (p.internal_energy + du_dt * dt).max(u_floor);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

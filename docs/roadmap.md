@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–132 completadas.  
+> **Estado al 23 de abril de 2026:** Phases 1–141 completadas.  
 > Phases 114–119: Capa 2 física avanzada — ISM multifase, vientos estelares pre-SN, modo radio AGN (bubble feedback), rayos cósmicos básicos, función de luminosidad y colores galácticos, enfriamiento tabulado S&D93.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 

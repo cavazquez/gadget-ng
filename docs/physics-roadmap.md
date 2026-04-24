@@ -1,6 +1,6 @@
 # Physics Roadmap — gadget-ng
 
-> **Actualizado:** 2026-04-23 (post Phase 113 — Capa 1 bariónica completada)
+> **Actualizado:** 2026-04-23 (post Phase 141 — MHD avanzado + Física completa)
 >
 > Este documento cataloga la física ya implementada, evalúa su nivel de completitud respecto a los
 > códigos de referencia (GADGET-4, AREPO/IllustrisNG, EAGLE), y proyecta qué nuevos módulos se

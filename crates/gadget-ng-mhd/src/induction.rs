@@ -186,3 +186,85 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
     }
     cfl * h_min / v_a_max
 }
+
+/// Aplica resistividad numérica artificial al campo magnético (Phase 135).
+///
+/// Suaviza las discontinuidades de B usando el esquema de Price (2008):
+///
+/// ```text
+/// (∂B_i/∂t)_η = η_art × Σ_j m_j/ρ_j × (B_j − B_i) × 2|∇W_ij|/|r_ij|
+/// ```
+///
+/// donde `η_art = alpha_b × h_i × v_sig` y `v_sig = |v_ij|` es la señal de velocidad relativa.
+///
+/// Con `alpha_b = 0.0` es un no-op.
+pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+    if alpha_b <= 0.0 { return; }
+    let n = particles.len();
+    if n == 0 { return; }
+
+    let mut db = vec![Vec3::zero(); n];
+
+    for i in 0..n {
+        if particles[i].ptype != ParticleType::Gas { continue; }
+        let h_i = particles[i].smoothing_length.max(1e-10);
+        let pos_i = particles[i].position;
+        let b_i = particles[i].b_field;
+        let vel_i = particles[i].velocity;
+
+        for j in 0..n {
+            if i == j { continue; }
+            if particles[j].ptype != ParticleType::Gas { continue; }
+
+            let dx = particles[j].position.x - pos_i.x;
+            let dy = particles[j].position.y - pos_i.y;
+            let dz = particles[j].position.z - pos_i.z;
+            let r2 = dx*dx + dy*dy + dz*dz;
+            let r = r2.sqrt();
+            if r < 1e-14 { continue; }
+
+            let h_j = particles[j].smoothing_length.max(1e-10);
+            let h_avg = 0.5 * (h_i + h_j);
+            if r > 2.0 * h_avg { continue; }
+
+            // Velocidad de señal: diferencia relativa de velocidades
+            let dvx = particles[j].velocity.x - vel_i.x;
+            let dvy = particles[j].velocity.y - vel_i.y;
+            let dvz = particles[j].velocity.z - vel_i.z;
+            let v_sig = (dvx*dvx + dvy*dvy + dvz*dvz).sqrt();
+
+            // Resistividad artificial: η_art = alpha_b × h_i × v_sig
+            let eta_art = alpha_b * h_i * v_sig;
+
+            // Gradiente del kernel: |∇W| ≈ |dW/dr| ≈ 1/(h⁴) simplificado
+            let q = r / h_avg;
+            let dw_dr = if q <= 1.0 {
+                -3.0 * q * (2.0 - q) / (h_avg.powi(4))
+            } else if q <= 2.0 {
+                -3.0 * (2.0 - q).powi(2) / (2.0 * h_avg.powi(4))
+            } else {
+                0.0
+            };
+            let grad_w_mag = dw_dr.abs();
+
+            let rho_j = (particles[j].mass / (h_j * h_j * h_j)).max(1e-30);
+            let factor = eta_art * particles[j].mass / rho_j * 2.0 * grad_w_mag / r;
+
+            let db_x = factor * (particles[j].b_field.x - b_i.x);
+            let db_y = factor * (particles[j].b_field.y - b_i.y);
+            let db_z = factor * (particles[j].b_field.z - b_i.z);
+
+            db[i].x += db_x;
+            db[i].y += db_y;
+            db[i].z += db_z;
+        }
+    }
+
+    for i in 0..n {
+        if particles[i].ptype == ParticleType::Gas {
+            particles[i].b_field.x += db[i].x * dt;
+            particles[i].b_field.y += db[i].y * dt;
+            particles[i].b_field.z += db[i].z * dt;
+        }
+    }
+}

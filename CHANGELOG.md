@@ -8,6 +8,71 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 140 — Turbulencia MHD: Forzado Ornstein-Uhlenbeck
+
+- Nuevo `crates/gadget-ng-mhd/src/turbulence.rs`: proceso OU estocástico para forzado de turbulencia Alfvénica.
+- `apply_turbulent_forcing(particles, cfg, dt, step)`: forzado con espectro `k^{-spectral_index}`, reproducible por semilla.
+- `turbulence_stats(particles, gamma)`: número de Mach sónico y Alfvénico.
+- Nueva `TurbulenceSection` en config: `enabled`, `amplitude`, `correlation_time`, `k_min`, `k_max`, `spectral_index`.
+- Re-exportación en `gadget-ng-core/src/lib.rs` de `TurbulenceSection`.
+- 6 tests en `phase140_turbulence.rs`.
+
+### Phase 139 — RMHD: MHD Especial-Relativista
+
+- Nuevo `crates/gadget-ng-mhd/src/relativistic.rs`: SRMHD con cuatro-velocidad y primitivización Newton-Raphson.
+- `lorentz_factor(vel, c)`, `srmhd_conserved_to_primitive(d, s, tau, b, gamma_ad, c)`, `advance_srmhd(particles, dt, c, v_threshold)`.
+- `em_energy_density(b)`: densidad de energía EM `= B²/2`.
+- Nuevos campos `relativistic_mhd: bool`, `v_rel_threshold: f64` en `MhdSection`.
+- 6 tests en `phase139_rmhd.rs`.
+
+### Phase 138 — Freeze-Out de B en ICM
+
+- Nuevo `crates/gadget-ng-mhd/src/flux_freeze.rs`: criterio β-plasma para flux-freeze.
+- `apply_flux_freeze(particles, gamma, beta_freeze, rho_ref)`: escala B con `ρ^{2/3}` para β > β_freeze.
+- `mean_gas_density(particles)`, `flux_freeze_error(b, b0, rho, rho0)`.
+- Nuevo campo `beta_freeze: f64` (default: `100.0`) en `MhdSection`.
+- 6 tests en `phase138_flux_freeze.rs`.
+
+### Phase 137 — Polvo + RT: Absorción UV
+
+- `dust_uv_opacity(kappa_dust_uv, dust_to_gas, rho, h)` en `dust.rs`.
+- `radiation_gas_coupling_step_with_dust(particles, rad, params, kappa_dust_uv, dt, box_size)` en `coupling.rs`.
+- Nuevo campo `kappa_dust_uv: f64` (default: `1000.0`) en `DustSection`.
+- Nuevo campo `sigma_dust: f64` (default: `0.1`) en `M1Params`.
+- Re-exportación de `radiation_gas_coupling_step_with_dust` en `gadget-ng-rt/src/lib.rs`.
+- 6 tests en `phase137_dust_rt.rs`.
+
+### Phase 136 — MHD Cosmológico End-to-End
+
+- Nuevo `crates/gadget-ng-mhd/src/stats.rs`: `b_field_stats(particles) → Option<BFieldStats>`.
+- `BFieldStats`: `b_mean`, `b_rms`, `b_max`, `e_mag`, `n_gas`.
+- Nuevo campo `stats_interval: usize` (default: `0`) en `MhdSection`.
+- 6 tests en `phase136_mhd_cosmo.rs`.
+
+### Phase 135 — Resistividad Numérica Artificial
+
+- `apply_artificial_resistivity(particles, alpha_b, dt)` en `induction.rs` (Price 2008).
+- Nuevo campo `alpha_b: f64` (default: `0.5`) en `MhdSection`.
+- Integrado en `maybe_mhd!` del engine como paso condicional.
+- 6 tests en `phase135_resistivity.rs`.
+
+### Phase 134 — Cooling Magnético
+
+- `apply_cooling_mhd(particles, cfg, dt)` en `cooling.rs`: `Λ_eff = Λ(T)/(1 + f_mag/β)`.
+- Nuevo campo `mag_suppress_cooling: f64` (default: `0.0`) en `SphSection`.
+- Hook en engine: usa `apply_cooling_mhd` si `mag_suppress_cooling > 0.0 && mhd.enabled`.
+- 6 tests en `phase134_magnetic_cooling.rs`.
+
+### Phase 133 — MHD Anisótropo: Difusión ∥B
+
+- Nuevo `crates/gadget-ng-mhd/src/anisotropic.rs`: conducción térmica y CR anisótropa.
+- `apply_anisotropic_conduction(particles, kappa_par, kappa_perp, gamma, dt)`.
+- `diffuse_cr_anisotropic(particles, kappa_cr, b_suppress, dt)`.
+- `beta_plasma(p_thermal, b)`.
+- Nuevos campos `anisotropic: bool`, `kappa_par: f64`, `kappa_perp: f64` en `ConductionSection`.
+- Hook en engine: si `conduction.anisotropic = true` → difusión anisótropa en lugar de Spitzer isótropo.
+- 6 tests en `phase133_mhd_anisotropic.rs`.
+
 ### Phase 132 — Benchmark MHD Criterion + CFL unificado
 
 - Nuevo benchmark `crates/gadget-ng-mhd/benches/alfven_bench.rs` con Criterion: `advance_induction`, `apply_magnetic_forces`, `dedner_cleaning_step`, `full_mhd_step` sobre N=100,500,1000.

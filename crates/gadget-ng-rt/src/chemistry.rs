@@ -338,6 +338,7 @@ pub fn apply_chemistry(
         kappa_abs: 1.0,
         kappa_scat: 0.0,
         substeps: 1,
+        sigma_dust: 0.1,
     };
 
     assert_eq!(

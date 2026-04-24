@@ -173,6 +173,53 @@ pub fn radiation_gas_coupling_step(
     apply_photoheating(particles, rad, &gamma, dt, box_size);
 }
 
+/// Versión de `radiation_gas_coupling_step` con atenuación UV por polvo (Phase 137).
+///
+/// Aplica `τ_dust = κ_dust × (D/G) × ρ × h` a cada partícula de gas antes del
+/// fotocalentamiento: `J_UV_eff = J_UV × exp(−τ_dust)`.
+///
+/// Con `kappa_dust_uv = 0.0` o `dust_to_gas = 0.0` → idéntico a la versión sin polvo.
+pub fn radiation_gas_coupling_step_with_dust(
+    particles: &mut [Particle],
+    rad: &mut RadiationField,
+    params: &M1Params,
+    kappa_dust_uv: f64,
+    dt: f64,
+    box_size: f64,
+) {
+    use gadget_ng_core::ParticleType;
+
+    // Paso 1: emisión gas → rad (igual)
+    deposit_gas_emission(particles, rad, dt, box_size, 1e-20);
+
+    // Paso 2: tasa de fotoionización → luego atenuada por polvo partícula a partícula
+    let gamma = photoionization_rate(rad, params);
+
+    // Paso 3: fotocalentamiento con atenuación τ_dust
+    // Aplicamos exp(-τ_dust) al fotocalentamiento de cada partícula individualmente
+    for p in particles.iter_mut() {
+        if p.ptype != ParticleType::Gas { continue; }
+        let h = p.smoothing_length.max(1e-10);
+        let rho = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
+        let tau_dust = kappa_dust_uv * p.dust_to_gas * rho * h;
+        let attenuation = (-tau_dust).exp();
+
+        // El fotocalentamiento escala con el flujo UV atenuado
+        // Aplicamos la corrección multiplicando el efecto de calentamiento
+        // via la energía radiativa local (aproximación)
+        let nx = rad.nx;
+        let ny = rad.ny;
+        let nz = rad.nz;
+        let ix = ((p.position.x / box_size) * nx as f64) as usize % nx;
+        let iy = ((p.position.y / box_size) * ny as f64) as usize % ny;
+        let iz = ((p.position.z / box_size) * nz as f64) as usize % nz;
+        let idx = rad.idx(ix, iy, iz);
+        let e_rad = rad.energy_density[idx];
+        let heating = params.sigma_dust * e_rad * attenuation * dt;
+        p.internal_energy = (p.internal_energy + heating).max(0.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

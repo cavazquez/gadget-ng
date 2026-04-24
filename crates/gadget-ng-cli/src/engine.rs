@@ -1326,7 +1326,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     |_parts| {},  // gravedad ya fue calculada por el solver principal
                 );
                 if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
-                    gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
+                    // Phase 134: supresión magnética de cooling si mag_suppress_cooling > 0
+                    if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
+                        gadget_ng_sph::apply_cooling_mhd(&mut local, &cfg.sph, cfg.simulation.dt);
+                    } else {
+                        gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
+                    }
                 }
                 // Phase 130: Evolución del polvo intersticial
                 if cfg.sph.dust.enabled {
@@ -1338,15 +1343,26 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     );
                 }
 
-                // Phase 121: Conducción térmica del ICM (Spitzer)
+                // Phase 121 + 133: Conducción térmica (Spitzer isótropo o anisótropa ∥B)
                 if cfg.sph.conduction.enabled {
-                    gadget_ng_sph::apply_thermal_conduction(
-                        &mut local,
-                        &cfg.sph.conduction,
-                        cfg.sph.gamma,
-                        cfg.sph.t_floor_k,
-                        cfg.simulation.dt,
-                    );
+                    if cfg.sph.conduction.anisotropic {
+                        // Phase 133: difusión anisótropa D = κ_∥(B̂⊗B̂) + κ_⊥(I−B̂⊗B̂)
+                        gadget_ng_mhd::apply_anisotropic_conduction(
+                            &mut local,
+                            cfg.sph.conduction.kappa_par,
+                            cfg.sph.conduction.kappa_perp,
+                            cfg.sph.gamma,
+                            cfg.simulation.dt,
+                        );
+                    } else {
+                        gadget_ng_sph::apply_thermal_conduction(
+                            &mut local,
+                            &cfg.sph.conduction,
+                            cfg.sph.gamma,
+                            cfg.sph.t_floor_k,
+                            cfg.simulation.dt,
+                        );
+                    }
                 }
                 // Phase 122: Gas molecular H2
                 if cfg.sph.molecular.enabled {
@@ -1459,6 +1475,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         kappa_abs: cfg.rt.kappa_abs,
                         kappa_scat: 0.0,
                         substeps: cfg.rt.substeps,
+                        sigma_dust: 0.1,
                     };
                     gadget_ng_rt::m1_update(rf, cfg.simulation.dt, &m1p);
                     gadget_ng_rt::radiation_gas_coupling_step(
@@ -1527,7 +1544,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-    // Macro local para MHD ideal (Phase 126 + CFL Phase 127).
+    // Macro local para MHD ideal (Phase 126 + CFL Phase 127 + Resistividad Phase 135).
     // Activa inducción SPH, fuerzas magnéticas y limpieza de Dedner cuando [mhd] enabled = true.
     // Usa el mínimo entre dt global y dt_alfven (CFL magnético) para estabilidad.
     macro_rules! maybe_mhd {
@@ -1537,6 +1554,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let dt_alfven = gadget_ng_mhd::alfven_dt(&local, cfg.mhd.cfl_mhd);
                 let dt_mhd = cfg.simulation.dt.min(dt_alfven);
                 gadget_ng_mhd::advance_induction(&mut local, dt_mhd);
+                // Phase 135: resistividad numérica artificial (Price 2008)
+                if cfg.mhd.alpha_b > 0.0 {
+                    gadget_ng_mhd::apply_artificial_resistivity(
+                        &mut local, cfg.mhd.alpha_b, dt_mhd,
+                    );
+                }
                 gadget_ng_mhd::apply_magnetic_forces(&mut local, dt_mhd);
                 gadget_ng_mhd::dedner_cleaning_step(
                     &mut local,
@@ -1568,6 +1591,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             kappa_abs: cfg.rt.kappa_abs,
                             kappa_scat: 0.0,
                             substeps: cfg.rt.substeps,
+                            sigma_dust: 0.1,
                         };
                         // Sincronizar longitud: si local creció (ej. partículas cargadas)
                         // extender sph_chem_states con estados neutros

@@ -66,3 +66,17 @@ pub fn update_dust(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt
         p.dust_to_gas = p.dust_to_gas.clamp(0.0, cfg.d_to_g_max);
     }
 }
+
+/// Profundidad óptica del polvo en UV (Phase 137).
+///
+/// Aproximación local: `τ_dust = κ_dust × (D/G) × ρ × h`
+///
+/// - `κ_dust`: opacidad del polvo en UV [cm²/g] (típico ISM: 1000 cm²/g)
+/// - `dust_to_gas`: relación D/G de la partícula
+/// - `rho`: densidad local [g/cm³ en unidades del código]
+/// - `h`: longitud de suavizado [cm en unidades del código]
+///
+/// El flujo UV atenuado: `J_UV_eff = J_UV × exp(−τ_dust)`.
+pub fn dust_uv_opacity(kappa_dust_uv: f64, dust_to_gas: f64, rho: f64, h: f64) -> f64 {
+    kappa_dust_uv * dust_to_gas * rho * h
+}

@@ -27,6 +27,7 @@ fn make_m1_params() -> M1Params {
         kappa_abs: 1.0,
         kappa_scat: 0.0,
         substeps: 2,
+        sigma_dust: 0.1,
     }
 }
 

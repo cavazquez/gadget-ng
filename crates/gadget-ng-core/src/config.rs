@@ -35,6 +35,9 @@ pub struct RunConfig {
     /// Magnetohidrodinámica ideal (Phase 126; opcional; desactivado por defecto).
     #[serde(default)]
     pub mhd: MhdSection,
+    /// Forzado de turbulencia MHD Ornstein-Uhlenbeck (Phase 140; opcional; desactivado).
+    #[serde(default)]
+    pub turbulence: TurbulenceSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1152,6 +1155,12 @@ pub struct SphSection {
     /// Configuración del polvo intersticial (Phase 130).
     #[serde(default)]
     pub dust: DustSection,
+    /// Factor de supresión del cooling por campo magnético (Phase 134).
+    ///
+    /// `Λ_eff = Λ(T) / (1 + mag_suppress_cooling / β)`.
+    /// `0.0` = sin supresión magnética (default).
+    #[serde(default)]
+    pub mag_suppress_cooling: f64,
 }
 
 fn default_gamma() -> f64 { 5.0 / 3.0 }
@@ -1177,6 +1186,7 @@ impl Default for SphSection {
             conduction: ConductionSection::default(),
             molecular: MolecularSection::default(),
             dust: DustSection::default(),
+            mag_suppress_cooling: 0.0,
         }
     }
 }
@@ -1431,10 +1441,21 @@ pub struct ConductionSection {
     /// Factor de supresión ψ ∈ [0,1] por campo magnético o turbulencia (default: `0.1`).
     #[serde(default = "default_psi_suppression")]
     pub psi_suppression: f64,
+    /// Activa conducción anisótropa ∥B (Phase 133). Si `false` usa Spitzer isótropo.
+    #[serde(default)]
+    pub anisotropic: bool,
+    /// Conductividad paralela a B (Phase 133). Default: igual a `kappa_spitzer`.
+    #[serde(default = "default_kappa_par")]
+    pub kappa_par: f64,
+    /// Conductividad perpendicular a B (Phase 133). Default: `1e-6` (muy suprimida).
+    #[serde(default = "default_kappa_perp")]
+    pub kappa_perp: f64,
 }
 
 fn default_kappa_spitzer() -> f64 { 1e-4 }
 fn default_psi_suppression() -> f64 { 0.1 }
+fn default_kappa_par() -> f64 { 1e-4 }
+fn default_kappa_perp() -> f64 { 1e-6 }
 
 impl Default for ConductionSection {
     fn default() -> Self {
@@ -1442,6 +1463,9 @@ impl Default for ConductionSection {
             enabled: false,
             kappa_spitzer: default_kappa_spitzer(),
             psi_suppression: default_psi_suppression(),
+            anisotropic: false,
+            kappa_par: default_kappa_par(),
+            kappa_perp: default_kappa_perp(),
         }
     }
 }
@@ -1883,6 +1907,26 @@ pub struct MhdSection {
     /// Número de Courant magnético para el límite CFL de Alfvén (Phase 127). Default: `0.3`.
     #[serde(default = "default_cfl_mhd")]
     pub cfl_mhd: f64,
+    /// Coeficiente de resistividad numérica artificial (Phase 135). Default: `0.5`.
+    ///
+    /// `η_art = alpha_b × h_i × v_sig`. Con `alpha_b = 0.0` se desactiva la resistividad.
+    #[serde(default = "default_alpha_b")]
+    pub alpha_b: f64,
+    /// Intervalo de pasos para calcular estadísticas de B (Phase 136). Default: `0` (desactivado).
+    #[serde(default)]
+    pub stats_interval: usize,
+    /// β-plasma umbral para flux-freeze en ICM (Phase 138). Default: `100.0`.
+    ///
+    /// Si `β > beta_freeze`, el campo B se "congela" con el fluido
+    /// (resistividad desactivada para esa partícula).
+    #[serde(default = "default_beta_freeze")]
+    pub beta_freeze: f64,
+    /// Activa SRMHD especial-relativista (Phase 139). Default: `false`.
+    #[serde(default)]
+    pub relativistic_mhd: bool,
+    /// Umbral de |v|/c para aplicar correcciones relativistas (Phase 139). Default: `0.1`.
+    #[serde(default = "default_v_rel_threshold")]
+    pub v_rel_threshold: f64,
 }
 
 /// Configuración del módulo de polvo intersticial básico (Phase 130).
@@ -1910,11 +1954,15 @@ pub struct DustSection {
     /// Tiempo de crecimiento por accreción en unidades internas (default: `1.0`).
     #[serde(default = "default_tau_grow")]
     pub tau_grow: f64,
+    /// Opacidad del polvo en UV: `κ_dust [cm²/g]` (Phase 137). Default: `1000.0`.
+    #[serde(default = "default_kappa_dust_uv")]
+    pub kappa_dust_uv: f64,
 }
 
 fn default_d_to_g_max() -> f64 { 0.01 }
 fn default_t_destroy_k() -> f64 { 1e6 }
 fn default_tau_grow() -> f64 { 1.0 }
+fn default_kappa_dust_uv() -> f64 { 1000.0 }
 
 impl Default for DustSection {
     fn default() -> Self {
@@ -1923,6 +1971,7 @@ impl Default for DustSection {
             d_to_g_max: default_d_to_g_max(),
             t_destroy_k: default_t_destroy_k(),
             tau_grow: default_tau_grow(),
+            kappa_dust_uv: default_kappa_dust_uv(),
         }
     }
 }
@@ -1930,6 +1979,9 @@ impl Default for DustSection {
 fn default_mhd_c_h() -> f64 { 1.0 }
 fn default_mhd_c_r() -> f64 { 0.5 }
 fn default_cfl_mhd() -> f64 { 0.3 }
+fn default_alpha_b() -> f64 { 0.5 }
+fn default_beta_freeze() -> f64 { 100.0 }
+fn default_v_rel_threshold() -> f64 { 0.1 }
 
 impl Default for MhdSection {
     fn default() -> Self {
@@ -1940,6 +1992,56 @@ impl Default for MhdSection {
             b0_kind: BFieldKind::None,
             b0_uniform: [0.0; 3],
             cfl_mhd: default_cfl_mhd(),
+            alpha_b: default_alpha_b(),
+            stats_interval: 0,
+            beta_freeze: default_beta_freeze(),
+            relativistic_mhd: false,
+            v_rel_threshold: default_v_rel_threshold(),
+        }
+    }
+}
+
+/// Forzado de turbulencia MHD estocástico Ornstein-Uhlenbeck (Phase 140).
+///
+/// Genera turbulencia Alfvénica con espectro de Kolmogorov `E(k) ∝ k^{-5/3}`
+/// o Goldreich-Sridhar `E(k) ∝ k^{-3/2}` en presencia de campo B₀ de fondo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurbulenceSection {
+    /// Activa el forzado turbulento (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Amplitud del forzado (default: `1e-3`).
+    #[serde(default = "default_turb_amplitude")]
+    pub amplitude: f64,
+    /// Tiempo de correlación del proceso OU [unidades internas] (default: `1.0`).
+    #[serde(default = "default_turb_tau")]
+    pub correlation_time: f64,
+    /// Número de onda mínimo de la banda de forzado (default: `1.0`).
+    #[serde(default = "default_turb_k_min")]
+    pub k_min: f64,
+    /// Número de onda máximo de la banda de forzado (default: `4.0`).
+    #[serde(default = "default_turb_k_max")]
+    pub k_max: f64,
+    /// Índice espectral: `5/3` (Kolmogorov) o `3/2` (Goldreich-Sridhar) (default: `1.6667`).
+    #[serde(default = "default_turb_spectral_index")]
+    pub spectral_index: f64,
+}
+
+fn default_turb_amplitude() -> f64 { 1e-3 }
+fn default_turb_tau() -> f64 { 1.0 }
+fn default_turb_k_min() -> f64 { 1.0 }
+fn default_turb_k_max() -> f64 { 4.0 }
+fn default_turb_spectral_index() -> f64 { 5.0 / 3.0 }
+
+impl Default for TurbulenceSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            amplitude: default_turb_amplitude(),
+            correlation_time: default_turb_tau(),
+            k_min: default_turb_k_min(),
+            k_max: default_turb_k_max(),
+            spectral_index: default_turb_spectral_index(),
         }
     }
 }

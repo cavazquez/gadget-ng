@@ -51,7 +51,7 @@ pub use chemistry::{
 };
 pub use coupling::{
     apply_photoheating, deposit_gas_emission, photoionization_rate,
-    radiation_gas_coupling_step,
+    radiation_gas_coupling_step, radiation_gas_coupling_step_with_dust,
 };
 pub use m1::{
     eddington_factor, m1_update, M1Params, RadiationField, C_KMS,

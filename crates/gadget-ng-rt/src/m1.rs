@@ -136,6 +136,8 @@ pub struct M1Params {
     pub kappa_scat: f64,
     /// Número de pasos del solver M1 por paso cosmológico.
     pub substeps: usize,
+    /// Sección eficaz de polvo para fotocalentamiento (Phase 137). Default: `0.1`.
+    pub sigma_dust: f64,
 }
 
 impl Default for M1Params {
@@ -145,6 +147,7 @@ impl Default for M1Params {
             kappa_abs: 1.0,
             kappa_scat: 0.0,
             substeps: 5,
+            sigma_dust: 0.1,
         }
     }
 }
