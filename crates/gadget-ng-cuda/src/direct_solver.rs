@@ -13,11 +13,12 @@
 //!
 //! ## Estado actual
 //!
-//! Stub para Phase 163. El método `compute` emite `todo!()` hasta que el kernel
-//! CUDA sea implementado. El método `try_new` devuelve `Some(Self)` sólo si
-//! `CudaPmSolver::is_available()` es verdadero (es decir, si hay hardware CUDA).
+//! El método `try_new` devuelve `Some(Self)` sólo si hay hardware CUDA
+//! disponible. El método `compute` llama al kernel real via FFI cuando
+//! CUDA está disponible, y entra en `panic!` con un mensaje informativo en caso
+//! contrario (no debería ocurrir porque `try_new` devuelve `None` sin hardware).
 //!
-//! ## Uso futuro
+//! ## Uso
 //!
 //! ```rust,ignore
 //! if let Some(gpu) = CudaDirectGravity::try_new(eps) {
@@ -61,11 +62,11 @@ impl CudaDirectGravity {
         }
     }
 
-    /// Calcula aceleraciones gravitacionales directas para N partículas.
+    /// Calcula aceleraciones gravitacionales directas O(N²) para N partículas.
     ///
     /// # Parámetros
-    /// - `pos` — posiciones `[[x, y, z]; N]` en unidades internas (f32)
-    /// - `mass` — masas `[m_0, m_1, ..., m_{N-1}]` en unidades internas (f32)
+    /// - `pos`  — posiciones `[[x, y, z]; N]` en unidades internas (f32)
+    /// - `mass` — masas `[m_0, ..., m_{N-1}]` en unidades internas (f32)
     ///
     /// # Retorna
     ///
@@ -73,14 +74,65 @@ impl CudaDirectGravity {
     ///
     /// # Panics
     ///
-    /// Siempre panics hasta que el kernel CUDA sea implementado.
-    /// Ver `docs/validation-plan-hpc.md` sección V1 para el plan de implementación.
-    #[allow(unused_variables)]
+    /// Panics si CUDA no está disponible en tiempo de compilación (`cuda_unavailable`).
+    /// Esto no debería ocurrir normalmente porque `try_new` devuelve `None` sin hardware.
     pub fn compute(&self, pos: &[[f32; 3]], mass: &[f32]) -> Vec<[f32; 3]> {
-        todo!(
-            "kernel CUDA directo N² no implementado aún. \
-             Ver docs/validation-plan-hpc.md §V1 para el plan de implementación."
-        )
+        let n = pos.len();
+        assert_eq!(mass.len(), n, "pos y mass deben tener la misma longitud");
+
+        #[cfg(cuda_unavailable)]
+        panic!(
+            "CudaDirectGravity::compute llamado pero CUDA no está disponible. \
+             Usa CudaDirectGravity::try_new para verificar disponibilidad."
+        );
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            use crate::ffi;
+            use std::ffi::c_void;
+
+            let eps2 = self.eps * self.eps;
+            let g = 1.0_f32; // G en unidades internas (ajustar si se necesita otro valor)
+
+            // Crear handle CUDA
+            let handle: *mut c_void = unsafe {
+                ffi::cuda_direct_create(eps2, self.block_size as i32)
+            };
+            assert!(!handle.is_null(), "cuda_direct_create devolvió NULL");
+
+            // Extraer componentes de posición en arrays contiguos
+            let mut x: Vec<f32> = Vec::with_capacity(n);
+            let mut y: Vec<f32> = Vec::with_capacity(n);
+            let mut z: Vec<f32> = Vec::with_capacity(n);
+            for p in pos {
+                x.push(p[0]);
+                y.push(p[1]);
+                z.push(p[2]);
+            }
+
+            let mut ax = vec![0.0_f32; n];
+            let mut ay = vec![0.0_f32; n];
+            let mut az = vec![0.0_f32; n];
+
+            let ret = unsafe {
+                ffi::cuda_direct_solve(
+                    handle,
+                    x.as_ptr(), y.as_ptr(), z.as_ptr(),
+                    mass.as_ptr(),
+                    ax.as_mut_ptr(), ay.as_mut_ptr(), az.as_mut_ptr(),
+                    n as i32,
+                    g,
+                )
+            };
+
+            // Liberar handle antes de comprobar el error
+            unsafe { ffi::cuda_direct_destroy(handle) };
+
+            assert_eq!(ret, 0, "cuda_direct_solve falló con código {ret}");
+
+            // Combinar en [[ax, ay, az]; N]
+            (0..n).map(|i| [ax[i], ay[i], az[i]]).collect()
+        }
     }
 
     /// Número de partículas máximo recomendado para este solver en el hardware disponible.

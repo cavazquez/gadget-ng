@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <new>
 #include <cuda_runtime.h>
 #include <cufft.h>
 
@@ -327,7 +328,6 @@ int cuda_pm_solve(
     CudaPmState* s = (CudaPmState*)h;
     int N   = s->N;
     long long N3  = (long long)N * N * N;
-    long long Nnc = (long long)N * N * s->nc;
 
     /* ── Reasignar buffers de partículas si es necesario ─────────────────── */
     if (n > s->d_cap) {

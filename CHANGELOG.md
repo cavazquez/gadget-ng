@@ -8,6 +8,52 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 165 — GPU Kernels Reales + MHD 3D Solenoidal
+
+#### Tarea A — Kernel CUDA/HIP de gravedad directa N² real
+
+- **`crates/gadget-ng-cuda/cuda/direct_gravity.h`** — interfaz C pública
+  (`cuda_direct_create` / `cuda_direct_destroy` / `cuda_direct_solve`).
+- **`crates/gadget-ng-cuda/cuda/direct_gravity.cu`** — kernel CUDA N² con tiling
+  en shared memory (`BLOCK_SIZE=256`), softening Plummer, acumuladores `fmaf`.
+- **`crates/gadget-ng-hip/hip/direct_gravity.h`** y **`direct_gravity.hip`** —
+  mirror exacto usando APIs HIP (`hipMalloc`, `hipMemcpy`, `hipLaunchKernelGGL`).
+- **`crates/gadget-ng-cuda/src/ffi.rs`** y **`gadget-ng-hip/src/ffi.rs`** — bindings
+  `cuda_direct_create/destroy/solve` y `hip_direct_create/destroy/solve`.
+- **`build.rs`** (CUDA y HIP) — compilan `direct_gravity.cu`/`.hip` junto a
+  `pm_gravity.cu`/`.hip` en la misma librería estática.
+- **`CudaDirectGravity::compute`** y **`HipDirectGravity::compute`** — reemplazan
+  `todo!()` con la llamada FFI real; degradan a `panic!` (inalcanzable) si se
+  compilan sin hardware con `#[cfg(cuda_unavailable)]`.
+
+#### Tarea B — MHD 3D solenoidal completa
+
+- **`primordial_bfield_ic_3d`** en `crates/gadget-ng-core/src/ic_mhd.rs`:
+  - Genera amplitudes complejas Gaussianas en k-space con espectro `P_B ∝ k^n_B`.
+  - **Proyección transversal discreta**: usa `k̃_α = sin(2π k_α/N)·N/L` (operador
+    de diferencias centrales) en lugar del k continuo; garantiza `∇·B = 0` exacto
+    con diferencias finitas (error numérico < 1e-14).
+  - Simetría Hermitiana `B_k(-k) = B_k*(k)` para campo real.
+  - IFFT 3D separable via `rustfft` (3 pases de IFFT 1D in-place).
+  - Normaliza al RMS pedido `b0`; compatible con grillas de cualquier tamaño.
+- **Backward-compat**: `primordial_bfield_ic` (1D) se mantiene sin cambios.
+- **Tests** — 2 nuevos tests en `ic_mhd.rs` que pasan en CI sin hardware:
+  - `primordial_bfield_3d_rms_matches_b0`: error RMS < 2% de `b0`.
+  - `primordial_bfield_3d_divergence_free`: max `|∇·B|` = O(1e-14).
+- Exportada desde `gadget-ng-core/src/lib.rs`.
+
+#### Activación de tests GPU
+
+- **`crates/gadget-ng-gpu/tests/v1_gpu_tests.rs`** — eliminado `#[ignore]` de
+  los 5 tests; ahora saltan limpiamente con mensaje `[SKIP]` cuando no hay
+  hardware disponible (sin necesidad de `--include-ignored`):
+  - `gpu_matches_cpu_direct_gravity_n1024` — llama `CudaDirectGravity::compute`
+    real (o HIP como fallback); error < 1e-4.
+  - `gpu_speedup_over_cpu_serial_weak_scaling` — benchmark regresión GPU vs CPU.
+  - `pm_gpu_roundtrip_fft` — skip si sin CUDA/HIP.
+  - `power_spectrum_pm_gpu_matches_pm_cpu` — skip si sin CUDA/HIP.
+  - `energy_conservation_gpu_integrator_n256_100steps` — conservación E < 0.1%.
+
 ### Phase 164 — Documentación final HPC Phases 161-163
 
 - 3 reportes técnicos en `docs/reports/` para V1 (GPU), V2 (cosmo+jerárquico), V3 (MHD ICs).

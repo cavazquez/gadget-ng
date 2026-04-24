@@ -43,7 +43,7 @@ pub use gravity::{
 #[cfg(feature = "simd")]
 pub use gravity_simd::SimdDirectGravity;
 pub use ic::{build_particles, build_particles_for_gid_range, IcError};
-pub use ic_mhd::{check_plasma_beta, primordial_bfield_ic, uniform_bfield_ic};
+pub use ic_mhd::{check_plasma_beta, primordial_bfield_ic, primordial_bfield_ic_3d, uniform_bfield_ic};
 pub use modified_gravity::{apply_modified_gravity, chameleon_field, fifth_force_factor, FRParams};
 pub use ic_2lpt::{zeldovich_2lpt_ics, zeldovich_2lpt_ics_with_variant, Psi2Variant};
 pub use ic_zeldovich::internals as ic_zeldovich_internals;

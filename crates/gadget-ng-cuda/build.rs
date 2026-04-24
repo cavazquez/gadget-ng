@@ -21,6 +21,8 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=cuda/pm_gravity.cu");
     println!("cargo:rerun-if-changed=cuda/pm_gravity.h");
+    println!("cargo:rerun-if-changed=cuda/direct_gravity.cu");
+    println!("cargo:rerun-if-changed=cuda/direct_gravity.h");
     println!("cargo:rerun-if-env-changed=CUDA_SKIP");
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_ARCH");
@@ -60,64 +62,76 @@ fn main() {
         return;
     };
 
-    // ── 4. Compilar kernel CUDA ───────────────────────────────────────────────
+    // ── 4. Compilar kernels CUDA ──────────────────────────────────────────────
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR no definida"));
-    let arch = std::env::var("CUDA_ARCH").unwrap_or_else(|_| "sm_80".to_string());
+    // CUDA_ARCH puede forzarse manualmente; si no, se auto-detecta con nvidia-smi.
+    // Default conservador: sm_60 (Pascal, GTX 10xx) si no hay GPU o no se detecta.
+    let arch = std::env::var("CUDA_ARCH").unwrap_or_else(|_| detect_cuda_arch());
 
-    let obj_path = out_dir.join("pm_gravity.o");
     let lib_path = out_dir.join("libpm_cuda.a");
 
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let kernel_src = manifest_dir.join("cuda/pm_gravity.cu");
 
-    // nvcc -O3 -arch=<sm> -Xcompiler -fPIC -c <kernel.cu> -o <kernel.o>
-    let status = Command::new(&nvcc)
-        .args([
-            "-O3",
-            &format!("-arch={arch}"),
-            "-Xcompiler",
-            "-fPIC",
-            "-std=c++14",
-            "-c",
-            kernel_src.to_str().expect("kernel path"),
-            "-o",
-            obj_path.to_str().expect("obj path"),
-        ])
-        .status();
+    // Fuentes a compilar: pm_gravity.cu y direct_gravity.cu
+    let kernel_sources = [
+        ("pm_gravity",     "cuda/pm_gravity.cu"),
+        ("direct_gravity", "cuda/direct_gravity.cu"),
+    ];
 
-    match status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            println!("cargo:warning=nvcc falló (código {s}). CudaPmSolver deshabilitado.");
-            println!("cargo:rustc-cfg=cuda_unavailable");
-            return;
+    let mut obj_paths: Vec<PathBuf> = Vec::new();
+
+    for (name, src_rel) in &kernel_sources {
+        let src = manifest_dir.join(src_rel);
+        let obj = out_dir.join(format!("{name}.o"));
+
+        // nvcc -O3 -arch=<sm> -Xcompiler -fPIC -c <kernel.cu> -o <kernel.o>
+        let status = Command::new(&nvcc)
+            .args([
+                "-O3",
+                &format!("-arch={arch}"),
+                "-Xcompiler",
+                "-fPIC",
+                "-std=c++14",
+                "-c",
+                src.to_str().expect("kernel path"),
+                "-o",
+                obj.to_str().expect("obj path"),
+            ])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                println!("cargo:warning=nvcc falló al compilar {name} (código {s}). CUDA deshabilitado.");
+                println!("cargo:rustc-cfg=cuda_unavailable");
+                return;
+            }
+            Err(e) => {
+                println!("cargo:warning=No se pudo ejecutar nvcc para {name}: {e}. CUDA deshabilitado.");
+                println!("cargo:rustc-cfg=cuda_unavailable");
+                return;
+            }
         }
-        Err(e) => {
-            println!("cargo:warning=No se pudo ejecutar nvcc: {e}. CudaPmSolver deshabilitado.");
-            println!("cargo:rustc-cfg=cuda_unavailable");
-            return;
-        }
+        obj_paths.push(obj);
     }
 
-    // ar rcs libpm_cuda.a pm_gravity.o
-    let status = Command::new("ar")
-        .args([
-            "rcs",
-            lib_path.to_str().expect("lib path"),
-            obj_path.to_str().expect("obj path"),
-        ])
-        .status();
+    // ar rcs libpm_cuda.a pm_gravity.o direct_gravity.o
+    let mut ar_args = vec!["rcs".to_string(), lib_path.to_str().expect("lib path").to_string()];
+    for obj in &obj_paths {
+        ar_args.push(obj.to_str().expect("obj path").to_string());
+    }
+    let status = Command::new("ar").args(&ar_args).status();
 
     match status {
         Ok(s) if s.success() => {}
         Ok(s) => {
-            println!("cargo:warning=ar falló (código {s}). CudaPmSolver deshabilitado.");
+            println!("cargo:warning=ar falló (código {s}). CUDA deshabilitado.");
             println!("cargo:rustc-cfg=cuda_unavailable");
             return;
         }
         Err(e) => {
-            println!("cargo:warning=No se pudo ejecutar ar: {e}. CudaPmSolver deshabilitado.");
+            println!("cargo:warning=No se pudo ejecutar ar: {e}. CUDA deshabilitado.");
             println!("cargo:rustc-cfg=cuda_unavailable");
             return;
         }
@@ -130,6 +144,9 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", cufft_lib_dir.display());
     println!("cargo:rustc-link-lib=cufft");
     println!("cargo:rustc-link-lib=cudart");
+
+    // Los kernels CUDA usan operadores C++ (new, nothrow) — necesitan libstdc++.
+    println!("cargo:rustc-link-lib=stdc++");
 
     // Directorio stubs para cudart en instalaciones headless.
     if let Some(ref cp) = cuda_path {
@@ -170,6 +187,37 @@ fn find_nvcc(cuda_path: Option<&Path>) -> Option<PathBuf> {
     }
 
     None
+}
+
+/// Auto-detecta la arquitectura CUDA de la GPU instalada via `nvidia-smi`.
+///
+/// Convierte compute capability (e.g. "6.1") → flag nvcc (e.g. "sm_61").
+/// Si no hay GPU o falla el comando, devuelve `sm_60` como mínimo compatible
+/// con Pascal (GTX 10xx, Quadro P series).
+fn detect_cuda_arch() -> String {
+    let out = Command::new("nvidia-smi")
+        .args(["--query-gpu=compute_cap", "--format=csv,noheader"])
+        .output();
+
+    if let Ok(o) = out {
+        if o.status.success() {
+            let cap = String::from_utf8_lossy(&o.stdout);
+            // Tomar la primera GPU; eliminar el punto (6.1 → sm_61)
+            if let Some(line) = cap.lines().next() {
+                let sm = line.trim().replace('.', "");
+                if !sm.is_empty() {
+                    println!(
+                        "cargo:warning=GPU detectada: compute capability {}, compilando para sm_{sm}",
+                        line.trim()
+                    );
+                    return format!("sm_{sm}");
+                }
+            }
+        }
+    }
+
+    println!("cargo:warning=No se pudo detectar GPU; usando sm_60 (Pascal) por defecto.");
+    "sm_60".to_string()
 }
 
 /// Busca el directorio que contiene `libcufft.so`.

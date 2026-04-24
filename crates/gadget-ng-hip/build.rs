@@ -20,6 +20,8 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=hip/pm_gravity.hip");
     println!("cargo:rerun-if-changed=hip/pm_gravity.h");
+    println!("cargo:rerun-if-changed=hip/direct_gravity.hip");
+    println!("cargo:rerun-if-changed=hip/direct_gravity.h");
     println!("cargo:rerun-if-env-changed=HIP_SKIP");
     println!("cargo:rerun-if-env-changed=ROCM_PATH");
 
@@ -58,60 +60,69 @@ fn main() {
         return;
     };
 
-    // ── 4. Compilar kernel HIP ────────────────────────────────────────────────
+    // ── 4. Compilar kernels HIP ───────────────────────────────────────────────
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR no definida"));
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
 
-    let kernel_src = manifest_dir.join("hip/pm_gravity.hip");
-    let obj_path = out_dir.join("pm_gravity_hip.o");
     let lib_path = out_dir.join("libpm_hip.a");
 
-    // hipcc -O3 -fPIC -c <kernel.hip> -o <kernel.o>
-    let status = Command::new(&hipcc)
-        .args([
-            "-O3",
-            "-fPIC",
-            "-std=c++14",
-            "-c",
-            kernel_src.to_str().expect("kernel path"),
-            "-o",
-            obj_path.to_str().expect("obj path"),
-        ])
-        .status();
+    let kernel_sources = [
+        ("pm_gravity_hip",     "hip/pm_gravity.hip"),
+        ("direct_gravity_hip", "hip/direct_gravity.hip"),
+    ];
 
-    match status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            println!("cargo:warning=hipcc falló (código {s}). HipPmSolver deshabilitado.");
-            println!("cargo:rustc-cfg=hip_unavailable");
-            return;
+    let mut obj_paths: Vec<PathBuf> = Vec::new();
+
+    for (name, src_rel) in &kernel_sources {
+        let src = manifest_dir.join(src_rel);
+        let obj = out_dir.join(format!("{name}.o"));
+
+        // hipcc -O3 -fPIC -c <kernel.hip> -o <kernel.o>
+        let status = Command::new(&hipcc)
+            .args([
+                "-O3",
+                "-fPIC",
+                "-std=c++14",
+                "-c",
+                src.to_str().expect("kernel path"),
+                "-o",
+                obj.to_str().expect("obj path"),
+            ])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                println!("cargo:warning=hipcc falló al compilar {name} (código {s}). HIP deshabilitado.");
+                println!("cargo:rustc-cfg=hip_unavailable");
+                return;
+            }
+            Err(e) => {
+                println!("cargo:warning=No se pudo ejecutar hipcc para {name}: {e}. HIP deshabilitado.");
+                println!("cargo:rustc-cfg=hip_unavailable");
+                return;
+            }
         }
-        Err(e) => {
-            println!("cargo:warning=No se pudo ejecutar hipcc: {e}. HipPmSolver deshabilitado.");
-            println!("cargo:rustc-cfg=hip_unavailable");
-            return;
-        }
+        obj_paths.push(obj);
     }
 
-    // ar rcs libpm_hip.a pm_gravity_hip.o
-    let status = Command::new("ar")
-        .args([
-            "rcs",
-            lib_path.to_str().expect("lib path"),
-            obj_path.to_str().expect("obj path"),
-        ])
-        .status();
+    // ar rcs libpm_hip.a pm_gravity_hip.o direct_gravity_hip.o
+    let mut ar_args = vec!["rcs".to_string(), lib_path.to_str().expect("lib path").to_string()];
+    for obj in &obj_paths {
+        ar_args.push(obj.to_str().expect("obj path").to_string());
+    }
+    let status = Command::new("ar").args(&ar_args).status();
 
     match status {
         Ok(s) if s.success() => {}
         Ok(s) => {
-            println!("cargo:warning=ar falló (código {s}). HipPmSolver deshabilitado.");
+            println!("cargo:warning=ar falló (código {s}). HIP deshabilitado.");
             println!("cargo:rustc-cfg=hip_unavailable");
             return;
         }
         Err(e) => {
-            println!("cargo:warning=No se pudo ejecutar ar: {e}. HipPmSolver deshabilitado.");
+            println!("cargo:warning=No se pudo ejecutar ar: {e}. HIP deshabilitado.");
             println!("cargo:rustc-cfg=hip_unavailable");
             return;
         }

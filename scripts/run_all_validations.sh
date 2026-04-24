@@ -118,13 +118,22 @@ QUANTITATIVE_TESTS=(
     "v2_hierarchical_cosmo"
 )
 
-# Tests GPU V1 (Bloque 2b — wgpu CI-friendly, los #[ignore] se omiten)
-log "→ v1_gpu_tests (wgpu CI)"
+# Tests GPU V1 (Bloque 2b — todos los tests activos; los que requieren HW hacen skip automático)
+log "→ v1_gpu_tests (6 tests: 1 wgpu + 5 skip-si-sin-HW)"
 if cargo test -p gadget-ng-gpu --test v1_gpu_tests $RELEASE_FLAGS \
         -- --nocapture 2>&1 | tee "logs/bloque2_v1_gpu_tests.log" | grep -q "FAILED"; then
     fail "v1_gpu_tests"
 else
     pass "v1_gpu_tests"
+fi
+
+# Tests MHD 3D solenoidal (Phase 165 — pura Rust, sin hardware)
+log "→ ic_mhd 3D solenoidal (gadget-ng-core)"
+if cargo test -p gadget-ng-core --lib ic_mhd $RELEASE_FLAGS \
+        -- --nocapture 2>&1 | tee "logs/bloque2_ic_mhd_3d.log" | grep -q "FAILED"; then
+    fail "ic_mhd 3D solenoidal"
+else
+    pass "ic_mhd 3D solenoidal (primordial_bfield_ic_3d: rms + div-free)"
 fi
 
 for t in "${QUANTITATIVE_TESTS[@]}"; do

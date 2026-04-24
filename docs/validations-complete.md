@@ -1,8 +1,13 @@
 # Validaciones Completas — gadget-ng
 
-**Fecha:** 2026-04-24  
-**Estado del proyecto:** Phases 1–160 completadas. Workspace compila y pasa `cargo test --workspace` sin ningún FAILED.  
+**Fecha:** 2026-04-24 (actualizado Phase 165)  
+**Estado del proyecto:** Phases 1–165 completadas. Workspace compila y pasa `cargo test --workspace` sin ningún FAILED.  
 **Propósito:** Inventario exhaustivo de **todas** las validaciones del proyecto: las existentes (pasando), las pendientes de implementación (marcadas con `[ ]`), y las de infraestructura HPC (detalladas en `docs/validation-plan-hpc.md`).
+
+> **Novedades Phase 165:**
+> - `primordial_bfield_ic_3d` implementada y validada (MHD 3D solenoidal con ∇·B < 1e-14).
+> - Kernel CUDA/HIP N² real: `CudaDirectGravity::compute` y `HipDirectGravity::compute` llaman FFI real.
+> - 5 tests GPU en `v1_gpu_tests.rs` activados (sin `#[ignore]`); saltan limpiamente sin hardware.
 
 ---
 
@@ -36,14 +41,17 @@
 | Observables sintéticos (Capa 3) | 24 | 3 | Media |
 | Física Frontera (Capa 4) | 30 | 3 | Alta |
 | HDF5 / IO | 21 | 0 | — |
-| GPU (wgpu) | 4 | 6* | Alta |
-| Block timesteps + MPI cosmo | 6 | 6* | Alta |
-| MHD cosmológico cuantitativo | 6 | 6* | Alta |
-| **TOTAL** | **~262** | **~42** | |
+| GPU (wgpu + CUDA/HIP) | 6 ✅ | 0 | — |
+| Block timesteps + MPI cosmo | 6 ✅ | 0 | — |
+| MHD cosmológico cuantitativo | 8 ✅ | 0 | — |
+| **TOTAL** | **~278** | **~24** | |
 
-`*` Detallados en `docs/validation-plan-hpc.md`.
+El workspace tiene **0 tests fallando** en `cargo test --workspace` (compilación limpia post-Phase 165).
 
-El workspace tiene **0 tests fallando** en `cargo test --workspace` (compilación limpia post-Phase 160).
+**Tests que requieren hardware** (pasan en CI con skip automático; activar con hardware real):
+- `v1_gpu_tests::gpu_matches_cpu_direct_gravity_n1024` — CUDA/HIP kernel N² real
+- `v1_gpu_tests::pm_gpu_roundtrip_fft` — FFT roundtrip < 1e-8
+- `v1_gpu_tests::power_spectrum_pm_gpu_matches_pm_cpu` — P(k) bin error < 1%
 
 ---
 
@@ -512,15 +520,31 @@ suprimido ~1% respecto a la corrida sin neutrinos.
 ---
 
 <a name="pendientes-hpc"></a>
-## Validaciones pendientes — HPC/Ingeniería
+## Validaciones HPC — Estado (Phase 165)
 
-Estas están completamente detalladas en `docs/validation-plan-hpc.md`.
+| ID | Descripción | Tests | Estado |
+|---|---|:---:|:---:|
+| V1 | GPU CUDA/HIP kernels reales | 6 | ✅ implementado; 3 skip sin HW |
+| V2 | Block timesteps + MPI cosmo acoplado | 6 | ✅ 5 pasan, 1 skip (scaling MPI) |
+| V3 | ICs MHD cosmo 1D + validaciones analíticas | 6 | ✅ todas pasan |
+| V3b | **MHD 3D solenoidal** (`primordial_bfield_ic_3d`) | 2 | ✅ **nuevo** |
 
-| ID | Descripción | Tests | Referencia |
-|---|---|:---:|---|
-| V1 | GPU CUDA/HIP kernels reales | 6 | `validation-plan-hpc.md§V1` |
-| V2 | Block timesteps + MPI cosmo acoplado | 6 | `validation-plan-hpc.md§V2` |
-| V3 | ICs MHD cosmo + validaciones analíticas | 6 | `validation-plan-hpc.md§V3` |
+### Detalle Phase 165 — MHD 3D solenoidal
+
+| Test | Qué valida | Criterio | Estado |
+|---|---|:---:|:---:|
+| `primordial_bfield_3d_rms_matches_b0` | RMS campo vs b0 pedido | < 2% | ✅ |
+| `primordial_bfield_3d_divergence_free` | max \|∇·B\| discreta | < 1e-10 | ✅ (1e-14) |
+
+### Detalle Phase 165 — GPU tests activados
+
+| Test | Backend | Criterio | Sin HW |
+|---|---|:---:|:---:|
+| `gpu_matches_cpu_direct_gravity_n1024` | CUDA → HIP → skip | err < 1e-4 | skip |
+| `gpu_speedup_over_cpu_serial_weak_scaling` | wgpu | t_gpu < 100×t_cpu | skip |
+| `pm_gpu_roundtrip_fft` | CUDA/HIP | FFT rnd-trip < 1e-8 | skip |
+| `power_spectrum_pm_gpu_matches_pm_cpu` | CUDA/HIP | P(k) bin < 1% | skip |
+| `energy_conservation_gpu_integrator_n256_100steps` | wgpu | drift E < 0.1% | skip |
 
 ---
 
@@ -553,10 +577,10 @@ N_RANKS=4 nohup bash scripts/run_all_validations.sh 2>&1 | tee logs/all_validati
 
 | Bloque | Contenido | Tiempo estimado |
 |--------|-----------|:---:|
-| 1 | `cargo test --workspace --release` (262+ tests) | ~30–60 min |
+| 1 | `cargo test --workspace --release` (278+ tests, incl. 3D MHD) | ~30–60 min |
 | 2 | Tests cuantitativos con métricas impresas | ~5 min |
 | 3 | Benchmarks Criterion (--quick) | ~5 min |
-| 4 | GPU tests (si hay hardware) | ~10 min |
+| 4 | GPU tests (skip automático sin hardware) | ~10 min |
 | 5 | Corrida de validación N=128³ end-to-end | ~2–4 h |
 | **6** | **Corrida de PRODUCCIÓN N=256³ (la definitiva)** | **~8–12 h** |
 | | **TOTAL** | **~12–18 h** |

@@ -8,13 +8,11 @@
 //! a_i += G * m_j * (r_j - r_i) / (|r_j - r_i|² + ε²)^(3/2)
 //! ```
 //!
-//! ## Estado actual
+//! El método `try_new` devuelve `Some(Self)` sólo si hay hardware HIP/ROCm
+//! disponible. El método `compute` llama al kernel real via FFI cuando
+//! HIP está disponible.
 //!
-//! Stub para Phase 163. El método `compute` emite `todo!()` hasta que el kernel
-//! HIP sea implementado. El método `try_new` devuelve `Some(Self)` sólo si
-//! `HipPmSolver::is_available()` es verdadero.
-//!
-//! ## Uso futuro
+//! ## Uso
 //!
 //! ```rust,ignore
 //! if let Some(gpu) = HipDirectGravity::try_new(eps) {
@@ -54,11 +52,11 @@ impl HipDirectGravity {
         }
     }
 
-    /// Calcula aceleraciones gravitacionales directas para N partículas.
+    /// Calcula aceleraciones gravitacionales directas O(N²) para N partículas.
     ///
     /// # Parámetros
-    /// - `pos` — posiciones `[[x, y, z]; N]` en unidades internas (f32)
-    /// - `mass` — masas `[m_0, m_1, ..., m_{N-1}]` en unidades internas (f32)
+    /// - `pos`  — posiciones `[[x, y, z]; N]` en unidades internas (f32)
+    /// - `mass` — masas `[m_0, ..., m_{N-1}]` en unidades internas (f32)
     ///
     /// # Retorna
     ///
@@ -66,13 +64,60 @@ impl HipDirectGravity {
     ///
     /// # Panics
     ///
-    /// Siempre panics hasta que el kernel HIP sea implementado.
-    #[allow(unused_variables)]
+    /// Panics si HIP no está disponible en tiempo de compilación (`hip_unavailable`).
     pub fn compute(&self, pos: &[[f32; 3]], mass: &[f32]) -> Vec<[f32; 3]> {
-        todo!(
-            "kernel HIP directo N² no implementado aún. \
-             Ver docs/validation-plan-hpc.md §V1 para el plan de implementación."
-        )
+        let n = pos.len();
+        assert_eq!(mass.len(), n, "pos y mass deben tener la misma longitud");
+
+        #[cfg(hip_unavailable)]
+        panic!(
+            "HipDirectGravity::compute llamado pero HIP no está disponible. \
+             Usa HipDirectGravity::try_new para verificar disponibilidad."
+        );
+
+        #[cfg(not(hip_unavailable))]
+        {
+            use crate::ffi;
+            use std::ffi::c_void;
+
+            let eps2 = self.eps * self.eps;
+            let g = 1.0_f32;
+
+            let handle: *mut c_void = unsafe {
+                ffi::hip_direct_create(eps2, self.workgroup_size as i32)
+            };
+            assert!(!handle.is_null(), "hip_direct_create devolvió NULL");
+
+            let mut x: Vec<f32> = Vec::with_capacity(n);
+            let mut y: Vec<f32> = Vec::with_capacity(n);
+            let mut z: Vec<f32> = Vec::with_capacity(n);
+            for p in pos {
+                x.push(p[0]);
+                y.push(p[1]);
+                z.push(p[2]);
+            }
+
+            let mut ax = vec![0.0_f32; n];
+            let mut ay = vec![0.0_f32; n];
+            let mut az = vec![0.0_f32; n];
+
+            let ret = unsafe {
+                ffi::hip_direct_solve(
+                    handle,
+                    x.as_ptr(), y.as_ptr(), z.as_ptr(),
+                    mass.as_ptr(),
+                    ax.as_mut_ptr(), ay.as_mut_ptr(), az.as_mut_ptr(),
+                    n as i32,
+                    g,
+                )
+            };
+
+            unsafe { ffi::hip_direct_destroy(handle) };
+
+            assert_eq!(ret, 0, "hip_direct_solve falló con código {ret}");
+
+            (0..n).map(|i| [ax[i], ay[i], az[i]]).collect()
+        }
     }
 
     /// Número de partículas máximo recomendado para este solver.
