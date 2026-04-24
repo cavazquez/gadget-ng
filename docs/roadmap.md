@@ -1,7 +1,7 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–108 completadas.  
-> Phases 105–108: JSONL SPH completo, restart con state AGN+EoR, merger trees con FoF real, vientos galácticos.  
+> **Estado al 23 de abril de 2026:** Phases 1–119 completadas.  
+> Phases 114–119: Capa 2 física avanzada — ISM multifase, vientos estelares pre-SN, modo radio AGN (bubble feedback), rayos cósmicos básicos, función de luminosidad y colores galácticos, enfriamiento tabulado S&D93.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -58,6 +58,20 @@
 | **Phase 94** | 📡 **Estadísticas 21cm**: `cm21.rs`, `brightness_temperature`, P(k)₂₁cm, campo `cm21` en `InsituResult` |
 | **Phase 95** | 🌌 **EoR z=6–12**: macro `maybe_reionization!`, `uv_from_halos`, `configs/eor_test.toml`, `phase95_eor.rs` |
 | **Phase 96** | 🕳️ **Feedback AGN**: `agn.rs`, Bondi-Hoyle, `AgnSection`, macro `maybe_agn!` en engine |
+| **Phases 97–99** | 🔧 **Opciones técnicas**: cm21 con FFT real, EoR con química acoplada, benchmarks AGN |
+| **Phases 100–104** | 🔧 **Opciones técnicas nuevas**: softening comóvil→físico CLI, snapshots HDF5 yt/pynbody, domain decomp dinámica, análisis post-proceso CLI, AGN con halos FoF |
+| **Phases 105–108** | 🔧 **Técnicas nuevas**: JSONL SPH, restart SPH state, merger trees mejorados, vientos galácticos |
+| **Phase 109** | ⚗️ **Metalicidad y estrellas**: `ParticleType::Star`, `metallicity`, `stellar_age` en `Particle` |
+| **Phase 110** | ⚗️ **Enriquecimiento SPH**: `apply_enrichment` distribuye metales SN II+AGB a vecinos de gas |
+| **Phase 111** | 🌡️ **Enfriamiento metálico**: `CoolingKind::MetalCooling`, `cooling_rate_metal` fitting S&D93 |
+| **Phase 112** | ⭐ **Spawning estrellas**: `spawn_star_particles`, probabilidad `1-exp(-sfr×dt/m)` |
+| **Phase 113** | 💥 **SN Ia + DTD**: `apply_snia_feedback`, `advance_stellar_ages`, DTD `R∝t⁻¹` |
+| **Phase 114** | 🌫️ **ISM Multifase**: `u_cold` en Particle, `IsmSection`, presión efectiva S&H (2003) |
+| **Phase 115** | 🌬️ **Vientos estelares pre-SN**: `apply_stellar_wind_feedback`, kicks OB/Wolf-Rayet |
+| **Phase 116** | 📡 **Modo radio AGN**: `bubble_feedback_radio`, bifurcación quasar/radio por Eddington |
+| **Phase 117** | ☢️ **Rayos cósmicos**: `cr_energy` en Particle, `inject_cr_from_sn`, `diffuse_cr` |
+| **Phase 118** | 🔭 **Luminosidad y colores**: SSP BC03, `galaxy_luminosity`, CLI `analyze --luminosity` |
+| **Phase 119** | 📊 **Enfriamiento tabulado**: `CoolingKind::MetalTabular`, tabla S&D93 7×20 bilineal |
 
 ---
 
@@ -118,3 +132,5 @@ Posibles extensiones:
 **Phases 100-104 (2026-04-23):** AGN con halos FoF (BH seeds en centros de halos identificados in-situ), fix softening comóvil→físico en loops cosmológicos, HDF5 layout GADGET-4 completo con PartType0 (gas) + PartType1 (DM), domain decomposition con coste medido validado (SFC build_weighted + EMA), CLI analyze extendido con --cm21, --igm-temp, --agn-stats, --eor-state.
 
 **Phases 105-108 (2026-04-23):** Técnicas nuevas: (105) JSONL con campos SPH completos (`internal_energy`, `smoothing_length`, `ptype` en `ParticleRecord`, backward compat); (106) Restart con SPH state completo (serde para `BlackHole` + `ChemState`, persistencia de AGN BHs y química EoR en checkpoint); (107) Merger trees con FoF real (`find_halos_with_membership`, `particle_snapshots_from_catalog`, membresía por proximidad COM); (108) Vientos galácticos (`WindParams`, `apply_galactic_winds`, factor de carga η, Springel & Hernquist 2003).
+
+**Phases 109-113 (2026-04-23) — Capa 1 bariónica completa:** (109) Metales en `Particle`: `metallicity`, `stellar_age`, `ParticleType::Star`, `Particle::new_star()`, `EnrichmentSection`; (110) Enriquecimiento químico SPH: `apply_enrichment` con distribución Wendland C2 desde SN II y AGB a vecinos de gas; (111) Enfriamiento metálico: `CoolingKind::MetalCooling`, `cooling_rate_metal` fitting analítico Sutherland & Dopita (1993), despacho en `apply_cooling`; (112) Partículas estelares reales: `spawn_star_particles` estocástico con herencia de metalicidad, integrado en `engine.rs`; (113) SN Ia con DTD power-law: `apply_snia_feedback`, `advance_stellar_ages`, distribución de Fe a vecinos, Maoz & Mannucci (2012).

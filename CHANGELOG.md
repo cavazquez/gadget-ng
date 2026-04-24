@@ -8,6 +8,107 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 119 — Enfriamiento tabulado S&D93
+
+- Nueva variante `CoolingKind::MetalTabular` en `config.rs`.
+- Tabla interna embebida 7×20 bins en (Z/Z_sun, log10 T) derivada de Sutherland & Dopita (1993).
+- `cooling_rate_tabular(u, rho, metallicity, gamma, t_floor_k)` con interpolación bilineal.
+- `apply_cooling` despacha `MetalTabular` → `cooling_rate_tabular`.
+- Backward compat: `MetalCooling` (analítico) sigue funcionando sin cambios.
+- 6 tests en `phase119_metal_tabular.rs`.
+
+### Phase 118 — Función de luminosidad y colores galácticos
+
+- Nuevo módulo `gadget-ng-analysis/src/luminosity.rs` con SSP analítica simplificada BC03.
+- `stellar_luminosity_solar(mass, age_gyr, metallicity)`: `L ∝ M × age^{-0.8} × f_Z(Z)`.
+- `bv_color(age_gyr, metallicity)`: índice B-V en magnitudes.
+- `gr_color(age_gyr, metallicity)`: índice g-r SDSS en magnitudes.
+- `galaxy_luminosity(particles) -> LuminosityResult`: suma sobre partículas estelares.
+- CLI `gadget-ng analyze --luminosity` → `analyze/luminosity.json`.
+- 7 tests en `phase118_luminosity.rs`.
+
+### Phase 117 — Rayos cósmicos básicos
+
+- Campo `cr_energy: f64` en `Particle` con `#[serde(default)]`.
+- `CrSection` en `SphSection`: `enabled`, `cr_fraction`, `kappa_cr`.
+- Nuevo módulo `gadget-ng-sph/src/cosmic_rays.rs`.
+- `inject_cr_from_sn(particles, sfr, cr_fraction, dt)`: inyecta CRs desde SN II.
+- `diffuse_cr(particles, kappa_cr, dt)`: difusión isótropa entre vecinos SPH.
+- `cr_pressure(cr_energy, rho)`: presión CR con γ_CR = 4/3.
+- 6 tests en `phase117_cosmic_rays.rs`.
+
+### Phase 116 — Modo radio AGN (bubble feedback)
+
+- Campos nuevos en `AgnSection`: `f_edd_threshold` (0.01), `r_bubble` (2.0), `eps_radio` (0.2).
+- `bubble_feedback_radio(bh, particles, params, r_bubble, eps_radio, dt)`: kicks tangenciales en burbuja.
+- `apply_agn_feedback_bimodal(...)`: bifurcación quasar/radio según `f_edd`.
+- 7 tests en `phase116_radio_agn.rs`.
+
+### Phase 115 — Vientos estelares pre-SN
+
+- Campos nuevos en `FeedbackSection`: `stellar_wind_enabled`, `v_stellar_wind_km_s` (2000 km/s), `eta_stellar_wind` (0.1).
+- `apply_stellar_wind_feedback(particles, sfr, cfg, dt, seed) -> Vec<usize>`: kicks mecánicos OB/Wolf-Rayet.
+- Probabilidad de kick: `p = η_w × sfr × dt / m`.
+- 6 tests en `phase115_stellar_winds.rs`.
+
+### Phase 114 — ISM Multifase fría-caliente
+
+- Campo `u_cold: f64` en `Particle` con `#[serde(default)]`.
+- `IsmSection` en `SphSection`: `enabled`, `q_star` (2.5), `f_cold` (0.5).
+- Nuevo módulo `gadget-ng-sph/src/ism.rs`.
+- `effective_pressure(rho, u, u_cold, q_star, gamma)`: presión efectiva S&H (2003).
+- `update_ism_phases(particles, sfr, rho_sf, cfg, dt)`: equilibración de fases fría/caliente.
+- `effective_u(p, q_star)`: energía interna efectiva combinada.
+- 7 tests en `phase114_ism_multiphase.rs`.
+
+### Phase 113 — SN Ia con DTD power-law
+
+- `apply_snia_feedback(particles, dt_gyr, seed, cfg)` en `feedback.rs`: feedback SN Ia con DTD `R ∝ t^{-1}`.
+- `advance_stellar_ages(particles, dt_gyr)`: incrementa `stellar_age` de estrellas cada paso.
+- Parámetros en `FeedbackSection`: `a_ia` (default 2e-3), `t_ia_min_gyr` (default 0.1), `e_ia_code`.
+- Distribución de energía térmica y hierro a vecinos de gas ponderado por distancia.
+- Integración DTD ∫A_Ia × t⁻¹ dt ≈ 9.2×10⁻³ SN/M_sun — consistente con Maoz & Mannucci (2012).
+- 7 tests en `phase113_snia_dtd.rs`.
+
+### Phase 112 — Partículas estelares reales (spawning)
+
+- `spawn_star_particles(particles, sfr, dt, seed, cfg, next_gid) -> (Vec<Particle>, Vec<usize>)`.
+- Probabilidad de spawning: `p = 1 - exp(-sfr × dt / m)` por paso de tiempo.
+- Estrellas heredan `metallicity`, `position`, `velocity` del gas padre.
+- Gas padre pierde `m_star_fraction × m_gas`; si queda bajo `m_gas_min` → eliminado.
+- Parámetros en `FeedbackSection`: `m_star_fraction` (default 0.5), `m_gas_min` (default 0.01).
+- Integración en `engine.rs`: `maybe_sph!` macro extiende `local` con nuevas estrellas.
+- 7 tests en `phase112_stellar_spawning.rs`.
+
+### Phase 111 — Enfriamiento por metales (MetalCooling)
+
+- Nueva variante `CoolingKind::MetalCooling` en `config.rs`.
+- `cooling_rate_metal(u, rho, metallicity, gamma, t_floor_k) -> f64`: fitting Sutherland & Dopita (1993).
+- `Λ(T,Z) = Λ_HHe(T) + (Z/Z_sun) × Λ_metal(T)` con tres regímenes de temperatura.
+- `apply_cooling` despacha a `cooling_rate_metal` cuando `cfg.cooling = MetalCooling`.
+- `cooling_rate_metal` re-exportado desde `gadget-ng-sph`.
+- 6 tests en `phase111_metal_cooling.rs`.
+
+### Phase 110 — Enriquecimiento químico SPH
+
+- `apply_enrichment(particles, sfr, dt, cfg)` en nuevo `enrichment.rs`.
+- Distribuye metales SN II desde gas con SFR a vecinos dentro de `2 × h_sml`.
+- Distribuye metales AGB desde partículas estelares a vecinos de gas.
+- Kernel Wendland C2 3D para ponderación espacial.
+- Metalicidad acotada a `Z ≤ 1.0`.
+- `apply_enrichment` re-exportado desde `gadget-ng-sph`.
+- 6 tests en `phase110_enrichment.rs`.
+
+### Phase 109 — Metales en `Particle` y `ParticleType::Star`
+
+- Nueva variante `ParticleType::Star` (gravedad sí, SPH no).
+- `Particle::metallicity: f64` (`#[serde(default = "0.0")]`) — fracción de masa en metales.
+- `Particle::stellar_age: f64` (`#[serde(default = "0.0")]`) — edad estelar en Gyr.
+- `Particle::new_star(id, mass, pos, vel, metallicity)` y `Particle::is_star()`.
+- Nueva sección `EnrichmentSection` con `yield_snii` (0.02), `yield_agb` (0.04), `enabled`.
+- `EnrichmentSection` re-exportado desde `gadget-ng-core`.
+- 9 tests en `phase109_metals_particle.rs`.
+
 ### Phase 108 — Vientos galácticos
 
 - `WindParams` en `FeedbackSection` con `enabled`, `v_wind_km_s`, `mass_loading`, `t_decoupling_myr`.

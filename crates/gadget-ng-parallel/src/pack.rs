@@ -115,6 +115,10 @@ pub fn unpack_full_to_particles(flat: &[f64], total_count: usize) -> Vec<Particl
             ptype: gadget_ng_core::ParticleType::DarkMatter,
             internal_energy: 0.0,
             smoothing_length: 0.0,
+            metallicity: 0.0,
+            stellar_age: 0.0,
+            u_cold: 0.0,
+            cr_energy: 0.0,
         });
     }
     let mut particles = Vec::with_capacity(total_count);

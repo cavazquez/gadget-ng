@@ -18,8 +18,8 @@ pub use gadget_ng_gpu::{GpuDirectGravity, GpuParticlesSoA};
 pub use gpu_bridge::GpuParticlesSoAExt;
 
 pub use config::{
-    CosmologySection, CoolingKind, DecompositionConfig, GravitySection, IcKind,
-    InitialConditionsSection, InsituAnalysisSection, IntegratorKind, MacSoftening,
+    AgnSection, CosmologySection, CoolingKind, CrSection, DecompositionConfig, EnrichmentSection, GravitySection, IcKind,
+    InitialConditionsSection, InsituAnalysisSection, IntegratorKind, IsmSection, MacSoftening,
     NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, RunConfig, SfcKind,
     FeedbackSection, WindParams, RtSection, SimulationSection, SnapshotFormat, SolverKind, SphSection,
     TimestepCriterion, TimestepSection, TransferKind, UnitsSection, G_KPC_MSUN_KMPS,

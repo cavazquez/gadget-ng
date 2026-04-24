@@ -14,8 +14,8 @@
 use crate::error::CliError;
 use gadget_ng_analysis::{
     analyse, concentration_duffy2008, concentration_ludlow2016, find_subhalos,
-    fit_nfw_concentration, measure_density_profile, r200_from_m200, rho_crit_z,
-    two_point_correlation_fft, AnalysisParams, SubfindParams, RHO_CRIT_H2,
+    fit_nfw_concentration, galaxy_luminosity, measure_density_profile, r200_from_m200,
+    rho_crit_z, two_point_correlation_fft, AnalysisParams, SubfindParams, RHO_CRIT_H2,
 };
 use gadget_ng_core::{SnapshotFormat, Vec3};
 use gadget_ng_io::{write_halo_catalog_jsonl, HaloCatalogEntry, HaloCatalogHeader};
@@ -57,6 +57,8 @@ pub struct AnalyzeParams<'a> {
     pub agn_stats: bool,
     /// Calcular fracción de ionización x_HII media → `analyze/eor_state.json`
     pub eor_state: bool,
+    /// Calcular función de luminosidad y colores (B-V, g-r) → `analyze/luminosity.json` (Phase 118).
+    pub luminosity: bool,
 }
 
 impl<'a> Default for AnalyzeParams<'a> {
@@ -78,6 +80,7 @@ impl<'a> Default for AnalyzeParams<'a> {
             igm_temp: false,
             agn_stats: false,
             eor_state: false,
+            luminosity: false,
         }
     }
 }
@@ -377,6 +380,27 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             let p = analyze_dir.join("eor_state.json");
             let _ = fs::write(&p, &json);
             eprintln!("[analyze --eor-state] x_HII_mean ≈ {:.3}, escrito en {:?}", x_hii_mean, p);
+        }
+    }
+
+    // --luminosity: función de luminosidad y colores galácticos (Phase 118)
+    if params.luminosity {
+        let lum = galaxy_luminosity(&data.particles);
+        let lum_out = serde_json::json!({
+            "l_total_lsun": lum.l_total,
+            "bv": lum.bv,
+            "gr": lum.gr,
+            "n_stars": lum.n_stars,
+            "note": "SSP analítica BC03 simplificada; L ∝ M × age^{-0.8} × f_Z",
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&lum_out) {
+            fs::create_dir_all(&analyze_dir).ok();
+            let p = analyze_dir.join("luminosity.json");
+            let _ = fs::write(&p, &json);
+            eprintln!(
+                "[analyze --luminosity] L={:.2e} L_sun, B-V={:.3}, g-r={:.3}, N_stars={}, escrito en {:?}",
+                lum.l_total, lum.bv, lum.gr, lum.n_stars, p
+            );
         }
     }
 

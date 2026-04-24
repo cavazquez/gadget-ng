@@ -150,6 +150,9 @@ enum Commands {
         /// Calcular fracción de ionización x_HII media → analyze/eor_state.json [Phase 104]
         #[arg(long, default_value_t = false)]
         eor_state: bool,
+        /// Calcular luminosidad y colores (B-V, g-r) → analyze/luminosity.json [Phase 118]
+        #[arg(long, default_value_t = false)]
+        luminosity: bool,
     },
     /// Analiza un snapshot: Friends-of-Friends (halos) + espectro de potencia P(k).
     ///
@@ -334,6 +337,7 @@ fn main() -> Result<(), CliError> {
             igm_temp,
             agn_stats,
             eor_state,
+            luminosity,
         } => {
             let params = analyze_cmd::AnalyzeParams {
                 snapshot_dir: &snapshot,
@@ -352,6 +356,7 @@ fn main() -> Result<(), CliError> {
                 igm_temp,
                 agn_stats,
                 eor_state,
+                luminosity,
             };
             analyze_cmd::run_analyze(&params)?;
         }

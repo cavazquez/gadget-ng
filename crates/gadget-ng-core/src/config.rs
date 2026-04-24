@@ -1077,6 +1077,15 @@ pub enum CoolingKind {
     None,
     /// Enfriamiento atómico H+He: `Λ(T) = Λ₀ · T^β` con floor en `t_floor_k`.
     AtomicHHe,
+    /// Enfriamiento con contribución metálica (Phase 111).
+    ///
+    /// `Λ(T, Z) = Λ_HHe(T) + (Z/Z_sun) × Λ_metal(T)` — Sutherland & Dopita (1993).
+    MetalCooling,
+    /// Enfriamiento tabulado con interpolación bilineal (Phase 119).
+    ///
+    /// Tabla interna 7×20 derivada de Sutherland & Dopita (1993): 7 bins en Z/Z_sun
+    /// y 20 bins en log10(T) de 4.0 a 8.5. Interpolación bilineal en (Z, log T).
+    MetalTabular,
 }
 
 /// Configuración del módulo SPH cosmológico (Phase 66).
@@ -1122,6 +1131,15 @@ pub struct SphSection {
     /// Configuración del feedback AGN (Phase 96).
     #[serde(default)]
     pub agn: AgnSection,
+    /// Configuración del enriquecimiento químico metálico (Phase 109).
+    #[serde(default)]
+    pub enrichment: EnrichmentSection,
+    /// Configuración del modelo ISM multifase (Phase 114).
+    #[serde(default)]
+    pub ism: IsmSection,
+    /// Configuración del módulo de rayos cósmicos (Phase 117).
+    #[serde(default)]
+    pub cr: CrSection,
 }
 
 fn default_gamma() -> f64 { 5.0 / 3.0 }
@@ -1141,6 +1159,9 @@ impl Default for SphSection {
             gas_fraction: 0.0,
             feedback: FeedbackSection::default(),
             agn: AgnSection::default(),
+            enrichment: EnrichmentSection::default(),
+            ism: IsmSection::default(),
+            cr: CrSection::default(),
         }
     }
 }
@@ -1166,6 +1187,36 @@ pub struct FeedbackSection {
     /// Vientos galácticos (Phase 108). Default: desactivado.
     #[serde(default)]
     pub wind: WindParams,
+    /// Fracción de masa que se convierte en estrella al hacer spawning (Phase 112).
+    /// Default: 0.5 (el gas padre retiene el 50% de su masa).
+    #[serde(default = "default_m_star_fraction")]
+    pub m_star_fraction: f64,
+    /// Masa mínima de gas para que la partícula no se elimine tras el spawning (Phase 112).
+    /// Partículas con masa < m_gas_min se marcan para eliminación.
+    #[serde(default = "default_m_gas_min")]
+    pub m_gas_min: f64,
+    /// Normalización de la DTD de SN Ia: A_Ia [SN / Gyr / M_sun] (Phase 113).
+    /// Basado en Maoz & Mannucci (2012): ~2 × 10⁻³ SN/Gyr/M_sun.
+    #[serde(default = "default_a_ia")]
+    pub a_ia: f64,
+    /// Tiempo mínimo para SN Ia tras la formación estelar [Gyr] (Phase 113).
+    /// Default: 0.1 Gyr.
+    #[serde(default = "default_t_ia_min_gyr")]
+    pub t_ia_min_gyr: f64,
+    /// Energía inyectada por SN Ia en unidades internas (Phase 113).
+    /// E_Ia ≈ 1e51 erg × 1.3 en unidades gadget-ng.
+    #[serde(default = "default_e_ia_code")]
+    pub e_ia_code: f64,
+    /// Activa el feedback mecánico de vientos estelares pre-SN (Phase 115).
+    /// Modela vientos de estrellas OB y Wolf-Rayet (~10-30 Myr antes de SN II).
+    #[serde(default)]
+    pub stellar_wind_enabled: bool,
+    /// Velocidad terminal del viento estelar [km/s] (Phase 115). Default: 2000 km/s.
+    #[serde(default = "default_v_stellar_wind")]
+    pub v_stellar_wind_km_s: f64,
+    /// Factor de carga másica del viento estelar η_w = Ṁ_wind / SFR (Phase 115). Default: 0.1.
+    #[serde(default = "default_eta_stellar_wind")]
+    pub eta_stellar_wind: f64,
 }
 
 /// Parámetros del modelo de vientos galácticos (Phase 108).
@@ -1208,6 +1259,13 @@ fn default_v_kick() -> f64 { 350.0 }
 fn default_eps_sn() -> f64 { 0.1 }
 fn default_rho_sf() -> f64 { 0.1 }
 fn default_sfr_min() -> f64 { 1e-4 }
+fn default_m_star_fraction() -> f64 { 0.5 }
+fn default_m_gas_min() -> f64 { 0.01 }
+fn default_a_ia() -> f64 { 2e-3 }
+fn default_t_ia_min_gyr() -> f64 { 0.1 }
+fn default_e_ia_code() -> f64 { 1.54e-3 * 1.3 } // E_Ia ≈ 1.3 × E_SN
+fn default_v_stellar_wind() -> f64 { 2000.0 }
+fn default_eta_stellar_wind() -> f64 { 0.1 }
 
 impl Default for FeedbackSection {
     fn default() -> Self {
@@ -1218,6 +1276,121 @@ impl Default for FeedbackSection {
             rho_sf: default_rho_sf(),
             sfr_min: default_sfr_min(),
             wind: WindParams::default(),
+            m_star_fraction: default_m_star_fraction(),
+            m_gas_min: default_m_gas_min(),
+            a_ia: default_a_ia(),
+            t_ia_min_gyr: default_t_ia_min_gyr(),
+            e_ia_code: default_e_ia_code(),
+            stellar_wind_enabled: false,
+            v_stellar_wind_km_s: default_v_stellar_wind(),
+            eta_stellar_wind: default_eta_stellar_wind(),
+        }
+    }
+}
+
+/// Configuración del enriquecimiento químico metálico (Phase 109).
+///
+/// Controla los yields de SN II y AGB usados en `apply_enrichment`.
+///
+/// ```toml
+/// [sph.enrichment]
+/// enabled    = true
+/// yield_snii = 0.02   # fracción de masa en metales eyectada por SN II
+/// yield_agb  = 0.04   # fracción de masa en metales eyectada por AGB
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrichmentSection {
+    /// Activa el enriquecimiento químico (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Yield metálico de SN II: fracción de masa en Z eyectada (default: 0.02).
+    #[serde(default = "default_yield_snii")]
+    pub yield_snii: f64,
+    /// Yield metálico de AGB: fracción de masa en Z eyectada (default: 0.04).
+    #[serde(default = "default_yield_agb")]
+    pub yield_agb: f64,
+}
+
+fn default_yield_snii() -> f64 { 0.02 }
+fn default_yield_agb() -> f64 { 0.04 }
+
+impl Default for EnrichmentSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            yield_snii: default_yield_snii(),
+            yield_agb: default_yield_agb(),
+        }
+    }
+}
+
+/// Configuración del modelo ISM multifase fría-caliente (Phase 114).
+///
+/// Basado en el modelo de presión efectiva de Springel & Hernquist (2003).
+///
+/// ```toml
+/// [sph.ism]
+/// enabled = true
+/// q_star  = 2.5
+/// f_cold  = 0.5
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsmSection {
+    /// Activa el modelo ISM multifase (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Parámetro de escala de presión efectiva q* (default: 2.5).
+    /// Controla la rigidez del ISM frío: P_eff = (γ-1) ρ (u + q_star × u_cold).
+    #[serde(default = "default_q_star")]
+    pub q_star: f64,
+    /// Fracción fría inicial del ISM (default: 0.5).
+    #[serde(default = "default_f_cold")]
+    pub f_cold: f64,
+}
+
+fn default_q_star() -> f64 { 2.5 }
+fn default_f_cold() -> f64 { 0.5 }
+
+impl Default for IsmSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            q_star: default_q_star(),
+            f_cold: default_f_cold(),
+        }
+    }
+}
+
+/// Configuración del módulo de rayos cósmicos (Phase 117).
+///
+/// ```toml
+/// [sph.cr]
+/// enabled     = true
+/// cr_fraction = 0.1
+/// kappa_cr    = 3e-3
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrSection {
+    /// Activa el módulo de rayos cósmicos (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Fracción de energía de SN II que va a CRs (default: 0.1).
+    #[serde(default = "default_cr_fraction")]
+    pub cr_fraction: f64,
+    /// Coeficiente de difusión isótropa κ_CR [unidades internas] (default: 3e-3).
+    #[serde(default = "default_kappa_cr")]
+    pub kappa_cr: f64,
+}
+
+fn default_cr_fraction() -> f64 { 0.1 }
+fn default_kappa_cr() -> f64 { 3e-3 }
+
+impl Default for CrSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cr_fraction: default_cr_fraction(),
+            kappa_cr: default_kappa_cr(),
         }
     }
 }
@@ -1256,6 +1429,19 @@ pub struct AgnSection {
     /// Si no hay halos identificados, se coloca uno en el centro de la caja.
     #[serde(default = "default_n_agn_bh")]
     pub n_agn_bh: usize,
+    /// Umbral de Eddington para bifurcar modo quasar ↔ radio (Phase 116).
+    /// `Ṁ / Ṁ_Edd < f_edd_threshold` → modo radio (jets mecánicos).
+    /// Default: 0.01 (1% de la tasa de Eddington).
+    #[serde(default = "default_f_edd_threshold")]
+    pub f_edd_threshold: f64,
+    /// Radio de la burbuja de jets mecánicos AGN [unidades internas] (Phase 116).
+    /// Default: 2.0.
+    #[serde(default = "default_r_bubble")]
+    pub r_bubble: f64,
+    /// Eficiencia del modo radio `ε_radio` (Phase 116).
+    /// Fracción de la energía de acreción que va a kicks mecánicos. Default: 0.2.
+    #[serde(default = "default_eps_radio")]
+    pub eps_radio: f64,
 }
 
 fn default_eps_feedback() -> f64 { 0.05 }
@@ -1263,6 +1449,9 @@ fn default_m_seed() -> f64 { 1e5 }
 fn default_v_kick_agn() -> f64 { 500.0 }
 fn default_r_influence() -> f64 { 1.0 }
 fn default_n_agn_bh() -> usize { 1 }
+fn default_f_edd_threshold() -> f64 { 0.01 }
+fn default_r_bubble() -> f64 { 2.0 }
+fn default_eps_radio() -> f64 { 0.2 }
 
 impl Default for AgnSection {
     fn default() -> Self {
@@ -1273,6 +1462,9 @@ impl Default for AgnSection {
             v_kick_agn: default_v_kick_agn(),
             r_influence: default_r_influence(),
             n_agn_bh: default_n_agn_bh(),
+            f_edd_threshold: default_f_edd_threshold(),
+            r_bubble: default_r_bubble(),
+            eps_radio: default_eps_radio(),
         }
     }
 }

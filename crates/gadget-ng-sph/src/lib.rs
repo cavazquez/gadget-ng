@@ -12,17 +12,23 @@
 //! - Integrador **leapfrog KDK** combinado (gravedad + SPH + energía interna).
 pub mod agn;
 pub mod cooling;
+pub mod cosmic_rays;
 pub mod density;
+pub mod enrichment;
 pub mod feedback;
 pub mod forces;
 pub mod integrator;
+pub mod ism;
 pub mod kernel;
 pub mod particle;
 
-pub use agn::{apply_agn_feedback, bondi_accretion_rate, grow_black_holes, AgnParams, BlackHole};
-pub use cooling::{apply_cooling, cooling_rate_atomic, temperature_to_u, u_to_temperature};
+pub use agn::{apply_agn_feedback, apply_agn_feedback_bimodal, bondi_accretion_rate, bubble_feedback_radio, grow_black_holes, AgnParams, BlackHole};
+pub use cooling::{apply_cooling, cooling_rate_atomic, cooling_rate_metal, cooling_rate_tabular, temperature_to_u, u_to_temperature};
 pub use density::{compute_density, GAMMA};
-pub use feedback::{apply_galactic_winds, apply_sn_feedback, compute_sfr, total_sn_energy_injection};
+pub use enrichment::apply_enrichment;
+pub use cosmic_rays::{cr_pressure, diffuse_cr, inject_cr_from_sn};
+pub use ism::{effective_pressure, effective_u, update_ism_phases};
+pub use feedback::{advance_stellar_ages, apply_galactic_winds, apply_sn_feedback, apply_snia_feedback, apply_stellar_wind_feedback, compute_sfr, spawn_star_particles, total_sn_energy_injection};
 pub use forces::compute_sph_forces;
 pub use integrator::{sph_cosmo_kdk_step, sph_kdk_step};
 pub use kernel::{grad_w, w};

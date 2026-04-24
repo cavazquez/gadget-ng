@@ -29,6 +29,7 @@ pub mod pk_rsd;
 pub mod catalog;
 pub mod correlation;
 pub mod fof;
+pub mod luminosity;
 #[cfg(feature = "parallel")]
 pub mod fof_parallel;
 pub mod halo_mass_function;
@@ -80,3 +81,4 @@ pub use subfind::{find_subhalos, local_density_sph, SubfindParams, SubhaloRecord
 pub use velocity_profile::{
     sigma_1d, velocity_anisotropy, velocity_profile, VelocityProfileBin, VelocityProfileParams,
 };
+pub use luminosity::{bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar, LuminosityResult};

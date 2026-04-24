@@ -211,6 +211,235 @@ pub fn total_sn_energy_injection(sfr: &[f64], masses: &[f64], cfg: &FeedbackSect
         .sum()
 }
 
+/// Genera partículas estelares desde gas con SFR activa (Phase 112).
+///
+/// La probabilidad de spawning en un paso `dt` para la partícula `i` es:
+/// `p_spawn = 1 - exp(-sfr[i] × dt / m_i)`
+///
+/// Las estrellas spawneadas:
+/// - Heredan `metallicity`, posición y velocidad del gas padre.
+/// - Tienen `ptype = ParticleType::Star` y `stellar_age = 0`.
+/// - El gas padre pierde `cfg.m_star_fraction × m_gas` de masa.
+///
+/// Si la masa del gas padre cae por debajo de `cfg.m_gas_min`, el índice
+/// se añade al vector de retorno `to_remove`.
+///
+/// # Retorno
+///
+/// `(Vec<Particle>, Vec<usize>)` — nuevas estrellas + índices de gas a eliminar.
+pub fn spawn_star_particles(
+    particles: &mut [Particle],
+    sfr: &[f64],
+    dt: f64,
+    seed: &mut u64,
+    cfg: &FeedbackSection,
+    next_global_id: &mut usize,
+) -> (Vec<Particle>, Vec<usize>) {
+    let mut new_stars: Vec<Particle> = Vec::new();
+    let mut to_remove: Vec<usize> = Vec::new();
+
+    if !cfg.enabled { return (new_stars, to_remove); }
+
+    for i in 0..particles.len() {
+        if particles[i].ptype != gadget_ng_core::ParticleType::Gas { continue; }
+        if sfr[i] < cfg.sfr_min { continue; }
+
+        let m_i = particles[i].mass;
+        if m_i <= 0.0 { continue; }
+
+        // Probabilidad de spawning
+        let prob = 1.0 - (-sfr[i] * dt / m_i).exp();
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+
+        if rand_val < prob {
+            let m_star = cfg.m_star_fraction * m_i;
+            let star = gadget_ng_core::Particle::new_star(
+                *next_global_id,
+                m_star,
+                particles[i].position,
+                particles[i].velocity,
+                particles[i].metallicity,
+            );
+            *next_global_id += 1;
+            new_stars.push(star);
+
+            particles[i].mass -= m_star;
+            if particles[i].mass < cfg.m_gas_min {
+                to_remove.push(i);
+            }
+        }
+    }
+
+    (new_stars, to_remove)
+}
+
+/// Aplica SN Ia a partículas estelares con edad > t_ia_min_gyr (Phase 113).
+///
+/// DTD power-law: `R(t) = A_Ia × (t / 1 Gyr)^{-1}` [SN / Gyr / M_sun]
+///
+/// Por cada estrella con `stellar_age > t_ia_min_gyr`:
+/// 1. Se calcula el número esperado de SN Ia en `dt_gyr`: `N_exp = A_Ia × (t/Gyr)^{-1} × dt_gyr × m_star`.
+/// 2. Se sortea estocásticamente si ocurre al menos una SN Ia.
+/// 3. Si ocurre: se inyecta `e_ia_code` en energía térmica al gas vecino más cercano
+///    y se distribuye hierro (como metalicidad) a todos los vecinos dentro de `2×h`.
+///
+/// # Parámetros
+///
+/// - `particles` — slice mutable con todas las partículas.
+/// - `dt_gyr` — paso de tiempo en Gyr.
+/// - `seed` — semilla PRNG.
+/// - `cfg` — configuración de feedback con parámetros SN Ia.
+pub fn apply_snia_feedback(
+    particles: &mut [Particle],
+    dt_gyr: f64,
+    seed: &mut u64,
+    cfg: &FeedbackSection,
+) {
+    if !cfg.enabled { return; }
+
+    let n = particles.len();
+    let mut delta_u = vec![0.0_f64; n];
+    let mut delta_z = vec![0.0_f64; n];
+
+    for i in 0..n {
+        if particles[i].ptype != gadget_ng_core::ParticleType::Star { continue; }
+        let age = particles[i].stellar_age;
+        if age < cfg.t_ia_min_gyr { continue; }
+
+        // Tasa DTD power-law: R = A_Ia × (t/Gyr)^{-1}
+        let rate = cfg.a_ia * (age).recip(); // SN / Gyr / M_sun
+        let n_exp = rate * dt_gyr * particles[i].mass;
+
+        // Sorteo estocástico
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+        let prob = 1.0 - (-n_exp).exp();
+        if rand_val >= prob { continue; }
+
+        // Distribuir energía y Fe a vecinos de gas
+        let h_i = particles[i].smoothing_length.max(0.1);
+        let pos_i = particles[i].position;
+
+        // Encontrar vecinos de gas dentro de 2×h
+        let mut weights = vec![0.0_f64; n];
+        let mut weight_sum = 0.0_f64;
+
+        for j in 0..n {
+            if i == j { continue; }
+            if particles[j].ptype != gadget_ng_core::ParticleType::Gas { continue; }
+            let dx = particles[j].position.x - pos_i.x;
+            let dy = particles[j].position.y - pos_i.y;
+            let dz = particles[j].position.z - pos_i.z;
+            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            if r < 2.0 * h_i {
+                let w = (1.0 - r / (2.0 * h_i)).powi(2);
+                weights[j] = w;
+                weight_sum += w;
+            }
+        }
+
+        if weight_sum <= 0.0 {
+            // Si no hay vecinos, inyectar a la partícula más cercana de gas
+            let (closest, _) = (0..n)
+                .filter(|&j| j != i && particles[j].ptype == gadget_ng_core::ParticleType::Gas)
+                .map(|j| {
+                    let dx = particles[j].position.x - pos_i.x;
+                    let dy = particles[j].position.y - pos_i.y;
+                    let dz = particles[j].position.z - pos_i.z;
+                    let r2 = dx * dx + dy * dy + dz * dz;
+                    (j, r2)
+                })
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .unwrap_or((0, f64::MAX));
+            if closest < n && particles[closest].ptype == gadget_ng_core::ParticleType::Gas {
+                delta_u[closest] += cfg.e_ia_code;
+                delta_z[closest] += 0.002 / particles[closest].mass.max(1e-30); // Fe yield ~0.002 M_sun
+            }
+            continue;
+        }
+
+        for j in 0..n {
+            if weights[j] <= 0.0 { continue; }
+            let frac = weights[j] / weight_sum;
+            let m_j = particles[j].mass.max(1e-30);
+            delta_u[j] += frac * cfg.e_ia_code;
+            delta_z[j] += frac * 0.002 / m_j; // Fe yield ~0.002 M_sun por SN Ia
+        }
+    }
+
+    // Aplicar incrementos
+    for i in 0..n {
+        if delta_u[i] > 0.0 { particles[i].internal_energy += delta_u[i]; }
+        if delta_z[i] > 0.0 {
+            particles[i].metallicity = (particles[i].metallicity + delta_z[i]).min(1.0);
+        }
+    }
+}
+
+/// Incrementa la edad estelar de todas las partículas estelares.
+///
+/// Debe llamarse cada paso con `dt_gyr` = paso de tiempo en Gyr.
+pub fn advance_stellar_ages(particles: &mut [Particle], dt_gyr: f64) {
+    for p in particles.iter_mut() {
+        if p.ptype == gadget_ng_core::ParticleType::Star {
+            p.stellar_age += dt_gyr;
+        }
+    }
+}
+
+/// Aplica feedback mecánico de vientos estelares pre-SN (Phase 115).
+///
+/// Modela vientos de estrellas OB y Wolf-Rayet (~10-30 Myr antes de SN II).
+/// Para gas con SFR activa, aplica kicks de velocidad con probabilidad proporcional
+/// al factor de carga másica η_w.
+///
+/// La probabilidad de kick por paso: `p = η_w × sfr[i] × dt / m_i`
+///
+/// # Retorno
+///
+/// Índices de las partículas que recibieron un kick de viento estelar.
+pub fn apply_stellar_wind_feedback(
+    particles: &mut [Particle],
+    sfr: &[f64],
+    cfg: &gadget_ng_core::FeedbackSection,
+    dt: f64,
+    seed: &mut u64,
+) -> Vec<usize> {
+    let mut kicked = Vec::new();
+    if !cfg.stellar_wind_enabled { return kicked; }
+
+    // Velocidad del viento en unidades internas (km/s → km/s ya está bien)
+    let v_wind = cfg.v_stellar_wind_km_s;
+
+    for i in 0..particles.len() {
+        if particles[i].ptype != gadget_ng_core::ParticleType::Gas { continue; }
+        if sfr[i] < cfg.sfr_min { continue; }
+
+        let m_i = particles[i].mass.max(1e-30);
+        // Probabilidad: p = η_w × sfr × dt / m
+        let prob = (cfg.eta_stellar_wind * sfr[i] * dt / m_i).min(1.0);
+
+        *seed ^= *seed << 13;
+        *seed ^= *seed >> 7;
+        *seed ^= *seed << 17;
+        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+
+        if rand_val < prob {
+            let (nx, ny, nz) = random_unit_vector(seed);
+            particles[i].velocity.x += v_wind * nx;
+            particles[i].velocity.y += v_wind * ny;
+            particles[i].velocity.z += v_wind * nz;
+            kicked.push(i);
+        }
+    }
+    kicked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,6 @@
 # Physics Roadmap — gadget-ng
 
-> **Actualizado:** 2026-04-23 (post Phase 108)
+> **Actualizado:** 2026-04-23 (post Phase 113 — Capa 1 bariónica completada)
 >
 > Este documento cataloga la física ya implementada, evalúa su nivel de completitud respecto a los
 > códigos de referencia (GADGET-4, AREPO/IllustrisNG, EAGLE), y proyecta qué nuevos módulos se
@@ -8,7 +8,7 @@
 
 ---
 
-## 1. Inventario de física implementada (Phases 1–108)
+## 1. Inventario de física implementada (Phases 1–113)
 
 ### 1.1 Gravedad
 
@@ -44,6 +44,10 @@
 | SFR por umbral de densidad (Schmidt-Kennicutt) | Completo | Springel & Hernquist (2003) | `rho_sf`, `sfr_min` |
 | Feedback SN estocástico (kick + energía térmica) | Completo | Dalla Vecchia & Schaye (2012) | `eps_sn`, `v_kick_km_s` |
 | Vientos galácticos (factor de carga η) | Completo | Springel & Hernquist (2003) | `wind.v_wind_km_s`, `wind.mass_loading` |
+| **Enriquecimiento metálico SPH (SN II + AGB)** | **✅ Phase 110** | Woosley & Weaver (1995) | `enrichment.yield_snii`, `yield_agb` |
+| **Enfriamiento por metales** | **✅ Phase 111** | Sutherland & Dopita (1993) | `cooling = "metal_cooling"` |
+| **Partículas estelares reales (spawning)** | **✅ Phase 112** | Springel & Hernquist (2003) | `m_star_fraction`, `m_gas_min` |
+| **SN Ia con DTD power-law** | **✅ Phase 113** | Maoz & Mannucci (2012) | `a_ia`, `t_ia_min_gyr`, `e_ia_code` |
 
 ### 1.4 Agujeros negros (AGN)
 
@@ -111,67 +115,57 @@ depender de los de la Capa N-1.
 
 ### Capa 1 — Bariónica faltante (mayor impacto, base para todo lo demás)
 
+> **✅ CAPA 1 COMPLETADA** (Phases 109–113, 2026-04-23)
+
 Estas son las piezas que mayor diferencia hacen en la predicción de propiedades de galaxias.
 
-#### 1A. Metales y enriquecimiento químico
+#### 1A. Metales y enriquecimiento químico ✅ Phase 109-110
 
-**Descripción**: Rastrear la metalicidad Z y abundancias individuales (O, Fe, Mg, Si) en cada
-partícula de gas y estelar. Los yields se calculan por SN II, SN Ia y AGB.
+**Estado**: **IMPLEMENTADO**
 
-**Impacto**: Habilita comparación directa con observaciones ([O/Fe] vs [Fe/H],
-función de distribución de metalicidades, Z–SFR).
+- `Particle::metallicity: f64` y `Particle::stellar_age: f64` (`#[serde(default)]`).
+- `ParticleType::Star` — nueva variante (gravedad sí, SPH no).
+- `Particle::new_star(...)` y `Particle::is_star()`.
+- `EnrichmentSection` con `yield_snii = 0.02`, `yield_agb = 0.04`.
+- `apply_enrichment(particles, sfr, dt, cfg)` en `enrichment.rs` — distribución SPH kernel.
+- 9 + 6 tests.
 
-**Costo estimado**: 3–4 sesiones
-
-**Cambios principales**:
-- Campo `metallicity: f64` en `Particle` (o `GasData`).
-- Tabla de yields por tipo de estrella: `yields_snii(m_star)`, `yields_snia()`, `yields_agb(m_star, z)`.
-- Distribución de metales en el vecindario SPH al explotar (kernel smoothing).
-- Módulo `gadget-ng-sph/src/enrichment.rs`.
-
-**Referencias**: Wiersma et al. (2009), Karakas (2010).
+**Referencias**: Woosley & Weaver (1995); Wiersma et al. (2009).
 
 ---
 
-#### 1B. Enfriamiento por metales (tablas)
+#### 1B. Enfriamiento por metales ✅ Phase 111
 
-**Descripción**: A temperaturas T < 10⁷ K, el gas con Z > 0 se enfría 10–100× más rápido
-que el gas primordial. La diferencia es la mayor fuente de error en simulaciones sin metales.
+**Estado**: **IMPLEMENTADO** (fitting analítico; tablas completas en Capa 2)
 
-**Impacto**: Corrección de 1–2 órdenes de magnitud en la masa estelar final de una galaxia.
-Sin esto, galaxias predichas son demasiado calientes.
+- `CoolingKind::MetalCooling` — nueva variante.
+- `cooling_rate_metal(u, rho, Z, γ, T_floor)` — Sutherland & Dopita (1993) fitting analítico.
+- `Λ(T,Z) = Λ_HHe(T) + (Z/Z_sun) × Λ_metal(T)` con tres regímenes de T.
+- Despacho automático en `apply_cooling`.
+- 6 tests.
 
-**Costo estimado**: 2–3 sesiones
+**Siguiente paso (Capa 2)**: tablas completas `Λ(n_H, T, Z, z)` de Wiersma+09 o CLOUDY.
 
-**Cambios principales**:
-- Ampliar `CoolingKind` en `config.rs`: `CoolingKind::MetalTables`.
-- Leer tabla pre-calculada `Λ(n_H, T, Z, z)` en formato HDF5/binario.
-- Interpolación bilineal en `apply_cooling`.
-- Archivo de datos: tablas de Wiersma+09 o CLOUDY.
-
-**Referencias**: Wiersma et al. (2009) MNRAS 393, 99.
+**Referencias**: Sutherland & Dopita (1993) ApJS 88, 253.
 
 ---
 
-#### 1C. Partículas estelares reales (stellar spawning)
+#### 1C. Partículas estelares reales (stellar spawning) ✅ Phase 112
 
-**Descripción**: En lugar de que las partículas de gas sean "fuentes de SN" abstractas, convertir
-estocásticamente partículas de gas en partículas estelares con edad y metalicidad registradas.
+**Estado**: **IMPLEMENTADO**
 
-**Impacto**: Habilita función de luminosidad, colores de galaxias, perfiles de masa estelar,
-observables de surveys (DES, Euclid, DESI).
-
-**Costo estimado**: 4–5 sesiones
-
-**Cambios principales**:
-- Nuevo `ParticleType::Star` con campos `age_gyr: f64` y `metallicity: f64`.
-- Función `spawn_star_particles(gas, sfr, dt, seed) -> Option<Particle>` en `feedback.rs`.
-- Las estrellas spawneadas no participan en SPH pero sí en gravedad y enriquecimiento.
-- El motor necesita manejar listas de partículas crecientes.
+- `ParticleType::Star` con `metallicity` y `stellar_age`.
+- `spawn_star_particles(particles, sfr, dt, seed, cfg, next_gid) -> (Vec<Particle>, Vec<usize>)`.
+- Estrellas heredan metalicidad y no participan en SPH.
+- Gas padre pierde masa; gas residual < `m_gas_min` → eliminado.
+- Integrado en `engine.rs` (macro `maybe_sph!`).
+- 7 tests.
 
 ---
 
 #### 1D. Modelo ISM multifase frío-caliente
+
+**Estado**: PENDIENTE (Capa 2)
 
 **Descripción**: El ISM real coexiste en fases frías (T~100 K, nubes moleculares) y calientes
 (T~10⁷ K, gas difuso). El modelo de Springel & Hernquist (2003) parametriza esto con una
@@ -190,27 +184,25 @@ observables de surveys (DES, Euclid, DESI).
 
 ---
 
-#### 1E. SN tipo Ia con distribución de retraso temporal (DTD)
+#### 1E. SN tipo Ia con distribución de retraso temporal (DTD) ✅ Phase 113
 
-**Descripción**: Las SN Ia explotan ~1 Gyr después de la formación estelar (binarios WD).
-Son la principal fuente de Fe. Sin DTD, los modelos predicen [O/Fe] incorrecto.
+**Estado**: **IMPLEMENTADO**
 
-**Impacto**: Corrección importante para galaxias masivas y química estelar.
+- `apply_snia_feedback(particles, dt_gyr, seed, cfg)` con DTD `R ∝ t^{-1}`.
+- `advance_stellar_ages(particles, dt_gyr)` — incrementa edad estelar cada paso.
+- Parámetros: `a_ia = 2e-3`, `t_ia_min_gyr = 0.1`, `e_ia_code`.
+- Distribución de Fe (~0.002 M_sun/SN Ia) a vecinos de gas.
+- 7 tests.
 
-**Costo estimado**: 1–2 sesiones
-
-**Cambios principales**:
-- Función `snia_rate(stellar_age, mass_formed) -> f64` con DTD power-law o exponencial.
-- Inyección diferida en `apply_sn_feedback` según la edad de la partícula estelar.
-- Requiere partículas estelares (1C).
+**Referencias**: Maoz & Mannucci (2012) PASA 29, 447.
 
 ---
 
-### Capa 2 — Física avanzada de submalla
+### Capa 2 — Física avanzada de submalla ✅ COMPLETADA (Phases 114-119)
 
 Módulos que requieren la Capa 1 o añaden fenómenos a escalas no resueltas.
 
-#### 2A. Vientos estelares de estrellas masivas (pre-SN)
+#### 2A. Vientos estelares de estrellas masivas (pre-SN) ✅ Phase 115
 
 **Descripción**: Estrellas OB y Wolf-Rayet inyectan energía mecánica y metales ~10–30 Myr
 antes de la SN. Afectan la estructura de las nubes GMC.
@@ -219,7 +211,7 @@ antes de la SN. Afectan la estructura de las nubes GMC.
 
 ---
 
-#### 2B. Modo radio AGN (bubble feedback)
+#### 2B. Modo radio AGN (bubble feedback) ✅ Phase 116
 
 **Descripción**: A tasas de acreción bajas (Ṁ/Ṁ_Edd < 0.01), los AGN inyectan jets
 mecánicos en lugar de feedback térmico. Relevante para quenching de galaxias masivas.
@@ -233,7 +225,7 @@ mecánicos en lugar de feedback térmico. Relevante para quenching de galaxias m
 
 ---
 
-#### 2C. Rayos cósmicos (CR) básicos
+#### 2C. Rayos cósmicos (CR) básicos ✅ Phase 117
 
 **Descripción**: Los CRs contribuyen presión no térmica, aceleran vientos galácticos y
 suprimen la formación estelar. Un modelo simple: fluido CR con presión P_CR.

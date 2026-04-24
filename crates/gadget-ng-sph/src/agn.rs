@@ -75,7 +75,7 @@ pub fn bondi_accretion_rate(bh: &BlackHole, rho_gas: f64, c_sound: f64) -> f64 {
     4.0 * std::f64::consts::PI * G_INTERNAL * G_INTERNAL * bh.mass * bh.mass * rho_gas / denom
 }
 
-/// Aplica feedback AGN térmico a las partículas de gas vecinas.
+/// Aplica feedback AGN térmico a las partículas de gas vecinas (modo quasar).
 ///
 /// Para cada agujero negro:
 /// 1. Calcula Ṁ × dt = masa acretada en este paso
@@ -140,6 +140,114 @@ pub fn apply_agn_feedback(
                 particles[i].velocity.y += kick * dy / r;
                 particles[i].velocity.z += kick * dz / r;
             }
+        }
+    }
+}
+
+/// Aplica feedback AGN mecánico de modo radio (bubble feedback) (Phase 116).
+///
+/// Cuando la tasa de acreción es baja (`Ṁ/Ṁ_Edd < f_edd_threshold`), el AGN
+/// opera en modo radio: inyecta jets mecánicos en una burbuja esférica.
+///
+/// La energía mecánica disponible es: `E_radio = eps_radio × Ṁ × c² × dt`
+///
+/// Se distribuye como kicks tangenciales (perpendiculares a r_BH-partícula)
+/// a las partículas de gas dentro del radio `r_bubble`.
+///
+/// # Argumentos
+/// - `bh`: agujero negro en modo radio
+/// - `particles`: partículas de gas (modificadas in-place)
+/// - `params`: parámetros AGN base
+/// - `r_bubble`: radio de la burbuja [unidades internas]
+/// - `eps_radio`: eficiencia del modo radio
+/// - `dt`: paso de tiempo
+pub fn bubble_feedback_radio(
+    bh: &BlackHole,
+    particles: &mut [Particle],
+    _params: &AgnParams,
+    r_bubble: f64,
+    eps_radio: f64,
+    dt: f64,
+) {
+    let e_radio = eps_radio * bh.accretion_rate * C_KMS * C_KMS * dt;
+    if e_radio <= 0.0 { return; }
+
+    let r2_bubble = r_bubble * r_bubble;
+
+    // Recopilar vecinos dentro de la burbuja
+    let mut neighbors: Vec<usize> = Vec::new();
+    let mut total_mass = 0.0_f64;
+
+    for (i, p) in particles.iter().enumerate() {
+        if p.ptype != gadget_ng_core::ParticleType::Gas { continue; }
+        let dx = p.position.x - bh.pos.x;
+        let dy = p.position.y - bh.pos.y;
+        let dz = p.position.z - bh.pos.z;
+        let r2 = dx * dx + dy * dy + dz * dz;
+        if r2 < r2_bubble && r2 > 0.0 {
+            neighbors.push(i);
+            total_mass += p.mass;
+        }
+    }
+
+    if neighbors.is_empty() || total_mass <= 0.0 { return; }
+
+    // Kick tangencial: perpendicular al vector BH→partícula
+    // Construir un vector perpendicular usando producto vectorial con eje z
+    for &i in &neighbors {
+        let mass_frac = particles[i].mass / total_mass;
+        let e_i = e_radio * mass_frac / particles[i].mass.max(1e-30);
+
+        let dx = particles[i].position.x - bh.pos.x;
+        let dy = particles[i].position.y - bh.pos.y;
+        let dz = particles[i].position.z - bh.pos.z;
+        let r = (dx * dx + dy * dy + dz * dz).sqrt().max(1e-30);
+
+        // Dirección tangencial: producto vectorial r × ẑ, luego normalizar
+        let tx = -dy / r;
+        let ty = dx / r;
+        let tz = 0.0_f64;
+        let t_norm = (tx * tx + ty * ty + tz * tz).sqrt().max(1e-30);
+
+        // Velocidad del kick tangencial: v_kick = sqrt(2 × e_i)
+        let v_kick = (2.0 * e_i.abs()).sqrt();
+        particles[i].velocity.x += v_kick * tx / t_norm;
+        particles[i].velocity.y += v_kick * ty / t_norm;
+        particles[i].velocity.z += v_kick * tz / t_norm;
+    }
+}
+
+/// Aplica feedback AGN con bifurcación modo quasar / modo radio (Phase 116).
+///
+/// Bifurcación según la tasa de Eddington normalizada:
+/// - `Ṁ / Ṁ_Edd > f_edd_threshold` → modo quasar (térmico, `apply_agn_feedback`)
+/// - `Ṁ / Ṁ_Edd ≤ f_edd_threshold` → modo radio (mecánico, `bubble_feedback_radio`)
+///
+/// La tasa de Eddington se estima como:
+/// `Ṁ_Edd = 4π G M_BH m_p / (ε_r σ_T c) ≈ m_bh / (1e8 × yr)`
+/// En unidades internas: `Ṁ_Edd ≈ bh.mass × 1e-10` [masa/tiempo].
+pub fn apply_agn_feedback_bimodal(
+    particles: &mut [Particle],
+    bhs: &[BlackHole],
+    params: &AgnParams,
+    f_edd_threshold: f64,
+    r_bubble: f64,
+    eps_radio: f64,
+    dt: f64,
+) {
+    for bh in bhs {
+        if bh.accretion_rate <= 0.0 { continue; }
+
+        // Tasa de Eddington aproximada en unidades internas
+        let m_edd_rate = bh.mass * 1e-10;
+        let f_edd = if m_edd_rate > 0.0 { bh.accretion_rate / m_edd_rate } else { 1.0 };
+
+        if f_edd > f_edd_threshold {
+            // Modo quasar: feedback térmico (comportamiento original)
+            apply_agn_feedback(particles, std::slice::from_ref(bh), params, dt);
+        } else {
+            // Modo radio: jets mecánicos en burbuja
+            bubble_feedback_radio(bh, particles, params, r_bubble, eps_radio, dt);
         }
     }
 }

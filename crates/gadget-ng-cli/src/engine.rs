@@ -1342,6 +1342,26 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         cfg.simulation.dt,
                         &mut fb_seed,
                     );
+                    // Phase 112: Spawning de partículas estelares
+                    let mut spawn_seed = fb_seed.wrapping_add(0xDEAD_BEEF);
+                    let mut next_gid = local.iter().map(|p| p.global_id).max().unwrap_or(0) + 1;
+                    let (new_stars, to_remove) = gadget_ng_sph::spawn_star_particles(
+                        &mut local,
+                        &sfr,
+                        cfg.simulation.dt,
+                        &mut spawn_seed,
+                        &cfg.sph.feedback,
+                        &mut next_gid,
+                    );
+                    // Eliminar gas agotado (en orden inverso para preservar índices)
+                    let mut remove_sorted = to_remove;
+                    remove_sorted.sort_unstable_by(|a, b| b.cmp(a));
+                    remove_sorted.dedup();
+                    for idx in remove_sorted {
+                        local.swap_remove(idx);
+                    }
+                    // Agregar nuevas estrellas
+                    local.extend(new_stars);
                 }
             }
         };
