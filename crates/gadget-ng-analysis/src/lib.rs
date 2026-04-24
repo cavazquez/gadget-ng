@@ -25,11 +25,15 @@
 
 pub mod assembly_bias;
 pub mod bispectrum;
+pub mod emission_lines;
+pub mod mock_catalog;
 pub mod pk_rsd;
 pub mod catalog;
 pub mod correlation;
 pub mod fof;
 pub mod luminosity;
+pub mod sps_tables;
+pub mod xray;
 #[cfg(feature = "parallel")]
 pub mod fof_parallel;
 pub mod halo_mass_function;
@@ -81,4 +85,17 @@ pub use subfind::{find_subhalos, local_density_sph, SubfindParams, SubhaloRecord
 pub use velocity_profile::{
     sigma_1d, velocity_anisotropy, velocity_profile, VelocityProfileBin, VelocityProfileParams,
 };
-pub use luminosity::{bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar, LuminosityResult};
+pub use luminosity::{bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar, LuminosityResult, SedResult};
+pub use sps_tables::{sps_luminosity, SpsGrid, Spsband};
+pub use xray::{
+    bremsstrahlung_emissivity, compute_xray_profile, mass_weighted_temperature,
+    spectroscopic_temperature, total_xray_luminosity, XrayBin,
+};
+pub use emission_lines::{
+    bpt_diagram, compute_emission_lines, emissivity_halpha, emissivity_nii, emissivity_oiii,
+    EmissionLine,
+};
+pub use mock_catalog::{
+    angular_power_spectrum_cl, apparent_magnitude, build_mock_catalog, selection_flux_limit,
+    MockGalaxy,
+};

@@ -8,6 +8,7 @@ pub mod gravity_simd;
 pub mod ic;
 pub mod ic_2lpt;
 pub mod ic_zeldovich;
+pub mod modified_gravity;
 pub mod particle;
 pub mod transfer_fn;
 pub mod vec3;
@@ -18,17 +19,20 @@ pub use gadget_ng_gpu::{GpuDirectGravity, GpuParticlesSoA};
 pub use gpu_bridge::GpuParticlesSoAExt;
 
 pub use config::{
-    AgnSection, BFieldKind, ConductionSection, CosmologySection, CoolingKind, CrSection, DecompositionConfig, DustSection, EnrichmentSection, GravitySection, IcKind,
-    InitialConditionsSection, InsituAnalysisSection, IntegratorKind, IsmSection, MacSoftening, MhdSection, MolecularSection,
+    AgnSection, BFieldKind, ConductionSection, CosmologySection, CoolingKind, CrSection,
+    DecompositionConfig, DustSection, EnrichmentSection, GravitySection, IcKind,
+    InitialConditionsSection, InsituAnalysisSection, IntegratorKind, IsmSection, MacSoftening,
+    MhdSection, MolecularSection, ModifiedGravitySection,
     NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, RunConfig, SfcKind,
-    FeedbackSection, WindParams, RtSection, SimulationSection, SnapshotFormat, SolverKind, SphSection,
-    TimestepCriterion, TimestepSection, TransferKind, TurbulenceSection, TwoFluidSection,
-    UnitsSection, G_KPC_MSUN_KMPS,
+    FeedbackSection, WindParams, RtSection, SimulationSection, SidmSection, SnapshotFormat,
+    SolverKind, SphSection, TimestepCriterion, TimestepSection, TransferKind, TurbulenceSection,
+    TwoFluidSection, UnitsSection, G_KPC_MSUN_KMPS,
 };
 pub use cosmology::{
-    adaptive_dt_cosmo, cosmo_consistency_error, density_contrast_rms, g_code_consistent,
-    gravity_coupling_qksl, growth_factor_d, growth_factor_d_ratio, growth_rate_f, hubble_param,
-    minimum_image, peculiar_vrms, wrap_coord, wrap_position, CosmologyParams,
+    adaptive_dt_cosmo, cosmo_consistency_error, dark_energy_eos, density_contrast_rms,
+    g_code_consistent, gravity_coupling_qksl, growth_factor_d, growth_factor_d_ratio,
+    growth_rate_f, hubble_param, minimum_image, neutrino_suppression, omega_nu_from_mass,
+    peculiar_vrms, wrap_coord, wrap_position, CosmologyParams,
 };
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;
@@ -38,6 +42,7 @@ pub use gravity::{
 #[cfg(feature = "simd")]
 pub use gravity_simd::SimdDirectGravity;
 pub use ic::{build_particles, build_particles_for_gid_range, IcError};
+pub use modified_gravity::{apply_modified_gravity, chameleon_field, fifth_force_factor, FRParams};
 pub use ic_2lpt::{zeldovich_2lpt_ics, zeldovich_2lpt_ics_with_variant, Psi2Variant};
 pub use ic_zeldovich::internals as ic_zeldovich_internals;
 pub use ic_zeldovich::{zeldovich_ics, zeldovich_ics_with_convention, IcMomentumConvention};

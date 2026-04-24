@@ -11,6 +11,7 @@
 //! - **EOS adiabática**: P = (γ−1) ρ u, γ = 5/3.
 //! - Integrador **leapfrog KDK** combinado (gravedad + SPH + energía interna).
 pub mod agn;
+pub mod gmc;
 pub mod cooling;
 pub mod cosmic_rays;
 pub mod density;
@@ -41,3 +42,4 @@ pub use forces::compute_sph_forces;
 pub use integrator::{sph_cosmo_kdk_step, sph_kdk_step};
 pub use kernel::{grad_w, w};
 pub use particle::{GasData, ParticleType, SphParticle};
+pub use gmc::{collapse_gmc, inject_sn_from_cluster, sample_stellar_mass, GmcCluster, KroupaImf};

@@ -449,15 +449,34 @@ pub fn zeldovich_ics(
     // Parámetros cosmológicos para las velocidades.
     let (a_init, cosmo) = if cfg.cosmology.enabled {
         let a = cfg.cosmology.a_init;
-        let cp = CosmologyParams::new(
+        // Phase 156: incluir Ω_ν si m_nu_ev > 0
+        let omega_nu = crate::cosmology::omega_nu_from_mass(
+            cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0,
+        );
+        let mut cp = CosmologyParams::new(
             cfg.cosmology.omega_m,
             cfg.cosmology.omega_lambda,
             cfg.cosmology.h0,
         );
+        // Phase 155: parámetros CPL
+        cp.w0 = cfg.cosmology.w0;
+        cp.wa = cfg.cosmology.wa;
+        cp.omega_nu = omega_nu;
         (a, cp)
     } else {
         let cp = CosmologyParams::new(1.0, 0.0, cfg.cosmology.h0);
         (1.0, cp)
+    };
+
+    // Phase 156: factor de supresión por neutrinos masivos
+    let nu_suppression = if cfg.cosmology.m_nu_ev > 0.0 && cfg.cosmology.omega_m > 0.0 {
+        let omega_nu = crate::cosmology::omega_nu_from_mass(
+            cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0,
+        );
+        let f_nu = omega_nu / cfg.cosmology.omega_m;
+        crate::cosmology::neutrino_suppression(f_nu)
+    } else {
+        1.0
     };
 
     let h_a = hubble_param(cosmo, a_init);
@@ -480,7 +499,7 @@ pub fn zeldovich_ics(
     let d = box_size / n as f64;
 
     // ── Construir el closure de espectro según la configuración.
-    let spectrum_fn = build_spectrum_fn(
+    let spectrum_fn_base = build_spectrum_fn(
         n,
         spectral_index,
         amplitude,
@@ -492,6 +511,13 @@ pub fn zeldovich_ics(
         t_cmb,
         box_size_mpc_h,
     );
+    // Phase 156: aplicar supresión de neutrinos al espectro (σ → σ × sqrt(suppression))
+    let spectrum_fn: Box<dyn Fn(f64) -> f64> = if nu_suppression < 1.0 {
+        let sqrt_sup = nu_suppression.sqrt();
+        Box::new(move |n_abs: f64| spectrum_fn_base(n_abs) * sqrt_sup)
+    } else {
+        spectrum_fn_base
+    };
 
     // ── Generar campo en k-space (todos los rangos).
     let delta = generate_delta_kspace(n, seed, spectrum_fn);

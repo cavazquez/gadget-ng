@@ -19,11 +19,19 @@
 //! ```
 //! `H₀` se expresa en **unidades internas de tiempo** (1/t_sim).
 
-/// Parámetros cosmológicos para ΛCDM plano.
+/// Parámetros cosmológicos para ΛCDM plano o energía oscura dinámica w(z) CPL.
 ///
 /// `h0` es H₀ en unidades internas de tiempo (1/t_sim), no el parámetro
 /// adimensional h₁₀₀ = H₀/(100 km/s/Mpc). El usuario es responsable de
 /// la consistencia de unidades con el resto de la simulación.
+///
+/// ## Energía oscura dinámica (Phase 155)
+///
+/// El parámetro de ecuación de estado CPL (Chevallier-Polarski-Linder) es:
+/// ```text
+/// w(a) = w0 + wa × (1 − a)
+/// ```
+/// Con `w0 = -1, wa = 0` se recupera ΛCDM exactamente.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CosmologyParams {
     /// Fracción de materia: Ω_m (sin dimensiones).
@@ -32,22 +40,66 @@ pub struct CosmologyParams {
     pub omega_lambda: f64,
     /// H₀ en unidades internas de tiempo (1/t_sim).
     pub h0: f64,
+    /// Parámetro CPL w₀ (Phase 155). Default: -1.0 (ΛCDM).
+    pub w0: f64,
+    /// Parámetro CPL wₐ (Phase 155). Default: 0.0 (ΛCDM).
+    pub wa: f64,
+    /// Ω_ν de neutrinos masivos (Phase 156). Default: 0.0.
+    pub omega_nu: f64,
+}
+
+/// Retorna el parámetro de ecuación de estado w(a) para el modelo CPL (Phase 155).
+///
+/// `w(a) = w0 + wa × (1 − a)`
+///
+/// Para ΛCDM: `w0 = -1, wa = 0 → w(a) = -1`.
+#[inline]
+pub fn dark_energy_eos(a: f64, w0: f64, wa: f64) -> f64 {
+    w0 + wa * (1.0 - a)
 }
 
 impl CosmologyParams {
-    /// Crea nuevos parámetros cosmológicos.
+    /// Crea nuevos parámetros cosmológicos ΛCDM (retrocompatible).
     pub fn new(omega_m: f64, omega_lambda: f64, h0: f64) -> Self {
         Self {
             omega_m,
             omega_lambda,
             h0,
+            w0: -1.0,
+            wa: 0.0,
+            omega_nu: 0.0,
         }
     }
 
-    /// `da/dt = a · H₀ · √(Ω_m/a³ + Ω_Λ)`.
+    /// Crea parámetros con energía oscura dinámica CPL (Phase 155).
+    pub fn new_cpl(omega_m: f64, omega_lambda: f64, h0: f64, w0: f64, wa: f64) -> Self {
+        Self { omega_m, omega_lambda, h0, w0, wa, omega_nu: 0.0 }
+    }
+
+    /// Crea parámetros con neutrinos masivos (Phase 156).
+    pub fn new_with_nu(omega_m: f64, omega_lambda: f64, h0: f64, omega_nu: f64) -> Self {
+        Self { omega_m, omega_lambda, h0, w0: -1.0, wa: 0.0, omega_nu }
+    }
+
+    /// `da/dt` con energía oscura dinámica w(a) CPL y neutrinos masivos (Phase 155/156).
+    ///
+    /// Ecuación de Friedmann generalizada:
+    /// ```text
+    /// H²(a) = H₀² [ Ω_m/a³ + Ω_ν/a³ + Ω_DE(a) ]
+    /// Ω_DE(a) = Ω_Λ × a^{-3(1+w0+wa)} × exp(3·wa·(a-1))
+    /// ```
     #[inline]
     fn da_dt(self, a: f64) -> f64 {
-        let h_sq = self.omega_m / (a * a * a) + self.omega_lambda;
+        let omega_de = if (self.w0 + 1.0).abs() < 1e-10 && self.wa.abs() < 1e-10 {
+            // ΛCDM: Ω_DE = Ω_Λ (constante)
+            self.omega_lambda
+        } else {
+            // CPL: Ω_DE(a) = Ω_Λ × a^{-3(1+w0+wa)} × exp(3·wa·(a-1))
+            let exp_factor = (3.0 * self.wa * (a - 1.0)).exp();
+            let power = -3.0 * (1.0 + self.w0 + self.wa);
+            self.omega_lambda * a.powf(power) * exp_factor
+        };
+        let h_sq = (self.omega_m + self.omega_nu) / (a * a * a) + omega_de;
         a * self.h0 * h_sq.max(0.0).sqrt()
     }
 
@@ -393,8 +445,45 @@ pub fn cosmo_consistency_error(g: f64, omega_m: f64, h0: f64, rho_bar: f64) -> f
 
 /// H(a) = H₀ · √(Ω_m·a⁻³ + Ω_Λ) — parámetro de Hubble en unidades internas.
 pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
-    let h_sq = params.omega_m / (a * a * a) + params.omega_lambda;
+    // Incluye contribución de neutrinos masivos (Phase 156) y w(z) CPL (Phase 155)
+    let omega_de = if (params.w0 + 1.0).abs() < 1e-10 && params.wa.abs() < 1e-10 {
+        params.omega_lambda
+    } else {
+        let exp_factor = (3.0 * params.wa * (a - 1.0)).exp();
+        let power = -3.0 * (1.0 + params.w0 + params.wa);
+        params.omega_lambda * a.powf(power) * exp_factor
+    };
+    let h_sq = (params.omega_m + params.omega_nu) / (a * a * a) + omega_de;
     params.h0 * h_sq.max(0.0).sqrt()
+}
+
+/// Calcula Ω_ν a partir de la suma de masas de neutrinos (Phase 156).
+///
+/// Usa la relación: `Ω_ν = Σm_ν / (93.14 eV × h²)`.
+///
+/// # Parámetros
+/// - `m_nu_ev`: suma de masas de neutrinos en eV (p. ej. 0.06 para normal hierarchy)
+/// - `h100`: parámetro de Hubble adimensional h₁₀₀ = H₀/(100 km/s/Mpc)
+///
+/// # Retorna
+/// Ω_ν (sin dimensiones). Para `m_nu_ev = 0.06, h = 0.674`: Ω_ν ≈ 0.00142.
+pub fn omega_nu_from_mass(m_nu_ev: f64, h100: f64) -> f64 {
+    if m_nu_ev <= 0.0 { return 0.0; }
+    m_nu_ev / (93.14 * h100 * h100)
+}
+
+/// Supresión del espectro de potencia por neutrinos masivos (Phase 156).
+///
+/// Aproximación lineal de Lesgourgues & Pastor (2006):
+/// `ΔP/P ≈ -8 × f_ν` para k > k_FS.
+///
+/// # Parámetros
+/// - `f_nu`: fracción de la densidad de materia en neutrinos `f_ν = Ω_ν/Ω_m`
+///
+/// # Retorna
+/// Factor multiplicativo `(1 - 8 × f_ν)` clampado a [0, 1].
+pub fn neutrino_suppression(f_nu: f64) -> f64 {
+    (1.0 - 8.0 * f_nu).max(0.0).min(1.0)
 }
 
 /// Tasa de crecimiento lineal `f(a) = d ln D / d ln a`.

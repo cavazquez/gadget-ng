@@ -1,6 +1,6 @@
 # Physics Roadmap — gadget-ng
 
-> **Actualizado:** 2026-04-23 (post Phase 150 — MHD Completo + Plasma 2F)
+> **Actualizado:** 2026-04-23 (post Phase 160 — Observables + Física Frontera completos)
 >
 > Este documento cataloga la física ya implementada, evalúa su nivel de completitud respecto a los
 > códigos de referencia (GADGET-4, AREPO/IllustrisNG, EAGLE), y proyecta qué nuevos módulos se
@@ -289,91 +289,79 @@ razón polvo-gas D/G como función de Z y T.
 
 ---
 
-### Capa 3 — Observables sintéticos
+### Capa 3 — Observables sintéticos ✅ COMPLETADA — Phases 151–154
 
-Módulos para comparar directamente con surveys. Requieren Capas 1 (especialmente 1C).
+Módulos para comparar directamente con surveys.
 
-#### 3A. SED y función de luminosidad
+#### 3A. SED y función de luminosidad ✅ COMPLETADO — Phase 153
 
-Asignar luminosidades L(λ) a partículas estelares usando tablas SPS (BC03, FSPS, BPASS)
-como función de edad y metalicidad.
-
-**Costo estimado**: 2–3 sesiones
+Tablas SPS BC03-lite 6×5 (edad×Z) con interpolación bilineal. `SedResult`, `galaxy_sed`.
+Implementado en `sps_tables.rs` + `luminosity.rs`.
 
 ---
 
-#### 3B. Líneas de emisión (Hα, [OIII], [NII])
+#### 3B. Líneas de emisión (Hα, [OIII], [NII]) ✅ COMPLETADO — Phase 152
 
-Desde temperatura SPH + fracción ionizada (ya calculada por la química). Permite
-comparaciones directas con SDSS, DESI.
-
-**Costo estimado**: 1–2 sesiones
+Emissividades nebulares + diagrama BPT. Implementado en `emission_lines.rs`.
 
 ---
 
-#### 3C. Emisión de rayos X (cúmulos)
+#### 3C. Emisión de rayos X (cúmulos) ✅ COMPLETADO — Phase 151
 
-T_X y L_X desde temperatura SPH + densidad electrónica. Comparación con eROSITA, XMM.
+Bremsstrahlung térmico, T_sl Mazzotta+2004, perfil radial. Implementado en `xray.rs`.
+
+---
+
+#### 3D. Mock catalogues con efectos de selección ✅ COMPLETADO — Phase 154
+
+SMHM Behroozi+2013, magnitud aparente, corte de flujo, C_l. Implementado en `mock_catalog.rs`.
+
+---
+
+### Capa 4 — Física de frontera / investigación ✅ COMPLETADA — Phases 155–159
+
+Módulos de interés para papers específicos.
+
+#### 4A. Neutrinos masivos ✅ COMPLETADO — Phase 156
+
+Ω_ν = m_ν/(93.14 eV×h²), supresión P(k) × (1−8f_ν) en ICs Zel'dovich.
+Nuevos campos `m_nu_ev` en `CosmologySection`.
+
+---
+
+#### 4B. Energía oscura dinámica w(z) ✅ COMPLETADO — Phase 155
+
+CPL: w(a) = w0 + wa×(1−a). H(a) generalizado. Retrocompatible.
+Nuevos campos `w0`, `wa` en `CosmologySection`.
 
 **Costo estimado**: 1 sesión
 
 ---
 
-#### 3D. Mock catalogues con efectos de selección
+#### 4C. Gravedad modificada f(R) / DGP ✅ COMPLETADO — Phase 158
 
-Generar catálogos sintéticos de galaxias con magnitudes, colores y redshift para comparar
-con DES, Euclid, DESI, Roman.
+Modelo Hu-Sawicki f(R) con screening chameleon. Implementado en `modified_gravity.rs`.
+Hook `maybe_fr!` en engine. `ModifiedGravitySection` en config.
 
-**Costo estimado**: 2–3 sesiones
-
----
-
-### Capa 4 — Física de frontera / investigación
-
-Módulos de interés para papers específicos; generalmente bajos en costo técnico pero
-con alto valor científico.
-
-#### 4A. Neutrinos masivos
-
-Partículas de N-cuerpos adicionales (DM "tibia"). El efecto es una supresión de P(k)
-en escalas pequeñas. Solo requiere cambiar las ICs y el P(k) inicial.
-
-**Costo estimado**: 1–2 sesiones
+**Estado:** Completo
 
 ---
 
-#### 4B. Energía oscura dinámica w(z)
+#### 4D. Materia oscura auto-interactuante (SIDM) ✅ COMPLETADO — Phase 157
 
-Ecuación de estado `w(a) = w₀ + wₐ(1-a)` (Chevallier-Polarski-Linder). Solo cambia
-`advance_a()` en `cosmology.rs`.
+Scattering elástico isótropo Monte Carlo. Implementado en `gadget-ng-tree/src/sidm.rs`.
+Hook `maybe_sidm!` en engine. `SidmSection` en config.
 
-**Costo estimado**: 1 sesión
-
----
-
-#### 4C. Gravedad modificada f(R) / DGP
-
-Fuerza gravitacional modificada con screening chameleon o Vainshtein. Relevante para
-tests de gravedad con LSS.
-
-**Costo estimado**: 3–5 sesiones
+**Estado:** Completo
 
 ---
 
-#### 4D. Materia oscura auto-interactuante (SIDM)
+#### 4E. Formación de cúmulos estelares (GMC collapse) ✅ COMPLETADO — Phase 159
 
-Colisiones partícula-partícula con sección eficaz σ/m. La infraestructura del árbol ya
-existe; se añade un paso de Monte Carlo de scattering.
+IMF Kroupa (2001) con muestreo analítico. `collapse_gmc` + `inject_sn_from_cluster`.
+Implementado en `gadget-ng-sph/src/gmc.rs`.
 
-**Costo estimado**: 2–3 sesiones
-
----
-
-#### 4E. Formación de cúmulos estelares (GMC collapse)
-
-Fragmentación del gas frío en sub-partículas estelares múltiples (IMF sampling explícito).
-
-**Costo estimado**: 4–6 sesiones (sobre Capa 1)
+**Estado:** Completo
 
 ---
 

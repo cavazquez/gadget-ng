@@ -1,4 +1,4 @@
-//! Función de luminosidad y colores galácticos — SSP analítica (Phase 118).
+//! Función de luminosidad y colores galácticos — SSP analítica (Phase 118) + SED SPS (Phase 153).
 //!
 //! ## Modelo
 //!
@@ -29,6 +29,7 @@
 //! Worthey (1994) ApJS 95, 107 — índices espectrales.
 
 use gadget_ng_core::{Particle, ParticleType};
+use crate::sps_tables::{sps_luminosity, Spsband};
 
 /// Resultado del cálculo de luminosidad para una galaxia o cúmulo (Phase 118).
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +103,76 @@ pub fn gr_color(age_gyr: f64, metallicity: f64) -> f64 {
     let log_age = (age_gyr.max(1e-3) + 0.01).log10();
     let log_z = metallicity.max(1e-3).log10();
     (0.24 + 0.18 * log_age + 0.07 * log_z).clamp(-0.2, 1.2)
+}
+
+/// Resultado SED multicolor para una galaxia (Phase 153).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SedResult {
+    /// Luminosidad total en banda U [L☉].
+    pub l_u: f64,
+    /// Luminosidad total en banda B [L☉].
+    pub l_b: f64,
+    /// Luminosidad total en banda V [L☉].
+    pub l_v: f64,
+    /// Luminosidad total en banda R [L☉].
+    pub l_r: f64,
+    /// Luminosidad total en banda I [L☉].
+    pub l_i: f64,
+    /// Color B-V ponderado por L_B.
+    pub bv: f64,
+    /// Color V-R ponderado por L_V.
+    pub vr: f64,
+    /// Edad media ponderada por masa [Gyr].
+    pub mass_weighted_age: f64,
+    /// Número de partículas estelares.
+    pub n_stars: usize,
+}
+
+/// Calcula la SED multicolor de una galaxia usando tablas SPS BC03-lite (Phase 153).
+///
+/// Solo las partículas `Star` contribuyen. La luminosidad de cada partícula
+/// se calcula interpolando en la grilla SPS por edad y metalicidad.
+///
+/// # Parámetros
+/// - `particles`: slice de partículas (se filtran las estelares)
+///
+/// # Retorna
+/// `SedResult` con luminosidades por banda, colores y edad media ponderada.
+pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
+    let mut l_u = 0.0_f64;
+    let mut l_b = 0.0_f64;
+    let mut l_v = 0.0_f64;
+    let mut l_r = 0.0_f64;
+    let mut l_i = 0.0_f64;
+    let mut mass_age = 0.0_f64;
+    let mut mass_tot = 0.0_f64;
+    let mut n_stars = 0_usize;
+
+    for p in particles {
+        if p.ptype != ParticleType::Star { continue; }
+        let age = p.stellar_age.max(1e-3);
+        let z = p.metallicity;
+        let m = p.mass;
+
+        l_u += m * sps_luminosity(age, z, Spsband::U);
+        l_b += m * sps_luminosity(age, z, Spsband::B);
+        l_v += m * sps_luminosity(age, z, Spsband::V);
+        l_r += m * sps_luminosity(age, z, Spsband::R);
+        l_i += m * sps_luminosity(age, z, Spsband::I);
+        mass_age += m * age;
+        mass_tot += m;
+        n_stars += 1;
+    }
+
+    let bv = if l_b > 0.0 && l_v > 0.0 {
+        -2.5 * (l_b / l_v).log10()
+    } else { 0.0 };
+    let vr = if l_v > 0.0 && l_r > 0.0 {
+        -2.5 * (l_v / l_r).log10()
+    } else { 0.0 };
+    let mass_weighted_age = if mass_tot > 0.0 { mass_age / mass_tot } else { 0.0 };
+
+    SedResult { l_u, l_b, l_v, l_r, l_i, bv, vr, mass_weighted_age, n_stars }
 }
 
 /// Calcula la luminosidad total y colores de una galaxia desde sus partículas (Phase 118).

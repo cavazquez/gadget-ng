@@ -1612,6 +1612,39 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
+    // Phase 157: hook SIDM — scattering elástico post-drift/kick
+    macro_rules! maybe_sidm {
+        ($step:expr) => {
+            if cfg.sidm.enabled {
+                let sidm_params = gadget_ng_tree::SidmParams {
+                    sigma_m: cfg.sidm.sigma_m,
+                    v_max: cfg.sidm.v_max,
+                };
+                gadget_ng_tree::apply_sidm_scattering(
+                    &mut local, &sidm_params, cfg.simulation.dt, cfg.simulation.seed + $step,
+                );
+            }
+        };
+    }
+
+    // Phase 158: hook gravedad modificada f(R) — post-cálculo de fuerzas
+    macro_rules! maybe_fr {
+        ($a_cur:expr) => {
+            if cfg.modified_gravity.enabled {
+                let fr_params = gadget_ng_core::FRParams {
+                    f_r0: cfg.modified_gravity.f_r0,
+                    n: cfg.modified_gravity.n,
+                };
+                let cosmo_params = gadget_ng_core::CosmologyParams::new(
+                    cfg.cosmology.omega_m, cfg.cosmology.omega_lambda, cfg.cosmology.h0,
+                );
+                gadget_ng_core::apply_modified_gravity(
+                    &mut local, &fr_params, &cosmo_params, $a_cur,
+                );
+            }
+        };
+    }
+
     // Phase 127: inicializar campo B según b0_kind antes del primer paso
     if cfg.mhd.enabled && cfg.mhd.b0_kind != gadget_ng_core::BFieldKind::None {
         gadget_ng_mhd::init_b_field(&mut local, &cfg.mhd, cfg.simulation.box_size);
@@ -1918,6 +1951,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
         h_state_opt = Some(h_state);
@@ -2185,6 +2220,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
@@ -2876,6 +2913,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
     } else if use_sfc_let {
@@ -3319,6 +3358,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
 
@@ -3560,6 +3601,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
     } else if use_dtree {
@@ -3626,6 +3669,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
     } else {
@@ -3672,6 +3717,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_agn!(step);
             maybe_rt!();
             maybe_mhd!();
+            maybe_sidm!(step);
+            maybe_fr!(a_current);
             maybe_reionization!(a_current);
         }
     }

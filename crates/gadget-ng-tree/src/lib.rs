@@ -5,6 +5,7 @@ pub mod octree;
 #[cfg(feature = "simd")]
 pub mod rayon_bh;
 pub mod rmn_soa;
+pub mod sidm;
 
 pub use barnes_hut::BarnesHutGravity;
 pub use let_tree::{
@@ -19,3 +20,4 @@ pub use octree::{
 #[cfg(feature = "simd")]
 pub use rayon_bh::RayonBarnesHutGravity;
 pub use rmn_soa::RmnSoa;
+pub use sidm::{apply_sidm_scattering, scatter_probability, SidmParams};

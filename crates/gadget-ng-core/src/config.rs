@@ -41,6 +41,12 @@ pub struct RunConfig {
     /// Plasma de dos fluidos T_e ≠ T_i (Phase 149; opcional; desactivado).
     #[serde(default)]
     pub two_fluid: TwoFluidSection,
+    /// Materia oscura auto-interactuante SIDM (Phase 157; opcional; desactivado).
+    #[serde(default)]
+    pub sidm: SidmSection,
+    /// Gravedad modificada f(R) con screening chameleon (Phase 158; opcional; desactivado).
+    #[serde(default)]
+    pub modified_gravity: ModifiedGravitySection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -950,36 +956,27 @@ pub struct CosmologySection {
     /// también se emite un `warn!` de inconsistencia.
     ///
     /// Default: `false` (retrocompatible — se usa `simulation.gravitational_constant`).
-    ///
-    /// # Ejemplo TOML
-    /// ```toml
-    /// [cosmology]
-    /// enabled  = true
-    /// auto_g   = true
-    /// omega_m  = 0.315
-    /// omega_lambda = 0.685
-    /// h0       = 0.1
-    /// a_init   = 0.02
-    /// ```
     #[serde(default)]
     pub auto_g: bool,
+    /// Parámetro CPL w₀ para energía oscura dinámica (Phase 155).
+    /// `w(a) = w0 + wa*(1-a)`. Default: -1.0 (ΛCDM).
+    #[serde(default = "default_w0")]
+    pub w0: f64,
+    /// Parámetro CPL wₐ para energía oscura dinámica (Phase 155).
+    /// Default: 0.0 (ΛCDM).
+    #[serde(default)]
+    pub wa: f64,
+    /// Suma de masas de neutrinos en eV (Phase 156).
+    /// `Ω_ν = m_ν / (93.14 eV × h²)`. Default: 0.0 (sin neutrinos).
+    #[serde(default)]
+    pub m_nu_ev: f64,
 }
 
-fn default_omega_m() -> f64 {
-    0.3
-}
-
-fn default_omega_lambda() -> f64 {
-    0.7
-}
-
-fn default_h0() -> f64 {
-    0.1
-}
-
-fn default_a_init() -> f64 {
-    1.0
-}
+fn default_omega_m() -> f64 { 0.3 }
+fn default_omega_lambda() -> f64 { 0.7 }
+fn default_h0() -> f64 { 0.1 }
+fn default_a_init() -> f64 { 1.0 }
+fn default_w0() -> f64 { -1.0 }
 
 impl Default for CosmologySection {
     fn default() -> Self {
@@ -991,6 +988,9 @@ impl Default for CosmologySection {
             h0: default_h0(),
             a_init: default_a_init(),
             auto_g: false,
+            w0: default_w0(),
+            wa: 0.0,
+            m_nu_ev: 0.0,
         }
     }
 }
@@ -2102,6 +2102,69 @@ impl Default for TwoFluidSection {
             enabled: false,
             nu_ei_coeff: default_nu_ei_coeff(),
             t_e_init_k: 0.0,
+        }
+    }
+}
+
+// ── SIDM (Phase 157) ─────────────────────────────────────────────────────────
+
+/// Configuración SIDM — materia oscura auto-interactuante (Phase 157).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidmSection {
+    /// `true` activa el módulo SIDM en cada paso de tiempo.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Sección eficaz por masa σ/m en unidades internas (default: 1×10⁻⁵).
+    #[serde(default = "default_sidm_sigma_m")]
+    pub sigma_m: f64,
+    /// Velocidad máxima de corte para el scattering (default: 1×10⁶).
+    #[serde(default = "default_sidm_v_max")]
+    pub v_max: f64,
+}
+
+fn default_sidm_sigma_m() -> f64 { 1.0e-5 }
+fn default_sidm_v_max() -> f64 { 1.0e6 }
+
+impl Default for SidmSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            sigma_m: default_sidm_sigma_m(),
+            v_max: default_sidm_v_max(),
+        }
+    }
+}
+
+// ── Gravedad modificada f(R) (Phase 158) ─────────────────────────────────────
+
+/// Configuración de gravedad modificada Hu-Sawicki f(R) (Phase 158).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModifiedGravitySection {
+    /// `true` activa el módulo post-gravedad normal.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Modelo de gravedad modificada: sólo `"hu_sawicki"` por ahora.
+    #[serde(default = "default_mg_model")]
+    pub model: String,
+    /// Parámetro |f_R0| del modelo Hu-Sawicki (default: 1×10⁻⁴).
+    #[serde(default = "default_f_r0")]
+    pub f_r0: f64,
+    /// Índice n del modelo Hu-Sawicki (default: 1).
+    #[serde(default = "default_mg_n")]
+    pub n: f64,
+}
+
+fn default_mg_model() -> String { "hu_sawicki".to_string() }
+fn default_f_r0() -> f64 { 1.0e-4 }
+fn default_mg_n() -> f64 { 1.0 }
+
+impl Default for ModifiedGravitySection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            model: default_mg_model(),
+            f_r0: default_f_r0(),
+            n: default_mg_n(),
         }
     }
 }

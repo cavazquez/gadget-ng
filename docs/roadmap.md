@@ -1,7 +1,7 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–150 completadas.  
-> Phases 114–119: Capa 2 física avanzada — ISM multifase, vientos estelares pre-SN, modo radio AGN (bubble feedback), rayos cósmicos básicos, función de luminosidad y colores galácticos, enfriamiento tabulado S&D93.  
+> **Estado al 23 de abril de 2026:** Phases 1–160 completadas.  
+> Phases 151–159: Capa 3 (Observables: rayos X, líneas de emisión, SED SPS, mock catalogues) y Capa 4 (Física de Frontera: w(z) CPL, neutrinos masivos, SIDM, f(R), GMC collapse).  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -141,3 +141,21 @@ Posibles extensiones:
 **Phases 105-108 (2026-04-23):** Técnicas nuevas: (105) JSONL con campos SPH completos (`internal_energy`, `smoothing_length`, `ptype` en `ParticleRecord`, backward compat); (106) Restart con SPH state completo (serde para `BlackHole` + `ChemState`, persistencia de AGN BHs y química EoR en checkpoint); (107) Merger trees con FoF real (`find_halos_with_membership`, `particle_snapshots_from_catalog`, membresía por proximidad COM); (108) Vientos galácticos (`WindParams`, `apply_galactic_winds`, factor de carga η, Springel & Hernquist 2003).
 
 **Phases 109-113 (2026-04-23) — Capa 1 bariónica completa:** (109) Metales en `Particle`: `metallicity`, `stellar_age`, `ParticleType::Star`, `Particle::new_star()`, `EnrichmentSection`; (110) Enriquecimiento químico SPH: `apply_enrichment` con distribución Wendland C2 desde SN II y AGB a vecinos de gas; (111) Enfriamiento metálico: `CoolingKind::MetalCooling`, `cooling_rate_metal` fitting analítico Sutherland & Dopita (1993), despacho en `apply_cooling`; (112) Partículas estelares reales: `spawn_star_particles` estocástico con herencia de metalicidad, integrado en `engine.rs`; (113) SN Ia con DTD power-law: `apply_snia_feedback`, `advance_stellar_ages`, distribución de Fe a vecinos, Maoz & Mannucci (2012).
+
+**Phases 151-160 (2026-04-23) — Observables Sintéticos + Física de Frontera completos:**
+
+*Capa 3 — Observables (Phases 151–154):*
+- (151) Emisión X: `xray.rs` — bremsstrahlung térmico Sarazin (1988), T_sl Mazzotta+2004, perfil radial.
+- (152) Líneas de emisión: `emission_lines.rs` — Hα, [OIII], [NII], diagrama BPT (Osterbrock 2006).
+- (153) SED SPS: `sps_tables.rs` + `luminosity.rs` — grilla BC03-lite 6×5, interpolación bilineal, `SedResult`.
+- (154) Mock catalogues: `mock_catalog.rs` — SMHM Behroozi+2013, magnitud aparente, C_l angular.
+
+*Capa 4 — Física de Frontera (Phases 155–159):*
+- (155) Energía oscura w(z): `cosmology.rs` — CPL `w(a) = w0 + wa×(1−a)`, Friedmann generalizada.
+- (156) Neutrinos masivos: `cosmology.rs` + `ic_zeldovich.rs` — Ω_ν, supresión P(k) × (1−8f_ν).
+- (157) SIDM: `gadget-ng-tree/src/sidm.rs` — scattering elástico, P = σ/m·ρ·v_rel·dt, hook `maybe_sidm!`.
+- (158) Gravedad modificada: `modified_gravity.rs` — Hu-Sawicki f(R), screening chameleon, hook `maybe_fr!`.
+- (159) GMC collapse: `gadget-ng-sph/src/gmc.rs` — IMF Kroupa (2001), `collapse_gmc`, `inject_sn_from_cluster`.
+- (160) Documentación: 9 reportes técnicos, CHANGELOG, roadmap actualizado.
+
+**Estado final:** Phases 1–160 completadas. Física de simulación cosmológica completa.

@@ -8,6 +8,93 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 159 — GMC Collapse + IMF Kroupa + Feedback SN II
+
+- Nuevo `crates/gadget-ng-sph/src/gmc.rs`: formación de cúmulos estelares desde gas denso.
+- `KroupaImf`, `sample_stellar_mass`: muestreo analítico de la IMF de Kroupa (2001).
+- `GmcCluster`: representación de un cúmulo GMC con masa, N_*, edad y metalicidad.
+- `collapse_gmc(particles, sfr_threshold, dt, seed)`: colapso de gas con SFR alta en cúmulos.
+- `inject_sn_from_cluster(clusters, particles, dt, cfg)`: feedback SN II solo de cúmulos jóvenes (<30 Myr).
+- 6 tests en `phase159_gmc_collapse.rs`.
+
+### Phase 158 — Gravedad Modificada f(R) Hu-Sawicki con Screening Chameleon
+
+- Nuevo `crates/gadget-ng-core/src/modified_gravity.rs`: modelo Hu-Sawicki f(R).
+- `FRParams { f_r0, n }`: parámetros del modelo.
+- `chameleon_field(delta_rho, f_r0, n)`: campo escalar local con screening chameleon.
+- `fifth_force_factor(f_r_local, f_r0)`: amplificación gravitacional (1/3 fuera de regiones densas).
+- `apply_modified_gravity(particles, params, cosmo, a)`: escala aceleración post-fuerza normal.
+- Hook `maybe_fr!` en `engine.rs` con `[modified_gravity] enabled = true`.
+- Nueva `ModifiedGravitySection` en config: `enabled`, `model`, `f_r0`, `n`.
+- 6 tests en `phase158_modified_gravity.rs`.
+
+### Phase 157 — Materia Oscura Auto-interactuante (SIDM)
+
+- Nuevo `crates/gadget-ng-tree/src/sidm.rs`: scattering elástico isótropo SIDM.
+- `SidmParams { sigma_m, v_max }`: sección eficaz y corte de velocidad.
+- `scatter_probability(v_rel, rho, sigma_m, dt)`: probabilidad de scattering por par.
+- `apply_sidm_scattering(particles, params, dt, seed)`: scattering conservando momento y E_k.
+- Hook `maybe_sidm!` en `engine.rs` con `[sidm] enabled = true`.
+- Nueva `SidmSection` en config: `enabled`, `sigma_m`, `v_max`.
+- 6 tests en `phase157_sidm.rs`.
+
+### Phase 156 — Neutrinos Masivos Ω_ν + Supresión P(k)
+
+- `omega_nu_from_mass(m_nu_ev, h100)`: Ω_ν = m_ν/(93.14 eV × h²).
+- `neutrino_suppression(f_nu)`: factor (1 − 8f_ν) de Lesgourgues & Pastor (2006).
+- `CosmologyParams::new_with_nu(...)`: constructor incluyendo Ω_ν en H(a).
+- `ic_zeldovich.rs`: aplica supresión de neutrinos al espectro de delta(k) en las ICs.
+- Nuevo campo `m_nu_ev: f64` en `CosmologySection`.
+- 6 tests en `phase156_massive_neutrinos.rs`.
+
+### Phase 155 — Energía Oscura Dinámica w(z) CPL
+
+- `dark_energy_eos(a, w0, wa)`: retorna w(a) = w0 + wa×(1−a).
+- `CosmologyParams::new_cpl(...)`: constructor con parámetros CPL.
+- Ecuación de Friedmann generalizada con Ω_DE(a) ∝ a^{−3(1+w0+wa)}×exp(3wa(a−1)).
+- `hubble_param` actualizado para soportar w(z) CPL y Ω_ν.
+- Nuevos campos `w0: f64`, `wa: f64` en `CosmologySection` (default: −1.0 y 0.0).
+- 6 tests en `phase155_dark_energy_wz.rs`.
+
+### Phase 154 — Mock Catalogues con Efectos de Selección
+
+- Nuevo `crates/gadget-ng-analysis/src/mock_catalog.rs`: catálogos galácticos sintéticos.
+- `MockGalaxy`: posición, z_obs, magnitudes, SFR, metalicidad, masa del halo/estrella.
+- `apparent_magnitude(m_abs, z, omega_m)`: distancia luminosidad + k-correction lineal.
+- `selection_flux_limit(m_app, m_lim)`: corte en magnitud límite.
+- `build_mock_catalog(particles, halos, z, omega_m, m_lim)`: SMHM Behroozi+2013 simplificado.
+- `angular_power_spectrum_cl(catalog, l_max, box_size)`: C_l angular vía Fourier plano.
+- 6 tests en `phase154_mock_catalog.rs`.
+
+### Phase 153 — SED Completa con Tablas SPS BC03-lite
+
+- Nuevo `crates/gadget-ng-analysis/src/sps_tables.rs`: grilla SPS 6×5 (edad×Z), bandas UBVRI.
+- `SpsGrid::bc03_lite()`: grilla BC03-lite con valores tabulados representativos.
+- `SpsGrid::interpolate(age, z, band)`: interpolación bilineal.
+- `sps_luminosity(age, z, band)`: L/M [L☉/M☉].
+- Nuevo `SedResult` y `galaxy_sed(particles)` en `luminosity.rs`.
+- 6 tests en `phase153_sed_sps.rs`.
+
+### Phase 152 — Líneas de Emisión Nebular (Hα, [OIII], [NII])
+
+- Nuevo `crates/gadget-ng-analysis/src/emission_lines.rs`: emissividades nebulares.
+- `emissivity_halpha(rho, t_k)`: Hα case B (Osterbrock 2006).
+- `emissivity_oiii(rho, t_k, z)`: [OIII] 5007Å por excitación colisional.
+- `emissivity_nii(rho, t_k, z)`: [NII] 6583Å por excitación colisional.
+- `compute_emission_lines(particles, gamma)`: líneas por partícula de gas.
+- `bpt_diagram(lines)`: diagrama BPT log([NII]/Hα) vs log([OIII]/Hβ).
+- 6 tests en `phase152_emission_lines.rs`.
+
+### Phase 151 — Emisión de Rayos X en Cúmulos
+
+- Nuevo `crates/gadget-ng-analysis/src/xray.rs`: bremsstrahlung térmico.
+- `bremsstrahlung_emissivity(p, gamma)`: Λ_X ∝ ρ² √T (Sarazin 1988).
+- `total_xray_luminosity(particles, gamma)`: L_X integrada.
+- `spectroscopic_temperature(particles, gamma)`: T_sl ponderada Mazzotta+2004.
+- `mass_weighted_temperature(particles, gamma)`: T_mw ponderada por masa.
+- `compute_xray_profile(particles, center, r_edges, gamma)`: perfil radial L_X y T_X.
+- 6 tests en `phase151_xray.rs`.
+
 ### Phase 149 — Plasma de Dos Fluidos: T_e ≠ T_i
 
 - Nuevo `crates/gadget-ng-mhd/src/two_fluid.rs`: acoplamiento Coulomb electrón-ión.
