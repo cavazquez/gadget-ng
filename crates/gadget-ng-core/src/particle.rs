@@ -65,6 +65,10 @@ pub struct Particle {
     /// `0.0` para DM y estrellas.
     #[serde(default)]
     pub dust_to_gas: f64,
+    /// Temperatura electrónica [unidades internas] para plasma de dos fluidos (Phase 149).
+    /// `0.0` = igual a T_i (sin distinción electrón/ión).
+    #[serde(default)]
+    pub t_electron: f64,
 }
 
 impl Particle {
@@ -86,6 +90,7 @@ impl Particle {
             b_field: Vec3::zero(),
             psi_div: 0.0,
             dust_to_gas: 0.0,
+            t_electron: 0.0,
         }
     }
 
@@ -115,6 +120,7 @@ impl Particle {
             b_field: Vec3::zero(),
             psi_div: 0.0,
             dust_to_gas: 0.0,
+            t_electron: 0.0,
         }
     }
 
@@ -146,6 +152,7 @@ impl Particle {
             b_field: Vec3::zero(),
             psi_div: 0.0,
             dust_to_gas: 0.0,
+            t_electron: 0.0,
         }
     }
 

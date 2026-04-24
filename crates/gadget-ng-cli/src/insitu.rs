@@ -153,7 +153,7 @@ pub fn maybe_run_insitu(
     chem_states_opt: Option<&[gadget_ng_rt::ChemState]>,
 ) -> (bool, InsituSideEffects) {
     let no_effects = InsituSideEffects { halo_centers: Vec::new() };
-    if !cfg.enabled || cfg.interval == 0 || step % cfg.interval != 0 {
+    if !cfg.enabled || cfg.interval == 0 || !step.is_multiple_of(cfg.interval) {
         return (false, no_effects);
     }
 
@@ -175,9 +175,9 @@ pub fn maybe_run_insitu(
         ..Default::default()
     };
 
-    match analyse(particles, &params) {
-        result => {
-            let n_halos = result.halos.len();
+    {
+        let result = analyse(particles, &params);
+        let n_halos = result.halos.len();
             let m_total_halos: f64 = result.halos.iter().map(|h| h.mass).sum();
 
             // Centros de halos ordenados por masa DESC (para AGN FoF, Phase 100)
@@ -363,8 +363,6 @@ pub fn maybe_run_insitu(
                 Err(e) => eprintln!("[insitu] Error serializando: {e}"),
             }
 
-            return (true, InsituSideEffects { halo_centers });
-        }
+        (true, InsituSideEffects { halo_centers })
     }
-    (true, InsituSideEffects { halo_centers: Vec::new() })
 }

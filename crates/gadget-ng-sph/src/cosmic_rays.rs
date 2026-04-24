@@ -83,6 +83,7 @@ pub fn inject_cr_from_sn(
 /// - `kappa_cr`: coeficiente de difusión [unidades internas]
 /// - `b_suppress`: factor de supresión por campo B (Phase 129); `0.0` = sin supresión
 /// - `dt`: paso de tiempo
+#[allow(clippy::needless_range_loop)]
 pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
     let n = particles.len();
     if n == 0 { return; }

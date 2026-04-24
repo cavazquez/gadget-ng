@@ -1,5 +1,7 @@
 //! `CudaPmSolver` — wrapper Rust sobre el solver PM CUDA.
 
+#![allow(clippy::needless_return)]
+
 use std::ffi::c_void;
 
 use gadget_ng_core::gravity::GravitySolver;

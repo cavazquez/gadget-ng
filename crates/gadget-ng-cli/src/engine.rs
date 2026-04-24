@@ -429,6 +429,7 @@ fn save_checkpoint<R: ParallelRuntime + ?Sized>(
 ///           agn_bhs_opt, chem_states_opt)`.
 ///
 /// Phase 106: incluye estado AGN y química si fueron guardados.
+#[allow(clippy::type_complexity)]
 fn load_checkpoint<R: ParallelRuntime + ?Sized>(
     rt: &R,
     resume_dir: &Path,
@@ -532,7 +533,7 @@ fn should_rebalance(step: u64, start_step: u64, interval: u64, cost_pending: boo
     if interval == 0 {
         return true;
     }
-    (step - start_step) % interval == 0
+    (step - start_step).is_multiple_of(interval)
 }
 
 fn kinetic_local(parts: &[Particle]) -> f64 {
@@ -1372,6 +1373,21 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         cfg.simulation.dt,
                     );
                 }
+                // Phase 142: Forzado turbulento Ornstein-Uhlenbeck
+                if cfg.turbulence.enabled {
+                    gadget_ng_mhd::apply_turbulent_forcing(
+                        &mut local,
+                        &cfg.turbulence,
+                        cfg.simulation.dt,
+                        $sph_step as u64,
+                    );
+                }
+                // Phase 149: Acoplamiento electrón-ión (plasma de dos fluidos)
+                if cfg.two_fluid.enabled {
+                    gadget_ng_mhd::apply_electron_ion_coupling(
+                        &mut local, &cfg.two_fluid, cfg.simulation.dt,
+                    );
+                }
                 // Phase 114: ISM multifase fría-caliente (antes del feedback para P_eff correcta)
                 if cfg.sph.ism.enabled {
                     let sfr_ism = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
@@ -1567,6 +1583,31 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     cfg.mhd.c_r,
                     dt_mhd,
                 );
+                // Phase 142: correcciones SRMHD para partículas con |v|/c > threshold
+                if cfg.mhd.relativistic_mhd {
+                    gadget_ng_mhd::advance_srmhd(
+                        &mut local, dt_mhd, gadget_ng_mhd::C_LIGHT, cfg.mhd.v_rel_threshold,
+                    );
+                }
+                // Phase 142: flux-freeze ICM (B ∝ ρ^{2/3} para β > beta_freeze)
+                {
+                    let rho_ref_mhd = gadget_ng_mhd::mean_gas_density(&local);
+                    gadget_ng_mhd::apply_flux_freeze(
+                        &mut local, cfg.sph.gamma, cfg.mhd.beta_freeze, rho_ref_mhd,
+                    );
+                }
+                // Phase 146: viscosidad anisótropa Braginskii
+                if cfg.mhd.eta_braginskii > 0.0 {
+                    gadget_ng_mhd::apply_braginskii_viscosity(
+                        &mut local, cfg.mhd.eta_braginskii, dt_mhd,
+                    );
+                }
+                // Phase 145: reconexión magnética Sweet-Parker
+                if cfg.mhd.reconnection_enabled {
+                    gadget_ng_mhd::apply_magnetic_reconnection(
+                        &mut local, cfg.mhd.f_reconnection, cfg.sph.gamma, dt_mhd,
+                    );
+                }
             }
         };
     }

@@ -193,7 +193,7 @@ pub fn radiation_gas_coupling_step_with_dust(
     deposit_gas_emission(particles, rad, dt, box_size, 1e-20);
 
     // Paso 2: tasa de fotoionización → luego atenuada por polvo partícula a partícula
-    let gamma = photoionization_rate(rad, params);
+    let _gamma = photoionization_rate(rad, params);
 
     // Paso 3: fotocalentamiento con atenuación τ_dust
     // Aplicamos exp(-τ_dust) al fotocalentamiento de cada partícula individualmente

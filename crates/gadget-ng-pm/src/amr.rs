@@ -283,6 +283,7 @@ pub fn deposit_to_patch(
 ///
 /// Si `zero_pad = false`, trata el parche como periódico (válido para sistemas
 /// de alta densidad y parches aislados).
+#[allow(clippy::needless_range_loop)]
 pub fn solve_patch(patch: &mut PatchGrid, g: f64, zero_pad: bool) {
     let nm = patch.nm;
 

@@ -38,6 +38,9 @@ pub struct RunConfig {
     /// Forzado de turbulencia MHD Ornstein-Uhlenbeck (Phase 140; opcional; desactivado).
     #[serde(default)]
     pub turbulence: TurbulenceSection,
+    /// Plasma de dos fluidos T_e ≠ T_i (Phase 149; opcional; desactivado).
+    #[serde(default)]
+    pub two_fluid: TwoFluidSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1927,6 +1930,24 @@ pub struct MhdSection {
     /// Umbral de |v|/c para aplicar correcciones relativistas (Phase 139). Default: `0.1`.
     #[serde(default = "default_v_rel_threshold")]
     pub v_rel_threshold: f64,
+    /// Activa reconexión magnética Sweet-Parker (Phase 145). Default: `false`.
+    #[serde(default)]
+    pub reconnection_enabled: bool,
+    /// Fracción de energía magnética liberada por reconexión por paso (Phase 145). Default: `0.01`.
+    #[serde(default = "default_f_reconnection")]
+    pub f_reconnection: f64,
+    /// Coeficiente de viscosidad Braginskii anisótropa (Phase 146). Default: `0.0` (desactivado).
+    #[serde(default)]
+    pub eta_braginskii: f64,
+    /// Activa jets AGN relativistas desde halos FoF (Phase 148). Default: `false`.
+    #[serde(default)]
+    pub jet_enabled: bool,
+    /// Velocidad del jet en unidades de c (Phase 148). Default: `0.3`.
+    #[serde(default = "default_v_jet")]
+    pub v_jet: f64,
+    /// Número de halos FoF que inyectan jets (Phase 148). Default: `1`.
+    #[serde(default = "default_n_jet_halos")]
+    pub n_jet_halos: usize,
 }
 
 /// Configuración del módulo de polvo intersticial básico (Phase 130).
@@ -1982,6 +2003,9 @@ fn default_cfl_mhd() -> f64 { 0.3 }
 fn default_alpha_b() -> f64 { 0.5 }
 fn default_beta_freeze() -> f64 { 100.0 }
 fn default_v_rel_threshold() -> f64 { 0.1 }
+fn default_f_reconnection() -> f64 { 0.01 }
+fn default_v_jet() -> f64 { 0.3 }
+fn default_n_jet_halos() -> usize { 1 }
 
 impl Default for MhdSection {
     fn default() -> Self {
@@ -1997,6 +2021,12 @@ impl Default for MhdSection {
             beta_freeze: default_beta_freeze(),
             relativistic_mhd: false,
             v_rel_threshold: default_v_rel_threshold(),
+            reconnection_enabled: false,
+            f_reconnection: default_f_reconnection(),
+            eta_braginskii: 0.0,
+            jet_enabled: false,
+            v_jet: default_v_jet(),
+            n_jet_halos: default_n_jet_halos(),
         }
     }
 }
@@ -2042,6 +2072,36 @@ impl Default for TurbulenceSection {
             k_min: default_turb_k_min(),
             k_max: default_turb_k_max(),
             spectral_index: default_turb_spectral_index(),
+        }
+    }
+}
+
+/// Plasma de dos fluidos: temperaturas de electrones e iones separadas (Phase 149).
+///
+/// El acoplamiento Coulomb transfiere calor entre electrones e iones:
+/// `dT_e/dt = −ν_ei (T_e − T_i)` con `ν_ei ∝ n_e / T_e^{3/2}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoFluidSection {
+    /// Activa el plasma de dos fluidos (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Coeficiente de acoplamiento Coulomb `ν_ei` en unidades internas (default: `1.0`).
+    #[serde(default = "default_nu_ei_coeff")]
+    pub nu_ei_coeff: f64,
+    /// Temperatura electrónica inicial en Kelvin (default: igual a T_i).
+    /// Si `0.0`, se inicializa igual a T_i al arranque.
+    #[serde(default)]
+    pub t_e_init_k: f64,
+}
+
+fn default_nu_ei_coeff() -> f64 { 1.0 }
+
+impl Default for TwoFluidSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            nu_ei_coeff: default_nu_ei_coeff(),
+            t_e_init_k: 0.0,
         }
     }
 }

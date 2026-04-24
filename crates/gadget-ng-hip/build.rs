@@ -5,14 +5,14 @@
 //! 1. `HIP_SKIP=1`          → skip silencioso (CI sin GPU): emite `hip_unavailable`.
 //! 2. `hipcc` no encontrado  → emite warning + `hip_unavailable`.
 //! 3. rocFFT no encontrada   → emite warning + `hip_unavailable`.
-//! 4. Todo OK                → compila `hip/pm_gravity.hip` con hipcc, crea librería
-//!                            estática `libpm_hip.a` y enlaza con rocFFT + hipruntime.
+//! 4. Todo OK → compila `hip/pm_gravity.hip` con hipcc, crea librería
+//!    estática `libpm_hip.a` y enlaza con rocFFT + hipruntime.
 //!
 //! # Variables de entorno respetadas
 //!
 //! - `HIP_SKIP`   — si `1`, salta todo sin error.
 //! - `ROCM_PATH`  — ruta raíz de ROCm (e.g. `/opt/rocm`).
-//!                  Si no está definida, se busca hipcc en PATH.
+//!   Si no está definida, se busca hipcc en PATH.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

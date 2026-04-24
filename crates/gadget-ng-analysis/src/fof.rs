@@ -392,6 +392,7 @@ pub fn particle_snapshots_from_catalog(
 /// let h2 = find_halos_combined(&pos, &vel, &mass, 2, 1.0, 0.2, 2, 0.0);
 /// assert_eq!(h1.len(), h2.len());
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub fn find_halos_combined(
     positions: &[Vec3],
     velocities: &[Vec3],

@@ -1,6 +1,6 @@
 # Physics Roadmap — gadget-ng
 
-> **Actualizado:** 2026-04-23 (post Phase 141 — MHD avanzado + Física completa)
+> **Actualizado:** 2026-04-23 (post Phase 150 — MHD Completo + Plasma 2F)
 >
 > Este documento cataloga la física ya implementada, evalúa su nivel de completitud respecto a los
 > códigos de referencia (GADGET-4, AREPO/IllustrisNG, EAGLE), y proyecta qué nuevos módulos se

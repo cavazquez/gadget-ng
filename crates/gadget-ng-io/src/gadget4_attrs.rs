@@ -160,6 +160,7 @@ impl Gadget4Header {
     }
 
     /// Crea un header para un snapshot con gas (PartType0) y DM (PartType1).
+    #[allow(clippy::too_many_arguments)]
     pub fn for_sph(
         n_gas: usize,
         n_dm: usize,

@@ -18,19 +18,25 @@
 //! - Price & Monaghan (2005), MNRAS 364, 384.
 
 pub mod anisotropic;
+pub mod braginskii;
 pub mod cleaning;
 pub mod flux_freeze;
 pub mod induction;
 pub mod pressure;
+pub mod reconnection;
 pub mod relativistic;
 pub mod stats;
 pub mod turbulence;
+pub mod two_fluid;
 
 pub use anisotropic::{apply_anisotropic_conduction, beta_plasma, diffuse_cr_anisotropic};
+pub use braginskii::apply_braginskii_viscosity;
 pub use flux_freeze::{apply_flux_freeze, flux_freeze_error, mean_gas_density};
-pub use relativistic::{advance_srmhd, em_energy_density, lorentz_factor, srmhd_conserved_to_primitive, C_LIGHT};
+pub use reconnection::{apply_magnetic_reconnection, sweet_parker_rate};
+pub use relativistic::{advance_srmhd, em_energy_density, inject_relativistic_jet, lorentz_factor, srmhd_conserved_to_primitive, C_LIGHT};
 pub use turbulence::{apply_turbulent_forcing, turbulence_stats};
-pub use stats::b_field_stats;
+pub use two_fluid::{apply_electron_ion_coupling, mean_te_over_ti};
+pub use stats::{b_field_stats, magnetic_power_spectrum};
 pub use cleaning::dedner_cleaning_step;
 pub use induction::{advance_induction, alfven_dt, apply_artificial_resistivity, init_b_field};
 pub use pressure::{apply_magnetic_forces, magnetic_pressure, maxwell_stress};

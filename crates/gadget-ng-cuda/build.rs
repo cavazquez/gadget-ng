@@ -5,14 +5,14 @@
 //! 1. `CUDA_SKIP=1`          → skip silencioso (CI sin GPU): emite `cuda_unavailable`.
 //! 2. `nvcc` no encontrado   → emite warning + `cuda_unavailable`.
 //! 3. cuFFT no encontrada    → emite warning + `cuda_unavailable`.
-//! 4. Todo OK                → compila `cuda/pm_gravity.cu` con nvcc, crea librería
-//!                            estática `libpm_cuda.a` y enlaza con cuFFT + cudart.
+//! 4. Todo OK → compila `cuda/pm_gravity.cu` con nvcc, crea librería
+//!    estática `libpm_cuda.a` y enlaza con cuFFT + cudart.
 //!
 //! # Variables de entorno respetadas
 //!
 //! - `CUDA_SKIP`  — si `1`, salta todo sin error.
 //! - `CUDA_PATH`  — ruta raíz del toolkit (e.g. `/usr/local/cuda`).
-//!                  Si no está definida, se busca nvcc en PATH.
+//!   Si no está definida, se busca nvcc en PATH.
 //! - `CUDA_ARCH`  — arquitectura de compilación (default: `sm_80`).
 
 use std::path::{Path, PathBuf};

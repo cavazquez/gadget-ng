@@ -198,6 +198,7 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
 /// donde `η_art = alpha_b × h_i × v_sig` y `v_sig = |v_ij|` es la señal de velocidad relativa.
 ///
 /// Con `alpha_b = 0.0` es un no-op.
+#[allow(clippy::needless_range_loop)]
 pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt: f64) {
     if alpha_b <= 0.0 { return; }
     let n = particles.len();

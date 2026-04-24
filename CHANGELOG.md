@@ -8,6 +8,69 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 149 — Plasma de Dos Fluidos: T_e ≠ T_i
+
+- Nuevo `crates/gadget-ng-mhd/src/two_fluid.rs`: acoplamiento Coulomb electrón-ión.
+- `apply_electron_ion_coupling(particles, cfg, dt)`: integración implícita exponencial.
+- `mean_te_over_ti(particles)`: diagnóstico T_e/T_i promedio.
+- Nuevo campo `t_electron: f64` en `Particle` para temperatura electrónica independiente.
+- Nueva `TwoFluidSection` en config: `enabled`, `nu_ei_coeff`, `t_e_init_k`.
+- Hook en `maybe_sph!` si `two_fluid.enabled`.
+- 6 tests en `phase149_two_fluid.rs`.
+
+### Phase 148 — RMHD Cosmológica: Jets AGN Relativistas
+
+- Nueva función `inject_relativistic_jet` en `crates/gadget-ng-mhd/src/relativistic.rs`.
+- Jets bipolares desde halos FoF: `v = ±v_jet ẑ`, `B = ±B_jet ẑ`, `u = (γ−1)c²`.
+- Nuevos campos en `MhdSection`: `jet_enabled`, `v_jet`, `n_jet_halos`.
+- 6 tests en `phase148_rmhd_jets.rs`.
+
+### Phase 147 — Corrida Cosmológica de Referencia MHD + P_B(k)
+
+- Nueva función `magnetic_power_spectrum` en `crates/gadget-ng-mhd/src/stats.rs`.
+- Estimador P_B(k) por bins logarítmicos de k ∝ 2π/h_i.
+- Test end-to-end: B_rms > 0, E_mag finita, max|v| < c tras evolución MHD.
+- 6 tests en `phase147_mhd_cosmo_full.rs`.
+
+### Phase 146 — Viscosidad Braginskii Anisótropa
+
+- Nuevo `crates/gadget-ng-mhd/src/braginskii.rs`: tensor de presión viscosa anisótropa.
+- `apply_braginskii_viscosity(particles, eta_visc, dt)`: difusión de momento ∥B.
+- Nuevo campo `eta_braginskii: f64` en `MhdSection`.
+- Hook en `maybe_mhd!` si `eta_braginskii > 0`.
+- 6 tests en `phase146_braginskii.rs`.
+
+### Phase 145 — Reconexión Magnética Sweet-Parker
+
+- Nuevo `crates/gadget-ng-mhd/src/reconnection.rs`: reconexión entre B antiparalelos.
+- `apply_magnetic_reconnection(particles, f_rec, gamma, dt)`: libera ΔE_heat, reduce |B|.
+- `sweet_parker_rate(v_a, l, eta)`: tasa teórica Sweet-Parker.
+- Nuevos campos en `MhdSection`: `reconnection_enabled`, `f_reconnection`.
+- Hook en `maybe_mhd!` si `reconnection_enabled`.
+- 6 tests en `phase145_reconnection.rs`.
+
+### Phase 144 — Clippy Cero Warnings
+
+- Corregidos todos los warnings de `cargo clippy --workspace`.
+- Fixes: needless_range_loop, needless_return, too_many_arguments, filter_map_ok,
+  digits grouped, is_multiple_of, type_complexity, doc list overindented, etc.
+- 6 tests en `phase144_clippy_clean.rs`.
+
+### Phase 143 — Benchmarks Criterion Avanzados
+
+- Nuevo `crates/gadget-ng-mhd/benches/advanced_bench.rs`.
+- Benchmarks para: `apply_turbulent_forcing` (N=100,500,1000), `apply_flux_freeze`,
+  `advance_srmhd`, `srmhd_conserved_to_primitive`.
+- 6 tests en `phase143_advanced_bench.rs`.
+
+### Phase 142 — Engine: RMHD + Turbulencia Integrados
+
+- Hooks en `maybe_sph!`: forzado turbulento OU, acoplamiento electrón-ión.
+- Hooks en `maybe_mhd!`: SRMHD relativista, flux-freeze ICM, Braginskii, reconexión.
+- Nuevos campos en `MhdSection`: reconnection, Braginskii, jets.
+- Nueva `TwoFluidSection` en `RunConfig`.
+- 6 tests en `phase142_engine_rmhd_turb.rs`.
+
 ### Phase 140 — Turbulencia MHD: Forzado Ornstein-Uhlenbeck
 
 - Nuevo `crates/gadget-ng-mhd/src/turbulence.rs`: proceso OU estocástico para forzado de turbulencia Alfvénica.

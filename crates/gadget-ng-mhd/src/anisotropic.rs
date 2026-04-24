@@ -133,6 +133,7 @@ pub fn apply_anisotropic_conduction(
 /// ```
 ///
 /// Con `B = 0` degenera en difusión isótropa.
+#[allow(clippy::needless_range_loop)]
 pub fn diffuse_cr_anisotropic(
     particles: &mut [Particle],
     kappa_cr: f64,

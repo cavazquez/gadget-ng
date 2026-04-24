@@ -1,4 +1,4 @@
-//! Estadísticas del campo magnético para monitoreo cosmológico (Phase 136).
+//! Estadísticas del campo magnético para monitoreo cosmológico (Phase 136 + 147).
 
 use gadget_ng_core::{Particle, ParticleType};
 
@@ -52,4 +52,72 @@ pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
         e_mag,
         n_gas,
     })
+}
+
+/// Espectro de potencia magnético P_B(k) estimado por histograma de |B|² (Phase 147).
+///
+/// Asigna cada partícula a un bin de `k ∝ 2π/h_i` (inverso del smoothing length),
+/// donde `h_i` se usa como escala local. Devuelve `(k_center, P_B)` para cada bin.
+///
+/// # Parámetros
+///
+/// - `particles`: slice de partículas de gas con campo magnético
+/// - `box_size`: longitud de la caja [unidades del código]
+/// - `n_bins`: número de bins logarítmicos en k
+///
+/// # Retorno
+///
+/// Vector de `(k [1/unidades], P_B(k) [B² × volumen])` para cada bin.
+/// Bins vacíos se omiten del resultado.
+pub fn magnetic_power_spectrum(
+    particles: &[Particle],
+    box_size: f64,
+    n_bins: usize,
+) -> Vec<(f64, f64)> {
+    if n_bins == 0 || box_size <= 0.0 { return Vec::new(); }
+
+    // Rango de k: de k_min = 2π/L hasta k_max = 2π/h_min
+    let k_fund = 2.0 * std::f64::consts::PI / box_size;
+
+    let mut k_vals: Vec<f64> = Vec::new();
+    let mut b2_vals: Vec<f64> = Vec::new();
+
+    for p in particles.iter() {
+        if p.ptype != ParticleType::Gas { continue; }
+        let h = p.smoothing_length;
+        if h <= 0.0 { continue; }
+        let b2 = p.b_field.x*p.b_field.x + p.b_field.y*p.b_field.y + p.b_field.z*p.b_field.z;
+        let k_p = 2.0 * std::f64::consts::PI / h;
+        k_vals.push(k_p);
+        b2_vals.push(b2 * p.mass);
+    }
+
+    if k_vals.is_empty() { return Vec::new(); }
+
+    let k_min = k_fund.min(k_vals.iter().cloned().fold(f64::INFINITY, f64::min));
+    let k_max = k_vals.iter().cloned().fold(0.0_f64, f64::max);
+    if k_max <= k_min { return Vec::new(); }
+
+    let log_k_min = k_min.ln();
+    let log_k_max = k_max.ln();
+    let dlog_k = (log_k_max - log_k_min) / n_bins as f64;
+    if dlog_k <= 0.0 { return Vec::new(); }
+
+    let mut bin_power = vec![0.0_f64; n_bins];
+    let mut bin_count = vec![0usize; n_bins];
+
+    for (&k, &b2m) in k_vals.iter().zip(b2_vals.iter()) {
+        let i = ((k.ln() - log_k_min) / dlog_k) as usize;
+        let i = i.min(n_bins - 1);
+        bin_power[i] += b2m;
+        bin_count[i] += 1;
+    }
+
+    let mut result = Vec::new();
+    for i in 0..n_bins {
+        if bin_count[i] == 0 { continue; }
+        let k_center = (log_k_min + (i as f64 + 0.5) * dlog_k).exp();
+        result.push((k_center, bin_power[i]));
+    }
+    result
 }

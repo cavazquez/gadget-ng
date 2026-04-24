@@ -108,6 +108,7 @@ pub fn write_halo_catalog_jsonl(
 }
 
 /// Lee el catálogo de halos desde JSONL.
+#[allow(clippy::filter_map_bool_then)]
 pub fn read_halo_catalog_jsonl(
     path: &std::path::Path,
 ) -> Result<(HaloCatalogHeader, Vec<HaloCatalogEntry>), SnapshotError> {
@@ -119,7 +120,7 @@ pub fn read_halo_catalog_jsonl(
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "sin header"))??;
     let header: HaloCatalogHeader = serde_json::from_str(&header_line)?;
     let halos: Vec<HaloCatalogEntry> = lines
-        .filter_map(|l| l.ok())
+        .map_while(Result::ok)
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect();
     Ok((header, halos))

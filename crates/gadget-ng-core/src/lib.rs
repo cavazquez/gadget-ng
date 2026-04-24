@@ -22,7 +22,8 @@ pub use config::{
     InitialConditionsSection, InsituAnalysisSection, IntegratorKind, IsmSection, MacSoftening, MhdSection, MolecularSection,
     NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, RunConfig, SfcKind,
     FeedbackSection, WindParams, RtSection, SimulationSection, SnapshotFormat, SolverKind, SphSection,
-    TimestepCriterion, TimestepSection, TransferKind, TurbulenceSection, UnitsSection, G_KPC_MSUN_KMPS,
+    TimestepCriterion, TimestepSection, TransferKind, TurbulenceSection, TwoFluidSection,
+    UnitsSection, G_KPC_MSUN_KMPS,
 };
 pub use cosmology::{
     adaptive_dt_cosmo, cosmo_consistency_error, density_contrast_rms, g_code_consistent,

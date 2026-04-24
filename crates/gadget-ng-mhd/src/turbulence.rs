@@ -31,7 +31,7 @@
 //! Goldreich & Sridhar (1995), ApJ 438, 763 — turbulencia MHD anisótropa.
 //! Federrath et al. (2010), A&A 512, A81 — forzado numérico de turbulencia.
 
-use gadget_ng_core::{Particle, ParticleType, TurbulenceSection, Vec3};
+use gadget_ng_core::{Particle, ParticleType, TurbulenceSection};
 use crate::MU0;
 
 /// Generador de números pseudo-aleatorios simple (LCG para reproducibilidad).

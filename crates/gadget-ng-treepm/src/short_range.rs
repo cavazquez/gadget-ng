@@ -238,6 +238,7 @@ pub struct ShortRangeParamsPeriodic<'a> {
 /// - `n_local` — número de partículas locales (índices 0..n_local).
 ///   Las aceleraciones de salida corresponden exactamente a estas partículas.
 /// - `out` — longitud = `n_local`.
+#[allow(clippy::needless_range_loop)]
 pub fn short_range_accels_periodic(
     params: &ShortRangeParamsPeriodic<'_>,
     n_local: usize,

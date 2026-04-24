@@ -281,7 +281,7 @@ pub fn find_subhalos(
     let mut subhalos: Vec<SubhaloRecord> = Vec::new();
     let mut subhalo_id = 0usize;
 
-    for (_, members) in &groups {
+    for members in groups.values() {
         if members.len() < params.min_subhalo_particles {
             continue;
         }

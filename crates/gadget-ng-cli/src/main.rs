@@ -100,6 +100,7 @@ enum Commands {
     /// - Espectro de potencia P(k) via CIC + FFT 3D.
     /// - Función de correlación de 2 puntos ξ(r) via transformada de Hankel.
     /// - Concentración c(M) NFW para halos con N ≥ nfw-min-part.
+    ///
     /// Escribe `results.json` en el directorio de salida.
     ///
     /// Ejemplo:

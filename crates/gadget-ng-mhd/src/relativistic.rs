@@ -162,3 +162,91 @@ pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f
 pub fn em_energy_density(b: Vec3) -> f64 {
     0.5 * (b.x*b.x + b.y*b.y + b.z*b.z)
 }
+
+/// Inyecta jets AGN relativistas bipolares desde los N halos más masivos (Phase 148).
+///
+/// Para cada halo FoF seleccionado, inyecta energía cinética y magnética a las
+/// partículas de gas más cercanas al centro del halo, simulando jets bipolares
+/// con velocidad `v_jet` y campo B alineado con el eje del jet.
+///
+/// ## Modelo físico
+///
+/// - El jet bipolar se lanza en dirección `±ẑ` (o eje más cercano al spin del halo)
+/// - Energía inyectada: `E_jet = (γ − 1) m c²`
+/// - Las velocidades se establecen directamente: `v = ±v_jet ẑ`
+/// - El campo B del jet se alinea con la velocidad: `B ∝ v̂`
+///
+/// ## Parámetros
+///
+/// - `particles`: slice mutable de partículas de gas
+/// - `halo_centers`: centros de halos FoF ordenados por masa DESC
+/// - `v_jet_frac`: velocidad del jet en fracciones de c (0.3 → 0.3c)
+/// - `n_jet_halos`: número de halos con jets activos
+/// - `c_light`: velocidad de la luz en unidades del código
+/// - `b_jet`: magnitud del campo magnético inyectado por el jet
+pub fn inject_relativistic_jet(
+    particles: &mut [Particle],
+    halo_centers: &[gadget_ng_core::Vec3],
+    v_jet_frac: f64,
+    n_jet_halos: usize,
+    c_light: f64,
+    b_jet: f64,
+) {
+    use gadget_ng_core::ParticleType;
+
+    let n_halos = halo_centers.len().min(n_jet_halos);
+    if n_halos == 0 || v_jet_frac <= 0.0 { return; }
+    let v_jet = v_jet_frac * c_light;
+
+    for center in halo_centers.iter().take(n_halos) {
+        // Encontrar la partícula de gas más cercana al centro del halo
+        let mut best_i_plus: Option<usize> = None;
+        let mut best_i_minus: Option<usize> = None;
+        let mut d2_plus = f64::INFINITY;
+        let mut d2_minus = f64::INFINITY;
+
+        for (i, p) in particles.iter().enumerate() {
+            if p.ptype != ParticleType::Gas { continue; }
+            let dx = p.position.x - center.x;
+            let dy = p.position.y - center.y;
+            let dz = p.position.z - center.z;
+            let d2 = dx*dx + dy*dy + dz*dz;
+
+            // Jet bipolar: partícula z > center → jet +z, z < center → jet -z
+            if p.position.z >= center.z && d2 < d2_plus {
+                d2_plus = d2;
+                best_i_plus = Some(i);
+            } else if p.position.z < center.z && d2 < d2_minus {
+                d2_minus = d2;
+                best_i_minus = Some(i);
+            }
+        }
+
+        // Inyectar jet en las 2 partículas más cercanas (una a cada lado)
+        if let Some(i) = best_i_plus {
+            let gamma = lorentz_factor(
+                Vec3::new(0.0, 0.0, v_jet),
+                c_light,
+            );
+            particles[i].velocity = Vec3::new(0.0, 0.0, v_jet);
+            particles[i].b_field = Vec3::new(0.0, 0.0, b_jet);
+            // Energía interna: E_jet = (γ − 1) c²
+            let u_jet = (gamma - 1.0) * c_light * c_light;
+            if u_jet > particles[i].internal_energy {
+                particles[i].internal_energy = u_jet;
+            }
+        }
+        if let Some(i) = best_i_minus {
+            let gamma = lorentz_factor(
+                Vec3::new(0.0, 0.0, -v_jet),
+                c_light,
+            );
+            particles[i].velocity = Vec3::new(0.0, 0.0, -v_jet);
+            particles[i].b_field = Vec3::new(0.0, 0.0, -b_jet);
+            let u_jet = (gamma - 1.0) * c_light * c_light;
+            if u_jet > particles[i].internal_energy {
+                particles[i].internal_energy = u_jet;
+            }
+        }
+    }
+}

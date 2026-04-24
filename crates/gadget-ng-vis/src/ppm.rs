@@ -199,11 +199,11 @@ pub fn write_png(path: &Path, pixels: &[u8], width: usize, height: usize) -> io:
 
     let mut png_writer = encoder
         .write_header()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     png_writer
         .write_image_data(pixels)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| io::Error::other(e.to_string()))?;
 
     Ok(())
 }

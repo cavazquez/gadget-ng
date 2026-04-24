@@ -35,7 +35,7 @@ impl Default for Cm21Params {
     fn default() -> Self {
         Self {
             t_s_kelvin: 1000.0,
-            nu_21cm_mhz: 1420.405_751_768,
+            nu_21cm_mhz: 1_420.405_751_768,
         }
     }
 }

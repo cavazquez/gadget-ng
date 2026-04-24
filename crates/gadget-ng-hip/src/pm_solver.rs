@@ -1,5 +1,7 @@
 //! `HipPmSolver` — wrapper Rust sobre el solver PM HIP/ROCm.
 
+#![allow(clippy::needless_return)]
+
 use std::ffi::c_void;
 
 use gadget_ng_core::gravity::GravitySolver;

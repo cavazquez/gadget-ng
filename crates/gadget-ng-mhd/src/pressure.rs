@@ -62,6 +62,7 @@ fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
 /// ```text
 /// a_i += m_j (M_i/ρ_i² + M_j/ρ_j²) · ∇W_ij
 /// ```
+#[allow(clippy::needless_range_loop)]
 pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
     let mut acc_mag = vec![Vec3::zero(); n];

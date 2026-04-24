@@ -75,6 +75,7 @@ impl Default for AssemblyBiasParams {
 /// - `all_masses`         — masas de TODAS las partículas.
 /// - `box_size`           — tamaño de la caja periódica.
 /// - `params`             — parámetros de análisis.
+#[allow(clippy::too_many_arguments)]
 pub fn compute_assembly_bias(
     halo_positions: &[Vec3],
     halo_masses: &[f64],

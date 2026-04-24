@@ -123,6 +123,7 @@ pub fn unpack_full_to_particles(flat: &[f64], total_count: usize) -> Vec<Particl
             b_field: gadget_ng_core::Vec3::zero(),
             psi_div: 0.0,
             dust_to_gas: 0.0,
+            t_electron: 0.0,
         });
     }
     let mut particles = Vec::with_capacity(total_count);
