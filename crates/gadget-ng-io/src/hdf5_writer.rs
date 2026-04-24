@@ -68,6 +68,14 @@ impl SnapshotWriter for Hdf5Writer {
             let mut ids = Array1::<i64>::zeros(n_gas);
             let mut u_int = Array1::<f64>::zeros(n_gas);
             let mut h_sml = Array1::<f64>::zeros(n_gas);
+            // Phase 131: campos extendidos
+            let mut metallicity = Array1::<f64>::zeros(n_gas);
+            let mut cr_energy = Array1::<f64>::zeros(n_gas);
+            let mut h2_fraction = Array1::<f64>::zeros(n_gas);
+            let mut dust_to_gas = Array1::<f64>::zeros(n_gas);
+            let mut b_field = Array2::<f64>::zeros((n_gas, 3));
+            let mut psi_div = Array1::<f64>::zeros(n_gas);
+
             for (i, p) in gas.iter().enumerate() {
                 coords[[i, 0]] = p.position.x;
                 coords[[i, 1]] = p.position.y;
@@ -79,6 +87,14 @@ impl SnapshotWriter for Hdf5Writer {
                 ids[i] = p.global_id as i64;
                 u_int[i] = p.internal_energy;
                 h_sml[i] = p.smoothing_length;
+                metallicity[i] = p.metallicity;
+                cr_energy[i] = p.cr_energy;
+                h2_fraction[i] = p.h2_fraction;
+                dust_to_gas[i] = p.dust_to_gas;
+                b_field[[i, 0]] = p.b_field.x;
+                b_field[[i, 1]] = p.b_field.y;
+                b_field[[i, 2]] = p.b_field.z;
+                psi_div[i] = p.psi_div;
             }
             let pt0 = file.create_group("PartType0")?;
             pt0.new_dataset_builder().with_data(&coords).create("Coordinates")?;
@@ -87,6 +103,47 @@ impl SnapshotWriter for Hdf5Writer {
             pt0.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
             pt0.new_dataset_builder().with_data(&u_int).create("InternalEnergy")?;
             pt0.new_dataset_builder().with_data(&h_sml).create("SmoothingLength")?;
+            // Phase 131: campos físicos extendidos (siempre escritos para compatibilidad total)
+            pt0.new_dataset_builder().with_data(&metallicity).create("Metallicity")?;
+            pt0.new_dataset_builder().with_data(&cr_energy).create("CosmicRayEnergy")?;
+            pt0.new_dataset_builder().with_data(&h2_fraction).create("H2Fraction")?;
+            pt0.new_dataset_builder().with_data(&dust_to_gas).create("DustToGas")?;
+            pt0.new_dataset_builder().with_data(&b_field).create("MagneticField")?;
+            pt0.new_dataset_builder().with_data(&psi_div).create("DednerPsi")?;
+        }
+
+        // --- PartType4 = estrellas (Phase 131) ---
+        {
+            use gadget_ng_core::ParticleType;
+            let stars: Vec<&Particle> = particles.iter().filter(|p| p.ptype == ParticleType::Star).collect();
+            let n_stars = stars.len();
+            if n_stars > 0 {
+                let mut coords = Array2::<f64>::zeros((n_stars, 3));
+                let mut vels = Array2::<f64>::zeros((n_stars, 3));
+                let mut masses = Array1::<f64>::zeros(n_stars);
+                let mut ids = Array1::<i64>::zeros(n_stars);
+                let mut stellar_age = Array1::<f64>::zeros(n_stars);
+                let mut star_metallicity = Array1::<f64>::zeros(n_stars);
+                for (i, p) in stars.iter().enumerate() {
+                    coords[[i, 0]] = p.position.x;
+                    coords[[i, 1]] = p.position.y;
+                    coords[[i, 2]] = p.position.z;
+                    vels[[i, 0]] = p.velocity.x;
+                    vels[[i, 1]] = p.velocity.y;
+                    vels[[i, 2]] = p.velocity.z;
+                    masses[i] = p.mass;
+                    ids[i] = p.global_id as i64;
+                    stellar_age[i] = p.stellar_age;
+                    star_metallicity[i] = p.metallicity;
+                }
+                let pt4 = file.create_group("PartType4")?;
+                pt4.new_dataset_builder().with_data(&coords).create("Coordinates")?;
+                pt4.new_dataset_builder().with_data(&vels).create("Velocities")?;
+                pt4.new_dataset_builder().with_data(&masses).create("Masses")?;
+                pt4.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
+                pt4.new_dataset_builder().with_data(&stellar_age).create("StellarAge")?;
+                pt4.new_dataset_builder().with_data(&star_metallicity).create("Metallicity")?;
+            }
         }
 
         // --- PartType1 = DM (N-body colisionless) ---

@@ -25,7 +25,9 @@ pub use halo_catalog_hdf5::{
 pub use halo_catalog_hdf5::read_halo_catalog_hdf5;
 #[cfg(feature = "hdf5")]
 pub use gadget4_attrs::{read_gadget4_header, write_gadget4_header};
-pub use provenance::Provenance;
+#[cfg(feature = "hdf5")]
+pub use hdf5_writer::{Hdf5Writer, Hdf5Reader};
+pub use provenance::{Provenance};
 pub use reader::{SnapshotData, SnapshotReader};
 pub use snapshot::{write_snapshot, JsonlReader, JsonlWriter, ParticleRecord, SnapshotMeta};
 pub use writer::{SnapshotEnv, SnapshotUnits, SnapshotWriter};

@@ -1328,6 +1328,16 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
                     gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
                 }
+                // Phase 130: Evolución del polvo intersticial
+                if cfg.sph.dust.enabled {
+                    gadget_ng_sph::update_dust(
+                        &mut local,
+                        &cfg.sph.dust,
+                        cfg.sph.gamma,
+                        cfg.simulation.dt,
+                    );
+                }
+
                 // Phase 121: Conducción térmica del ICM (Spitzer)
                 if cfg.sph.conduction.enabled {
                     gadget_ng_sph::apply_thermal_conduction(
@@ -1397,6 +1407,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         gadget_ng_sph::diffuse_cr(
                             &mut local,
                             cfg.sph.cr.kappa_cr,
+                            cfg.sph.cr.b_cr_suppress, // Phase 129
                             cfg.simulation.dt,
                         );
                     }
@@ -1516,21 +1527,30 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-    // Macro local para MHD ideal (Phase 126).
+    // Macro local para MHD ideal (Phase 126 + CFL Phase 127).
     // Activa inducción SPH, fuerzas magnéticas y limpieza de Dedner cuando [mhd] enabled = true.
+    // Usa el mínimo entre dt global y dt_alfven (CFL magnético) para estabilidad.
     macro_rules! maybe_mhd {
         () => {
             if cfg.mhd.enabled {
-                gadget_ng_mhd::advance_induction(&mut local, cfg.simulation.dt);
-                gadget_ng_mhd::apply_magnetic_forces(&mut local, cfg.simulation.dt);
+                // Phase 127: límite CFL magnético
+                let dt_alfven = gadget_ng_mhd::alfven_dt(&local, cfg.mhd.cfl_mhd);
+                let dt_mhd = cfg.simulation.dt.min(dt_alfven);
+                gadget_ng_mhd::advance_induction(&mut local, dt_mhd);
+                gadget_ng_mhd::apply_magnetic_forces(&mut local, dt_mhd);
                 gadget_ng_mhd::dedner_cleaning_step(
                     &mut local,
                     cfg.mhd.c_h,
                     cfg.mhd.c_r,
-                    cfg.simulation.dt,
+                    dt_mhd,
                 );
             }
         };
+    }
+
+    // Phase 127: inicializar campo B según b0_kind antes del primer paso
+    if cfg.mhd.enabled && cfg.mhd.b0_kind != gadget_ng_core::BFieldKind::None {
+        gadget_ng_mhd::init_b_field(&mut local, &cfg.mhd, cfg.simulation.box_size);
     }
 
     // Macro local para EoR completo z=6-12 (Phase 95).

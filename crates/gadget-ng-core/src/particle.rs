@@ -61,6 +61,10 @@ pub struct Particle {
     /// `0.0` por defecto.
     #[serde(default)]
     pub psi_div: f64,
+    /// Relación polvo/gas D/G ∈ [0, 1] (Phase 130).
+    /// `0.0` para DM y estrellas.
+    #[serde(default)]
+    pub dust_to_gas: f64,
 }
 
 impl Particle {
@@ -81,6 +85,7 @@ impl Particle {
             h2_fraction: 0.0,
             b_field: Vec3::zero(),
             psi_div: 0.0,
+            dust_to_gas: 0.0,
         }
     }
 
@@ -109,6 +114,7 @@ impl Particle {
             h2_fraction: 0.0,
             b_field: Vec3::zero(),
             psi_div: 0.0,
+            dust_to_gas: 0.0,
         }
     }
 
@@ -139,6 +145,7 @@ impl Particle {
             h2_fraction: 0.0,
             b_field: Vec3::zero(),
             psi_div: 0.0,
+            dust_to_gas: 0.0,
         }
     }
 

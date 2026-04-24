@@ -140,7 +140,7 @@ fn full_baryonic_stack_no_panic() {
     // Secuencia igual a engine.rs
     update_ism_phases(&mut particles, &sfr, 0.01, &ism_cfg, 0.01);
     inject_cr_from_sn(&mut particles, &sfr, 0.1, 0.01);
-    diffuse_cr(&mut particles, 3e-3, 0.01);
+    diffuse_cr(&mut particles, 3e-3, 0.0, 0.01);
     let mut seed = 77u64;
     apply_stellar_wind_feedback(&mut particles, &sfr, &fb_cfg, 0.01, &mut seed);
     advance_stellar_ages(&mut particles, 0.001);

@@ -139,7 +139,7 @@ pub fn read_snapshot_hdf5_serial(path: &Path) -> Result<SnapshotData, SnapshotEr
     let box_size_attr: Array1<f64> = header.attr("BoxSize")?.read_1d()?;
     let box_size = box_size_attr[0];
 
-    Ok(SnapshotData { particles, box_size })
+    Ok(SnapshotData { particles, box_size, time: 0.0, redshift: 0.0 })
 }
 
 // ── Path paralelo (requiere feature "hdf5-parallel") ─────────────────────────

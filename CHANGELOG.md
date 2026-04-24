@@ -8,6 +8,51 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 132 — Benchmark MHD Criterion + CFL unificado
+
+- Nuevo benchmark `crates/gadget-ng-mhd/benches/alfven_bench.rs` con Criterion: `advance_induction`, `apply_magnetic_forces`, `dedner_cleaning_step`, `full_mhd_step` sobre N=100,500,1000.
+- CFL unificado consolidado en `maybe_mhd!`: `dt_mhd = min(dt_global, dt_alfven)`.
+- `[[bench]] name = "alfven_bench"` en `crates/gadget-ng-mhd/Cargo.toml`.
+- 6 tests en `phase132_cfl_bench.rs`.
+
+### Phase 131 — HDF5 campos MHD + SPH completos
+
+- `PartType0` (gas) extiende con `MagneticField`, `DednerPsi`, `CosmicRayEnergy`, `Metallicity`, `H2Fraction`, `DustToGas`.
+- Nuevo grupo `PartType4` (estrellas) con `StellarAge`, `Metallicity`.
+- Re-exportación pública de `Hdf5Writer` y `Hdf5Reader` en `gadget-ng-io/src/lib.rs`.
+- Bugfix en `hdf5_parallel_writer.rs`: campos `time` y `redshift` en `SnapshotData`.
+- 6 tests en `phase131_hdf5_mhd.rs` (incluyendo tests con HDF5 real).
+
+### Phase 130 — Polvo intersticial básico
+
+- Campo `dust_to_gas: f64` en `Particle` (con `#[serde(default)]`).
+- Nueva struct `DustSection` en `SphSection`: `enabled`, `d_to_g_max`, `t_destroy_k`, `tau_grow`.
+- Nuevo módulo `crates/gadget-ng-sph/src/dust.rs` con `update_dust`.
+- Dos procesos: acreción D/G por metalicidad (T < T_destroy) y sputtering térmico (T > T_destroy).
+- Hook en `maybe_sph!` de `engine.rs` antes de `apply_cooling`.
+- 6 tests en `phase130_dust.rs`.
+
+### Phase 129 — Acoplamiento CR–B: difusión suprimida por |B|
+
+- Campo `b_cr_suppress: f64` (default 1.0) en `CrSection`.
+- `diffuse_cr` actualizada a `diffuse_cr(particles, kappa, b_suppress, dt)`.
+- Difusividad efectiva: `κ_eff = κ / (1 + b_suppress × |B|²)`.
+- 6 tests en `phase129_cr_mhd_coupling.rs`.
+
+### Phase 128 — Validación MHD 3D Alfvén + Brio-Wu 1D
+
+- Tests de referencia: velocidad de Alfvén analítica, |B_perp| conservado, condiciones Brio-Wu, energía magnética finita, relación de dispersión, Dedner cleaning.
+- 6 tests en `phase128_mhd_validation.rs` (solo validación, sin cambios de código).
+
+### Phase 127 — ICs magnetizadas + CFL magnético
+
+- Nuevo enum `BFieldKind`: `None`, `Uniform`, `Random`, `Spiral` en `config.rs`.
+- Campos `b0_kind`, `b0_uniform: [f64; 3]`, `cfl_mhd: f64` en `MhdSection`.
+- Nueva función `init_b_field(particles, cfg, box_size)` en `induction.rs`.
+- Nueva función `alfven_dt(particles, cfl) -> f64` en `induction.rs`.
+- `maybe_mhd!` usa `min(dt_global, dt_alfven)` como paso efectivo.
+- 6 tests en `phase127_mhd_ics.rs`.
+
 ### Phase 126 — Integración MHD en engine + macro maybe_mhd! + validación onda Alfvén
 
 - Nueva macro `maybe_mhd!()` en `engine.rs` integrada en los 7 bucles de simulación.

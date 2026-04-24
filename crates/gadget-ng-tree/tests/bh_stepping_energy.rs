@@ -39,7 +39,7 @@ fn stepping_with_barnes_hut_kinetic_bounded() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(),
+        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
     };
     let eps2 = cfg.softening_squared();
     let g = cfg.simulation.gravitational_constant;

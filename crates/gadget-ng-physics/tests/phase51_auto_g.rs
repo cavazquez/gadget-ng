@@ -94,7 +94,7 @@ fn base_cfg(g_override: f64, auto_g: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(),
+        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
     }
 }
 

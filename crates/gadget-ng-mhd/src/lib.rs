@@ -22,7 +22,7 @@ pub mod induction;
 pub mod pressure;
 
 pub use cleaning::dedner_cleaning_step;
-pub use induction::advance_induction;
+pub use induction::{advance_induction, alfven_dt, init_b_field};
 pub use pressure::{apply_magnetic_forces, magnetic_pressure, maxwell_stress};
 
 /// Permeabilidad magnética del vacío en unidades internas (adimensionalizada a 1).

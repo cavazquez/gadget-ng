@@ -19,7 +19,8 @@
 //! Morris & Monaghan (1997), J. Comput. Phys. 136, 41–60.
 //! Price & Monaghan (2005), MNRAS 364, 384–406.
 
-use gadget_ng_core::{Particle, ParticleType, Vec3};
+use gadget_ng_core::{BFieldKind, MhdSection, Particle, ParticleType, Vec3};
+use crate::MU0;
 
 /// Gradiente del kernel SPH cúbico (en 3D): `∇W(r, h)`.
 ///
@@ -107,4 +108,81 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
         particles[i].b_field.y += db[i].y * dt;
         particles[i].b_field.z += db[i].z * dt;
     }
+}
+
+/// Inicializa el campo magnético de las partículas de gas según `cfg.b0_kind` (Phase 127).
+///
+/// - `Uniform`:  B = b0_uniform para todas las partículas de gas.
+/// - `Random`:   B = amplitud aleatoria con |B| ≈ |b0_uniform| (usando global_id como semilla).
+/// - `Spiral`:   B = B0 × (sin(2πy/L), cos(2πx/L), 0).
+/// - `None`:     no-op.
+///
+/// `box_size` se usa para normalizar la posición en el modo espiral.
+pub fn init_b_field(particles: &mut [Particle], cfg: &MhdSection, box_size: f64) {
+    let b0 = Vec3::new(cfg.b0_uniform[0], cfg.b0_uniform[1], cfg.b0_uniform[2]);
+    let b_mag = (b0.x * b0.x + b0.y * b0.y + b0.z * b0.z).sqrt();
+    let l = box_size.max(1e-10);
+
+    for p in particles.iter_mut() {
+        if p.ptype != ParticleType::Gas { continue; }
+        p.b_field = match cfg.b0_kind {
+            BFieldKind::None => Vec3::zero(),
+            BFieldKind::Uniform => b0,
+            BFieldKind::Random => {
+                // LCG con global_id como semilla — reproducible y sin dependencia externa
+                let seed = p.global_id as u64;
+                let rx = lcg_uniform(seed);
+                let ry = lcg_uniform(seed.wrapping_add(1));
+                let rz = lcg_uniform(seed.wrapping_add(2));
+                let norm = (rx * rx + ry * ry + rz * rz).sqrt().max(1e-10);
+                Vec3::new(rx / norm * b_mag, ry / norm * b_mag, rz / norm * b_mag)
+            }
+            BFieldKind::Spiral => {
+                let x = p.position.x / l;
+                let y = p.position.y / l;
+                let two_pi = 2.0 * std::f64::consts::PI;
+                Vec3::new(
+                    b_mag * (two_pi * y).sin(),
+                    b_mag * (two_pi * x).cos(),
+                    0.0,
+                )
+            }
+        };
+    }
+}
+
+/// Genera un número pseudo-aleatorio ∈ [−1, 1] a partir de una semilla u64.
+#[inline]
+fn lcg_uniform(seed: u64) -> f64 {
+    let s = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let bits = (s >> 33) as u32;
+    (bits as f64 / u32::MAX as f64) * 2.0 - 1.0
+}
+
+/// Calcula el paso de tiempo máximo permitido por el criterio CFL de Alfvén (Phase 127).
+///
+/// `dt_A = cfl × min_i(h_i) / max_i(v_{A,i})`
+///
+/// donde `v_{A,i} = |B_i| / sqrt(μ₀ ρ_i)`.
+///
+/// Retorna `f64::INFINITY` si no hay partículas de gas o si todos los B son cero.
+pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
+    let mut h_min = f64::INFINITY;
+    let mut v_a_max = 0.0_f64;
+
+    for p in particles.iter() {
+        if p.ptype != ParticleType::Gas { continue; }
+        let h = p.smoothing_length.max(1e-10);
+        let rho = (p.mass / (h * h * h)).max(1e-30);
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+        let v_a = (b2 / (MU0 * rho)).sqrt();
+
+        h_min = h_min.min(h);
+        v_a_max = v_a_max.max(v_a);
+    }
+
+    if v_a_max < 1e-30 || !h_min.is_finite() {
+        return f64::INFINITY;
+    }
+    cfl * h_min / v_a_max
 }

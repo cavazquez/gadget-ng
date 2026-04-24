@@ -1149,6 +1149,9 @@ pub struct SphSection {
     /// Configuración del gas molecular H₂ (Phase 122).
     #[serde(default)]
     pub molecular: MolecularSection,
+    /// Configuración del polvo intersticial (Phase 130).
+    #[serde(default)]
+    pub dust: DustSection,
 }
 
 fn default_gamma() -> f64 { 5.0 / 3.0 }
@@ -1173,6 +1176,7 @@ impl Default for SphSection {
             cr: CrSection::default(),
             conduction: ConductionSection::default(),
             molecular: MolecularSection::default(),
+            dust: DustSection::default(),
         }
     }
 }
@@ -1461,10 +1465,17 @@ pub struct CrSection {
     /// Coeficiente de difusión isótropa κ_CR [unidades internas] (default: 3e-3).
     #[serde(default = "default_kappa_cr")]
     pub kappa_cr: f64,
+    /// Factor de supresión de difusión CR por campo magnético (Phase 129).
+    ///
+    /// `f_suppress = 1 / (1 + b_cr_suppress × |B|²)`.
+    /// `1.0` → supresión moderada; `0.0` → sin supresión (recupera comportamiento antiguo).
+    #[serde(default = "default_b_cr_suppress")]
+    pub b_cr_suppress: f64,
 }
 
 fn default_cr_fraction() -> f64 { 0.1 }
 fn default_kappa_cr() -> f64 { 3e-3 }
+fn default_b_cr_suppress() -> f64 { 1.0 }
 
 impl Default for CrSection {
     fn default() -> Self {
@@ -1472,6 +1483,7 @@ impl Default for CrSection {
             enabled: false,
             cr_fraction: default_cr_fraction(),
             kappa_cr: default_kappa_cr(),
+            b_cr_suppress: default_b_cr_suppress(),
         }
     }
 }
@@ -1836,6 +1848,21 @@ impl RunConfig {
 /// c_h     = 1.0
 /// c_r     = 0.5
 /// ```
+/// Tipo de condición inicial para el campo magnético (Phase 127).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BFieldKind {
+    /// Sin campo magnético inicial (default).
+    #[default]
+    None,
+    /// Campo uniforme en la dirección `b0_uniform`.
+    Uniform,
+    /// Campo aleatorio con amplitud `|b0_uniform|`.
+    Random,
+    /// Campo espiral: `B = B0 × (sin(2πy/L), cos(2πx/L), 0)`.
+    Spiral,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MhdSection {
     /// Activa el solver MHD (default: `false`).
@@ -1847,13 +1874,72 @@ pub struct MhdSection {
     /// Tasa de amortiguamiento Dedner (default: `0.5`).
     #[serde(default = "default_mhd_c_r")]
     pub c_r: f64,
+    /// Tipo de condición inicial para B (Phase 127). Default: `None`.
+    #[serde(default)]
+    pub b0_kind: BFieldKind,
+    /// Campo magnético inicial en unidades internas (Phase 127). Default: `[0,0,0]`.
+    #[serde(default)]
+    pub b0_uniform: [f64; 3],
+    /// Número de Courant magnético para el límite CFL de Alfvén (Phase 127). Default: `0.3`.
+    #[serde(default = "default_cfl_mhd")]
+    pub cfl_mhd: f64,
+}
+
+/// Configuración del módulo de polvo intersticial básico (Phase 130).
+///
+/// Modelo simplificado de acreción D/G por metalicidad y destrucción por sputtering.
+///
+/// ```toml
+/// [sph.dust]
+/// enabled     = true
+/// d_to_g_max  = 0.01
+/// t_destroy_k = 1e6
+/// tau_grow    = 1.0
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DustSection {
+    /// Activa el módulo de polvo (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// D/G máximo solar (default: `0.01`).
+    #[serde(default = "default_d_to_g_max")]
+    pub d_to_g_max: f64,
+    /// Temperatura de destrucción por sputtering en K (default: `1e6`).
+    #[serde(default = "default_t_destroy_k")]
+    pub t_destroy_k: f64,
+    /// Tiempo de crecimiento por accreción en unidades internas (default: `1.0`).
+    #[serde(default = "default_tau_grow")]
+    pub tau_grow: f64,
+}
+
+fn default_d_to_g_max() -> f64 { 0.01 }
+fn default_t_destroy_k() -> f64 { 1e6 }
+fn default_tau_grow() -> f64 { 1.0 }
+
+impl Default for DustSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            d_to_g_max: default_d_to_g_max(),
+            t_destroy_k: default_t_destroy_k(),
+            tau_grow: default_tau_grow(),
+        }
+    }
 }
 
 fn default_mhd_c_h() -> f64 { 1.0 }
 fn default_mhd_c_r() -> f64 { 0.5 }
+fn default_cfl_mhd() -> f64 { 0.3 }
 
 impl Default for MhdSection {
     fn default() -> Self {
-        Self { enabled: false, c_h: default_mhd_c_h(), c_r: default_mhd_c_r() }
+        Self {
+            enabled: false,
+            c_h: default_mhd_c_h(),
+            c_r: default_mhd_c_r(),
+            b0_kind: BFieldKind::None,
+            b0_uniform: [0.0; 3],
+            cfl_mhd: default_cfl_mhd(),
+        }
     }
 }

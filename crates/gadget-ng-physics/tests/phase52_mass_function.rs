@@ -439,7 +439,7 @@ fn phase52_fof_vs_hmf_qualitative() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(),
+        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deberían fallar");

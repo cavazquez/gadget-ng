@@ -70,19 +70,20 @@ pub fn inject_cr_from_sn(
     }
 }
 
-/// Difusión isótropa de CRs entre partículas de gas vecinas (Phase 117).
+/// Difusión isótropa de CRs con supresión magnética opcional (Phase 117 + 129).
 ///
-/// Implementa: `Δe_cr,i = κ_CR × Σ_j (e_cr,j - e_cr,i) × w(r_ij, h_i) × dt`
+/// Implementa: `Δe_cr,i = κ_CR_eff × Σ_j (e_cr,j - e_cr,i) × w(r_ij, h_i) × dt`
 ///
-/// La difusión tiende a igualar la energía CR entre vecinos.
-/// Se asegura que `cr_energy ≥ 0` en todo momento.
+/// donde `κ_CR_eff = κ_CR / (1 + b_suppress × |B_i|²)` (Phase 129).
+/// Con `b_suppress = 0.0` se recupera el comportamiento clásico isótropo.
 ///
 /// # Parámetros
 ///
 /// - `particles`: slice mutable de partículas
 /// - `kappa_cr`: coeficiente de difusión [unidades internas]
+/// - `b_suppress`: factor de supresión por campo B (Phase 129); `0.0` = sin supresión
 /// - `dt`: paso de tiempo
-pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, dt: f64) {
+pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
     let n = particles.len();
     if n == 0 { return; }
 
@@ -95,6 +96,12 @@ pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, dt: f64) {
         let pos_i = particles[i].position;
         let e_i = particles[i].cr_energy;
 
+        // Phase 129: κ efectiva modulada por |B|²
+        let b2_i = particles[i].b_field.x.powi(2)
+            + particles[i].b_field.y.powi(2)
+            + particles[i].b_field.z.powi(2);
+        let kappa_eff = kappa_cr / (1.0 + b_suppress * b2_i);
+
         for j in 0..n {
             if i == j { continue; }
             if particles[j].ptype != ParticleType::Gas { continue; }
@@ -106,8 +113,7 @@ pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, dt: f64) {
 
             let w = kernel_w_cr(r, 2.0 * h_i);
             if w > 0.0 {
-                // Flujo de j → i: proporcional al gradiente e_j - e_i
-                delta_cr[i] += kappa_cr * (particles[j].cr_energy - e_i) * w * dt;
+                delta_cr[i] += kappa_eff * (particles[j].cr_energy - e_i) * w * dt;
             }
         }
     }

@@ -53,7 +53,7 @@ fn diffusion_equalizes_cr_energy() {
     p1.smoothing_length = 1.0;
     let mut particles = vec![p0, p1];
 
-    diffuse_cr(&mut particles, 0.1, 1.0);
+    diffuse_cr(&mut particles, 0.1, 0.0, 1.0);
 
     // La partícula con más CR debe perder algo; la otra debe ganar
     assert!(particles[1].cr_energy > 0.0, "p1 debe recibir CR por difusión");
@@ -75,7 +75,7 @@ fn cr_pressure_formula() {
 
 #[test]
 fn cr_section_serde() {
-    let cfg = CrSection { enabled: true, cr_fraction: 0.15, kappa_cr: 5e-3 };
+    let cfg = CrSection { enabled: true, cr_fraction: 0.15, kappa_cr: 5e-3, b_cr_suppress: 0.0 };
     let json = serde_json::to_string(&cfg).unwrap();
     let cfg2: CrSection = serde_json::from_str(&json).unwrap();
     assert!(cfg2.enabled);

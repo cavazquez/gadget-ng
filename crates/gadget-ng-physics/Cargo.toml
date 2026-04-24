@@ -19,7 +19,7 @@ gadget-ng-parallel    = { path = "../gadget-ng-parallel" }
 gadget-ng-pm          = { path = "../gadget-ng-pm", features = ["rayon"] }
 gadget-ng-treepm      = { path = "../gadget-ng-treepm", features = ["rayon"] }
 gadget-ng-analysis    = { path = "../gadget-ng-analysis", features = ["parallel"] }
-gadget-ng-io          = { path = "../gadget-ng-io" }
+gadget-ng-io          = { path = "../gadget-ng-io", features = ["hdf5"] }
 gadget-ng-rt          = { path = "../gadget-ng-rt" }
 gadget-ng-mhd         = { path = "../gadget-ng-mhd" }
 
@@ -29,3 +29,4 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 rayon = "1.10"
 tempfile = "3"
+hdf5 = { package = "hdf5-metno", version = "0.12.4" }
