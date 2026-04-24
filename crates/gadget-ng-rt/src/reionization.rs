@@ -334,6 +334,7 @@ mod tests {
             kappa_abs: 0.1,
             kappa_scat: 0.0,
             substeps: 1,
+            ..Default::default()
         };
         let state = reionization_step(&mut rad, &mut chem_states, &sources, &params, 0.001, box_size, 9.0);
         assert_eq!(state.n_sources, 1);

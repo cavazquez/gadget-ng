@@ -122,12 +122,15 @@ fn eds_config(n: usize) -> RunConfig {
             h0: 0.1,
             a_init: 1.0,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 

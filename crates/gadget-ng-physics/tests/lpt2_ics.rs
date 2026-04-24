@@ -96,12 +96,15 @@ fn lpt2_config(seed: u64) -> RunConfig {
             h0: H0,
             a_init: A_INIT,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 

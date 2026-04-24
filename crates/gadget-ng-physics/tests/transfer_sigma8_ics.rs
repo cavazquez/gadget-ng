@@ -110,12 +110,15 @@ fn eh_config(seed: u64) -> RunConfig {
             h0: 0.1,
             a_init: 0.02,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 
@@ -165,12 +168,15 @@ fn legacy_config(seed: u64) -> RunConfig {
             h0: 0.1,
             a_init: 0.02,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 

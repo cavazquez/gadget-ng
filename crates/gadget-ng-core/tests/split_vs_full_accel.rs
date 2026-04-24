@@ -30,6 +30,8 @@ fn small_lattice_cfg() -> RunConfig {
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 

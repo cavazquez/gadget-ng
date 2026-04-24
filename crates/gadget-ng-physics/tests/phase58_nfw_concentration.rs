@@ -143,12 +143,15 @@ fn run_simulation() -> Phase58Result {
             h0: H0,
             a_init: A_INIT,
             auto_g: true,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     };
 
     let mut parts = build_particles(&cfg).expect("[phase58] ICs no deben fallar");

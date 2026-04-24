@@ -14,7 +14,7 @@ fn gas_with_z(id: usize, metallicity: f64, u: f64) -> Particle {
 }
 
 fn cfg_on() -> DustSection {
-    DustSection { enabled: true, d_to_g_max: 0.01, t_destroy_k: 1e6, tau_grow: 1.0 }
+    DustSection { enabled: true, d_to_g_max: 0.01, t_destroy_k: 1e6, tau_grow: 1.0, ..Default::default() }
 }
 
 // ── 1. Desactivado = no-op ────────────────────────────────────────────────

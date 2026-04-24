@@ -548,6 +548,7 @@ mod tests {
             kappa_abs: 0.1,
             kappa_scat: 0.0,
             substeps: 2,
+            ..Default::default()
         };
         m1_update_slab(&mut slab, 0.001, &params);
 

@@ -97,6 +97,7 @@ fn make_32cube_cfg() -> RunConfig {
             h0: 0.1,
             a_init: 0.02,
             auto_g: true,
+            ..Default::default()
         },
         units: UnitsSection {
             enabled: true,
@@ -133,6 +134,8 @@ fn make_32cube_cfg() -> RunConfig {
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 

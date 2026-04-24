@@ -34,6 +34,7 @@ fn phase63_interval_logic() {
         fof_min_part: 2,
         xi_bins: 0,
         output_dir: None,
+        ..Default::default()
     };
 
     // Con interval=5, los pasos 5, 10, 15 deben disparar análisis; 3, 7 no.
@@ -60,6 +61,7 @@ fn phase63_disabled_no_output() {
         fof_min_part: 2,
         xi_bins: 0,
         output_dir: None,
+        ..Default::default()
     };
 
     // Con enabled=false, el análisis no debe ejecutarse aunque el paso sea múltiplo.

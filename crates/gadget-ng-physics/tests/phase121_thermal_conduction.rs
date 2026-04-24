@@ -34,7 +34,7 @@ fn disabled_no_op() {
 
 #[test]
 fn heat_flows_hot_to_cold() {
-    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 1.0 };
+    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 1.0, ..Default::default() };
     let mut particles = vec![
         gas_with_energy(0, Vec3::new(0.0, 0.0, 0.0), 100.0, 1.0), // caliente
         gas_with_energy(1, Vec3::new(0.1, 0.0, 0.0), 1.0, 1.0),   // frío
@@ -51,7 +51,7 @@ fn heat_flows_hot_to_cold() {
 
 #[test]
 fn respects_t_floor() {
-    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1e6, psi_suppression: 1.0 };
+    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1e6, psi_suppression: 1.0, ..Default::default() };
     let mut particles = vec![
         gas_with_energy(0, Vec3::new(0.0, 0.0, 0.0), 1e-6, 0.5), // muy frío
         gas_with_energy(1, Vec3::new(0.01, 0.0, 0.0), 1e-6, 0.5),
@@ -68,7 +68,7 @@ fn respects_t_floor() {
 
 #[test]
 fn distant_particles_no_interaction() {
-    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 1.0 };
+    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 1.0, ..Default::default() };
     let mut particles = vec![
         gas_with_energy(0, Vec3::new(0.0, 0.0, 0.0), 100.0, 0.1),
         gas_with_energy(1, Vec3::new(100.0, 0.0, 0.0), 1.0, 0.1), // muy lejana
@@ -82,7 +82,7 @@ fn distant_particles_no_interaction() {
 
 #[test]
 fn zero_psi_suppression_no_conduction() {
-    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 0.0 };
+    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 0.0, ..Default::default() };
     let mut particles = vec![
         gas_with_energy(0, Vec3::new(0.0, 0.0, 0.0), 100.0, 1.0),
         gas_with_energy(1, Vec3::new(0.1, 0.0, 0.0), 1.0, 1.0),
@@ -98,7 +98,7 @@ fn zero_psi_suppression_no_conduction() {
 
 #[test]
 fn dm_particles_not_affected() {
-    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 1.0 };
+    let cfg = ConductionSection { enabled: true, kappa_spitzer: 1.0, psi_suppression: 1.0, ..Default::default() };
     let mut dm = Particle::new(0, 1.0, Vec3::new(0.1, 0.0, 0.0), Vec3::zero());
     dm.internal_energy = 1000.0;
     let mut gas = gas_with_energy(1, Vec3::new(0.0, 0.0, 0.0), 1.0, 1.0);

@@ -60,6 +60,7 @@ fn g4_amr_force_no_nan() {
         patch_cells_base: 3,
         max_patches: 4,
         zero_pad: false,
+        ..Default::default()
     };
     let accels = amr_pm_accels(&pos, &mass, 1.0, 16, 1.0, &params);
     assert_eq!(accels.len(), pos.len());
@@ -96,6 +97,7 @@ fn g4_amr_refines_dense_region() {
         patch_cells_base: 3,
         max_patches: 4,
         zero_pad: false,
+        ..Default::default()
     };
 
     let base_rho = cic::assign(&pos, &mass, box_size, 8);
@@ -215,10 +217,12 @@ fn g4_patch_zero_padding_vs_periodic() {
     let params_zp = AmrParams {
         delta_refine: 2.0, nm_patch: 8, patch_cells_base: 3,
         max_patches: 2, zero_pad: true,
+        ..Default::default()
     };
     let params_per = AmrParams {
         delta_refine: 2.0, nm_patch: 8, patch_cells_base: 3,
         max_patches: 2, zero_pad: false,
+        ..Default::default()
     };
 
     let accels_zp = amr_pm_accels(&pos, &mass_arr, box_size, 8, 1.0, &params_zp);
@@ -254,6 +258,7 @@ fn g4_amr_stats() {
         patch_cells_base: 3,
         max_patches: 8,
         zero_pad: false,
+        ..Default::default()
     };
 
     let (accels, stats) = amr_pm_accels_with_stats(&pos, &mass, 1.0, 8, 1.0, &params);

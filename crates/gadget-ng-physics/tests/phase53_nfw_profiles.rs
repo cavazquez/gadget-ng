@@ -378,12 +378,15 @@ fn phase53_density_profile_from_fof_halo() {
             h0: 0.1,
             a_init: 1.0,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deben fallar");

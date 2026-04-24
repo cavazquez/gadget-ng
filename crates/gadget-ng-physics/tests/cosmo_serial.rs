@@ -71,12 +71,15 @@ fn eds_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCon
             h0,
             a_init,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 
@@ -112,12 +115,15 @@ fn lcdm_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCo
             h0,
             a_init,
             auto_g: false,
+            ..Default::default()
         },
         units: UnitsSection::default(),
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
         rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
+        turbulence: Default::default(), two_fluid: Default::default(),
+        sidm: Default::default(), modified_gravity: Default::default(),
     }
 }
 

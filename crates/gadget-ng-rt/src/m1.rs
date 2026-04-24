@@ -371,7 +371,7 @@ mod tests {
     fn m1_update_absorption_decays() {
         // Con absorción, la energía debe decrecer
         let mut rad = RadiationField::uniform(4, 4, 4, 1.0, 1.0);
-        let params = M1Params { kappa_abs: 1.0, kappa_scat: 0.0, c_red_factor: 10.0, substeps: 1 };
+        let params = M1Params { kappa_abs: 1.0, kappa_scat: 0.0, c_red_factor: 10.0, substeps: 1, ..Default::default() };
         let e0 = rad.total_energy(1.0);
         m1_update(&mut rad, 0.1, &params);
         let e1 = rad.total_energy(1.0);

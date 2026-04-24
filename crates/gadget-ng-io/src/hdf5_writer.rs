@@ -299,8 +299,9 @@ mod tests {
         ];
         let prov =
             crate::provenance::Provenance::new("0-test", None, "debug", vec![], vec![], "hash");
+        // time = 1/(z+1) para que Gadget4Header calcule redshift == 2.0 exactamente
         let env = crate::writer::SnapshotEnv {
-            time: 0.33,
+            time: 1.0 / 3.0,
             redshift: 2.0,
             box_size: 8.0,
             ..Default::default()
@@ -312,7 +313,7 @@ mod tests {
         assert_eq!(data.particles.len(), 2);
         assert_eq!(data.particles[0], particles[0]);
         assert_eq!(data.particles[1], particles[1]);
-        assert!((data.time - 0.33).abs() < 1e-12);
+        assert!((data.time - 1.0 / 3.0).abs() < 1e-12);
         assert!((data.box_size - 8.0).abs() < 1e-12);
         assert!((data.redshift - 2.0).abs() < 1e-12);
     }
