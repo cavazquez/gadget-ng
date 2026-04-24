@@ -527,116 +527,41 @@ Estas están completamente detalladas en `docs/validation-plan-hpc.md`.
 <a name="script"></a>
 ## Script de corrida autónoma completa
 
-Guarda como `run_all_validations.sh` y ejecuta con `nohup`:
+El script vive en `scripts/run_all_validations.sh` y está listo para ejecutarse.
+Incluye los 6 bloques: unit tests, tests cuantitativos, benchmarks, GPU,
+validación N=128³ (2–4 h) y la **corrida de producción N=256³ (8–12 h, la definitiva)**.
+
+### Modos de ejecución
 
 ```bash
-#!/usr/bin/env bash
-# run_all_validations.sh
-# Ejecuta la suite completa de validaciones del proyecto gadget-ng.
-# Dejar corriendo: nohup ./run_all_validations.sh &
-# Monitorear:      tail -f logs/validation_$(date +%Y%m%d).log
+# Corrida completa (toda la noche — incluye N=128³ y N=256³):
+nohup bash scripts/run_all_validations.sh 2>&1 | tee logs/all_validations.log &
+echo "PID: $!"
+tail -f logs/all_validations.log
 
-set -euo pipefail
-mkdir -p logs
-LOG="logs/validation_$(date +%Y%m%d_%H%M%S).log"
-PASS=0; FAIL=0; SKIP=0
+# Solo unit tests rápidos (~30–60 min):
+ONLY_UNIT=1 bash scripts/run_all_validations.sh
 
-log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
-pass() { PASS=$((PASS+1)); log "✓ PASS: $1"; }
-fail() { FAIL=$((FAIL+1)); log "✗ FAIL: $1"; }
-skip() { SKIP=$((SKIP+1)); log "~ SKIP: $1 (razón: $2)"; }
+# Sin la producción N=256³ (2–4 h):
+SKIP_PROD=1 bash scripts/run_all_validations.sh
 
-log "=== INICIO VALIDACIONES gadget-ng ==="
-log "$(cargo --version)"
-log "$(rustc --version)"
-
-# ── Bloque 1: Suite completa existente ───────────────────────────────────────
-log "--- Bloque 1: cargo test --workspace ---"
-if cargo test --workspace --release 2>&1 | tee -a "$LOG" | grep -q "FAILED"; then
-    fail "workspace tests"
-else
-    pass "workspace tests"
-fi
-
-# ── Bloque 2: Tests con --nocapture para ver métricas ────────────────────────
-log "--- Bloque 2: tests cuantitativos con métricas ---"
-for test_name in \
-    "phase30_linear_reference" \
-    "phase38_class_validation" \
-    "phase54_growth_factor_validation" \
-    "phase145_reconnection" \
-    "phase146_braginskii" \
-    "phase147_mhd_cosmo_full" \
-    "phase148_rmhd_jets" \
-    "phase149_two_fluid"; do
-    if cargo test -p gadget-ng-physics --test "$test_name" -- --nocapture \
-        2>&1 | tee -a "$LOG" | grep -q "FAILED"; then
-        fail "$test_name"
-    else
-        pass "$test_name"
-    fi
-done
-
-# ── Bloque 3: Benchmarks Criterion ───────────────────────────────────────────
-log "--- Bloque 3: benchmarks ---"
-# Solo correr benchmarks en modo release, sin output HTML por defecto
-cargo bench -p gadget-ng-pm --bench pm_gravity -- --quick 2>&1 | tee -a "$LOG" && pass "bench pm_gravity" || fail "bench pm_gravity"
-cargo bench -p gadget-ng-mhd --bench advanced_bench -- --quick 2>&1 | tee -a "$LOG" && pass "bench mhd_advanced" || fail "bench mhd_advanced"
-cargo bench -p gadget-ng-gpu --bench gpu_vs_cpu -- --quick 2>&1 | tee -a "$LOG" && pass "bench gpu_vs_cpu" || fail "bench gpu_vs_cpu"
-
-# ── Bloque 4: GPU si disponible ───────────────────────────────────────────────
-log "--- Bloque 4: GPU (si disponible) ---"
-if command -v nvidia-smi &>/dev/null || command -v rocm-smi &>/dev/null; then
-    cargo test -p gadget-ng-gpu -- --include-ignored 2>&1 | tee -a "$LOG" \
-        && pass "gpu tests" || fail "gpu tests"
-else
-    skip "gpu tests" "no GPU detectada"
-fi
-
-# ── Bloque 5: Validaciones pendientes (cuando se implementen) ────────────────
-log "--- Bloque 5: validaciones pendientes ---"
-for test_name in \
-    "kepler_orbit" \
-    "sod_shock_tube" \
-    "mhd_turbulence_spectrum" \
-    "reconnection_scaling" \
-    "rmhd_energy_conservation" \
-    "two_fluid_equilibrium" \
-    "de_luminosity_distance" \
-    "sidm_cross_section" \
-    "fr_chameleon_recovery" \
-    "mock_catalog_smhm" \
-    "xray_lx_tx" \
-    "neutrino_pk_suppression" \
-    "v2_hierarchical_cosmo" \
-    "v3_mhd_validation"; do
-    if cargo test -p gadget-ng-physics --test "$test_name" 2>/dev/null \
-        | tee -a "$LOG" | grep -q "FAILED"; then
-        fail "$test_name"
-    elif cargo test -p gadget-ng-physics --test "$test_name" 2>/dev/null | grep -q "ok\."; then
-        pass "$test_name"
-    else
-        skip "$test_name" "test file no implementado aún"
-    fi
-done
-
-# ── Resumen ───────────────────────────────────────────────────────────────────
-log ""
-log "=== RESUMEN ==="
-log "PASS: $PASS  |  FAIL: $FAIL  |  SKIP: $SKIP"
-log "=== FIN VALIDACIONES ==="
-
-if [ "$FAIL" -gt 0 ]; then
-    exit 1
-fi
+# Con MPI×4 para las corridas largas (más rápido):
+N_RANKS=4 nohup bash scripts/run_all_validations.sh 2>&1 | tee logs/all_validations.log &
 ```
 
-Ejecutar:
-```bash
-chmod +x run_all_validations.sh
-nohup ./run_all_validations.sh > /dev/null 2>&1 &
-echo "PID: $!  — monitorear con: tail -f logs/validation_*.log"
-```
+### Estructura de bloques
+
+| Bloque | Contenido | Tiempo estimado |
+|--------|-----------|:---:|
+| 1 | `cargo test --workspace --release` (262+ tests) | ~30–60 min |
+| 2 | Tests cuantitativos con métricas impresas | ~5 min |
+| 3 | Benchmarks Criterion (--quick) | ~5 min |
+| 4 | GPU tests (si hay hardware) | ~10 min |
+| 5 | Corrida de validación N=128³ end-to-end | ~2–4 h |
+| **6** | **Corrida de PRODUCCIÓN N=256³ (la definitiva)** | **~8–12 h** |
+| | **TOTAL** | **~12–18 h** |
+
+> El bloque 6 (N=256³) hace checkpoints automáticos cada 2 h y reanuda si se interrumpe.
 
 ---
 
