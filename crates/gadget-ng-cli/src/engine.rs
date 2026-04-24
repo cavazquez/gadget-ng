@@ -1057,15 +1057,28 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         && !cfg.timestep.hierarchical
         && !cfg.cosmology.enabled;
 
-    // Phase 56: jerárquico + SFC (halos de partículas) en multirank.
+    // Phase 56: jerárquico + SFC (halos de partículas) en multirank, modo Newtoniano.
     // Reemplaza allgatherv O(N·P) por exchange_halos_sfc O(N_halo) dentro del closure de fuerzas.
-    // Solo disponible para BarnesHut, sin cosmología (cosmología jerárquica: fase futura).
+    // Solo disponible para BarnesHut, sin cosmología.
     // Con `force_allgather_fallback = true` o en rank-1 se usa el path allgather legacy.
-    let use_hierarchical_let = cfg.gravity.solver == SolverKind::BarnesHut
+    let use_hierarchical_let_newton = cfg.gravity.solver == SolverKind::BarnesHut
         && cfg.timestep.hierarchical
         && !cfg.cosmology.enabled
         && rt.size() > 1
         && !cfg.performance.force_allgather_fallback;
+
+    // Phase 162 (V2): jerárquico + SFC + cosmología acoplada.
+    // Extiende el path newtoniano al régimen cosmológico (caja aperiódica BarnesHut).
+    // Requiere `cosmology.periodic = false` porque el árbol BH no implementa fuerzas periódicas.
+    let use_hierarchical_let_cosmo = cfg.gravity.solver == SolverKind::BarnesHut
+        && cfg.timestep.hierarchical
+        && cfg.cosmology.enabled
+        && !cfg.cosmology.periodic
+        && rt.size() > 1
+        && !cfg.performance.force_allgather_fallback;
+
+    // Alias legacy: cualquiera de los dos paths jerárquicos activa la infraestructura SFC.
+    let use_hierarchical_let = use_hierarchical_let_newton || use_hierarchical_let_cosmo;
 
     // SFC+LET es el path por defecto para multirank + BarnesHut.
     // Se desactiva solo con `force_allgather_fallback = true` (legacy) o tamaño 1.
@@ -1092,6 +1105,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     //
     // Fase 18: se desactiva cuando `periodic = true`: las fuerzas de árbol no usan
     // minimum_image; la cosmología periódica requiere PM o TreePM (allgather path).
+    // También se desactiva cuando `hierarchical = true`: en ese caso se usa
+    // `use_hierarchical_let_cosmo` (Phase 162 / V2) que maneja el path cosmo+jerárquico.
     let use_sfc_let_cosmo = cfg.gravity.solver == SolverKind::BarnesHut
         && cfg.cosmology.enabled
         && !cfg.cosmology.periodic

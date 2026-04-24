@@ -8,6 +8,40 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 164 — Documentación final HPC Phases 161-163
+
+- 3 reportes técnicos en `docs/reports/` para V1 (GPU), V2 (cosmo+jerárquico), V3 (MHD ICs).
+- Actualizado `CHANGELOG.md`, `docs/roadmap.md`, `scripts/run_all_validations.sh`.
+
+### Phase 163 — V1: GPU CUDA/HIP Direct Gravity Stubs + Tests
+
+- Nuevo `crates/gadget-ng-cuda/src/direct_solver.rs`: `CudaDirectGravity` stub (N² directo).
+- Nuevo `crates/gadget-ng-hip/src/direct_solver.rs`: `HipDirectGravity` stub (N² directo).
+- Exportados desde `gadget-ng-cuda::CudaDirectGravity` y `gadget-ng-hip::HipDirectGravity`.
+- Nuevo `crates/gadget-ng-gpu/tests/v1_gpu_tests.rs`: 6 tests (1 CI wgpu, 5 `#[ignore]`).
+- `gadget-ng-gpu/Cargo.toml`: añadidas dev-deps `gadget-ng-cuda` y `gadget-ng-hip`.
+
+### Phase 162 — V2: Block Timesteps + Cosmología + MPI Acoplado (engine refactor)
+
+- `crates/gadget-ng-cli/src/engine.rs`: `use_hierarchical_let` separado en:
+  - `use_hierarchical_let_newton` (previo: BarnesHut + jerárquico, sin cosmología)
+  - `use_hierarchical_let_cosmo` (nuevo: BarnesHut + jerárquico + cosmo aperiódico)
+  - Alias `use_hierarchical_let = newton || cosmo` para la infraestructura SFC existente.
+- `use_sfc_let_cosmo` ya tenía `!cfg.timestep.hierarchical`; se añadió documentación.
+- Nuevo `crates/gadget-ng-physics/tests/v2_hierarchical_cosmo.rs`: 6 tests
+  (masa exacta, deriva energía < 10%, reproducibilidad, a(t) Friedmann, checkpoint/resume,
+  strong scaling `#[ignore]`).
+
+### Phase 161 — V3: ICs MHD Cosmológicas + Validaciones Cuantitativas
+
+- Nuevo `crates/gadget-ng-core/src/ic_mhd.rs`: módulo de ICs magnéticas primordiales.
+  - `uniform_bfield_ic(particles, b0)`: campo uniforme B=(0,0,b0).
+  - `primordial_bfield_ic(particles, b0, spectral_index, seed)`: espectro B(k)∝k^n_B.
+  - `check_plasma_beta(particles, gamma)`: ratio β = P_gas/P_mag medio.
+- `crates/gadget-ng-core/src/lib.rs`: exporta los nuevos símbolos.
+- Nuevo `crates/gadget-ng-physics/tests/v3_mhd_validation.rs`: 6 tests analíticos MHD
+  (onda Alfvén, amortiguamiento Braginskii, onda magnetosónica, flux-freeze, β_plasma, P(k)).
+
 ### Phase 159 — GMC Collapse + IMF Kroupa + Feedback SN II
 
 - Nuevo `crates/gadget-ng-sph/src/gmc.rs`: formación de cúmulos estelares desde gas denso.

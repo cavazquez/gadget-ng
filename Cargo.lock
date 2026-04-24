@@ -777,6 +777,8 @@ name = "gadget-ng-gpu"
 version = "0.1.0"
 dependencies = [
  "criterion 0.8.2",
+ "gadget-ng-cuda",
+ "gadget-ng-hip",
  "pollster",
  "tempfile",
  "wgpu",

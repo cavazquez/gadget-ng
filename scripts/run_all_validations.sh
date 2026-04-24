@@ -5,6 +5,7 @@
 # Incluye:
 #   Bloque 1: cargo test --workspace --release  (todos los tests unitarios)
 #   Bloque 2: tests cuantitativos con --nocapture (métricas impresas)
+#             Incluye: Phases 161-163 (v3_mhd_validation, v2_hierarchical_cosmo, v1_gpu_tests)
 #   Bloque 3: benchmarks Criterion rápidos
 #   Bloque 4: GPU (si hay hardware disponible)
 #   Bloque 5: corrida de validación N=128³ (2–4 h, end-to-end cosmológica)
@@ -112,7 +113,19 @@ QUANTITATIVE_TESTS=(
     "phase157_sidm"
     "phase158_modified_gravity"
     "phase159_gmc_collapse"
+    # Phase 161–163 (HPC validation suite)
+    "v3_mhd_validation"
+    "v2_hierarchical_cosmo"
 )
+
+# Tests GPU V1 (Bloque 2b — wgpu CI-friendly, los #[ignore] se omiten)
+log "→ v1_gpu_tests (wgpu CI)"
+if cargo test -p gadget-ng-gpu --test v1_gpu_tests $RELEASE_FLAGS \
+        -- --nocapture 2>&1 | tee "logs/bloque2_v1_gpu_tests.log" | grep -q "FAILED"; then
+    fail "v1_gpu_tests"
+else
+    pass "v1_gpu_tests"
+fi
 
 for t in "${QUANTITATIVE_TESTS[@]}"; do
     log "→ $t"

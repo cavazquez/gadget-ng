@@ -1,7 +1,8 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–160 completadas.  
-> Phases 151–159: Capa 3 (Observables: rayos X, líneas de emisión, SED SPS, mock catalogues) y Capa 4 (Física de Frontera: w(z) CPL, neutrinos masivos, SIDM, f(R), GMC collapse).  
+> **Estado al 23 de abril de 2026:** Phases 1–164 completadas.  
+> Phases 161–163: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).  
+> Phase 164: Documentación final HPC.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -158,4 +159,21 @@ Posibles extensiones:
 - (159) GMC collapse: `gadget-ng-sph/src/gmc.rs` — IMF Kroupa (2001), `collapse_gmc`, `inject_sn_from_cluster`.
 - (160) Documentación: 9 reportes técnicos, CHANGELOG, roadmap actualizado.
 
-**Estado final:** Phases 1–160 completadas. Física de simulación cosmológica completa.
+**Phases 161–164 (2026-04-23) — HPC Engineering + Validaciones Cuantitativas:**
+
+*V3 — MHD Cosmológico (Phase 161):*
+- (161a) `ic_mhd.rs`: `primordial_bfield_ic` (espectro B(k)∝k^n_B) + `check_plasma_beta`.
+- (161b) `v3_mhd_validation.rs`: 6 tests analíticos (onda Alfvén, Braginskii, magnetosónica, flux-freeze, β_plasma, P(k)).
+
+*V2 — Block Timesteps + Cosmología + MPI (Phase 162):*
+- (162a) `engine.rs`: `use_hierarchical_let` → `_newton` + `_cosmo` + alias.
+- (162b) `v2_hierarchical_cosmo.rs`: 6 tests (masa, energía, reproducibilidad, a(t), checkpoint, scaling).
+
+*V1 — GPU CUDA/HIP (Phase 163):*
+- (163a) `CudaDirectGravity` stub + `HipDirectGravity` stub en sus respectivos crates.
+- (163b) `v1_gpu_tests.rs`: 6 tests (1 CI wgpu, 5 `#[ignore]` para hardware real).
+
+*Documentación (Phase 164):*
+- (164) 3 reportes técnicos, CHANGELOG, roadmap actualizados. `run_all_validations.sh` extendido.
+
+**Estado final:** Phases 1–164 completadas. Física completa + HPC Engineering con tests para GPU/cosmo-jerárquico/MHD-ICs.

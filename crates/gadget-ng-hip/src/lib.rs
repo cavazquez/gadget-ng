@@ -31,7 +31,9 @@
 //! 4. **FFT inverse** — 3× rocFFT 3D complex-to-real
 //! 5. **CIC interp**  — interpolar fuerza en posiciones de partículas
 
+pub mod direct_solver;
 pub mod ffi;
 pub mod pm_solver;
 
+pub use direct_solver::HipDirectGravity;
 pub use pm_solver::HipPmSolver;
