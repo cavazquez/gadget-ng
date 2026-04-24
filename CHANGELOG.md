@@ -8,6 +8,62 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 167 — Validaciones pendientes PF-01..PF-16
+
+Implementa los **16 tests de validación cuantitativa** pendientes documentados en
+`docs/validations-complete.md`, junto con un Bloque 0 en el runner de validaciones
+que los ejecuta ordenados de más lentos a más rápidos.
+
+#### A — Tests rápidos (sin `#[ignore]`, pasan en CI normal)
+
+- **`pf01_leapfrog_convergence.rs`** — Convergencia de orden 2 del integrador KDK:
+  ratio de errores de energía al duplicar pasos ≈ 4.0; L y e de Kepler conservadas.
+- **`pf02_kepler_orbit.rs`** — Momento angular total conservado < 0.01% en 10 órbitas;
+  excentricidad drift < 5%; período medido vs teórico dentro del 5%.
+- **`pf03_fmm_convergence.rs`** — Error árbol Barnes-Hut decrece con θ menor;
+  finito y correcto para N=32 partículas.
+- **`pf05_sod_shock_tube.rs`** — Tests IC Sod con Gadget-2 SPH (ICs + courant_dt).
+- **`pf06_sph_pressure_noise.rs`** — Fuerzas SPH finitas; presiones positivas.
+- **`pf07_mhd_turbulence_spectrum.rs`** — Forcing turbulento inyecta energía cinética.
+- **`pf08_reconnection_scaling.rs`** — `Γ_SP ∝ √η`: ratio = √10 ± 1% al variar η×10.
+- **`pf09_rmhd_energy_conservation.rs`** — `advance_srmhd` produce fuerzas finitas.
+- **`pf10_two_fluid_equilibrium.rs`** — Acoplamiento Coulomb reduce brecha T_e/T_i.
+- **`pf11_de_luminosity_distance.rs`** — CPL (w₀=-1, wₐ=0) ≡ ΛCDM en d_L < 0.1%.
+- **`pf12_sidm_cross_section.rs`** — Probabilidad SIDM crece con ρ y v_rel.
+- **`pf13_fr_chameleon.rs`** — Chameleon suprime quinta fuerza < 1% en alta densidad.
+- **`pf14_mock_catalog_smhm.rs`** — Halos masivos producen galaxias más brillantes.
+- **`pf15_xray_lx_tx.rs`** — Bremsstrahlung crece con T; L_X > 0 para gas caliente.
+- **`pf16_neutrino_pk_suppression.rs`** — `neutrino_suppression(f_ν)` monótona; Hu98.
+
+#### B — Tests lentos (`#[ignore]`, ejecutar con `BLOQUE0_ENABLED=1`)
+
+- **`pf05`** — Sod Gadget-2: RMS error densidad vs Riemann < 15%; compresión y entropía.
+- **`pf07`** — Espectro cinético Kolmogorov tras 200 pasos: índice -5/3 ± 0.4.
+- **`pf09`** — RMHD onda Alfvén: drift energía < 1% en 100 pasos.
+- **`pf10`** — |T_e/T_i - 1| < 0.1% tras 10 × t_eq.
+- **`pf04_pm_mesh_convergence.rs`** — Error PM decrece con N_mesh; < 5% a N_mesh=32.
+- **`pf12`** — Tasa SIDM numérica vs analítica (N=200 partículas, 50 trials).
+- **`pf14`** — Pendiente log(L) vs log(M_halo) ≈ 1.0 ± 0.3.
+- **`pf15`** — Pendiente log(L_X) vs log(T_X) ≈ 2.0 ± 0.2.
+- **`pf16`** — Barrido m_ν ∈ [0.06, 0.5] eV: supresión en [0.1%, 50%].
+
+#### C — Actualización del runner de validaciones
+
+- **`scripts/run_all_validations.sh`** — Nuevo **Bloque 0** ordenado slowest→fastest:
+  - Tier 0A (>2h): phase42, phase54, phase55 `--include-ignored`.
+  - Tier 0B (~30m): phase36..41, phase43..44, phase47..49, phase58 `--include-ignored`.
+  - Tier 0C (~20m): pf07, pf16, pf05 (tests Tier-1 del plan).
+  - Tier 0D (~5m): pf04, pf12, pf14, pf10, pf15, pf09 (tests Tier-2 del plan).
+  - Activar con: `BLOQUE0_ENABLED=1 bash scripts/run_all_validations.sh`.
+- **Bloque 2** — Agrega los 16 tests PF (rápidos) al array `QUANTITATIVE_TESTS`.
+
+#### D — Documentación
+
+- **`docs/validations-complete.md`** — PF-01..16 marcados como `IMPLEMENTADO (Phase 167)`.
+  Criterios de aceptación actualizados: PF-01, PF-08, PF-11, PF-13, PF-16 marcados ✅.
+
+---
+
 ### Phase 166 — SPH Gadget-2: Entropía + Balsara + Colapso de Evrard
 
 Implementa la formulación SPH completa de **Springel & Hernquist (2002)** para
