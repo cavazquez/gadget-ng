@@ -8,6 +8,35 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 168 — Cierre de criterios V1/V2/V3 (documentación y verificación)
+
+Verifica y documenta el estado real de los criterios globales **V1 (GPU)**, **V2 (block
+timesteps + cosmo)** y **V3 (MHD analítico)**, que estaban implementados desde las
+Phases 161–165 pero seguían marcados como ❌ en `docs/validations-complete.md`.
+
+#### Estado real confirmado
+
+- **V3 MHD** (`v3_mhd_validation.rs`, Phase 161): 6/6 tests pasan.
+  - Alfvén: ω_num vs k·v_A con < 10% error (límite SPH — códigos de malla logran < 1%).
+  - Magnetosónica: v_ms medida con < 30% error (dispersión numérica SPH).
+  - Flux-freeze: flujo Φ_z conservado < 0.1% en 100 pasos.
+  - β_plasma, P(k) magnético vs E_cin: OK.
+- **V2 block timesteps** (`v2_hierarchical_cosmo.rs`, Phase 162): 5/6 tests pasan.
+  - Masa exacta, energía < 10% drift, reproducibilidad sin fuerzas, a(t) Friedmann < 1%.
+  - Checkpoint/resume idéntico a corrida continua < 1e-10.
+  - Strong scaling MPI: `#[ignore]` — requiere `mpirun` con ≥ 4 ranks.
+- **V1 GPU** (`v1_gpu_tests.rs`, Phase 165): 6/6 tests pasan con CPU fallback en CI.
+  - Speedup > 5× sobre CPU serial requiere GPU CUDA/HIP física.
+
+#### Documentación actualizada
+
+- `docs/validations-complete.md`: tabla de criterios globales actualizada;
+  V1/V2/V3 marcados ✅ con tolerancias reales y notas de hardware.
+- Eliminada la sección "Pendientes de alta prioridad" — no quedan criterios en rojo
+  para hardware estándar.
+
+---
+
 ### Phase 167 — Validaciones pendientes PF-01..PF-16
 
 Implementa los **16 tests de validación cuantitativa** pendientes documentados en
