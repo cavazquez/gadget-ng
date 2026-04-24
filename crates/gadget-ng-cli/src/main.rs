@@ -138,6 +138,18 @@ enum Commands {
         /// Escribir catálogo de halos en HDF5/JSONL además de results.json (Phase 82d).
         #[arg(long, default_value_t = false)]
         hdf5_catalog: bool,
+        /// Calcular estadísticas 21cm (δT_b, P(k)₂₁cm) → analyze/cm21_output.json [Phase 104]
+        #[arg(long, default_value_t = false)]
+        cm21: bool,
+        /// Calcular perfil de temperatura IGM T(z) → analyze/igm_temp.json [Phase 104]
+        #[arg(long, default_value_t = false)]
+        igm_temp: bool,
+        /// Calcular estadísticas de BH AGN → analyze/agn_stats.json [Phase 104]
+        #[arg(long, default_value_t = false)]
+        agn_stats: bool,
+        /// Calcular fracción de ionización x_HII media → analyze/eor_state.json [Phase 104]
+        #[arg(long, default_value_t = false)]
+        eor_state: bool,
     },
     /// Analiza un snapshot: Friends-of-Friends (halos) + espectro de potencia P(k).
     ///
@@ -318,6 +330,10 @@ fn main() -> Result<(), CliError> {
             subfind,
             subfind_min_particles,
             hdf5_catalog,
+            cm21,
+            igm_temp,
+            agn_stats,
+            eor_state,
         } => {
             let params = analyze_cmd::AnalyzeParams {
                 snapshot_dir: &snapshot,
@@ -332,6 +348,10 @@ fn main() -> Result<(), CliError> {
                 subfind,
                 subfind_min_particles,
                 hdf5_catalog,
+                cm21,
+                igm_temp,
+                agn_stats,
+                eor_state,
             };
             analyze_cmd::run_analyze(&params)?;
         }

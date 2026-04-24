@@ -5,6 +5,10 @@
 //! - Espectro de potencia P(k) via CIC + FFT 3D.
 //! - Función de correlación de 2 puntos ξ(r) via transformada de Hankel de P(k).
 //! - Concentración c(M) para halos con N_part ≥ 50 usando ajuste NFW.
+//! - `--cm21`: estadísticas 21cm (δT_b, P(k)₂₁cm) → `analyze/cm21_output.json`
+//! - `--igm-temp`: perfil de temperatura IGM T(z) → `analyze/igm_temp.json`
+//! - `--agn-stats`: estadísticas de BH (masa, acreción) → `analyze/agn_stats.json`
+//! - `--eor-state`: fracción de ionización x_HII media → `analyze/eor_state.json`
 //! - Escribe `results.json` con todos los resultados en formato estructurado.
 
 use crate::error::CliError;
@@ -44,6 +48,15 @@ pub struct AnalyzeParams<'a> {
     pub subfind_min_particles: usize,
     /// Escribir catálogo de halos en formato HDF5 (Phase 82d). Si no hay feature hdf5, usa JSONL.
     pub hdf5_catalog: bool,
+    // ── Phase 104: flags de análisis extendido ────────────────────────────────
+    /// Calcular estadísticas 21cm (δT_b, P(k)₂₁cm) → `analyze/cm21_output.json`
+    pub cm21: bool,
+    /// Calcular perfil de temperatura IGM T(z) → `analyze/igm_temp.json`
+    pub igm_temp: bool,
+    /// Calcular estadísticas AGN (masas de BH, acreción) → `analyze/agn_stats.json`
+    pub agn_stats: bool,
+    /// Calcular fracción de ionización x_HII media → `analyze/eor_state.json`
+    pub eor_state: bool,
 }
 
 impl<'a> Default for AnalyzeParams<'a> {
@@ -61,6 +74,10 @@ impl<'a> Default for AnalyzeParams<'a> {
             subfind: false,
             subfind_min_particles: 50,
             hdf5_catalog: false,
+            cm21: false,
+            igm_temp: false,
+            agn_stats: false,
+            eor_state: false,
         }
     }
 }
@@ -256,6 +273,113 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         eprintln!("[analyze] SUBFIND: {} halos con subhalos", subfind_results.len());
     }
 
+    // ── Phase 104: módulos de análisis extendido ──────────────────────────────
+    // Directorio de salida para archivos de análisis extendido
+    let analyze_dir = params.out_path.parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("analyze");
+
+    // --cm21: estadísticas 21cm
+    if params.cm21 {
+        let gas_particles: Vec<_> = data.particles.iter()
+            .filter(|p| p.internal_energy > 0.0)
+            .cloned()
+            .collect();
+        if gas_particles.is_empty() {
+            eprintln!("[analyze --cm21] No hay partículas de gas; omitiendo 21cm");
+        } else {
+            let chem = vec![gadget_ng_rt::ChemState::neutral(); gas_particles.len()];
+            let cm21_params = gadget_ng_rt::Cm21Params::default();
+            let n_mesh = params.pk_mesh.max(4);
+            let cm21_out = gadget_ng_rt::compute_cm21_output(
+                &gas_particles, &chem, box_size, z, n_mesh, 8, &cm21_params,
+            );
+            if let Ok(json) = serde_json::to_string_pretty(&cm21_out) {
+                fs::create_dir_all(&analyze_dir).ok();
+                let p = analyze_dir.join("cm21_output.json");
+                let _ = fs::write(&p, &json);
+                eprintln!("[analyze --cm21] Escrito en {:?}", p);
+            }
+        }
+    }
+
+    // --igm-temp: perfil de temperatura IGM
+    if params.igm_temp {
+        let gas: Vec<_> = data.particles.iter()
+            .filter(|p| p.internal_energy > 0.0)
+            .cloned()
+            .collect();
+        if gas.is_empty() {
+            eprintln!("[analyze --igm-temp] No hay partículas de gas; omitiendo IGM");
+        } else {
+            let chem = vec![gadget_ng_rt::ChemState::neutral(); gas.len()];
+            let igm_params = gadget_ng_rt::IgmTempParams::default();
+            let profile = gadget_ng_rt::compute_igm_temp_profile(&gas, &chem, 0.0, z, &igm_params);
+            if let Ok(json) = serde_json::to_string_pretty(&profile) {
+                fs::create_dir_all(&analyze_dir).ok();
+                let p = analyze_dir.join("igm_temp.json");
+                let _ = fs::write(&p, &json);
+                eprintln!("[analyze --igm-temp] Escrito en {:?}", p);
+            }
+        }
+    }
+
+    // --agn-stats: estadísticas de agujeros negros
+    if params.agn_stats {
+        // Las partículas con internal_energy muy alta (> umbral AGN) se tratan como BH.
+        // En ausencia de metadatos de BH, se usa masa y posición de partículas energéticas.
+        let bh_like: Vec<serde_json::Value> = data.particles.iter()
+            .filter(|p| p.internal_energy > 1e4) // umbral empírico para "caliente por AGN"
+            .map(|p| serde_json::json!({
+                "global_id": p.global_id,
+                "mass": p.mass,
+                "internal_energy": p.internal_energy,
+                "x": p.position.x,
+                "y": p.position.y,
+                "z": p.position.z,
+            }))
+            .collect();
+        let agn_out = serde_json::json!({
+            "n_bh_candidates": bh_like.len(),
+            "total_mass": bh_like.iter().filter_map(|v| v["mass"].as_f64()).sum::<f64>(),
+            "candidates": bh_like,
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&agn_out) {
+            fs::create_dir_all(&analyze_dir).ok();
+            let p = analyze_dir.join("agn_stats.json");
+            let _ = fs::write(&p, &json);
+            eprintln!("[analyze --agn-stats] Escrito en {:?} ({} candidatos BH)", p, agn_out["n_bh_candidates"]);
+        }
+    }
+
+    // --eor-state: fracción de ionización x_HII media
+    if params.eor_state {
+        let gas: Vec<_> = data.particles.iter()
+            .filter(|p| p.internal_energy > 0.0)
+            .collect();
+        // Sin ChemState reales, estimamos x_HII a partir de internal_energy.
+        // Una energía interna alta sugiere gas ionizado (temperatura > 10⁴ K → x_HII ≈ 1).
+        // Esta es una estimación de primer orden; la versión completa requiere ChemState guardados.
+        let n_gas = gas.len() as f64;
+        let u_threshold = 100.0; // umbral empírico de energía interna para gas ionizado
+        let n_ionized = gas.iter().filter(|p| p.internal_energy > u_threshold).count() as f64;
+        let x_hii_mean = if n_gas > 0.0 { n_ionized / n_gas } else { 0.0 };
+        let eor_out = serde_json::json!({
+            "z": z,
+            "a": data.time,
+            "n_gas": n_gas as usize,
+            "n_ionized_estimate": n_ionized as usize,
+            "x_hii_mean_estimate": x_hii_mean,
+            "note": "estimación sin ChemState; correr con reionization.enabled para valores exactos",
+        });
+        if let Ok(json) = serde_json::to_string_pretty(&eor_out) {
+            fs::create_dir_all(&analyze_dir).ok();
+            let p = analyze_dir.join("eor_state.json");
+            let _ = fs::write(&p, &json);
+            eprintln!("[analyze --eor-state] x_HII_mean ≈ {:.3}, escrito en {:?}", x_hii_mean, p);
+        }
+    }
+
     // ── Serialización JSON ────────────────────────────────────────────────────
     let output = serde_json::json!({
         "snapshot": params.snapshot_dir.to_string_lossy(),
@@ -357,4 +481,138 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         cm_table.len()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, Vec3};
+    use gadget_ng_io::{write_snapshot_formatted, Provenance, SnapshotEnv};
+    use gadget_ng_core::SnapshotFormat;
+
+    fn make_dm(id: usize) -> Particle {
+        Particle::new(id, 1.0, Vec3::new(id as f64 * 0.3 + 5.0, 0.0, 0.0), Vec3::zero())
+    }
+
+    fn write_snap(dir: &std::path::Path, particles: &[Particle]) {
+        let snap_dir = dir.join("snap");
+        std::fs::create_dir_all(&snap_dir).unwrap();
+        let prov = Provenance::new("0-test", None, "debug", vec![], vec![], "hash");
+        let env = SnapshotEnv { time: 1.0, redshift: 0.0, box_size: 10.0, ..Default::default() };
+        write_snapshot_formatted(SnapshotFormat::Jsonl, &snap_dir, particles, &prov, &env).unwrap();
+    }
+
+    #[test]
+    fn analyze_params_phase104_defaults_false() {
+        let p = AnalyzeParams::default();
+        assert!(!p.cm21, "cm21 false por defecto");
+        assert!(!p.igm_temp, "igm_temp false por defecto");
+        assert!(!p.agn_stats, "agn_stats false por defecto");
+        assert!(!p.eor_state, "eor_state false por defecto");
+    }
+
+    #[test]
+    fn analyze_params_phase104_can_be_enabled() {
+        let params = AnalyzeParams {
+            cm21: true,
+            igm_temp: true,
+            agn_stats: true,
+            eor_state: true,
+            ..Default::default()
+        };
+        assert!(params.cm21);
+        assert!(params.igm_temp);
+        assert!(params.agn_stats);
+        assert!(params.eor_state);
+    }
+
+    #[test]
+    fn analyze_no_flags_no_analyze_dir() {
+        // Sin flags activos, el directorio analyze/ NO se crea
+        let tmp = tempfile::tempdir().unwrap();
+        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            pk_mesh: 4,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        assert!(!tmp.path().join("analyze").exists(), "no debe crear analyze/ sin flags");
+        assert!(out.exists(), "results.json debe existir");
+    }
+
+    #[test]
+    fn analyze_agn_stats_no_gas_creates_empty_report() {
+        // Con solo DM (sin gas), agn_stats debe crear un json con 0 candidatos
+        let tmp = tempfile::tempdir().unwrap();
+        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            agn_stats: true,
+            pk_mesh: 4,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        let path = tmp.path().join("analyze").join("agn_stats.json");
+        assert!(path.exists(), "agn_stats.json debe existir incluso con 0 candidatos");
+        let json: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).unwrap()
+        ).unwrap();
+        assert_eq!(
+            json["n_bh_candidates"].as_u64().unwrap(),
+            0,
+            "0 candidatos con solo DM"
+        );
+    }
+
+    #[test]
+    fn analyze_eor_state_no_gas_x_hii_zero() {
+        // Con solo DM, eor_state debe crear json con x_HII = 0
+        let tmp = tempfile::tempdir().unwrap();
+        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            eor_state: true,
+            pk_mesh: 4,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        let path = tmp.path().join("analyze").join("eor_state.json");
+        assert!(path.exists());
+        let json: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).unwrap()
+        ).unwrap();
+        let x_hii = json["x_hii_mean_estimate"].as_f64().unwrap();
+        assert_eq!(x_hii, 0.0, "sin gas, x_HII debe ser 0.0");
+    }
+
+    #[test]
+    fn analyze_eor_and_agn_flags_together() {
+        // Múltiples flags activos no deben interferir
+        let tmp = tempfile::tempdir().unwrap();
+        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            agn_stats: true,
+            eor_state: true,
+            pk_mesh: 4,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        assert!(out.exists());
+        assert!(tmp.path().join("analyze").join("agn_stats.json").exists());
+        assert!(tmp.path().join("analyze").join("eor_state.json").exists());
+    }
 }

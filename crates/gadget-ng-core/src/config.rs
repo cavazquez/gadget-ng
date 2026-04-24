@@ -1193,6 +1193,7 @@ impl Default for FeedbackSection {
 /// m_seed       = 1e5
 /// v_kick_agn   = 500.0
 /// r_influence  = 1.0
+/// n_agn_bh     = 1
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgnSection {
@@ -1211,12 +1212,17 @@ pub struct AgnSection {
     /// Radio de influencia máximo para depositar energía (default: 1.0).
     #[serde(default = "default_r_influence")]
     pub r_influence: f64,
+    /// Número de BH semilla a colocar en los N halos FoF más masivos (default: 1).
+    /// Si no hay halos identificados, se coloca uno en el centro de la caja.
+    #[serde(default = "default_n_agn_bh")]
+    pub n_agn_bh: usize,
 }
 
 fn default_eps_feedback() -> f64 { 0.05 }
 fn default_m_seed() -> f64 { 1e5 }
 fn default_v_kick_agn() -> f64 { 500.0 }
 fn default_r_influence() -> f64 { 1.0 }
+fn default_n_agn_bh() -> usize { 1 }
 
 impl Default for AgnSection {
     fn default() -> Self {
@@ -1226,6 +1232,7 @@ impl Default for AgnSection {
             m_seed: default_m_seed(),
             v_kick_agn: default_v_kick_agn(),
             r_influence: default_r_influence(),
+            n_agn_bh: default_n_agn_bh(),
         }
     }
 }
@@ -1447,6 +1454,22 @@ impl RunConfig {
     pub fn softening_squared(&self) -> f64 {
         let e = self.simulation.softening;
         e * e
+    }
+
+    /// Verifica la combinación softening/cosmología y retorna advertencias si las hay.
+    ///
+    /// - `physical_softening = true` sin `cosmology.enabled = true` no tiene efecto.
+    /// - `physical_softening = false` con `cosmology.enabled = true` usa softening comóvil
+    ///   constante (comportamiento legacy).
+    pub fn softening_warnings(&self) -> Vec<&'static str> {
+        let mut warnings = Vec::new();
+        if self.simulation.physical_softening && !self.cosmology.enabled {
+            warnings.push(
+                "physical_softening = true no tiene efecto sin cosmology.enabled = true \
+                 (el softening comóvil fijo ya es constante en simulaciones newtonianas)"
+            );
+        }
+        warnings
     }
 
     /// Constante gravitacional efectiva en el modo de integración actual.

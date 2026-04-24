@@ -25,51 +25,92 @@ impl SnapshotWriter for Hdf5Writer {
         let meta = build_meta(particles.len(), provenance, env);
         write_sidecar_json(out_dir, &meta, provenance)?;
 
-        let n = particles.len();
         let path = out_dir.join("snapshot.hdf5");
         let file = hdf5::File::create(&path)?;
 
-        // --- Header completo GADGET-4 (Phase 74) ---
-        let g4h = Gadget4Header::for_nbody(
-            n,
-            env.time,
-            env.box_size,
-            env.omega_m,
-            env.omega_lambda,
-            env.h_dimless,
-        );
+        // Separar gas (internal_energy > 0) de DM (internal_energy == 0)
+        // Phase 102: PartType0 = gas SPH, PartType1 = DM colisionless
+        let gas: Vec<&Particle> = particles.iter().filter(|p| p.internal_energy > 0.0).collect();
+        let dm: Vec<&Particle> = particles.iter().filter(|p| p.internal_energy == 0.0).collect();
+        let n_gas = gas.len();
+        let n_dm = dm.len();
+
+        // --- Header completo GADGET-4 (Phase 74 + Phase 102) ---
+        let g4h = if n_gas > 0 {
+            Gadget4Header::for_sph(
+                n_gas,
+                n_dm,
+                env.time,
+                env.box_size,
+                env.omega_m,
+                env.omega_lambda,
+                0.045, // omega_baryon estándar Planck 2018
+                env.h_dimless,
+            )
+        } else {
+            Gadget4Header::for_nbody(
+                n_dm,
+                env.time,
+                env.box_size,
+                env.omega_m,
+                env.omega_lambda,
+                env.h_dimless,
+            )
+        };
         let header = file.create_group("Header")?;
         write_gadget4_header(&header, &g4h)?;
 
-        // --- PartType1 = DM (N-body colisionless típico) ---
-        let mut coords = Array2::<f64>::zeros((n, 3));
-        let mut vels = Array2::<f64>::zeros((n, 3));
-        let mut masses = Array1::<f64>::zeros(n);
-        let mut ids = Array1::<i64>::zeros(n);
-        for (i, p) in particles.iter().enumerate() {
-            coords[[i, 0]] = p.position.x;
-            coords[[i, 1]] = p.position.y;
-            coords[[i, 2]] = p.position.z;
-            vels[[i, 0]] = p.velocity.x;
-            vels[[i, 1]] = p.velocity.y;
-            vels[[i, 2]] = p.velocity.z;
-            masses[i] = p.mass;
-            ids[i] = p.global_id as i64;
+        // --- PartType0 = gas SPH (solo si hay partículas de gas) ---
+        if n_gas > 0 {
+            let mut coords = Array2::<f64>::zeros((n_gas, 3));
+            let mut vels = Array2::<f64>::zeros((n_gas, 3));
+            let mut masses = Array1::<f64>::zeros(n_gas);
+            let mut ids = Array1::<i64>::zeros(n_gas);
+            let mut u_int = Array1::<f64>::zeros(n_gas);
+            let mut h_sml = Array1::<f64>::zeros(n_gas);
+            for (i, p) in gas.iter().enumerate() {
+                coords[[i, 0]] = p.position.x;
+                coords[[i, 1]] = p.position.y;
+                coords[[i, 2]] = p.position.z;
+                vels[[i, 0]] = p.velocity.x;
+                vels[[i, 1]] = p.velocity.y;
+                vels[[i, 2]] = p.velocity.z;
+                masses[i] = p.mass;
+                ids[i] = p.global_id as i64;
+                u_int[i] = p.internal_energy;
+                h_sml[i] = p.smoothing_length;
+            }
+            let pt0 = file.create_group("PartType0")?;
+            pt0.new_dataset_builder().with_data(&coords).create("Coordinates")?;
+            pt0.new_dataset_builder().with_data(&vels).create("Velocities")?;
+            pt0.new_dataset_builder().with_data(&masses).create("Masses")?;
+            pt0.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
+            pt0.new_dataset_builder().with_data(&u_int).create("InternalEnergy")?;
+            pt0.new_dataset_builder().with_data(&h_sml).create("SmoothingLength")?;
         }
 
-        let pt1 = file.create_group("PartType1")?;
-        pt1.new_dataset_builder()
-            .with_data(&coords)
-            .create("Coordinates")?;
-        pt1.new_dataset_builder()
-            .with_data(&vels)
-            .create("Velocities")?;
-        pt1.new_dataset_builder()
-            .with_data(&masses)
-            .create("Masses")?;
-        pt1.new_dataset_builder()
-            .with_data(&ids)
-            .create("ParticleIDs")?;
+        // --- PartType1 = DM (N-body colisionless) ---
+        if n_dm > 0 {
+            let mut coords = Array2::<f64>::zeros((n_dm, 3));
+            let mut vels = Array2::<f64>::zeros((n_dm, 3));
+            let mut masses = Array1::<f64>::zeros(n_dm);
+            let mut ids = Array1::<i64>::zeros(n_dm);
+            for (i, p) in dm.iter().enumerate() {
+                coords[[i, 0]] = p.position.x;
+                coords[[i, 1]] = p.position.y;
+                coords[[i, 2]] = p.position.z;
+                vels[[i, 0]] = p.velocity.x;
+                vels[[i, 1]] = p.velocity.y;
+                vels[[i, 2]] = p.velocity.z;
+                masses[i] = p.mass;
+                ids[i] = p.global_id as i64;
+            }
+            let pt1 = file.create_group("PartType1")?;
+            pt1.new_dataset_builder().with_data(&coords).create("Coordinates")?;
+            pt1.new_dataset_builder().with_data(&vels).create("Velocities")?;
+            pt1.new_dataset_builder().with_data(&masses).create("Masses")?;
+            pt1.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
+        }
 
         // --- Provenance embebido ---
         let prov_g = file.create_group("Provenance")?;
@@ -97,23 +138,50 @@ impl SnapshotReader for Hdf5Reader {
         let redshift: Vec<f64> = header.attr("Redshift")?.read_raw()?;
         let box_size: Vec<f64> = header.attr("BoxSize")?.read_raw()?;
 
-        let pt1 = file.group("PartType1")?;
-        let coords: Vec<f64> = pt1.dataset("Coordinates")?.read_raw()?;
-        let vels: Vec<f64> = pt1.dataset("Velocities")?.read_raw()?;
-        let masses: Vec<f64> = pt1.dataset("Masses")?.read_raw()?;
-        let ids: Vec<i64> = pt1.dataset("ParticleIDs")?.read_raw()?;
+        let mut particles: Vec<Particle> = Vec::new();
 
-        let n = ids.len();
-        let particles = (0..n)
-            .map(|i| {
-                Particle::new(
+        // Leer PartType0 = gas SPH (Phase 102)
+        if let Ok(pt0) = file.group("PartType0") {
+            let coords: Vec<f64> = pt0.dataset("Coordinates")?.read_raw()?;
+            let vels: Vec<f64> = pt0.dataset("Velocities")?.read_raw()?;
+            let masses: Vec<f64> = pt0.dataset("Masses")?.read_raw()?;
+            let ids: Vec<i64> = pt0.dataset("ParticleIDs")?.read_raw()?;
+            let u_int_opt: Option<Vec<f64>> = pt0.dataset("InternalEnergy")
+                .ok()
+                .and_then(|d| d.read_raw().ok());
+            let h_sml_opt: Option<Vec<f64>> = pt0.dataset("SmoothingLength")
+                .ok()
+                .and_then(|d| d.read_raw().ok());
+            let n = ids.len();
+            for i in 0..n {
+                let mut p = Particle::new(
                     ids[i] as usize,
                     masses[i],
                     Vec3::new(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]),
                     Vec3::new(vels[i * 3], vels[i * 3 + 1], vels[i * 3 + 2]),
-                )
-            })
-            .collect();
+                );
+                if let Some(ref u) = u_int_opt { p.internal_energy = u[i]; }
+                if let Some(ref h) = h_sml_opt { p.smoothing_length = h[i]; }
+                particles.push(p);
+            }
+        }
+
+        // Leer PartType1 = DM colisionless
+        if let Ok(pt1) = file.group("PartType1") {
+            let coords: Vec<f64> = pt1.dataset("Coordinates")?.read_raw()?;
+            let vels: Vec<f64> = pt1.dataset("Velocities")?.read_raw()?;
+            let masses: Vec<f64> = pt1.dataset("Masses")?.read_raw()?;
+            let ids: Vec<i64> = pt1.dataset("ParticleIDs")?.read_raw()?;
+            let n = ids.len();
+            for i in 0..n {
+                particles.push(Particle::new(
+                    ids[i] as usize,
+                    masses[i],
+                    Vec3::new(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]),
+                    Vec3::new(vels[i * 3], vels[i * 3 + 1], vels[i * 3 + 2]),
+                ));
+            }
+        }
 
         Ok(SnapshotData {
             particles,

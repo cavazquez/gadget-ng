@@ -8,6 +8,46 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 104 — Análisis post-proceso CLI extendido
+
+- `AnalyzeParams` extendido con `cm21`, `igm_temp`, `agn_stats`, `eor_state: bool` (Phase 104).
+- `--cm21`: calcula estadísticas 21cm → `analyze/cm21_output.json`.
+- `--igm-temp`: perfil de temperatura IGM → `analyze/igm_temp.json`.
+- `--agn-stats`: estadísticas de candidatos BH → `analyze/agn_stats.json`.
+- `--eor-state`: fracción de ionización x_HII → `analyze/eor_state.json`.
+- `Commands::Analyze` en `main.rs` extendido con 4 nuevos flags CLI.
+- 6 tests unitarios en `analyze_cmd::tests`.
+
+### Phase 103 — Domain decomposition con coste medido
+
+- Validado y documentado el sistema ya implementado de `SfcDecomposition::build_weighted`.
+- EMA de costes por partícula vía `walk_stats_begin()`/`walk_stats_end()`.
+- `cfg.decomposition.cost_weighted = true` + `ema_alpha = 0.3` para activar.
+- 5 tests de validación en `phase103_sfc_weighted.rs`.
+
+### Phase 102 — HDF5 layout GADGET-4 completo
+
+- `Hdf5Writer` actualizado para escribir `PartType0` (gas) con `InternalEnergy`, `SmoothingLength`.
+- Separación automática gas/DM por `internal_energy > 0`.
+- `Gadget4Header::for_sph()` usado cuando hay gas.
+- `Hdf5Reader` actualizado para leer `PartType0` + `PartType1`.
+- Compatible con yt y pynbody.
+- 5 tests en `phase102_hdf5_gadget4.rs`.
+
+### Phase 101 — Fix softening comóvil → físico
+
+- Bug fix: loop cosmológico TreePM SR+slab (L2121) ahora recalcula `eps2 = eps2_at(a_current)` por paso.
+- Nuevo `Config::softening_warnings()` detecta `physical_softening = true` sin cosmología.
+- 6 tests en `phase101_softening.rs`.
+
+### Phase 100 — AGN con halos FoF
+
+- `AgnSection.n_agn_bh: usize` (default 1) controla el número de BH seeds.
+- `InsituSideEffects { halo_centers }` retornado por `maybe_run_insitu`.
+- `maybe_insitu!` actualiza `halo_centers` con centros de halos ordenados por masa DESC.
+- `maybe_agn!` coloca BH en `halo_centers[0..n_agn_bh]`; fallback al centro de la caja.
+- 6 tests en `phase100_agn_fof.rs`.
+
 ### Phase 96 — Feedback AGN (Agujeros Negros Supermasivos)
 
 - Nuevo módulo `crates/gadget-ng-sph/src/agn.rs`:

@@ -1208,10 +1208,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-    // Macro local para análisis in-situ (Phase 63 + química acoplada Phase 95).
+    // ── Centros de halos FoF para AGN (Phase 100) ───────────────────────────────────
+    // Actualizados por maybe_insitu! y consumidos por maybe_agn!.
+    let mut halo_centers: Vec<gadget_ng_core::Vec3> = Vec::new();
+
+    // Macro local para análisis in-situ (Phase 63 + química Phase 95 + AGN FoF Phase 100).
+    // Actualiza halo_centers con los centros de los N halos más masivos para maybe_agn!.
     macro_rules! maybe_insitu {
         ($step:expr) => {
-            crate::insitu::maybe_run_insitu(
+            let (_insitu_ran, _insitu_fx) = crate::insitu::maybe_run_insitu(
                 &local,
                 &cfg.insitu_analysis,
                 cfg.simulation.box_size,
@@ -1220,6 +1225,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 out_dir,
                 if sph_chem_states.is_empty() { None } else { Some(&sph_chem_states) },
             );
+            if _insitu_ran && !_insitu_fx.halo_centers.is_empty() {
+                halo_centers = _insitu_fx.halo_centers;
+            }
         };
     }
 
@@ -1296,11 +1304,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     }
 
 
-    // Agujeros negros activos durante la simulación (uno semilla por defecto si AGN activado)
+    // Agujeros negros activos durante la simulación (Phase 96 + FoF Phase 100)
     let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> = Vec::new();
 
-    // Macro local para feedback AGN (Phase 96).
-    // Aplica acreción Bondi-Hoyle y depósito de energía térmica si `cfg.sph.agn.enabled`.
+    // Macro local para feedback AGN (Phase 96 + halos FoF Phase 100).
+    // Coloca BH seeds en los N centros de halos más masivos (Phase 100).
+    // Fallback al centro de la caja si no hay halos identificados aún.
     macro_rules! maybe_agn {
         ($sph_step_agn:expr) => {
             if cfg.sph.agn.enabled {
@@ -1310,8 +1319,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     v_kick_agn: cfg.sph.agn.v_kick_agn,
                     r_influence: cfg.sph.agn.r_influence,
                 };
-                // Crear un BH semilla centrado si es el primer paso y no hay BHs
-                if agn_bhs.is_empty() {
+                let n_bh = cfg.sph.agn.n_agn_bh.max(1);
+                if !halo_centers.is_empty() {
+                    // Sincronizar BHs con centros de halos FoF más masivos
+                    let n_new = halo_centers.len().min(n_bh);
+                    if agn_bhs.len() != n_new {
+                        agn_bhs.resize_with(n_new, || gadget_ng_sph::BlackHole::new(
+                            gadget_ng_core::Vec3::zero(), agn_params.m_seed,
+                        ));
+                    }
+                    for (bh, &pos) in agn_bhs.iter_mut().zip(halo_centers.iter()) {
+                        bh.pos = pos;
+                    }
+                } else if agn_bhs.is_empty() {
+                    // Fallback: semilla en el centro de la caja hasta que haya halos
                     let center = cfg.simulation.box_size * 0.5;
                     agn_bhs.push(gadget_ng_sph::BlackHole::new(
                         gadget_ng_core::Vec3::new(center, center, center),
@@ -2097,6 +2118,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             // El histórico `g/a` producía fuerzas ~6·10⁶× más grandes de lo
             // correcto a `a = 0.02`, haciendo que `v_rms` explotara.
             let g_cosmo = gravity_coupling_qksl(g, a_current);
+            // Fix Phase 101: softening físico — recalcular ε_com = softening/a por paso.
+            let eps2 = eps2_at(a_current);
             let mut compute_acc = |parts: &[Particle],
                                    acc: &mut [Vec3],
                                    this_comm: &mut u64,

@@ -9,7 +9,7 @@ use gadget_ng_analysis::{
     LosAxis, PkRsdParams, XiBin,
 };
 use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin};
-use gadget_ng_core::{InsituAnalysisSection, Particle};
+use gadget_ng_core::{InsituAnalysisSection, Particle, Vec3};
 use serde::Serialize;
 use std::path::Path;
 
@@ -136,6 +136,13 @@ impl From<&PkMultipoleBin> for PkMultipoleOut {
 ///
 /// # Retorna
 /// `true` si se ejecutó el análisis, `false` si el paso no estaba en el intervalo.
+/// Resultado extendido del análisis in-situ incluyendo centros de halos para AGN.
+pub struct InsituSideEffects {
+    /// Centros de masa de los N halos más masivos (ordenados por masa DESC).
+    /// Usado por `maybe_agn!` para colocar BH seeds.
+    pub halo_centers: Vec<Vec3>,
+}
+
 pub fn maybe_run_insitu(
     particles: &[Particle],
     cfg: &InsituAnalysisSection,
@@ -144,9 +151,10 @@ pub fn maybe_run_insitu(
     step: u64,
     default_out_dir: &Path,
     chem_states_opt: Option<&[gadget_ng_rt::ChemState]>,
-) -> bool {
+) -> (bool, InsituSideEffects) {
+    let no_effects = InsituSideEffects { halo_centers: Vec::new() };
     if !cfg.enabled || cfg.interval == 0 || step % cfg.interval != 0 {
-        return false;
+        return (false, no_effects);
     }
 
     let out_dir = cfg
@@ -156,7 +164,7 @@ pub fn maybe_run_insitu(
 
     if let Err(e) = std::fs::create_dir_all(out_dir) {
         eprintln!("[insitu] Error creando directorio {:?}: {e}", out_dir);
-        return false;
+        return (false, no_effects);
     }
 
     let params = AnalysisParams {
@@ -171,6 +179,14 @@ pub fn maybe_run_insitu(
         result => {
             let n_halos = result.halos.len();
             let m_total_halos: f64 = result.halos.iter().map(|h| h.mass).sum();
+
+            // Centros de halos ordenados por masa DESC (para AGN FoF, Phase 100)
+            let mut halos_sorted = result.halos.clone();
+            halos_sorted.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap_or(std::cmp::Ordering::Equal));
+            let halo_centers: Vec<Vec3> = halos_sorted
+                .iter()
+                .map(|h| Vec3::new(h.x_com, h.y_com, h.z_com))
+                .collect();
 
             let xi_r: Vec<XiBinOut> = if cfg.xi_bins > 0 {
                 two_point_correlation_fft(&result.power_spectrum, box_size, cfg.xi_bins)
@@ -346,7 +362,9 @@ pub fn maybe_run_insitu(
                 }
                 Err(e) => eprintln!("[insitu] Error serializando: {e}"),
             }
+
+            return (true, InsituSideEffects { halo_centers });
         }
     }
-    true
+    (true, InsituSideEffects { halo_centers: Vec::new() })
 }
