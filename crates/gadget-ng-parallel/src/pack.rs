@@ -119,6 +119,9 @@ pub fn unpack_full_to_particles(flat: &[f64], total_count: usize) -> Vec<Particl
             stellar_age: 0.0,
             u_cold: 0.0,
             cr_energy: 0.0,
+            h2_fraction: 0.0,
+            b_field: gadget_ng_core::Vec3::zero(),
+            psi_div: 0.0,
         });
     }
     let mut particles = Vec::with_capacity(total_count);

@@ -32,6 +32,9 @@ pub struct RunConfig {
     /// Reionización del Universo: fuentes UV puntuales (Phase 89; opcional).
     #[serde(default)]
     pub reionization: ReionizationSection,
+    /// Magnetohidrodinámica ideal (Phase 126; opcional; desactivado por defecto).
+    #[serde(default)]
+    pub mhd: MhdSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1140,6 +1143,12 @@ pub struct SphSection {
     /// Configuración del módulo de rayos cósmicos (Phase 117).
     #[serde(default)]
     pub cr: CrSection,
+    /// Configuración de la conducción térmica del ICM (Phase 121).
+    #[serde(default)]
+    pub conduction: ConductionSection,
+    /// Configuración del gas molecular H₂ (Phase 122).
+    #[serde(default)]
+    pub molecular: MolecularSection,
 }
 
 fn default_gamma() -> f64 { 5.0 / 3.0 }
@@ -1162,6 +1171,8 @@ impl Default for SphSection {
             enrichment: EnrichmentSection::default(),
             ism: IsmSection::default(),
             cr: CrSection::default(),
+            conduction: ConductionSection::default(),
+            molecular: MolecularSection::default(),
         }
     }
 }
@@ -1357,6 +1368,76 @@ impl Default for IsmSection {
             enabled: false,
             q_star: default_q_star(),
             f_cold: default_f_cold(),
+        }
+    }
+}
+
+/// Configuración del gas molecular simple HI → H₂ (Phase 122).
+///
+/// ```toml
+/// [sph.molecular]
+/// enabled          = true
+/// rho_h2_threshold = 100.0
+/// sfr_h2_boost     = 2.0
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MolecularSection {
+    /// Activa el módulo de gas molecular (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Densidad umbral de formación de H₂ en unidades internas (default: `100.0`).
+    #[serde(default = "default_rho_h2_threshold")]
+    pub rho_h2_threshold: f64,
+    /// Factor multiplicativo de SFR en gas molecular (default: `2.0`).
+    #[serde(default = "default_sfr_h2_boost")]
+    pub sfr_h2_boost: f64,
+}
+
+fn default_rho_h2_threshold() -> f64 { 100.0 }
+fn default_sfr_h2_boost() -> f64 { 2.0 }
+
+impl Default for MolecularSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            rho_h2_threshold: default_rho_h2_threshold(),
+            sfr_h2_boost: default_sfr_h2_boost(),
+        }
+    }
+}
+
+/// Configuración de la conducción térmica del ICM (Phase 121).
+///
+/// Modelo de Spitzer (1962) con factor de supresión ψ por campo B / turbulencia.
+///
+/// ```toml
+/// [sph.conduction]
+/// enabled        = true
+/// kappa_spitzer  = 1e-4
+/// psi_suppression = 0.1
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConductionSection {
+    /// Activa la conducción térmica (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Conductividad Spitzer en unidades internas (default: `1e-4`).
+    #[serde(default = "default_kappa_spitzer")]
+    pub kappa_spitzer: f64,
+    /// Factor de supresión ψ ∈ [0,1] por campo magnético o turbulencia (default: `0.1`).
+    #[serde(default = "default_psi_suppression")]
+    pub psi_suppression: f64,
+}
+
+fn default_kappa_spitzer() -> f64 { 1e-4 }
+fn default_psi_suppression() -> f64 { 0.1 }
+
+impl Default for ConductionSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            kappa_spitzer: default_kappa_spitzer(),
+            psi_suppression: default_psi_suppression(),
         }
     }
 }
@@ -1744,5 +1825,35 @@ impl RunConfig {
             f64::INFINITY
         };
         Some((g_consistent, rel_err))
+    }
+}
+
+/// Configuración del módulo MHD ideal (Phase 126).
+///
+/// ```toml
+/// [mhd]
+/// enabled = true
+/// c_h     = 1.0
+/// c_r     = 0.5
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MhdSection {
+    /// Activa el solver MHD (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Velocidad de propagación de ondas de limpieza Dedner (default: `1.0`).
+    #[serde(default = "default_mhd_c_h")]
+    pub c_h: f64,
+    /// Tasa de amortiguamiento Dedner (default: `0.5`).
+    #[serde(default = "default_mhd_c_r")]
+    pub c_r: f64,
+}
+
+fn default_mhd_c_h() -> f64 { 1.0 }
+fn default_mhd_c_r() -> f64 { 0.5 }
+
+impl Default for MhdSection {
+    fn default() -> Self {
+        Self { enabled: false, c_h: default_mhd_c_h(), c_r: default_mhd_c_r() }
     }
 }

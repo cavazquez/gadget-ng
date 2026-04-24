@@ -67,6 +67,35 @@ pub fn compute_sfr(particles: &[Particle], cfg: &FeedbackSection) -> Vec<f64> {
         .collect()
 }
 
+/// Calcula la tasa de formación estelar con boost por gas molecular H₂ (Phase 122).
+///
+/// Igual a `compute_sfr` pero multiplica por `(1 + sfr_h2_boost × h2_fraction)`
+/// cuando `molecular.enabled = true`. Si `molecular.enabled = false`, es idéntica
+/// a `compute_sfr`.
+pub fn compute_sfr_with_h2(
+    particles: &[Particle],
+    cfg: &FeedbackSection,
+    h2_boost: f64,
+) -> Vec<f64> {
+    particles
+        .iter()
+        .map(|p| {
+            if p.ptype != ParticleType::Gas {
+                return 0.0;
+            }
+            let h = p.smoothing_length.max(1e-10);
+            let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+            if rho_approx < cfg.rho_sf {
+                0.0
+            } else {
+                let sfr_base = SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N);
+                // Phase 122: multiplicar por factor H2
+                sfr_base * (1.0 + h2_boost * p.h2_fraction)
+            }
+        })
+        .collect()
+}
+
 /// Aplica el feedback por supernovas estocástico a las partículas de gas.
 ///
 /// Para cada partícula de gas con `sfr[i] > sfr_min`:

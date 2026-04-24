@@ -1328,6 +1328,37 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
                     gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
                 }
+                // Phase 121: Conducción térmica del ICM (Spitzer)
+                if cfg.sph.conduction.enabled {
+                    gadget_ng_sph::apply_thermal_conduction(
+                        &mut local,
+                        &cfg.sph.conduction,
+                        cfg.sph.gamma,
+                        cfg.sph.t_floor_k,
+                        cfg.simulation.dt,
+                    );
+                }
+                // Phase 122: Gas molecular H2
+                if cfg.sph.molecular.enabled {
+                    gadget_ng_sph::update_h2_fraction(
+                        &mut local,
+                        &cfg.sph.molecular,
+                        cfg.simulation.dt,
+                    );
+                }
+                // Phase 114: ISM multifase fría-caliente (antes del feedback para P_eff correcta)
+                if cfg.sph.ism.enabled {
+                    let sfr_ism = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
+                    let rho_sf = cfg.sph.feedback.rho_sf;
+                    gadget_ng_sph::update_ism_phases(
+                        &mut local,
+                        &sfr_ism,
+                        rho_sf,
+                        &cfg.sph.ism,
+                        cfg.simulation.dt,
+                    );
+                }
+
                 // Phase 78: Feedback estelar estocástico
                 if cfg.sph.feedback.enabled {
                     let sfr = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
@@ -1342,6 +1373,34 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         cfg.simulation.dt,
                         &mut fb_seed,
                     );
+
+                    // Phase 115: Vientos estelares pre-SN (OB/Wolf-Rayet)
+                    if cfg.sph.feedback.stellar_wind_enabled {
+                        let mut wind_seed = fb_seed.wrapping_add(0xC0FFEE);
+                        gadget_ng_sph::apply_stellar_wind_feedback(
+                            &mut local,
+                            &sfr,
+                            &cfg.sph.feedback,
+                            cfg.simulation.dt,
+                            &mut wind_seed,
+                        );
+                    }
+
+                    // Phase 117: Inyección de rayos cósmicos desde SN II
+                    if cfg.sph.cr.enabled {
+                        gadget_ng_sph::inject_cr_from_sn(
+                            &mut local,
+                            &sfr,
+                            cfg.sph.cr.cr_fraction,
+                            cfg.simulation.dt,
+                        );
+                        gadget_ng_sph::diffuse_cr(
+                            &mut local,
+                            cfg.sph.cr.kappa_cr,
+                            cfg.simulation.dt,
+                        );
+                    }
+
                     // Phase 112: Spawning de partículas estelares
                     let mut spawn_seed = fb_seed.wrapping_add(0xDEAD_BEEF);
                     let mut next_gid = local.iter().map(|p| p.global_id).max().unwrap_or(0) + 1;
@@ -1362,6 +1421,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     }
                     // Agregar nuevas estrellas
                     local.extend(new_stars);
+
+                    // Phase 113: Avanzar edad estelar y aplicar SN Ia
+                    let dt_gyr = cfg.simulation.dt * 1e-3; // conversión rough: 1 u.i. ~ 1 Myr
+                    gadget_ng_sph::advance_stellar_ages(&mut local, dt_gyr);
+                    let mut ia_seed = fb_seed.wrapping_add(0xF00D);
+                    gadget_ng_sph::apply_snia_feedback(
+                        &mut local,
+                        dt_gyr,
+                        &mut ia_seed,
+                        &cfg.sph.feedback,
+                    );
                 }
             }
         };
@@ -1431,8 +1501,34 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     ));
                 }
                 gadget_ng_sph::grow_black_holes(&mut agn_bhs, &local, &agn_params, cfg.simulation.dt);
-                gadget_ng_sph::apply_agn_feedback(&mut local, &agn_bhs, &agn_params, cfg.simulation.dt);
+                // Phase 116: Bifurcación modo quasar / modo radio AGN
+                gadget_ng_sph::apply_agn_feedback_bimodal(
+                    &mut local,
+                    &agn_bhs,
+                    &agn_params,
+                    cfg.sph.agn.f_edd_threshold,
+                    cfg.sph.agn.r_bubble,
+                    cfg.sph.agn.eps_radio,
+                    cfg.simulation.dt,
+                );
                 let _ = $sph_step_agn;
+            }
+        };
+    }
+
+    // Macro local para MHD ideal (Phase 126).
+    // Activa inducción SPH, fuerzas magnéticas y limpieza de Dedner cuando [mhd] enabled = true.
+    macro_rules! maybe_mhd {
+        () => {
+            if cfg.mhd.enabled {
+                gadget_ng_mhd::advance_induction(&mut local, cfg.simulation.dt);
+                gadget_ng_mhd::apply_magnetic_forces(&mut local, cfg.simulation.dt);
+                gadget_ng_mhd::dedner_cleaning_step(
+                    &mut local,
+                    cfg.mhd.c_h,
+                    cfg.mhd.c_r,
+                    cfg.simulation.dt,
+                );
             }
         };
     }
@@ -1736,6 +1832,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
         h_state_opt = Some(h_state);
@@ -2002,6 +2099,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
@@ -2692,6 +2790,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
     } else if use_sfc_let {
@@ -3134,6 +3233,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
 
@@ -3374,6 +3474,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
     } else if use_dtree {
@@ -3439,6 +3540,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
     } else {
@@ -3484,6 +3586,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_sph!(step);
             maybe_agn!(step);
             maybe_rt!();
+            maybe_mhd!();
             maybe_reionization!(a_current);
         }
     }

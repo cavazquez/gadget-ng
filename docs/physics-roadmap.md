@@ -244,18 +244,24 @@ suprimen la formación estelar. Un modelo simple: fluido CR con presión P_CR.
 **Descripción**: Campo magnético acoplado al gas: inducción, presión magnética, fuerzas de
 Lorentz. Relevante para morfología de discos, jets AGN, y CR.
 
-**Impacto**: Cambio estructural profundo; requiere reformular el solver de fuerzas SPH o
-cambiar a SPH-MHD (Dedner divergence cleaning o SPH con campo B).
+**Estado**: ✅ **INFRAESTRUCTURA BASE COMPLETADA (Phases 123–126)**
 
-**Costo estimado**: 15–25 sesiones (proyecto mayor)
+**Implementado**:
+- Crate `gadget-ng-mhd` con módulos `induction`, `pressure`, `cleaning`.
+- Campo `b_field: Vec3` y `psi_div: f64` en `Particle` (Phases 123, 125).
+- `advance_induction`: ecuación SPH de Morris & Monaghan (1997).
+- `apply_magnetic_forces`: tensor de Maxwell con conservación de momento.
+- `dedner_cleaning_step`: esquema de Dedner para div-B (Phase 125).
+- Macro `maybe_mhd!` en engine.rs, activada por `[mhd] enabled = true` (Phase 126).
+- 25 tests en total (Phases 123–126).
 
-**Cambios principales**:
-- Campo `b_field: Vec3` en `Particle`.
-- Nuevo crate `gadget-ng-mhd` con solver de inducción y presión magnética.
-- Modificar `compute_sph_forces` para incluir tensor de Maxwell.
-- Condition: div B = 0 vía Dedner cleaning o Euler potentials.
+**Pendiente (fases futuras)**:
+- ICs magnetizadas cosmológicas.
+- Ondas de Alfvén 3D en caja periódica.
+- Validación vs. resultados analíticos (shear Alfvén, magnetosónica).
+- Acoplamiento con rayos cósmicos y conducción térmica.
 
-**Referencias**: Dolag & Stasyszyn (2009), Tricco & Price (2012).
+**Referencias**: Dolag & Stasyszyn (2009), Tricco & Price (2012), Price & Monaghan (2005).
 
 ---
 
@@ -264,11 +270,13 @@ cambiar a SPH-MHD (Dedner divergence cleaning o SPH con campo B).
 **Descripción**: En cúmulos de galaxias el ICM conduce calor eficientemente (suprimido por B).
 Relevante para perfiles de temperatura y *cool-core* clusters.
 
-**Costo estimado**: 1–2 sesiones
+**Estado**: ✅ **COMPLETADA (Phase 121)**
 
-**Cambios principales**:
-- `apply_thermal_conduction(particles, kappa_cond, dt)` en `cooling.rs`.
-- Coeficiente de Spitzer con factor de supresión ψ (por B o turbulencia).
+**Implementado**:
+- `ConductionSection` en `SphSection` (enabled, kappa_spitzer, psi_suppression).
+- `apply_thermal_conduction(particles, cfg, gamma, t_floor_k, dt)` en `thermal_conduction.rs`.
+- Loop SPH simétrico (i < j) con conservación exacta de energía.
+- 6 tests en `phase121_thermal_conduction.rs`.
 
 ---
 

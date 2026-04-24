@@ -13,6 +13,7 @@ members = [
     "crates/gadget-ng-hip",
     "crates/gadget-ng-cli",
     "crates/gadget-ng-analysis",
+    "crates/gadget-ng-mhd",
     "crates/gadget-ng-sph",
     "crates/gadget-ng-rt",
     "crates/gadget-ng-vis",

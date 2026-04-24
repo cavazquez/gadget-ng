@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–119 completadas.  
+> **Estado al 23 de abril de 2026:** Phases 1–126 completadas.  
 > Phases 114–119: Capa 2 física avanzada — ISM multifase, vientos estelares pre-SN, modo radio AGN (bubble feedback), rayos cósmicos básicos, función de luminosidad y colores galácticos, enfriamiento tabulado S&D93.  
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
@@ -72,6 +72,13 @@
 | **Phase 117** | ☢️ **Rayos cósmicos**: `cr_energy` en Particle, `inject_cr_from_sn`, `diffuse_cr` |
 | **Phase 118** | 🔭 **Luminosidad y colores**: SSP BC03, `galaxy_luminosity`, CLI `analyze --luminosity` |
 | **Phase 119** | 📊 **Enfriamiento tabulado**: `CoolingKind::MetalTabular`, tabla S&D93 7×20 bilineal |
+| **Phase 120** | 🔌 **Engine integration**: ISM+CR+vientos+AGN bimodal en `maybe_sph!`, benchmark baryonic stack |
+| **Phase 121** | 🔥 **Conducción térmica ICM**: `apply_thermal_conduction`, Spitzer + supresión magnética |
+| **Phase 122** | 🌌 **Gas molecular H₂**: `h2_fraction`, `update_h2_fraction`, SFR boost, `MolecularSection` |
+| **Phase 123** | 🧲 **Crate MHD + b_field**: `gadget-ng-mhd`, ecuación de inducción SPH, `b_field: Vec3` |
+| **Phase 124** | 💥 **Fuerzas magnéticas**: `magnetic_pressure`, `maxwell_stress`, `apply_magnetic_forces` |
+| **Phase 125** | 🧹 **Dedner div-B cleaning**: `psi_div`, `dedner_cleaning_step` |
+| **Phase 126** | ⚡ **MHD en engine**: `maybe_mhd!`, `MhdSection`, validación onda de Alfvén |
 
 ---
 

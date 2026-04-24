@@ -698,6 +698,7 @@ dependencies = [
  "gadget-ng-hip",
  "gadget-ng-integrators",
  "gadget-ng-io",
+ "gadget-ng-mhd",
  "gadget-ng-parallel",
  "gadget-ng-pm",
  "gadget-ng-rt",
@@ -784,6 +785,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gadget-ng-mhd"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "gadget-ng-core",
+]
+
+[[package]]
 name = "gadget-ng-parallel"
 version = "0.1.0"
 dependencies = [
@@ -801,6 +810,7 @@ dependencies = [
  "gadget-ng-core",
  "gadget-ng-integrators",
  "gadget-ng-io",
+ "gadget-ng-mhd",
  "gadget-ng-parallel",
  "gadget-ng-pm",
  "gadget-ng-rt",

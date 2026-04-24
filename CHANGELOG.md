@@ -8,6 +8,62 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 126 — Integración MHD en engine + macro maybe_mhd! + validación onda Alfvén
+
+- Nueva macro `maybe_mhd!()` en `engine.rs` integrada en los 7 bucles de simulación.
+- Nueva struct `MhdSection` en `config.rs` con `enabled`, `c_h`, `c_r`.
+- Campo `pub mhd: MhdSection` en `RunConfig`; dep `gadget-ng-mhd` en CLI.
+- Validación: velocidad de Alfvén `v_A = B/sqrt(μ₀ρ)` verificada analíticamente.
+- 6 tests en `phase126_mhd_integration.rs`.
+
+### Phase 125 — Dedner div-B cleaning
+
+- Nuevo módulo `crates/gadget-ng-mhd/src/cleaning.rs`.
+- `dedner_cleaning_step(particles, c_h, c_r, dt)`: calcula div_B SPH, evoluciona ψ y corrige B.
+- Campo `psi_div: f64` en `Particle` (con `#[serde(default)]`).
+- ψ se amortigua exponencialmente con `exp(-c_r dt)`.
+- 6 tests en `phase125_dedner_cleaning.rs`.
+
+### Phase 124 — Presión magnética + tensor de Maxwell en fuerzas SPH
+
+- Nuevo módulo `crates/gadget-ng-mhd/src/pressure.rs`.
+- `magnetic_pressure(b)`, `maxwell_stress(b)`, `apply_magnetic_forces(particles, dt)`.
+- Loop sobre pares únicos (i < j) para conservación de momento exacta.
+- 7 tests en `phase124_magnetic_forces.rs`.
+
+### Phase 123 — Crate gadget-ng-mhd + b_field en Particle + ecuación de inducción SPH
+
+- Nuevo crate `crates/gadget-ng-mhd/` con módulos `induction`, `pressure`, `cleaning`.
+- Campo `b_field: Vec3` (Phase 123) y `psi_div: f64` (Phase 125) en `Particle`.
+- `advance_induction(particles, dt)`: ecuación SPH de Morris & Monaghan (1997).
+- Constante `MU0 = 1.0` en unidades internas.
+- 6 tests en `phase123_mhd_induction.rs`.
+
+### Phase 122 — Gas molecular HI → H₂
+
+- Nuevo módulo `crates/gadget-ng-sph/src/molecular_gas.rs`.
+- Campo `h2_fraction: f64` en `Particle` (con `#[serde(default)]`).
+- Nueva struct `MolecularSection` en `SphSection`.
+- `update_h2_fraction(particles, cfg, dt)`: formación en gas denso + fotodisociación.
+- `compute_sfr_with_h2(particles, cfg, h2_boost)`: SFR × (1 + boost × h2_fraction).
+- 6 tests en `phase122_molecular_gas.rs`.
+
+### Phase 121 — Conducción térmica ICM Spitzer
+
+- Nuevo módulo `crates/gadget-ng-sph/src/thermal_conduction.rs`.
+- Nueva struct `ConductionSection` en `SphSection` (`enabled`, `kappa_spitzer`, `psi_suppression`).
+- `apply_thermal_conduction(particles, cfg, gamma, t_floor_k, dt)`: loop SPH simétrico.
+- Conservación exacta de energía: Δu_i = −Δu_j.
+- 6 tests en `phase121_thermal_conduction.rs`.
+
+### Phase 120 — Engine integration: nuevos módulos bariónico en engine.rs
+
+- Macro `maybe_sph!` extendida: ISM (P114), vientos estelares (P115), CRs (P117), SN Ia (P113).
+- Macro `maybe_agn!` actualizada: `apply_agn_feedback_bimodal` (P116) con `f_edd_threshold`.
+- Nueva macro `maybe_mhd!` en todos los bucles del motor.
+- Nuevo benchmark `benches/baryonic_stack.rs` (ISM+CR+vientos sobre 1000 partículas).
+- 6 tests en `phase120_engine_integration.rs`.
+
 ### Phase 119 — Enfriamiento tabulado S&D93
 
 - Nueva variante `CoolingKind::MetalTabular` en `config.rs`.

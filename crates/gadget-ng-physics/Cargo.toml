@@ -21,6 +21,7 @@ gadget-ng-treepm      = { path = "../gadget-ng-treepm", features = ["rayon"] }
 gadget-ng-analysis    = { path = "../gadget-ng-analysis", features = ["parallel"] }
 gadget-ng-io          = { path = "../gadget-ng-io" }
 gadget-ng-rt          = { path = "../gadget-ng-rt" }
+gadget-ng-mhd         = { path = "../gadget-ng-mhd" }
 
 [dev-dependencies]
 rustfft = "6.4.1"

@@ -17,3 +17,7 @@ criterion.workspace = true
 [[bench]]
 name = "agn_feedback"
 harness = false
+
+[[bench]]
+name = "baryonic_stack"
+harness = false

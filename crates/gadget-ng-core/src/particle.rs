@@ -49,6 +49,18 @@ pub struct Particle {
     /// `0.0` para DM y estrellas.
     #[serde(default)]
     pub cr_energy: f64,
+    /// Fracción de gas en fase molecular H₂ ∈ [0,1] (Phase 122).
+    /// `0.0` por defecto para todos los tipos.
+    #[serde(default)]
+    pub h2_fraction: f64,
+    /// Campo magnético en unidades internas (Phase 123).
+    /// `Vec3::zero()` por defecto para partículas sin B.
+    #[serde(default)]
+    pub b_field: Vec3,
+    /// Campo escalar de Dedner para limpieza de div-B (Phase 125).
+    /// `0.0` por defecto.
+    #[serde(default)]
+    pub psi_div: f64,
 }
 
 impl Particle {
@@ -66,6 +78,9 @@ impl Particle {
             stellar_age: 0.0,
             u_cold: 0.0,
             cr_energy: 0.0,
+            h2_fraction: 0.0,
+            b_field: Vec3::zero(),
+            psi_div: 0.0,
         }
     }
 
@@ -91,6 +106,9 @@ impl Particle {
             stellar_age: 0.0,
             u_cold: 0.0,
             cr_energy: 0.0,
+            h2_fraction: 0.0,
+            b_field: Vec3::zero(),
+            psi_div: 0.0,
         }
     }
 
@@ -118,6 +136,9 @@ impl Particle {
             stellar_age: 0.0,
             u_cold: 0.0,
             cr_energy: 0.0,
+            h2_fraction: 0.0,
+            b_field: Vec3::zero(),
+            psi_div: 0.0,
         }
     }
 
