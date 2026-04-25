@@ -24,9 +24,9 @@
 //! let positions = vec![Vec3::new(0.1, 0.1, 0.1), Vec3::new(0.9, 0.9, 0.9)];
 //! let decomp = SfcDecomposition::build(&positions, 1.0, 1);
 //! let particles: Vec<Particle> = (0..2)
-//!     .map(|i| Particle { position: positions[i], ..Default::default() })
+//!     .map(|i| Particle::new(i, 1.0, positions[i], Vec3::zero()))
 //!     .collect();
-//! let halos = find_halos_parallel(&particles, &rt, &decomp, 0.2, 2, 0.0);
+//! let halos = find_halos_parallel(&particles, &rt, &decomp, 1.0, 0.2, 2, 0.0);
 //! ```
 
 use gadget_ng_core::Particle;
