@@ -20,10 +20,15 @@
 //!
 //! ## Uso
 //!
-//! ```rust,ignore
+//! ```rust,no_run
+//! # use gadget_ng_cuda::CudaDirectGravity;
+//! let eps = 0.01_f32;
+//! let positions: Vec<[f32; 3]> = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]];
+//! let masses: Vec<f32> = vec![1.0, 1.0];
 //! if let Some(gpu) = CudaDirectGravity::try_new(eps) {
 //!     let accels = gpu.compute(&positions, &masses);
 //!     // accels[i] = [ax, ay, az] para la partícula i
+//!     let _ = accels;
 //! }
 //! ```
 

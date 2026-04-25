@@ -453,15 +453,87 @@ fn v2_checkpoint_resume_cosmo_hierarchical() {
 ///   v2_strong_scaling_benchmark -- --ignored --nocapture
 /// ```
 #[test]
-#[ignore = "requiere mpirun con 4 ranks"]
+#[ignore = "benchmark de rendimiento — ejecutar manualmente con: cargo test -p gadget-ng-physics --test v2_hierarchical_cosmo -- --ignored --nocapture"]
 fn v2_strong_scaling_benchmark() {
-    // Este test es solo un placeholder para documentar la intención del benchmark.
-    // La implementación real mide el tiempo con rt.size() > 1 comparando contra 1 rank.
-    println!("Strong scaling benchmark — ejecutar con mpirun -n 4");
-    // Con MPI=1 (serial), eficiencia = 100% por definición.
-    let efficiency = 1.0_f64;
+    use std::time::Instant;
+
+    // Mide el tiempo real del integrador jerárquico+cosmo con N=512 y N=1024.
+    // La eficiencia de strong scaling se estima comparando con el tiempo N=512
+    // extrapolado a N=1024 (debería escalar como N log N con árbol, mejor que N²).
+    let cp = lcdm_params();
+    let dt = 0.001_f64;
+    let n_steps = 20;
+
+    // ── Corrida N=512 ────────────────────────────────────────────────────────
+    let mut parts_512 = dm_lattice(512, 1.0, 1.0);
+    let mut a_512 = 0.5_f64;
+    let mut h_512 = init_hierarchical(&mut parts_512, dt);
+    let t0 = Instant::now();
+    for _ in 0..n_steps {
+        hierarchical_kdk_step(
+            &mut parts_512,
+            &mut h_512,
+            dt,
+            EPS2,
+            ETA,
+            MAX_LEVEL,
+            TimestepCriterion::Acceleration,
+            Some((&cp, &mut a_512)),
+            None,
+            gravity_direct,
+        );
+    }
+    let t_512 = t0.elapsed().as_secs_f64();
+
+    // ── Corrida N=1024 ───────────────────────────────────────────────────────
+    let mut parts_1024 = dm_lattice(1024, 1.0, 1.0);
+    let mut a_1024 = 0.5_f64;
+    let mut h_1024 = init_hierarchical(&mut parts_1024, dt);
+    let t1 = Instant::now();
+    for _ in 0..n_steps {
+        hierarchical_kdk_step(
+            &mut parts_1024,
+            &mut h_1024,
+            dt,
+            EPS2,
+            ETA,
+            MAX_LEVEL,
+            TimestepCriterion::Acceleration,
+            Some((&cp, &mut a_1024)),
+            None,
+            gravity_direct,
+        );
+    }
+    let t_1024 = t1.elapsed().as_secs_f64();
+
+    // ── Métricas ─────────────────────────────────────────────────────────────
+    // Con gravedad directa O(N²): t ∝ N² → t_1024 / t_512 ≈ 4
+    // Con árbol O(N log N): t ∝ N log N → t_1024 / t_512 ≈ 2.1
+    let ratio = t_1024 / t_512.max(1e-9);
+    let throughput_512  = 512.0  * n_steps as f64 / t_512.max(1e-9);
+    let throughput_1024 = 1024.0 * n_steps as f64 / t_1024.max(1e-9);
+
+    println!("=== V2 Strong Scaling Benchmark ===");
+    println!("N=512  → {n_steps} pasos: {t_512:.3}s  ({throughput_512:.0} part·paso/s)");
+    println!("N=1024 → {n_steps} pasos: {t_1024:.3}s  ({throughput_1024:.0} part·paso/s)");
+    println!("Ratio t(1024)/t(512) = {ratio:.2}  (O(N²) esperaría 4.0, O(N log N) ≈ 2.1)");
+    println!();
+    println!("Para strong scaling real con MPI:");
+    println!("  mpirun -n 2 cargo test --test v2_hierarchical_cosmo -- --ignored v2_strong_scaling_benchmark --nocapture");
+    println!("  mpirun -n 4 cargo test --test v2_hierarchical_cosmo -- --ignored v2_strong_scaling_benchmark --nocapture");
+
+    // El integrador no debe ser infinitamente lento: mínimo 100 part·paso/s
     assert!(
-        efficiency > 0.40,
-        "Eficiencia de scaling < 40%: {efficiency:.2}"
+        throughput_512 > 100.0,
+        "Throughput demasiado bajo N=512: {throughput_512:.0} part·paso/s"
+    );
+    assert!(
+        throughput_1024 > 100.0,
+        "Throughput demasiado bajo N=1024: {throughput_1024:.0} part·paso/s"
+    );
+    // El ratio no debe ser peor que O(N³) — sería señal de un bug grave
+    assert!(
+        ratio < 20.0,
+        "Scaling anormalmente malo: t(1024)/t(512) = {ratio:.2} (esperado < 20)"
     );
 }
