@@ -26,6 +26,26 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 rust-version = "1.74"
 
+[workspace.lints.rust]
+unsafe_code = "warn"
+unused_imports = "warn"
+unused_variables = "warn"
+dead_code = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+# Excepciones para código científico/HPC donde son patrones legítimos:
+cast_precision_loss = "allow"     # f64 -> f32 es habitual en HPC
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+module_name_repetitions = "allow" # ej. PhysicsPhysics no aplica aquí
+many_single_char_names = "allow"  # x, y, z, k, a son convenciones físicas
+too_many_arguments = "allow"      # funciones de física con muchos parámetros
+too_many_lines = "allow"
+similar_names = "allow"           # omega_m / omega_lambda son distintos
+wildcard_imports = "allow"        # ok en módulos de tests internos
+
 [workspace.dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"

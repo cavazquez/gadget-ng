@@ -1,0 +1,16 @@
+# Configuración de rustfmt para gadget-ng
+# Solo opciones estables (stable channel, Rust 1.74+)
+# Referencia: https://rust-lang.github.io/rustfmt/
+
+edition = "2021"
+
+# Ancho máximo de línea (100 da margen para nombres científicos largos)
+max_width = 100
+
+# Indentación estándar Rust: 4 espacios
+tab_spaces = 4
+hard_tabs = false
+
+# No colapsar llaves en items de un solo elemento (legibilidad)
+use_small_heuristics = "Default"
+

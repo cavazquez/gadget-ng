@@ -1,0 +1,22 @@
+# Dependencias Python para postproceso, análisis y notebooks de gadget-ng
+#
+# Instalación:
+#   pip install -r requirements.txt
+#
+# Para notebooks interactivos también se necesita:
+#   pip install jupyter jupyterlab
+
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+
+# Lectura de snapshots HDF5 (solo si gadget-ng fue compilado con --features hdf5)
+h5py>=3.8
+
+# Notebooks interactivos (opcional)
+jupyter>=1.0
+jupyterlab>=4.0
+
+# CLASS Python wrapper (solo para la fase de validación vs CLASS)
+# Instalar por separado desde: https://lesgourg.github.io/class_public/class.html
+# classy>=3.3

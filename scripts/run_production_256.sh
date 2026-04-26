@@ -117,7 +117,7 @@ if [ "${POSTPROCESS}" = "1" ]; then
     if ! command -v python3 &>/dev/null; then
         warn "python3 no encontrado — omitiendo post-proceso"
     else
-        NOTEBOOKS_DIR="docs/notebooks"
+        NOTEBOOKS_DIR="docs/scripts"
         if [ -d "$NOTEBOOKS_DIR" ]; then
             log "Post-procesando P(k)..."
             python3 "$NOTEBOOKS_DIR/postprocess_pk.py" \

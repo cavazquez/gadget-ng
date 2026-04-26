@@ -94,16 +94,16 @@ if [[ "$DO_POST" == true ]]; then
     echo "[$(date)] Ejecutando post-proceso..." | tee -a "$LOG_FILE"
 
     # P(k) vs CLASS
-    if [[ -f "docs/notebooks/validate_pk_hmf.py" ]]; then
-        python3 docs/notebooks/validate_pk_hmf.py \
+    if [[ -f "docs/scripts/validate_pk_hmf.py" ]]; then
+        python3 docs/scripts/validate_pk_hmf.py \
             --analysis-dir "$ANALYSIS_DIR" \
             --out-dir "${OUT_DIR}/plots" \
             2>&1 | tee -a "$LOG_FILE" || echo "[WARN] Post-proceso falló (requiere numpy/matplotlib)"
     fi
 
     # P(k) evolución
-    if [[ -f "docs/notebooks/postprocess_pk.py" ]]; then
-        python3 docs/notebooks/postprocess_pk.py "$ANALYSIS_DIR" 2>&1 | tee -a "$LOG_FILE" || true
+    if [[ -f "docs/scripts/postprocess_pk.py" ]]; then
+        python3 docs/scripts/postprocess_pk.py "$ANALYSIS_DIR" 2>&1 | tee -a "$LOG_FILE" || true
     fi
 
     echo "[$(date)] Post-proceso completado." | tee -a "$LOG_FILE"

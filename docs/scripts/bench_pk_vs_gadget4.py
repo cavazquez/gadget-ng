@@ -4,7 +4,7 @@ bench_pk_vs_gadget4.py — Comparación formal del espectro de potencia P(k)
 de gadget-ng contra valores de referencia tabulados de GADGET-4.
 
 Uso:
-    python3 docs/notebooks/bench_pk_vs_gadget4.py \\
+    python3 docs/scripts/bench_pk_vs_gadget4.py \\
         --insitu-dir runs/validation/insitu/ \\
         --output bench_results/pk_comparison.json \\
         [--plot bench_results/pk_comparison.png]

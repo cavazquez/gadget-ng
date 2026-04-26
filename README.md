@@ -60,6 +60,10 @@
 
 ---
 
+> **¿Primera vez aquí?** Lee [docs/getting-started.md](docs/getting-started.md)
+> para tener tu primera simulación corriendo en menos de 10 minutos.
+> Los [notebooks interactivos](notebooks/) te guían paso a paso desde Python.
+
 ## Tabla de contenidos
 
 1. [🧰 Herramientas y tecnologías](#-herramientas-y-tecnologías)
@@ -365,6 +369,24 @@ gadget-ng/
 ---
 
 ## Hitos de desarrollo
+
+El proyecto lleva **166+ fases completadas** cubriendo N-body, cosmología, PM/TreePM,
+MPI/GPU, SPH, MHD, RT y física bariónica avanzada.
+
+> Para el historial completo de fases y reportes técnicos asociados, ver
+> [docs/development-history.md](docs/development-history.md).
+
+Resumen de bloques principales:
+
+| Bloque | Fases | Contenido |
+|--------|-------|-----------|
+| N-body core | 1–16 | Leapfrog, Yoshida4, Barnes-Hut, SIMD, SFC |
+| Cosmología | 17–55 | ΛCDM, PM/TreePM, 2LPT, P(k), FoF, HMF |
+| HPC avanzado | 56–70 | Block timesteps, GPU CUDA/HIP, AMR, checkpoint |
+| Estadísticas | 71–83 | Bispectrum, RSD, assembly bias, P_B(k), in-situ |
+| RT + Reionización | 81–95 | M1, EoR z=6–12, señal 21cm, química HII |
+| Física bariónica | 96–122 | AGN, feedback, metales, SN Ia, ISM multifase, CR |
+| MHD completo | 123–166 | Ideal, SRMHD, turbulencia O-U, Braginskii, SPH Gadget-2 |
 
 | Fase | Descripción | Estado |
 |------|-------------|--------|
@@ -922,7 +944,7 @@ Configuración de producción con comparación contra Eisenstein-Hu y HMF analí
 
 ```bash
 bash scripts/run_validation_128.sh --out runs/val128
-python docs/notebooks/validate_pk_hmf.py --dir runs/val128/insitu
+python docs/scripts/validate_pk_hmf.py --dir runs/val128/insitu
 ```
 
 ### 🔲 AMR jerárquico multi-nivel (Phase 80)
@@ -973,7 +995,7 @@ paso de simulación cuando están activados. La macro `maybe_rt!()` y `maybe_sph
 
 ```bash
 # Procesar todos los insitu_*.json de una corrida
-python docs/notebooks/postprocess_insitu.py \
+python docs/scripts/postprocess_insitu.py \
     --dir runs/cosmo/insitu \
     --out analysis/ \
     --box-size 100.0
@@ -1098,8 +1120,11 @@ Tests de validación cubiertos:
 
 ## Reportes técnicos
 
-Los reportes en [`docs/reports/`](docs/reports/) documentan cada fase
-con contexto, metodología, resultados y limitaciones.
+Los reportes en [`docs/reports/`](docs/reports/) documentan cada fase con contexto,
+metodología, resultados y limitaciones.
+
+> El índice completo de reportes está en
+> [docs/development-history.md](docs/development-history.md#reportes-técnicos).
 
 ### N-body + HPC
 

@@ -8,7 +8,7 @@ Lee los archivos de análisis in-situ (insitu_NNNNNN.json) y genera:
   - hmf_evolution.png  : HMF a múltiples redshifts
 
 Uso:
-  python3 docs/notebooks/postprocess_hmf.py \\
+  python3 docs/scripts/postprocess_hmf.py \\
     --insitu runs/production_256/insitu \\
     --out    runs/production_256/analysis/hmf_evolution.json
 """

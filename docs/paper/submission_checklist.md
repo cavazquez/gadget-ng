@@ -29,7 +29,7 @@ Referencia: [JOSS review criteria](https://joss.readthedocs.io/en/latest/review_
 1. **Generar figuras**:
    ```bash
    pip install matplotlib numpy
-   python docs/notebooks/generate_paper_figures.py
+   python docs/scripts/generate_paper_figures.py
    ```
 
 2. **Compilar paper PDF** (requiere pandoc + LaTeX):

@@ -8,7 +8,7 @@ Lee los archivos de análisis in-situ (insitu_NNNNNN.json) y genera:
   - pk_evolution.png   : P(k) a múltiples redshifts
 
 Uso:
-  python3 docs/notebooks/postprocess_pk.py \\
+  python3 docs/scripts/postprocess_pk.py \\
     --snapshots runs/production_256/frames \\
     --insitu    runs/production_256/insitu \\
     --out       runs/production_256/analysis/pk_evolution.json
