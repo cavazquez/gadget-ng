@@ -13,14 +13,14 @@
 
 use crate::error::CliError;
 use gadget_ng_analysis::{
-    analyse, concentration_duffy2008, concentration_ludlow2016, find_subhalos,
-    fit_nfw_concentration, galaxy_luminosity, measure_density_profile, r200_from_m200,
-    rho_crit_z, two_point_correlation_fft, AnalysisParams, SubfindParams, RHO_CRIT_H2,
+    AnalysisParams, RHO_CRIT_H2, SubfindParams, analyse, concentration_duffy2008,
+    concentration_ludlow2016, find_subhalos, fit_nfw_concentration, galaxy_luminosity,
+    measure_density_profile, r200_from_m200, rho_crit_z, two_point_correlation_fft,
 };
 use gadget_ng_core::{SnapshotFormat, Vec3};
-use gadget_ng_io::{write_halo_catalog_jsonl, HaloCatalogEntry, HaloCatalogHeader};
 #[cfg(feature = "hdf5")]
 use gadget_ng_io::SubhaloCatalogEntry;
+use gadget_ng_io::{HaloCatalogEntry, HaloCatalogHeader, write_halo_catalog_jsonl};
 use std::fs;
 use std::path::Path;
 
@@ -240,9 +240,21 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
                     let mut dz = p.position.z - halo.z_com;
                     let _ = cx;
                     let b2 = box_size * 0.5;
-                    if dx > b2 { dx -= box_size; } else if dx < -b2 { dx += box_size; }
-                    if dy > b2 { dy -= box_size; } else if dy < -b2 { dy += box_size; }
-                    if dz > b2 { dz -= box_size; } else if dz < -b2 { dz += box_size; }
+                    if dx > b2 {
+                        dx -= box_size;
+                    } else if dx < -b2 {
+                        dx += box_size;
+                    }
+                    if dy > b2 {
+                        dy -= box_size;
+                    } else if dy < -b2 {
+                        dy += box_size;
+                    }
+                    if dz > b2 {
+                        dz -= box_size;
+                    } else if dz < -b2 {
+                        dz += box_size;
+                    }
                     let r = (dx * dx + dy * dy + dz * dz).sqrt();
                     if r < 2.0 * r_vir { Some(idx) } else { None }
                 })
@@ -252,9 +264,18 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
                 continue;
             }
 
-            let pos: Vec<Vec3> = member_indices.iter().map(|&i| data.particles[i].position).collect();
-            let vel: Vec<Vec3> = member_indices.iter().map(|&i| data.particles[i].velocity).collect();
-            let mass: Vec<f64> = member_indices.iter().map(|&i| data.particles[i].mass).collect();
+            let pos: Vec<Vec3> = member_indices
+                .iter()
+                .map(|&i| data.particles[i].position)
+                .collect();
+            let vel: Vec<Vec3> = member_indices
+                .iter()
+                .map(|&i| data.particles[i].velocity)
+                .collect();
+            let mass: Vec<f64> = member_indices
+                .iter()
+                .map(|&i| data.particles[i].mass)
+                .collect();
 
             let subhalos = find_subhalos(halo, &pos, &vel, &mass, &sfparams);
             if !subhalos.is_empty() {
@@ -273,18 +294,25 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
                 }));
             }
         }
-        eprintln!("[analyze] SUBFIND: {} halos con subhalos", subfind_results.len());
+        eprintln!(
+            "[analyze] SUBFIND: {} halos con subhalos",
+            subfind_results.len()
+        );
     }
 
     // ── Phase 104: módulos de análisis extendido ──────────────────────────────
     // Directorio de salida para archivos de análisis extendido
-    let analyze_dir = params.out_path.parent()
+    let analyze_dir = params
+        .out_path
+        .parent()
         .unwrap_or_else(|| Path::new("."))
         .join("analyze");
 
     // --cm21: estadísticas 21cm
     if params.cm21 {
-        let gas_particles: Vec<_> = data.particles.iter()
+        let gas_particles: Vec<_> = data
+            .particles
+            .iter()
             .filter(|p| p.internal_energy > 0.0)
             .cloned()
             .collect();
@@ -295,7 +323,13 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             let cm21_params = gadget_ng_rt::Cm21Params::default();
             let n_mesh = params.pk_mesh.max(4);
             let cm21_out = gadget_ng_rt::compute_cm21_output(
-                &gas_particles, &chem, box_size, z, n_mesh, 8, &cm21_params,
+                &gas_particles,
+                &chem,
+                box_size,
+                z,
+                n_mesh,
+                8,
+                &cm21_params,
             );
             if let Ok(json) = serde_json::to_string_pretty(&cm21_out) {
                 fs::create_dir_all(&analyze_dir).ok();
@@ -308,7 +342,9 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
 
     // --igm-temp: perfil de temperatura IGM
     if params.igm_temp {
-        let gas: Vec<_> = data.particles.iter()
+        let gas: Vec<_> = data
+            .particles
+            .iter()
             .filter(|p| p.internal_energy > 0.0)
             .cloned()
             .collect();
@@ -331,16 +367,20 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
     if params.agn_stats {
         // Las partículas con internal_energy muy alta (> umbral AGN) se tratan como BH.
         // En ausencia de metadatos de BH, se usa masa y posición de partículas energéticas.
-        let bh_like: Vec<serde_json::Value> = data.particles.iter()
+        let bh_like: Vec<serde_json::Value> = data
+            .particles
+            .iter()
             .filter(|p| p.internal_energy > 1e4) // umbral empírico para "caliente por AGN"
-            .map(|p| serde_json::json!({
-                "global_id": p.global_id,
-                "mass": p.mass,
-                "internal_energy": p.internal_energy,
-                "x": p.position.x,
-                "y": p.position.y,
-                "z": p.position.z,
-            }))
+            .map(|p| {
+                serde_json::json!({
+                    "global_id": p.global_id,
+                    "mass": p.mass,
+                    "internal_energy": p.internal_energy,
+                    "x": p.position.x,
+                    "y": p.position.y,
+                    "z": p.position.z,
+                })
+            })
             .collect();
         let agn_out = serde_json::json!({
             "n_bh_candidates": bh_like.len(),
@@ -351,13 +391,18 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             fs::create_dir_all(&analyze_dir).ok();
             let p = analyze_dir.join("agn_stats.json");
             let _ = fs::write(&p, &json);
-            eprintln!("[analyze --agn-stats] Escrito en {:?} ({} candidatos BH)", p, agn_out["n_bh_candidates"]);
+            eprintln!(
+                "[analyze --agn-stats] Escrito en {:?} ({} candidatos BH)",
+                p, agn_out["n_bh_candidates"]
+            );
         }
     }
 
     // --eor-state: fracción de ionización x_HII media
     if params.eor_state {
-        let gas: Vec<_> = data.particles.iter()
+        let gas: Vec<_> = data
+            .particles
+            .iter()
             .filter(|p| p.internal_energy > 0.0)
             .collect();
         // Sin ChemState reales, estimamos x_HII a partir de internal_energy.
@@ -365,7 +410,10 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         // Esta es una estimación de primer orden; la versión completa requiere ChemState guardados.
         let n_gas = gas.len() as f64;
         let u_threshold = 100.0; // umbral empírico de energía interna para gas ionizado
-        let n_ionized = gas.iter().filter(|p| p.internal_energy > u_threshold).count() as f64;
+        let n_ionized = gas
+            .iter()
+            .filter(|p| p.internal_energy > u_threshold)
+            .count() as f64;
         let x_hii_mean = if n_gas > 0.0 { n_ionized / n_gas } else { 0.0 };
         let eor_out = serde_json::json!({
             "z": z,
@@ -379,7 +427,10 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             fs::create_dir_all(&analyze_dir).ok();
             let p = analyze_dir.join("eor_state.json");
             let _ = fs::write(&p, &json);
-            eprintln!("[analyze --eor-state] x_HII_mean ≈ {:.3}, escrito en {:?}", x_hii_mean, p);
+            eprintln!(
+                "[analyze --eor-state] x_HII_mean ≈ {:.3}, escrito en {:?}",
+                x_hii_mean, p
+            );
         }
     }
 
@@ -437,10 +488,10 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         "subfind": subfind_results,
     });
 
-    if let Some(parent) = params.out_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
-        }
+    if let Some(parent) = params.out_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
     }
     let json_str = serde_json::to_string_pretty(&output)?;
     fs::write(params.out_path, &json_str).map_err(|e| CliError::io(params.out_path, e))?;
@@ -457,7 +508,11 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             .iter()
             .map(|h| HaloCatalogEntry {
                 mass: h.n_particles as f64 * m_part_cat,
-                pos: [h.x_com * box_mpc_h_cat, h.y_com * box_mpc_h_cat, h.z_com * box_mpc_h_cat],
+                pos: [
+                    h.x_com * box_mpc_h_cat,
+                    h.y_com * box_mpc_h_cat,
+                    h.z_com * box_mpc_h_cat,
+                ],
                 vel: [0.0, 0.0, 0.0],
                 r200: h.r_vir * box_mpc_h_cat,
                 spin_peebles: 0.0,
@@ -510,19 +565,29 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gadget_ng_core::{Particle, Vec3};
-    use gadget_ng_io::{write_snapshot_formatted, Provenance, SnapshotEnv};
     use gadget_ng_core::SnapshotFormat;
+    use gadget_ng_core::{Particle, Vec3};
+    use gadget_ng_io::{Provenance, SnapshotEnv, write_snapshot_formatted};
 
     fn make_dm(id: usize) -> Particle {
-        Particle::new(id, 1.0, Vec3::new(id as f64 * 0.3 + 5.0, 0.0, 0.0), Vec3::zero())
+        Particle::new(
+            id,
+            1.0,
+            Vec3::new(id as f64 * 0.3 + 5.0, 0.0, 0.0),
+            Vec3::zero(),
+        )
     }
 
     fn write_snap(dir: &std::path::Path, particles: &[Particle]) {
         let snap_dir = dir.join("snap");
         std::fs::create_dir_all(&snap_dir).unwrap();
         let prov = Provenance::new("0-test", None, "debug", vec![], vec![], "hash");
-        let env = SnapshotEnv { time: 1.0, redshift: 0.0, box_size: 10.0, ..Default::default() };
+        let env = SnapshotEnv {
+            time: 1.0,
+            redshift: 0.0,
+            box_size: 10.0,
+            ..Default::default()
+        };
         write_snapshot_formatted(SnapshotFormat::Jsonl, &snap_dir, particles, &prov, &env).unwrap();
     }
 
@@ -554,7 +619,7 @@ mod tests {
     fn analyze_no_flags_no_analyze_dir() {
         // Sin flags activos, el directorio analyze/ NO se crea
         let tmp = tempfile::tempdir().unwrap();
-        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        let particles: Vec<_> = (0..8).map(make_dm).collect();
         write_snap(tmp.path(), &particles);
         let out = tmp.path().join("results.json");
         let params = AnalyzeParams {
@@ -564,7 +629,10 @@ mod tests {
             ..Default::default()
         };
         run_analyze(&params).unwrap();
-        assert!(!tmp.path().join("analyze").exists(), "no debe crear analyze/ sin flags");
+        assert!(
+            !tmp.path().join("analyze").exists(),
+            "no debe crear analyze/ sin flags"
+        );
         assert!(out.exists(), "results.json debe existir");
     }
 
@@ -572,7 +640,7 @@ mod tests {
     fn analyze_agn_stats_no_gas_creates_empty_report() {
         // Con solo DM (sin gas), agn_stats debe crear un json con 0 candidatos
         let tmp = tempfile::tempdir().unwrap();
-        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        let particles: Vec<_> = (0..8).map(make_dm).collect();
         write_snap(tmp.path(), &particles);
         let out = tmp.path().join("results.json");
         let params = AnalyzeParams {
@@ -584,10 +652,12 @@ mod tests {
         };
         run_analyze(&params).unwrap();
         let path = tmp.path().join("analyze").join("agn_stats.json");
-        assert!(path.exists(), "agn_stats.json debe existir incluso con 0 candidatos");
-        let json: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&path).unwrap()
-        ).unwrap();
+        assert!(
+            path.exists(),
+            "agn_stats.json debe existir incluso con 0 candidatos"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(
             json["n_bh_candidates"].as_u64().unwrap(),
             0,
@@ -599,7 +669,7 @@ mod tests {
     fn analyze_eor_state_no_gas_x_hii_zero() {
         // Con solo DM, eor_state debe crear json con x_HII = 0
         let tmp = tempfile::tempdir().unwrap();
-        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        let particles: Vec<_> = (0..8).map(make_dm).collect();
         write_snap(tmp.path(), &particles);
         let out = tmp.path().join("results.json");
         let params = AnalyzeParams {
@@ -612,9 +682,8 @@ mod tests {
         run_analyze(&params).unwrap();
         let path = tmp.path().join("analyze").join("eor_state.json");
         assert!(path.exists());
-        let json: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&path).unwrap()
-        ).unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let x_hii = json["x_hii_mean_estimate"].as_f64().unwrap();
         assert_eq!(x_hii, 0.0, "sin gas, x_HII debe ser 0.0");
     }
@@ -623,7 +692,7 @@ mod tests {
     fn analyze_eor_and_agn_flags_together() {
         // Múltiples flags activos no deben interferir
         let tmp = tempfile::tempdir().unwrap();
-        let particles: Vec<_> = (0..8).map(|i| make_dm(i)).collect();
+        let particles: Vec<_> = (0..8).map(make_dm).collect();
         write_snap(tmp.path(), &particles);
         let out = tmp.path().join("results.json");
         let params = AnalyzeParams {

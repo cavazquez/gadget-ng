@@ -21,7 +21,7 @@
 //! ```
 
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_tree::{apply_sidm_scattering, scatter_probability, SidmParams};
+use gadget_ng_tree::{SidmParams, apply_sidm_scattering, scatter_probability};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,7 +30,11 @@ fn dm_particle(id: usize, x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, h: 
         id,
         1.0,
         Vec3 { x, y, z },
-        Vec3 { x: vx, y: vy, z: vz },
+        Vec3 {
+            x: vx,
+            y: vy,
+            z: vz,
+        },
     );
     p.smoothing_length = h;
     p
@@ -40,7 +44,9 @@ fn dm_particle(id: usize, x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, h: 
 fn setup_uniform_dm(n: usize, box_size: f64, v_rms: f64, seed: u64) -> Vec<Particle> {
     let mut rng = seed;
     let next = |r: &mut u64| -> f64 {
-        *r = r.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *r = r
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (*r >> 33) as f64 / (u64::MAX >> 33) as f64
     };
 
@@ -54,7 +60,9 @@ fn setup_uniform_dm(n: usize, box_size: f64, v_rms: f64, seed: u64) -> Vec<Parti
     'outer: for ix in 0..n_side {
         for iy in 0..n_side {
             for iz in 0..n_side {
-                if id >= n { break 'outer; }
+                if id >= n {
+                    break 'outer;
+                }
                 let x = (ix as f64 + next(&mut rng)) * dx;
                 let y = (iy as f64 + next(&mut rng)) * dx;
                 let z = (iz as f64 + next(&mut rng)) * dx;
@@ -108,12 +116,16 @@ fn sidm_momentum_conserved() {
         dm_particle(1, 0.3, 0.0, 0.0, -100.0, 0.0, 0.0, 1.0),
     ];
     let px0: f64 = particles.iter().map(|p| p.mass * p.velocity.x).sum();
-    let params = SidmParams { sigma_m: 1e6, v_max: 1e9 };
+    let params = SidmParams {
+        sigma_m: 1e6,
+        v_max: 1e9,
+    };
     apply_sidm_scattering(&mut particles, &params, 0.1, 42);
     let px1: f64 = particles.iter().map(|p| p.mass * p.velocity.x).sum();
     assert!(
         (px1 - px0).abs() < 1e-8,
-        "Momento no conservado: Δp_x={:.3e}", px1 - px0
+        "Momento no conservado: Δp_x={:.3e}",
+        px1 - px0
     );
 }
 
@@ -124,16 +136,25 @@ fn sidm_energy_conserved() {
         dm_particle(0, 0.0, 0.0, 0.0, 50.0, 30.0, 0.0, 1.0),
         dm_particle(1, 0.4, 0.0, 0.0, -50.0, -30.0, 0.0, 1.0),
     ];
-    let ek0: f64 = particles.iter().map(|p| {
-        let v2 = p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2);
-        0.5 * p.mass * v2
-    }).sum();
-    let params = SidmParams { sigma_m: 1e6, v_max: 1e9 };
+    let ek0: f64 = particles
+        .iter()
+        .map(|p| {
+            let v2 = p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2);
+            0.5 * p.mass * v2
+        })
+        .sum();
+    let params = SidmParams {
+        sigma_m: 1e6,
+        v_max: 1e9,
+    };
     apply_sidm_scattering(&mut particles, &params, 0.1, 99);
-    let ek1: f64 = particles.iter().map(|p| {
-        let v2 = p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2);
-        0.5 * p.mass * v2
-    }).sum();
+    let ek1: f64 = particles
+        .iter()
+        .map(|p| {
+            let v2 = p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2);
+            0.5 * p.mass * v2
+        })
+        .sum();
     let rel = (ek1 - ek0).abs() / ek0.max(1e-30);
     assert!(rel < 1e-8, "Energía cinética no conservada: Δ={rel:.3e}");
 }
@@ -155,7 +176,10 @@ fn sidm_scatter_rate_matches_analytical() {
     let dt = 0.001_f64;
     let n_trials = 50usize;
 
-    let params = SidmParams { sigma_m, v_max: 1e9 };
+    let params = SidmParams {
+        sigma_m,
+        v_max: 1e9,
+    };
 
     let mut n_scatter_total = 0usize;
     let mut n_pairs_total = 0usize;
@@ -199,7 +223,7 @@ fn sidm_scatter_rate_matches_analytical() {
     // La probabilidad de scatter por dt debe ser consistente con el nivel esperado
     let p_expected = scatter_probability(v_rms, rho_mean, sigma_m, dt);
     assert!(
-        p_expected >= 0.0 && p_expected <= 1.0,
+        (0.0..=1.0).contains(&p_expected),
         "Probabilidad de scatter fuera de [0,1]: {p_expected:.4}"
     );
 }

@@ -99,12 +99,16 @@ fn kroupa_norm(imf: &KroupaImf) -> f64 {
 /// Masa estelar en M☉, en el intervalo [m_min, m_max].
 pub fn sample_stellar_mass(imf: &KroupaImf, rng_seed: u64) -> f64 {
     let u = {
-        let x = rng_seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        let x = rng_seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         (x >> 33) as f64 / (u64::MAX >> 33) as f64
     };
 
     let norm = kroupa_norm(imf);
-    if norm <= 0.0 { return imf.m_min; }
+    if norm <= 0.0 {
+        return imf.m_min;
+    }
 
     // CDF en m_break: P(<m_break)
     let c1 = if (imf.alpha1 - 1.0).abs() < 1e-10 {
@@ -133,7 +137,8 @@ pub fn sample_stellar_mass(imf: &KroupaImf, rng_seed: u64) -> f64 {
         } else {
             (imf.m_break.powf(e) + u_adj * e).max(0.0).powf(1.0 / e)
         }
-    }.clamp(imf.m_min, imf.m_max)
+    }
+    .clamp(imf.m_min, imf.m_max)
 }
 
 /// Cúmulo estelar GMC (Phase 159).
@@ -166,7 +171,7 @@ pub struct GmcCluster {
 /// # Retorna
 /// `Vec<GmcCluster>` de los cúmulos formados en este paso.
 pub fn collapse_gmc(
-    particles: &mut Vec<Particle>,
+    particles: &mut [Particle],
     sfr_threshold: f64,
     dt: f64,
     seed: u64,
@@ -175,16 +180,24 @@ pub fn collapse_gmc(
     let mut clusters = Vec::new();
 
     for (idx, p) in particles.iter_mut().enumerate() {
-        if !p.is_gas() { continue; }
+        if !p.is_gas() {
+            continue;
+        }
         // SFR estimada desde energía interna y densidad (proxy de Kennicutt)
         let rho = if p.smoothing_length > 0.0 {
             p.mass / p.smoothing_length.powi(3)
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         let sfr_est = rho.max(0.0) * 1e-3; // proxy: SFR ∝ ρ
-        if sfr_est < sfr_threshold { continue; }
+        if sfr_est < sfr_threshold {
+            continue;
+        }
 
         let mass_formed = (sfr_est * dt).min(p.mass * 0.1); // hasta 10% de la masa
-        if mass_formed <= 0.0 { continue; }
+        if mass_formed <= 0.0 {
+            continue;
+        }
 
         // Muestrear N estrellas de la IMF hasta completar la masa
         let mean_stellar_mass = 0.3; // M☉ promedio Kroupa
@@ -220,42 +233,52 @@ pub fn collapse_gmc(
 /// - `cfg`: configuración SPH
 pub fn inject_sn_from_cluster(
     clusters: &[GmcCluster],
-    particles: &mut Vec<Particle>,
+    particles: &mut [Particle],
     dt: f64,
     cfg: &SphSection,
 ) {
     const AGE_SN_MAX_GYR: f64 = 0.030; // 30 Myr
-    const E_SN_CODE: f64 = 1.0e-4;    // energía SN en unidades internas por unidad de masa
-    const R_INJECT: f64 = 0.5;        // radio de inyección en unidades internas
+    const E_SN_CODE: f64 = 1.0e-4; // energía SN en unidades internas por unidad de masa
+    const R_INJECT: f64 = 0.5; // radio de inyección en unidades internas
 
     for cluster in clusters {
-        if cluster.age_gyr > AGE_SN_MAX_GYR { continue; }
+        if cluster.age_gyr > AGE_SN_MAX_GYR {
+            continue;
+        }
 
         // Número de SN II: ~1 por cada 100 M☉ de masa del cúmulo
         let n_sn = (cluster.mass_total * 1e10 / 100.0).max(0.0);
-        if n_sn <= 0.0 { continue; }
+        if n_sn <= 0.0 {
+            continue;
+        }
 
         let e_total = n_sn * E_SN_CODE * dt / 0.01; // normalizado a dt
         let mut n_neighbors = 0_usize;
         // Contar vecinos primero
         for p in particles.iter() {
-            if !p.is_gas() { continue; }
+            if !p.is_gas() {
+                continue;
+            }
             let dx = p.position.x - cluster.pos[0];
             let dy = p.position.y - cluster.pos[1];
             let dz = p.position.z - cluster.pos[2];
-            if (dx*dx + dy*dy + dz*dz).sqrt() < R_INJECT {
+            if (dx * dx + dy * dy + dz * dz).sqrt() < R_INJECT {
                 n_neighbors += 1;
             }
         }
-        if n_neighbors == 0 { continue; }
+        if n_neighbors == 0 {
+            continue;
+        }
         let e_per_particle = e_total / n_neighbors as f64;
 
         for p in particles.iter_mut() {
-            if !p.is_gas() { continue; }
+            if !p.is_gas() {
+                continue;
+            }
             let dx = p.position.x - cluster.pos[0];
             let dy = p.position.y - cluster.pos[1];
             let dz = p.position.z - cluster.pos[2];
-            if (dx*dx + dy*dy + dz*dz).sqrt() < R_INJECT {
+            if (dx * dx + dy * dy + dz * dz).sqrt() < R_INJECT {
                 // Escalar por gamma para convertir energía en u (energía interna específica)
                 p.internal_energy += e_per_particle * (cfg.gamma - 1.0);
                 // Enriquecer ligeramente con metales

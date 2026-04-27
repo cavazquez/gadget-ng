@@ -64,11 +64,21 @@ pub struct XrayBin {
 ///
 /// Emissividad en unidades internas (proporcional a `ρ² √T`).
 pub fn bremsstrahlung_emissivity(p: &Particle, gamma: f64) -> f64 {
-    if !p.is_gas() { return 0.0; }
-    let rho = if p.smoothing_length > 0.0 { p.mass / p.smoothing_length.powi(3) } else { 0.0 };
-    if rho <= 0.0 { return 0.0; }
+    if !p.is_gas() {
+        return 0.0;
+    }
+    let rho = if p.smoothing_length > 0.0 {
+        p.mass / p.smoothing_length.powi(3)
+    } else {
+        0.0
+    };
+    if rho <= 0.0 {
+        return 0.0;
+    }
     let t_k = u_to_temperature(p.internal_energy, gamma);
-    if t_k < T_X_MIN_K { return 0.0; }
+    if t_k < T_X_MIN_K {
+        return 0.0;
+    }
     LAMBDA_0 * rho * rho * t_k.sqrt()
 }
 
@@ -85,7 +95,10 @@ pub fn bremsstrahlung_emissivity(p: &Particle, gamma: f64) -> f64 {
 ///
 /// Luminosidad X total en unidades internas.
 pub fn total_xray_luminosity(particles: &[Particle], gamma: f64) -> f64 {
-    particles.iter().map(|p| bremsstrahlung_emissivity(p, gamma) * p.mass).sum()
+    particles
+        .iter()
+        .map(|p| bremsstrahlung_emissivity(p, gamma) * p.mass)
+        .sum()
 }
 
 /// Temperatura espectroscópica ponderada por emissividad (Mazzotta+2004) (Phase 151).
@@ -106,11 +119,21 @@ pub fn spectroscopic_temperature(particles: &[Particle], gamma: f64) -> f64 {
     let mut num = 0.0_f64;
     let mut den = 0.0_f64;
     for p in particles {
-        if !p.is_gas() { continue; }
-        let rho = if p.smoothing_length > 0.0 { p.mass / p.smoothing_length.powi(3) } else { 0.0 };
-        if rho <= 0.0 { continue; }
+        if !p.is_gas() {
+            continue;
+        }
+        let rho = if p.smoothing_length > 0.0 {
+            p.mass / p.smoothing_length.powi(3)
+        } else {
+            0.0
+        };
+        if rho <= 0.0 {
+            continue;
+        }
         let t_k = u_to_temperature(p.internal_energy, gamma);
-        if t_k < T_X_MIN_K { continue; }
+        if t_k < T_X_MIN_K {
+            continue;
+        }
         let w = rho * rho * t_k.powf(-0.75);
         num += w * t_k;
         den += w;
@@ -123,9 +146,13 @@ pub fn mass_weighted_temperature(particles: &[Particle], gamma: f64) -> f64 {
     let mut num = 0.0_f64;
     let mut den = 0.0_f64;
     for p in particles {
-        if !p.is_gas() { continue; }
+        if !p.is_gas() {
+            continue;
+        }
         let t_k = u_to_temperature(p.internal_energy, gamma);
-        if t_k < T_X_MIN_K { continue; }
+        if t_k < T_X_MIN_K {
+            continue;
+        }
         num += p.mass * t_k;
         den += p.mass;
     }
@@ -159,19 +186,31 @@ pub fn compute_xray_profile(
     let mut counts = vec![0_usize; n_bins];
 
     for p in particles {
-        if !p.is_gas() { continue; }
+        if !p.is_gas() {
+            continue;
+        }
         let dx = p.position.x - center[0];
         let dy = p.position.y - center[1];
         let dz = p.position.z - center[2];
         let r = (dx * dx + dy * dy + dz * dz).sqrt();
 
         let bin = r_edges.partition_point(|&e| e <= r).saturating_sub(1);
-        if bin >= n_bins { continue; }
+        if bin >= n_bins {
+            continue;
+        }
 
-        let rho = if p.smoothing_length > 0.0 { p.mass / p.smoothing_length.powi(3) } else { 0.0 };
-        if rho <= 0.0 { continue; }
+        let rho = if p.smoothing_length > 0.0 {
+            p.mass / p.smoothing_length.powi(3)
+        } else {
+            0.0
+        };
+        if rho <= 0.0 {
+            continue;
+        }
         let t_k = u_to_temperature(p.internal_energy, gamma);
-        if t_k < T_X_MIN_K { continue; }
+        if t_k < T_X_MIN_K {
+            continue;
+        }
 
         let emiss = LAMBDA_0 * rho * rho * t_k.sqrt() * p.mass;
         let w = rho * rho * t_k.powf(-0.75);
@@ -184,7 +223,11 @@ pub fn compute_xray_profile(
     (0..n_bins)
         .map(|i| {
             let r_center = 0.5 * (r_edges[i] + r_edges[i + 1]);
-            let temperature_x = if tx_den[i] > 0.0 { tx_num[i] / tx_den[i] } else { 0.0 };
+            let temperature_x = if tx_den[i] > 0.0 {
+                tx_num[i] / tx_den[i]
+            } else {
+                0.0
+            };
             XrayBin {
                 r_center,
                 luminosity_x: lx[i],

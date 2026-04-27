@@ -9,7 +9,7 @@
 //! ```
 
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_integrators::{leapfrog_kdk_step};
+use gadget_ng_integrators::leapfrog_kdk_step;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +78,9 @@ fn integrate_orbit(particles: &mut Vec<Particle>, dt: f64, n_steps: usize) {
             out.iter_mut().for_each(|a| *a = Vec3::zero());
             for i in 0..p.len() {
                 for j in 0..p.len() {
-                    if i == j { continue; }
+                    if i == j {
+                        continue;
+                    }
                     let dr = p[j].position - p[i].position;
                     let r2 = dr.dot(dr);
                     let r = r2.sqrt().max(1e-12);
@@ -112,10 +114,7 @@ fn kepler_orbit_angular_momentum_conserved_10_orbits() {
 
     let drift = (l1 - l0).abs() / l0.abs().max(1e-30);
     println!("L total drift en 10 órbitas: {drift:.4e}");
-    assert!(
-        drift < 1e-4,
-        "Drift de L = {drift:.4e} (tolerancia 0.01%)"
-    );
+    assert!(drift < 1e-4, "Drift de L = {drift:.4e} (tolerancia 0.01%)");
 }
 
 /// La excentricidad se conserva con drift < 5% en 10 órbitas elípticas.
@@ -183,7 +182,9 @@ fn kepler_period_matches_theory() {
             out.iter_mut().for_each(|a| *a = Vec3::zero());
             for i in 0..p.len() {
                 for j in 0..p.len() {
-                    if i == j { continue; }
+                    if i == j {
+                        continue;
+                    }
                     let dr = p[j].position - p[i].position;
                     let r2 = dr.dot(dr);
                     let r = r2.sqrt().max(1e-12);
@@ -213,9 +214,7 @@ fn kepler_period_matches_theory() {
     if n_cross >= 1 {
         let t_meas = t_cross_first;
         let ratio = t_meas / t_orb_theory;
-        println!(
-            "Período medido: {t_meas:.4} (teórico: {t_orb_theory:.4}, ratio: {ratio:.4})"
-        );
+        println!("Período medido: {t_meas:.4} (teórico: {t_orb_theory:.4}, ratio: {ratio:.4})");
         assert!(
             (ratio - 1.0).abs() < 0.05,
             "Período medido vs teórico: ratio={ratio:.4} (tolerancia 5%)"

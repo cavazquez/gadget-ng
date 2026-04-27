@@ -15,7 +15,7 @@
 //!
 //! Los resultados se vuelcan en JSON a `target/phase47/`.
 
-use gadget_ng_analysis::pk_correction::{measure_rn, RnModel};
+use gadget_ng_analysis::pk_correction::{RnModel, measure_rn};
 use gadget_ng_core::EisensteinHuParams;
 use serde_json::json;
 use std::fs;

@@ -62,10 +62,7 @@ fn two_fluid_coupling_reduces_gap() {
 fn mean_te_over_ti_unity_at_equilibrium() {
     let u = 1.5_f64;
     let t_i = t_ion(u);
-    let particles = vec![
-        gas_particle(0, u, t_i),
-        gas_particle(1, u, t_i),
-    ];
+    let particles = vec![gas_particle(0, u, t_i), gas_particle(1, u, t_i)];
     let ratio = mean_te_over_ti(&particles);
     assert!(
         (ratio - 1.0).abs() < 1e-10,
@@ -86,7 +83,10 @@ fn two_fluid_coupling_ignores_dm() {
     let mut particles = vec![p];
     apply_electron_ion_coupling(&mut particles, &cfg, 1.0);
     assert_eq!(particles[0].t_electron, te0, "DM no debe verse afectada");
-    assert_eq!(particles[0].internal_energy, u0, "DM no debe verse afectada");
+    assert_eq!(
+        particles[0].internal_energy, u0,
+        "DM no debe verse afectada"
+    );
 }
 
 /// T_e permanece positiva después del acoplamiento.
@@ -99,7 +99,8 @@ fn two_fluid_te_stays_positive() {
     }
     assert!(
         particles[0].t_electron > 0.0,
-        "T_e debe permanecer positiva: {}", particles[0].t_electron
+        "T_e debe permanecer positiva: {}",
+        particles[0].t_electron
     );
 }
 
@@ -132,12 +133,11 @@ fn two_fluid_reaches_thermal_equilibrium_long_time() {
     }
 
     let ratio = mean_te_over_ti(&particles);
-    println!(
-        "Two-fluid equilibrio: T_e/T_i = {ratio:.6} tras {n_steps} pasos ({n_teq} t_eq)"
-    );
+    println!("Two-fluid equilibrio: T_e/T_i = {ratio:.6} tras {n_steps} pasos ({n_teq} t_eq)");
 
     assert!(
         (ratio - 1.0).abs() < 0.001,
-        "|T_e/T_i - 1| = {:.4e} (tolerancia 0.1%)", (ratio - 1.0).abs()
+        "|T_e/T_i - 1| = {:.4e} (tolerancia 0.1%)",
+        (ratio - 1.0).abs()
     );
 }

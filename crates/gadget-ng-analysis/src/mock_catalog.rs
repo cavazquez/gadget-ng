@@ -25,8 +25,8 @@
 //! - Behroozi, Wechsler & Conroy (2013) ApJ 770, 57.
 //! - Peacock (1999) "Cosmological Physics", cap. 18.
 
-use gadget_ng_core::Particle;
 use crate::fof::FofHalo;
+use gadget_ng_core::Particle;
 
 /// Galaxia en el mock catalogue (Phase 154).
 #[derive(Debug, Clone, PartialEq)]
@@ -59,15 +59,18 @@ pub struct MockGalaxy {
 /// - `log_mh`: `log10(M_h / M_pivot)` donde `M_pivot` es la masa de pivote
 fn smhm_log_ratio(log_mh: f64) -> f64 {
     // Parámetros Behroozi+2013 simplificados a z=0
-    const EPSILON: f64 = 0.023;   // eficiencia de conversión pico
-    const ALPHA: f64 = -1.412;    // pendiente de baja masa
-    const DELTA: f64 = 3.508;     // contribución exponencial
-    const GAMMA: f64 = 0.316;     // forma de la parte exponencial
+    const EPSILON: f64 = 0.023; // eficiencia de conversión pico
+    const ALPHA: f64 = -1.412; // pendiente de baja masa
+    const DELTA: f64 = 3.508; // contribución exponencial
+    const GAMMA: f64 = 0.316; // forma de la parte exponencial
 
     // f(x) = -log10(10^(alpha*x) + 1) + delta * (log10(1 + exp(x)))^gamma / (1 + exp(10^(-x)))
     let x = log_mh;
     let f = -(10.0_f64.powf(ALPHA * x) + 1.0).log10()
-        + DELTA * (1.0 + (x * std::f64::consts::LN_10).exp()).log10().powf(GAMMA)
+        + DELTA
+            * (1.0 + (x * std::f64::consts::LN_10).exp())
+                .log10()
+                .powf(GAMMA)
             / (1.0 + (-x * std::f64::consts::LN_10).exp() + 1.0);
     EPSILON.log10() + f
 }
@@ -77,7 +80,9 @@ fn smhm_log_ratio(log_mh: f64) -> f64 {
 /// Usa la aproximación de Pen (1999) para ΛCDM plano:
 /// `d_L ≈ (c/H0) × (1+z) × [η(1) - η(a)]`
 fn luminosity_distance(z: f64, omega_m: f64) -> f64 {
-    if z <= 0.0 { return 0.0; }
+    if z <= 0.0 {
+        return 0.0;
+    }
     let c_over_h0 = 2997.92; // c/H0 en Mpc/h (H0 = 100 km/s/Mpc)
     let n = 100_usize;
     let a_obs = 1.0 / (1.0 + z);
@@ -102,10 +107,16 @@ fn luminosity_distance(z: f64, omega_m: f64) -> f64 {
 /// - `z`: redshift
 /// - `omega_m`: Ω_m cosmológico
 pub fn apparent_magnitude(m_abs: f64, z: f64, omega_m: f64) -> f64 {
-    if z <= 0.0 { return m_abs; }
+    if z <= 0.0 {
+        return m_abs;
+    }
     let d_l_mpc = luminosity_distance(z, omega_m);
     let d_l_pc = d_l_mpc * 1.0e6;
-    let mu = if d_l_pc > 0.0 { 5.0 * (d_l_pc / 10.0).log10() } else { 0.0 };
+    let mu = if d_l_pc > 0.0 {
+        5.0 * (d_l_pc / 10.0).log10()
+    } else {
+        0.0
+    };
     let k_corr = 1.8 * z;
     m_abs + mu + k_corr
 }
@@ -142,7 +153,9 @@ pub fn build_mock_catalog(
 
     for halo in halos {
         let m_h = halo.mass;
-        if m_h <= 0.0 { continue; }
+        if m_h <= 0.0 {
+            continue;
+        }
 
         // Masa estelar SMHM
         const M_PIVOT: f64 = 1e12; // masa de pivote en M☉/h (unidades internas ~ 10¹⁰)
@@ -158,7 +171,9 @@ pub fn build_mock_catalog(
         let mut metal_count = 0_usize;
 
         for p in particles {
-            if !p.is_gas() { continue; }
+            if !p.is_gas() {
+                continue;
+            }
             let dx = p.position.x - com[0];
             let dy = p.position.y - com[1];
             let dz = p.position.z - com[2];
@@ -168,7 +183,11 @@ pub fn build_mock_catalog(
                 metal_count += 1;
             }
         }
-        let metallicity = if metal_count > 0 { metal_sum / metal_count as f64 } else { 0.02 };
+        let metallicity = if metal_count > 0 {
+            metal_sum / metal_count as f64
+        } else {
+            0.02
+        };
 
         // Edad estimada del halo: usar un proxy simple (10 Gyr para halos masivos)
         let age_est = 3.0 + 7.0 * (m_h / m_pivot_code).min(1.0);
@@ -181,10 +200,16 @@ pub fn build_mock_catalog(
         // Magnitud absoluta en R desde la masa estelar
         // M_R ≈ M_R_sun - 2.5 × log10(L_R/L_sun)  con M_R_sun ≈ 4.42
         let l_r_lsun = stellar_mass * 1e10 * 0.9; // ~1 L☉/M☉ para edad ~5 Gyr
-        let m_r_abs = if l_r_lsun > 0.0 { 4.42 - 2.5 * l_r_lsun.log10() } else { 99.0 };
+        let m_r_abs = if l_r_lsun > 0.0 {
+            4.42 - 2.5 * l_r_lsun.log10()
+        } else {
+            99.0
+        };
 
         let m_r_app = apparent_magnitude(m_r_abs, z_box, omega_m);
-        if !selection_flux_limit(m_r_app, m_lim) { continue; }
+        if !selection_flux_limit(m_r_app, m_lim) {
+            continue;
+        }
 
         catalog.push(MockGalaxy {
             pos: [com[0], com[1], com[2]],
@@ -214,12 +239,10 @@ pub fn build_mock_catalog(
 ///
 /// # Retorna
 /// `Vec<f64>` de longitud `l_max + 1` con C_l para l = 0, 1, ..., l_max.
-pub fn angular_power_spectrum_cl(
-    catalog: &[MockGalaxy],
-    l_max: usize,
-    box_size: f64,
-) -> Vec<f64> {
-    if catalog.is_empty() || l_max == 0 { return vec![0.0; l_max + 1]; }
+pub fn angular_power_spectrum_cl(catalog: &[MockGalaxy], l_max: usize, box_size: f64) -> Vec<f64> {
+    if catalog.is_empty() || l_max == 0 {
+        return vec![0.0; l_max + 1];
+    }
 
     let n_mesh = (2 * l_max).max(16);
     let mut grid = vec![0.0_f64; n_mesh * n_mesh];
@@ -232,8 +255,12 @@ pub fn angular_power_spectrum_cl(
 
     // Overdensity: δ = (n - n_bar) / n_bar
     let n_bar = catalog.len() as f64 / (n_mesh * n_mesh) as f64;
-    if n_bar <= 0.0 { return vec![0.0; l_max + 1]; }
-    for v in &mut grid { *v = (*v - n_bar) / n_bar; }
+    if n_bar <= 0.0 {
+        return vec![0.0; l_max + 1];
+    }
+    for v in &mut grid {
+        *v = (*v - n_bar) / n_bar;
+    }
 
     // C_l via suma de |δ_lm|² — aproximación Fourier plana
     let mut cl = vec![0.0_f64; l_max + 1];
@@ -241,10 +268,20 @@ pub fn angular_power_spectrum_cl(
 
     for ky in 0..n_mesh {
         for kx in 0..n_mesh {
-            let lx = if kx <= n_mesh / 2 { kx as f64 } else { kx as f64 - n_mesh as f64 };
-            let ly = if ky <= n_mesh / 2 { ky as f64 } else { ky as f64 - n_mesh as f64 };
+            let lx = if kx <= n_mesh / 2 {
+                kx as f64
+            } else {
+                kx as f64 - n_mesh as f64
+            };
+            let ly = if ky <= n_mesh / 2 {
+                ky as f64
+            } else {
+                ky as f64 - n_mesh as f64
+            };
             let l_val = (lx * lx + ly * ly).sqrt().round() as usize;
-            if l_val > l_max { continue; }
+            if l_val > l_max {
+                continue;
+            }
             let v = grid[ky * n_mesh + kx];
             cl[l_val] += v * v;
             counts[l_val] += 1;
@@ -252,7 +289,9 @@ pub fn angular_power_spectrum_cl(
     }
 
     for (c, n) in cl.iter_mut().zip(counts.iter()) {
-        if *n > 0 { *c /= *n as f64; }
+        if *n > 0 {
+            *c /= *n as f64;
+        }
     }
     cl
 }

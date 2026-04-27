@@ -44,17 +44,17 @@
 //! 3. `growth_closer_to_linear_with_softening` — soft (reporta ε óptimo)
 //! 4. `no_nan_inf_phase42`                    — hard
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
-    Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8,
+    build_particles,
+    cosmology::{CosmologyParams, growth_factor_d_ratio},
+    transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use gadget_ng_treepm::TreePmSolver;
 use serde_json::json;
@@ -138,12 +138,12 @@ fn variants() -> Vec<SolverVariant> {
 }
 
 fn n_grid() -> usize {
-    if let Ok(v) = std::env::var("PHASE42_N") {
-        if let Ok(n) = v.parse::<usize>() {
-            if n.is_power_of_two() && (16..=256).contains(&n) {
-                return n;
-            }
-        }
+    if let Ok(v) = std::env::var("PHASE42_N")
+        && let Ok(n) = v.parse::<usize>()
+        && n.is_power_of_two()
+        && (16..=256).contains(&n)
+    {
+        return n;
     }
     if std::env::var("PHASE42_QUICK")
         .map(|v| v == "1")
@@ -222,9 +222,13 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -602,24 +606,22 @@ fn matrix() -> &'static [SnapshotResult] {
         {
             let mut path = phase42_dir();
             path.push("per_snapshot_metrics.json");
-            if path.exists() {
-                if let Ok(txt) = fs::read_to_string(&path) {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt) {
-                        if let Some(arr) = val.get("snapshots").and_then(|v| v.as_array()) {
-                            eprintln!(
-                                "[phase42] cargando matriz cacheada ({} snapshots) de {}",
-                                arr.len(),
-                                path.display()
-                            );
-                            let out: Vec<SnapshotResult> = arr
-                                .iter()
-                                .filter_map(SnapshotResult::from_json_value)
-                                .collect();
-                            if !out.is_empty() {
-                                return out;
-                            }
-                        }
-                    }
+            if path.exists()
+                && let Ok(txt) = fs::read_to_string(&path)
+                && let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt)
+                && let Some(arr) = val.get("snapshots").and_then(|v| v.as_array())
+            {
+                eprintln!(
+                    "[phase42] cargando matriz cacheada ({} snapshots) de {}",
+                    arr.len(),
+                    path.display()
+                );
+                let out: Vec<SnapshotResult> = arr
+                    .iter()
+                    .filter_map(SnapshotResult::from_json_value)
+                    .collect();
+                if !out.is_empty() {
+                    return out;
                 }
             }
         }

@@ -29,8 +29,8 @@
 //! Parker (1957), JGR 62, 509 — tasa de reconexión Sweet-Parker.
 //! Lazarian & Vishniac (1999), ApJ 517, 700 — reconexión en turbulencia MHD.
 
-use gadget_ng_core::{Particle, ParticleType};
 use crate::MU0;
+use gadget_ng_core::{Particle, ParticleType};
 
 /// Aplica reconexión magnética entre pares de partículas antiparalelas (Phase 145).
 ///
@@ -49,39 +49,55 @@ pub fn apply_magnetic_reconnection(
     _gamma: f64,
     dt: f64,
 ) {
-    if f_reconnection <= 0.0 { return; }
+    if f_reconnection <= 0.0 {
+        return;
+    }
     let n = particles.len();
-    if n < 2 { return; }
+    if n < 2 {
+        return;
+    }
 
     let mut delta_u = vec![0.0_f64; n];
     let mut b_scale = vec![1.0_f64; n]; // escala multiplicativa para B
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let b_i = particles[i].b_field;
-        let b2_i = b_i.x*b_i.x + b_i.y*b_i.y + b_i.z*b_i.z;
-        if b2_i < 1e-60 { continue; }
+        let b2_i = b_i.x * b_i.x + b_i.y * b_i.y + b_i.z * b_i.z;
+        if b2_i < 1e-60 {
+            continue;
+        }
         let pos_i = particles[i].position;
 
-        for j in (i+1)..n {
-            if particles[j].ptype != ParticleType::Gas { continue; }
+        for j in (i + 1)..n {
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
             let h_j = particles[j].smoothing_length.max(1e-10);
             let b_j = particles[j].b_field;
-            let b2_j = b_j.x*b_j.x + b_j.y*b_j.y + b_j.z*b_j.z;
-            if b2_j < 1e-60 { continue; }
+            let b2_j = b_j.x * b_j.x + b_j.y * b_j.y + b_j.z * b_j.z;
+            if b2_j < 1e-60 {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
             let dz = particles[j].position.z - pos_i.z;
-            let r2 = dx*dx + dy*dy + dz*dz;
+            let r2 = dx * dx + dy * dy + dz * dz;
             let h_avg = 0.5 * (h_i + h_j);
 
-            if r2 > 4.0 * h_avg * h_avg { continue; } // fuera de 2h
+            if r2 > 4.0 * h_avg * h_avg {
+                continue;
+            } // fuera de 2h
 
             // Detectar B antiparalelos: B_i · B_j < 0
-            let b_dot = b_i.x*b_j.x + b_i.y*b_j.y + b_i.z*b_j.z;
-            if b_dot >= 0.0 { continue; } // misma dirección → sin reconexión
+            let b_dot = b_i.x * b_j.x + b_i.y * b_j.y + b_i.z * b_j.z;
+            if b_dot >= 0.0 {
+                continue;
+            } // misma dirección → sin reconexión
 
             // Energía magnética del par antiparalelo
             let e_mag_pair = (b2_i + b2_j) / (2.0 * MU0);
@@ -104,7 +120,9 @@ pub fn apply_magnetic_reconnection(
 
     // Aplicar cambios
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         particles[i].internal_energy = (particles[i].internal_energy + delta_u[i]).max(0.0);
         if b_scale[i] < 1.0 {
             particles[i].b_field.x *= b_scale[i];
@@ -120,8 +138,12 @@ pub fn apply_magnetic_reconnection(
 /// - `l_rec`: escala de la corriente de reconexión
 /// - `eta_eff`: resistividad efectiva (numérica o física)
 pub fn sweet_parker_rate(v_a: f64, l_rec: f64, eta_eff: f64) -> f64 {
-    if eta_eff <= 0.0 || l_rec <= 0.0 { return 0.0; }
+    if eta_eff <= 0.0 || l_rec <= 0.0 {
+        return 0.0;
+    }
     let rm = l_rec * v_a / eta_eff;
-    if rm <= 0.0 { return 0.0; }
+    if rm <= 0.0 {
+        return 0.0;
+    }
     v_a / rm.sqrt()
 }

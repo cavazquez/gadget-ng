@@ -147,7 +147,7 @@ pub fn assign_rayon(positions: &[Vec3], masses: &[f64], box_size: f64, nm: usize
     let inv_cell = nm as f64 / box_size;
 
     // Cada hilo acumula en un rho local; luego sumamos todos los arrays.
-    let rho = positions
+    positions
         .par_iter()
         .zip(masses.par_iter())
         .fold(
@@ -186,8 +186,7 @@ pub fn assign_rayon(positions: &[Vec3], masses: &[f64], box_size: f64, nm: usize
                 }
                 a
             },
-        );
-    rho
+        )
 }
 
 /// Versión paralela de [`interpolate`] usando Rayon.

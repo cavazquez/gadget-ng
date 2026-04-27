@@ -48,12 +48,12 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
+    cosmology::{CosmologyParams, growth_factor_d_ratio, growth_rate_f, hubble_param},
     particle::Particle,
-    transfer_fn::{amplitude_for_sigma8, transfer_eh_nowiggle, EisensteinHuParams},
+    transfer_fn::{EisensteinHuParams, amplitude_for_sigma8, transfer_eh_nowiggle},
     vec3::Vec3,
 };
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 // ── Generador LCG ─────────────────────────────────────────────────────────────
 
@@ -113,11 +113,7 @@ impl Lcg {
 pub fn mode_int(j: usize, n: usize) -> i64 {
     let half = (n / 2) as i64;
     let jj = j as i64;
-    if jj <= half {
-        jj
-    } else {
-        jj - n as i64
-    }
+    if jj <= half { jj } else { jj - n as i64 }
 }
 
 // ── Generación del campo gaussiano en k-space ─────────────────────────────────
@@ -450,9 +446,8 @@ pub fn zeldovich_ics(
     let (a_init, cosmo) = if cfg.cosmology.enabled {
         let a = cfg.cosmology.a_init;
         // Phase 156: incluir Ω_ν si m_nu_ev > 0
-        let omega_nu = crate::cosmology::omega_nu_from_mass(
-            cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0,
-        );
+        let omega_nu =
+            crate::cosmology::omega_nu_from_mass(cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0);
         let mut cp = CosmologyParams::new(
             cfg.cosmology.omega_m,
             cfg.cosmology.omega_lambda,
@@ -470,9 +465,8 @@ pub fn zeldovich_ics(
 
     // Phase 156: factor de supresión por neutrinos masivos
     let nu_suppression = if cfg.cosmology.m_nu_ev > 0.0 && cfg.cosmology.omega_m > 0.0 {
-        let omega_nu = crate::cosmology::omega_nu_from_mass(
-            cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0,
-        );
+        let omega_nu =
+            crate::cosmology::omega_nu_from_mass(cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0);
         let f_nu = omega_nu / cfg.cosmology.omega_m;
         crate::cosmology::neutrino_suppression(f_nu)
     } else {

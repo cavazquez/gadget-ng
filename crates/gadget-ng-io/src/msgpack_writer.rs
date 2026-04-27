@@ -22,7 +22,7 @@ use gadget_ng_core::Particle;
 use crate::error::SnapshotError;
 use crate::provenance::Provenance;
 use crate::reader::{SnapshotData, SnapshotReader};
-use crate::snapshot::{build_meta, read_meta, write_sidecar_json, ParticleRecord};
+use crate::snapshot::{ParticleRecord, build_meta, read_meta, write_sidecar_json};
 use crate::writer::{SnapshotEnv, SnapshotWriter};
 
 const PARTICLES_FILE: &str = "particles.msgpack";

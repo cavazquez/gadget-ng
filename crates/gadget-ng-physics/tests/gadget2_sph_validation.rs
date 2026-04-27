@@ -23,8 +23,8 @@
 
 use gadget_ng_core::Vec3;
 use gadget_ng_sph::{
-    compute_balsara_factors, compute_density, compute_sph_forces_gadget2, courant_dt,
-    sph_kdk_step_gadget2, SphParticle, GAMMA,
+    GAMMA, SphParticle, compute_balsara_factors, compute_density, compute_sph_forces_gadget2,
+    courant_dt, sph_kdk_step_gadget2,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ fn no_gravity(_: &mut [SphParticle]) {}
 
 /// Genera partículas del tubo de Sod 1D con n_left y n_right partículas.
 fn setup_sod_tube(n_left: usize, n_right: usize) -> Vec<SphParticle> {
-    let u_l = 1.0 / ((GAMMA - 1.0) * 1.0);   // P_L / ((γ-1) ρ_L)
+    let u_l = 1.0 / ((GAMMA - 1.0) * 1.0); // P_L / ((γ-1) ρ_L)
     let u_r = 0.1 / ((GAMMA - 1.0) * 0.125); // P_R / ((γ-1) ρ_R)
 
     let dx_l = 0.5 / n_left as f64;
@@ -46,14 +46,24 @@ fn setup_sod_tube(n_left: usize, n_right: usize) -> Vec<SphParticle> {
     for i in 0..n_left {
         let x = -0.5 + (i as f64 + 0.5) * dx_l;
         parts.push(SphParticle::new_gas(
-            id, mass, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u_l, 2.5 * dx_l,
+            id,
+            mass,
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::zero(),
+            u_l,
+            2.5 * dx_l,
         ));
         id += 1;
     }
     for i in 0..n_right {
         let x = (i as f64 + 0.5) * dx_r;
         parts.push(SphParticle::new_gas(
-            id, mass, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u_r, 2.5 * dx_r,
+            id,
+            mass,
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::zero(),
+            u_r,
+            2.5 * dx_r,
         ));
         id += 1;
     }
@@ -67,12 +77,18 @@ fn total_mass(parts: &[SphParticle]) -> f64 {
 
 /// Energía cinética total.
 fn kinetic_energy(parts: &[SphParticle]) -> f64 {
-    parts.iter().map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity)).sum()
+    parts
+        .iter()
+        .map(|p| 0.5 * p.mass * p.velocity.dot(p.velocity))
+        .sum()
 }
 
 /// Energía interna total (usando u actualizado desde entropía).
 fn thermal_energy(parts: &[SphParticle]) -> f64 {
-    parts.iter().filter_map(|p| p.gas.as_ref().map(|g| p.mass * g.u)).sum()
+    parts
+        .iter()
+        .filter_map(|p| p.gas.as_ref().map(|g| p.mass * g.u))
+        .sum()
 }
 
 // ── Tests rápidos ─────────────────────────────────────────────────────────────
@@ -85,15 +101,16 @@ fn gadget2_entropy_initialized_correctly() {
     compute_density(&mut parts);
 
     for p in &parts {
-        if let Some(gas) = p.gas.as_ref() {
-            if gas.rho > 0.0 {
-                let a_expected = (GAMMA - 1.0) * gas.u / gas.rho.powf(GAMMA - 1.0);
-                assert!(
-                    (gas.entropy - a_expected).abs() / a_expected.abs().max(1e-14) < 1e-10,
-                    "Entropía incorrecta: A={:.6e} esperado={:.6e}",
-                    gas.entropy, a_expected
-                );
-            }
+        if let Some(gas) = p.gas.as_ref()
+            && gas.rho > 0.0
+        {
+            let a_expected = (GAMMA - 1.0) * gas.u / gas.rho.powf(GAMMA - 1.0);
+            assert!(
+                (gas.entropy - a_expected).abs() / a_expected.abs().max(1e-14) < 1e-10,
+                "Entropía incorrecta: A={:.6e} esperado={:.6e}",
+                gas.entropy,
+                a_expected
+            );
         }
     }
 }
@@ -125,7 +142,8 @@ fn gadget2_balsara_bounded() {
         if let Some(gas) = p.gas.as_ref() {
             assert!(
                 gas.balsara >= 0.0 && gas.balsara <= 1.0,
-                "Balsara fuera de [0,1]: {:.4}", gas.balsara
+                "Balsara fuera de [0,1]: {:.4}",
+                gas.balsara
             );
         }
     }
@@ -191,7 +209,8 @@ fn gadget2_sod_shock_compresses_right_region() {
     let mass_final = total_mass(&parts);
     assert!(
         (mass_final - mass_init).abs() / mass_init < 1e-12,
-        "Masa no conservada: Δm/m = {:.2e}", (mass_final - mass_init) / mass_init
+        "Masa no conservada: Δm/m = {:.2e}",
+        (mass_final - mass_init) / mass_init
     );
 
     // El choque comprimió la región derecha.
@@ -229,7 +248,9 @@ fn gadget2_entropy_monotonically_nondecreasing() {
     while t < t_end {
         compute_sph_forces_gadget2(&mut parts);
         let dt = courant_dt(&parts, 0.3).min(t_end - t).max(1e-15);
-        if dt < 1e-14 { break; }
+        if dt < 1e-14 {
+            break;
+        }
         sph_kdk_step_gadget2(&mut parts, dt, no_gravity);
         t += dt;
     }
@@ -308,7 +329,9 @@ fn direct_gravity(particles: &mut [SphParticle]) {
     for i in 0..n {
         let mut a = Vec3::zero();
         for j in 0..n {
-            if j == i { continue; }
+            if j == i {
+                continue;
+            }
             let r_ij = pos[j] - pos[i];
             let r2 = r_ij.dot(r_ij) + eps2;
             let r3 = r2 * r2.sqrt();
@@ -350,7 +373,9 @@ fn evrard_adiabatic_energy_conservation() {
         direct_gravity(&mut parts);
         compute_sph_forces_gadget2(&mut parts);
         let dt = courant_dt(&parts, 0.3).min(t_target - t).max(1e-15);
-        if dt < 1e-14 { break; }
+        if dt < 1e-14 {
+            break;
+        }
         sph_kdk_step_gadget2(&mut parts, dt, direct_gravity);
         t += dt;
     }
@@ -395,7 +420,9 @@ fn evrard_central_density_increases() {
         direct_gravity(&mut parts);
         compute_sph_forces_gadget2(&mut parts);
         let dt = courant_dt(&parts, 0.3).min(t_target - t).max(1e-15);
-        if dt < 1e-14 { break; }
+        if dt < 1e-14 {
+            break;
+        }
         sph_kdk_step_gadget2(&mut parts, dt, direct_gravity);
         t += dt;
     }

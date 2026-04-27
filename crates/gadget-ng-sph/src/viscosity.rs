@@ -85,8 +85,8 @@ pub fn compute_balsara_factors(particles: &mut [SphParticle]) {
 
         let inv_rho_i = 1.0 / rho[i];
 
-        let mut div_v = 0.0_f64;         // ∇·v  (escalar)
-        let mut curl_v = Vec3::zero();   // ∇×v  (vector 3D)
+        let mut div_v = 0.0_f64; // ∇·v  (escalar)
+        let mut curl_v = Vec3::zero(); // ∇×v  (vector 3D)
 
         for j in 0..n {
             if j == i || !is_gas[j] || rho[j] < 1e-200 {
@@ -100,7 +100,11 @@ pub fn compute_balsara_factors(particles: &mut [SphParticle]) {
                 continue;
             }
 
-            let r_hat = if r > 1e-300 { r_ij * (1.0 / r) } else { Vec3::zero() };
+            let r_hat = if r > 1e-300 {
+                r_ij * (1.0 / r)
+            } else {
+                Vec3::zero()
+            };
             // ∇_i W(r_ij, h_i)  (apunta de j hacia i)
             let nabla_w = r_hat * (gw / hi);
 
@@ -114,7 +118,7 @@ pub fn compute_balsara_factors(particles: &mut [SphParticle]) {
         }
 
         div_v *= inv_rho_i;
-        curl_v = curl_v * inv_rho_i;
+        curl_v *= inv_rho_i;
 
         let abs_div = div_v.abs();
         let abs_curl = curl_v.norm();
@@ -153,7 +157,14 @@ mod tests {
                 let y = (iy as f64 + 0.5) * dx;
                 let z = (iz as f64 + 0.5) * dx;
                 let vx = y; // cizallamiento puro: dv_x/dy = 1
-                SphParticle::new_gas(k, 1.0, Vec3::new(x, y, z), Vec3::new(vx, 0.0, 0.0), 1.0, 2.0 * dx)
+                SphParticle::new_gas(
+                    k,
+                    1.0,
+                    Vec3::new(x, y, z),
+                    Vec3::new(vx, 0.0, 0.0),
+                    1.0,
+                    2.0 * dx,
+                )
             })
             .collect();
 
@@ -165,9 +176,12 @@ mod tests {
             .iter()
             .filter(|p| {
                 let pos = p.position;
-                pos.x > dx && pos.x < box_size - dx &&
-                pos.y > dx && pos.y < box_size - dx &&
-                pos.z > dx && pos.z < box_size - dx
+                pos.x > dx
+                    && pos.x < box_size - dx
+                    && pos.y > dx
+                    && pos.y < box_size - dx
+                    && pos.z > dx
+                    && pos.z < box_size - dx
             })
             .filter_map(|p| p.gas.as_ref().map(|g| g.balsara))
             .sum::<f64>()

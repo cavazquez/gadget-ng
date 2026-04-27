@@ -42,12 +42,12 @@
 
 use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
-    build_particles, cosmology::CosmologyParams, density_contrast_rms, peculiar_vrms,
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3, build_particles, cosmology::CosmologyParams, density_contrast_rms,
+    peculiar_vrms, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use gadget_ng_treepm::TreePmSolver;
 
@@ -126,9 +126,13 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -365,7 +369,8 @@ fn psi1_psi2_ratio_quantified() {
     assert!(
         psi2 < UPPER * psi1,
         "|Ψ²|_rms / |Ψ¹|_rms = {:.3e} > {:.3e} — corrección 2LPT demasiado grande para régimen lineal",
-        ratio, UPPER
+        ratio,
+        UPPER
     );
 
     // Reportar para el reporte técnico (visible en salida de test con --nocapture).

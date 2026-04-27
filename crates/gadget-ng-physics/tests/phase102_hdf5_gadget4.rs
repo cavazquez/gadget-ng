@@ -38,7 +38,10 @@ fn header_mandatory_flags_present() {
     assert!(h.flag_sfr == 0 || h.flag_sfr == 1);
     assert!(h.flag_cooling == 0 || h.flag_cooling == 1);
     assert!(h.flag_feedback == 0 || h.flag_feedback == 1);
-    assert!(h.flag_double_precision == 1, "debe ser doble precisión por defecto");
+    assert!(
+        h.flag_double_precision == 1,
+        "debe ser doble precisión por defecto"
+    );
     assert_eq!(h.num_files_per_snapshot, 1, "mono-archivo por defecto");
 }
 
@@ -69,8 +72,8 @@ mod hdf5_tests {
         gadget4_attrs::Gadget4Header,
         hdf5_writer::{Hdf5Reader, Hdf5Writer},
         provenance::Provenance,
-        writer::{SnapshotEnv, SnapshotWriter},
         reader::SnapshotReader,
+        writer::{SnapshotEnv, SnapshotWriter},
     };
 
     fn make_prov() -> Provenance {
@@ -78,7 +81,12 @@ mod hdf5_tests {
     }
 
     fn make_env() -> SnapshotEnv {
-        SnapshotEnv { time: 0.5, redshift: 1.0, box_size: 20.0, ..Default::default() }
+        SnapshotEnv {
+            time: 0.5,
+            redshift: 1.0,
+            box_size: 20.0,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -88,19 +96,24 @@ mod hdf5_tests {
 
         // 3 partículas de gas (internal_energy > 0)
         for i in 0..3 {
-            let mut p = Particle::new(i, 1.0,
-                Vec3::new(i as f64, 0.0, 0.0), Vec3::zero());
+            let mut p = Particle::new(i, 1.0, Vec3::new(i as f64, 0.0, 0.0), Vec3::zero());
             p.internal_energy = 500.0;
             p.smoothing_length = 0.3;
             particles.push(p);
         }
         // 2 partículas DM (internal_energy = 0)
         for i in 3..5 {
-            particles.push(Particle::new(i, 2.0,
-                Vec3::new(i as f64, 1.0, 0.0), Vec3::zero()));
+            particles.push(Particle::new(
+                i,
+                2.0,
+                Vec3::new(i as f64, 1.0, 0.0),
+                Vec3::zero(),
+            ));
         }
 
-        Hdf5Writer.write(dir.path(), &particles, &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &particles, &make_prov(), &make_env())
+            .unwrap();
 
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
 
@@ -136,11 +149,18 @@ mod hdf5_tests {
             particles.push(p);
         }
 
-        Hdf5Writer.write(dir.path(), &particles, &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &particles, &make_prov(), &make_env())
+            .unwrap();
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
 
-        let npt: Vec<i64> = file.group("Header").unwrap()
-            .attr("NumPart_Total").unwrap().read_raw().unwrap();
+        let npt: Vec<i64> = file
+            .group("Header")
+            .unwrap()
+            .attr("NumPart_Total")
+            .unwrap()
+            .read_raw()
+            .unwrap();
         assert_eq!(npt[0], 4, "todo gas");
         assert_eq!(npt[1], 0, "sin DM");
 
@@ -158,20 +178,35 @@ mod hdf5_tests {
         g.smoothing_length = 0.5;
         particles.push(g);
 
-        particles.push(Particle::new(1, 3.0, Vec3::new(5.0, 6.0, 7.0), Vec3::new(0.0, 0.2, 0.0)));
+        particles.push(Particle::new(
+            1,
+            3.0,
+            Vec3::new(5.0, 6.0, 7.0),
+            Vec3::new(0.0, 0.2, 0.0),
+        ));
 
-        Hdf5Writer.write(dir.path(), &particles, &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &particles, &make_prov(), &make_env())
+            .unwrap();
         let data = Hdf5Reader.read(dir.path()).unwrap();
 
         assert_eq!(data.particles.len(), 2);
         // Gas primero (id=0)
-        let gas = data.particles.iter().find(|p| p.internal_energy > 0.0).unwrap();
+        let gas = data
+            .particles
+            .iter()
+            .find(|p| p.internal_energy > 0.0)
+            .unwrap();
         assert_eq!(gas.global_id, 0);
         assert!((gas.internal_energy - 250.0).abs() < 1e-12);
         assert!((gas.smoothing_length - 0.5).abs() < 1e-12);
 
         // DM (id=1)
-        let dm = data.particles.iter().find(|p| p.internal_energy == 0.0).unwrap();
+        let dm = data
+            .particles
+            .iter()
+            .find(|p| p.internal_energy == 0.0)
+            .unwrap();
         assert_eq!(dm.global_id, 1);
         assert!((dm.mass - 3.0).abs() < 1e-12);
     }
@@ -183,14 +218,20 @@ mod hdf5_tests {
         p.internal_energy = 100.0;
         let particles = vec![p];
 
-        Hdf5Writer.write(dir.path(), &particles, &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &particles, &make_prov(), &make_env())
+            .unwrap();
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
         let hdr = file.group("Header").unwrap();
 
         let flag_sfr: Vec<i32> = hdr.attr("Flag_Sfr").unwrap().read_raw().unwrap();
         assert_eq!(flag_sfr[0], 1, "Flag_Sfr debe ser 1 con gas");
 
-        let flag_dp: Vec<i32> = hdr.attr("Flag_DoublePrecision").unwrap().read_raw().unwrap();
+        let flag_dp: Vec<i32> = hdr
+            .attr("Flag_DoublePrecision")
+            .unwrap()
+            .read_raw()
+            .unwrap();
         assert_eq!(flag_dp[0], 1, "Flag_DoublePrecision siempre 1");
     }
 }

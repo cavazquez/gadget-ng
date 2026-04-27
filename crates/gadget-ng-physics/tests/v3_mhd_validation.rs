@@ -15,9 +15,7 @@
 //! - Stone et al. 2008 (Athena MHD tests)
 //! - Braginskii 1965 (viscosidad anisotrópica)
 
-use gadget_ng_core::{
-    check_plasma_beta, primordial_bfield_ic, Particle, ParticleType, Vec3,
-};
+use gadget_ng_core::{Particle, ParticleType, Vec3, check_plasma_beta, primordial_bfield_ic};
 use gadget_ng_mhd::{
     advance_induction, apply_braginskii_viscosity, apply_magnetic_forces, dedner_cleaning_step,
     magnetic_power_spectrum,
@@ -34,7 +32,14 @@ fn gas_line_uniform_b(n: usize, b0: f64, u0: f64, h: f64) -> Vec<Particle> {
     (0..n)
         .map(|i| {
             let x = (i as f64 + 0.5) / n as f64;
-            let mut p = Particle::new_gas(i, 1.0 / n as f64, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u0, h);
+            let mut p = Particle::new_gas(
+                i,
+                1.0 / n as f64,
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::zero(),
+                u0,
+                h,
+            );
             p.ptype = ParticleType::Gas;
             p.b_field = Vec3::new(0.0, 0.0, b0);
             p
@@ -79,7 +84,10 @@ fn magnetic_flux_bz(particles: &[Particle]) -> f64 {
 /// Ajusta decaimiento exponencial ln(A) = ln(A0) - γ*t por regresión lineal.
 fn fit_exponential_decay(times: &[f64], amplitudes: &[f64]) -> f64 {
     let n = times.len() as f64;
-    let ln_amps: Vec<f64> = amplitudes.iter().map(|a| a.abs().max(1e-300).ln()).collect();
+    let ln_amps: Vec<f64> = amplitudes
+        .iter()
+        .map(|a| a.abs().max(1e-300).ln())
+        .collect();
     let sum_t: f64 = times.iter().sum();
     let sum_a: f64 = ln_amps.iter().sum();
     let sum_tt: f64 = times.iter().map(|t| t * t).sum();
@@ -125,7 +133,7 @@ fn v3_alfven_wave_frequency_converges_quadratically() {
     let mut errors = Vec::new();
     for &n in &[32_usize, 64, 128] {
         let h = 2.0 / n as f64; // suavizado ~ 2/N
-        let amp = 0.01 * b0;   // perturbación pequeña (< 1% de B0)
+        let amp = 0.01 * b0; // perturbación pequeña (< 1% de B0)
         let dt = 0.5 / (omega_ana * n as f64);
         let t_period = 2.0 * std::f64::consts::PI / omega_ana;
         let n_steps = (2.0 * t_period / dt).ceil() as usize;
@@ -143,9 +151,12 @@ fn v3_alfven_wave_frequency_converges_quadratically() {
         for step in 0..n_steps {
             if step % sample_interval == 0 {
                 // Proyectar sobre modo k: A(t) = Σ B_y(x) * sin(2π*x) / (N/2)
-                let proj: f64 = particles.iter().map(|p| {
-                    p.b_field.y * (2.0 * std::f64::consts::PI * p.position.x).sin()
-                }).sum::<f64>() * 2.0 / n as f64;
+                let proj: f64 = particles
+                    .iter()
+                    .map(|p| p.b_field.y * (2.0 * std::f64::consts::PI * p.position.x).sin())
+                    .sum::<f64>()
+                    * 2.0
+                    / n as f64;
                 times.push(t);
                 by_amps.push(proj);
             }
@@ -221,7 +232,9 @@ fn v3_alfven_wave_damping_braginskii() {
 
     // Energía cinética transversal (v_y component)
     let ek_vy = |ps: &[Particle]| -> f64 {
-        ps.iter().map(|p| 0.5 * p.mass * p.velocity.y.powi(2)).sum::<f64>()
+        ps.iter()
+            .map(|p| 0.5 * p.mass * p.velocity.y.powi(2))
+            .sum::<f64>()
     };
 
     let ek0_visc = ek_vy(&ps_visc);
@@ -256,9 +269,7 @@ fn v3_alfven_wave_damping_braginskii() {
     // La disipación con Braginskii debe ser mayor que sin él
     let diss_visc = ek0_visc - ek1_visc;
     let diss_free = ek0_free - ek1_free;
-    println!(
-        "Disipación con Braginskii: {diss_visc:.4e}, sin: {diss_free:.4e}"
-    );
+    println!("Disipación con Braginskii: {diss_visc:.4e}, sin: {diss_free:.4e}");
     assert!(
         diss_visc > diss_free - ek0_visc * 0.001,
         "Braginskii disipa menos que el sistema libre: {diss_visc:.4e} vs {diss_free:.4e}"
@@ -314,9 +325,10 @@ fn v3_magnetosonic_wave_phase_velocity() {
     // Alternativa: usar la frecuencia de oscilación de v_x proyectada sobre k
     let proj_vx: Vec<f64> = {
         // Snapshot final
-        particles.iter().map(|p| {
-            p.velocity.x * (2.0 * std::f64::consts::PI * p.position.x).sin()
-        }).collect()
+        particles
+            .iter()
+            .map(|p| p.velocity.x * (2.0 * std::f64::consts::PI * p.position.x).sin())
+            .collect()
     };
     let _ = proj_vx; // análisis cualitativo
 
@@ -346,7 +358,10 @@ fn v3_magnetosonic_wave_phase_velocity() {
         rel_err < 0.30, // tolerancia 30% para SPH (no-grid)
         "Velocidad magnetosónica: rel_err={rel_err:.3e} (esperado < 30%)"
     );
-    assert!(v_ms_measured > 0.0, "Velocidad magnetosónica medida no positiva");
+    assert!(
+        v_ms_measured > 0.0,
+        "Velocidad magnetosónica medida no positiva"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -369,7 +384,12 @@ fn v3_flux_freeze_cosmological_ic() {
         .map(|i| {
             let x = (i as f64 + 0.5) / n as f64;
             let mut p = Particle::new_gas(
-                i, 1.0 / n as f64, Vec3::new(x, 0.0, 0.0), Vec3::zero(), 1.0, h,
+                i,
+                1.0 / n as f64,
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::zero(),
+                1.0,
+                h,
             );
             p.ptype = ParticleType::Gas;
             p.b_field = Vec3::new(0.0, 0.0, b0);
@@ -406,14 +426,21 @@ fn v3_flux_freeze_cosmological_ic() {
 fn v3_plasma_beta_cosmological_ic_large() {
     let n = 64;
     let b0_small = 1e-3_f64; // campo muy débil (cosmológicamente relevante)
-    let u0 = 1.0_f64;        // energía interna unitaria
+    let u0 = 1.0_f64; // energía interna unitaria
 
     let mut particles: Vec<Particle> = (0..n)
         .map(|i| {
             let x = (i as f64 + 0.5) / n as f64;
             // Usar h razonable para que la densidad estimada sea ~ 1
             let h = 1.0; // con ρ = m/h³ = (1/N)/1 = 1/N → P_gas = (γ-1)*u*(1/N)
-            let mut p = Particle::new_gas(i, 1.0 / n as f64, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u0, h);
+            let mut p = Particle::new_gas(
+                i,
+                1.0 / n as f64,
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::zero(),
+                u0,
+                h,
+            );
             p.ptype = ParticleType::Gas;
             p
         })
@@ -448,7 +475,14 @@ fn v3_pk_mhd_agrees_with_lcdm_large_scales() {
     let mut particles: Vec<Particle> = (0..n)
         .map(|i| {
             let x = (i as f64 + 0.5) / n as f64;
-            let mut p = Particle::new_gas(i, 1.0 / n as f64, Vec3::new(x, 0.0, 0.0), Vec3::zero(), 1.0, 2.0 / n as f64);
+            let mut p = Particle::new_gas(
+                i,
+                1.0 / n as f64,
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::zero(),
+                1.0,
+                2.0 / n as f64,
+            );
             p.ptype = ParticleType::Gas;
             // Asignar velocidades típicas de ICs cosmológicas (distribución gaussiana)
             p.velocity = Vec3::new(v_rms * ((i as f64 * 0.1).sin()), 0.0, 0.0);
@@ -459,14 +493,18 @@ fn v3_pk_mhd_agrees_with_lcdm_large_scales() {
     primordial_bfield_ic(&mut particles, b0_small, -2.9, 7);
 
     // Energía cinética total
-    let e_kin: f64 = particles.iter().map(|p| {
-        0.5 * p.mass * (p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2))
-    }).sum();
+    let e_kin: f64 = particles
+        .iter()
+        .map(|p| {
+            0.5 * p.mass * (p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2))
+        })
+        .sum();
 
     // Energía magnética total (E_mag = Σ |B|²/2 * V_partícula ≈ Σ |B|²/2 / N)
-    let e_mag: f64 = particles.iter().map(|p| {
-        0.5 * p.b_field.dot(p.b_field) * p.mass
-    }).sum();
+    let e_mag: f64 = particles
+        .iter()
+        .map(|p| 0.5 * p.b_field.dot(p.b_field) * p.mass)
+        .sum();
 
     let ratio = e_mag / e_kin.max(1e-300);
     println!("E_mag/E_kin = {ratio:.3e} (esperado << 1 para B primordial débil)");
@@ -483,5 +521,9 @@ fn v3_pk_mhd_agrees_with_lcdm_large_scales() {
         !pk_bins.is_empty(),
         "magnetic_power_spectrum devolvió vacío"
     );
-    println!("Espectro magnético: {} bins, P[0]={:.3e}", pk_bins.len(), pk_bins[0].1);
+    println!(
+        "Espectro magnético: {} bins, P[0]={:.3e}",
+        pk_bins.len(),
+        pk_bins[0].1
+    );
 }

@@ -3,9 +3,9 @@ mod bincode_writer;
 mod error;
 pub mod gadget4_attrs;
 pub mod halo_catalog_hdf5;
+pub mod hdf5_parallel_writer;
 #[cfg(feature = "hdf5")]
 mod hdf5_writer;
-pub mod hdf5_parallel_writer;
 #[cfg(feature = "msgpack")]
 mod msgpack_writer;
 #[cfg(feature = "netcdf")]
@@ -17,19 +17,19 @@ mod writer;
 
 pub use error::SnapshotError;
 pub use gadget4_attrs::{Gadget4Header, KMS_IN_CMS, KPC_IN_CM, MSUN_IN_G};
-pub use halo_catalog_hdf5::{
-    read_halo_catalog_jsonl, write_halo_catalog_hdf5, write_halo_catalog_jsonl,
-    HaloCatalogEntry, HaloCatalogHeader, SubhaloCatalogEntry,
-};
-#[cfg(feature = "hdf5")]
-pub use halo_catalog_hdf5::read_halo_catalog_hdf5;
 #[cfg(feature = "hdf5")]
 pub use gadget4_attrs::{read_gadget4_header, write_gadget4_header};
 #[cfg(feature = "hdf5")]
-pub use hdf5_writer::{Hdf5Writer, Hdf5Reader};
-pub use provenance::{Provenance};
+pub use halo_catalog_hdf5::read_halo_catalog_hdf5;
+pub use halo_catalog_hdf5::{
+    HaloCatalogEntry, HaloCatalogHeader, SubhaloCatalogEntry, read_halo_catalog_jsonl,
+    write_halo_catalog_hdf5, write_halo_catalog_jsonl,
+};
+#[cfg(feature = "hdf5")]
+pub use hdf5_writer::{Hdf5Reader, Hdf5Writer};
+pub use provenance::Provenance;
 pub use reader::{SnapshotData, SnapshotReader};
-pub use snapshot::{write_snapshot, JsonlReader, JsonlWriter, ParticleRecord, SnapshotMeta};
+pub use snapshot::{JsonlReader, JsonlWriter, ParticleRecord, SnapshotMeta, write_snapshot};
 pub use writer::{SnapshotEnv, SnapshotUnits, SnapshotWriter};
 
 use gadget_ng_core::{Particle, SnapshotFormat};

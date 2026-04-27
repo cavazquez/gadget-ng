@@ -14,15 +14,24 @@ fn gas_with_z(id: usize, metallicity: f64, u: f64) -> Particle {
 }
 
 fn cfg_on() -> DustSection {
-    DustSection { enabled: true, d_to_g_max: 0.01, t_destroy_k: 1e6, tau_grow: 1.0, ..Default::default() }
+    DustSection {
+        enabled: true,
+        d_to_g_max: 0.01,
+        t_destroy_k: 1e6,
+        tau_grow: 1.0,
+        ..Default::default()
+    }
 }
 
 // ── 1. Desactivado = no-op ────────────────────────────────────────────────
 
 #[test]
 fn disabled_no_op() {
-    let cfg = DustSection { enabled: false, ..Default::default() };
-    let mut p = gas_with_z(0, 0.02, 1.0);
+    let cfg = DustSection {
+        enabled: false,
+        ..Default::default()
+    };
+    let p = gas_with_z(0, 0.02, 1.0);
     let d_before = p.dust_to_gas;
     update_dust(&mut [p.clone()], &cfg, GAMMA, 1.0);
     // Sin cambio — pero p fue clonada, verificar el original no cambia
@@ -36,7 +45,10 @@ fn cold_metal_gas_accumulates_dust() {
     let mut particles = vec![gas_with_z(0, 0.02, 1e-5)]; // u muy pequeño → T fría
     particles[0].dust_to_gas = 0.0;
     update_dust(&mut particles, &cfg_on(), GAMMA, 1.0);
-    assert!(particles[0].dust_to_gas > 0.0, "Gas frío metálico debe acumular polvo");
+    assert!(
+        particles[0].dust_to_gas > 0.0,
+        "Gas frío metálico debe acumular polvo"
+    );
 }
 
 // ── 3. Gas caliente pierde polvo por sputtering ───────────────────────────
@@ -47,8 +59,12 @@ fn hot_gas_loses_dust_sputtering() {
     particles[0].dust_to_gas = 0.005; // polvo inicial
     let d_before = particles[0].dust_to_gas;
     update_dust(&mut particles, &cfg_on(), GAMMA, 0.1);
-    assert!(particles[0].dust_to_gas < d_before,
-        "Gas caliente debe perder polvo: {} → {}", d_before, particles[0].dust_to_gas);
+    assert!(
+        particles[0].dust_to_gas < d_before,
+        "Gas caliente debe perder polvo: {} → {}",
+        d_before,
+        particles[0].dust_to_gas
+    );
 }
 
 // ── 4. dust_to_gas siempre en [0, d_to_g_max] ────────────────────────────
@@ -66,8 +82,12 @@ fn dust_bounded() {
         update_dust(&mut particles, &cfg, GAMMA, 0.1);
     }
     for (i, p) in particles.iter().enumerate() {
-        assert!(p.dust_to_gas >= 0.0 && p.dust_to_gas <= cfg.d_to_g_max,
-            "p{i}: dust_to_gas fuera de [0, {}]: {}", cfg.d_to_g_max, p.dust_to_gas);
+        assert!(
+            p.dust_to_gas >= 0.0 && p.dust_to_gas <= cfg.d_to_g_max,
+            "p{i}: dust_to_gas fuera de [0, {}]: {}",
+            cfg.d_to_g_max,
+            p.dust_to_gas
+        );
     }
 }
 
@@ -93,6 +113,5 @@ fn zero_metallicity_no_dust_growth() {
     let mut particles = vec![gas_with_z(0, 0.0, 1e-5)]; // Z=0
     particles[0].dust_to_gas = 0.0;
     update_dust(&mut particles, &cfg_on(), GAMMA, 10.0); // dt largo
-    assert_eq!(particles[0].dust_to_gas, 0.0,
-        "Z=0 → sin acreción de polvo");
+    assert_eq!(particles[0].dust_to_gas, 0.0, "Z=0 → sin acreción de polvo");
 }

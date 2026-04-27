@@ -22,18 +22,18 @@ pub mod slab_pm;
 pub mod solver;
 
 pub use amr::{
-    amr_pm_accels, amr_pm_accels_multilevel, amr_pm_accels_multilevel_with_stats,
-    amr_pm_accels_with_stats, build_amr_hierarchy, identify_refinement_patches,
-    AmrLevel, AmrMultilevelStats, AmrParams, AmrStats, PatchGrid,
+    AmrLevel, AmrMultilevelStats, AmrParams, AmrStats, PatchGrid, amr_pm_accels,
+    amr_pm_accels_multilevel, amr_pm_accels_multilevel_with_stats, amr_pm_accels_with_stats,
+    build_amr_hierarchy, identify_refinement_patches,
 };
 pub use amr_mpi::{
-    amr_pm_accels_multilevel_mpi, broadcast_patch_forces, build_amr_hierarchy_mpi,
-    AmrPatchMessage, AmrRuntime,
+    AmrPatchMessage, AmrRuntime, amr_pm_accels_multilevel_mpi, broadcast_patch_forces,
+    build_amr_hierarchy_mpi,
 };
 #[cfg(feature = "mpi")]
 pub use amr_mpi::{
     amr_pm_accels_multilevel_mpi_real, broadcast_patch_forces_mpi, build_amr_hierarchy_mpi_real,
 };
-pub use pencil_fft::{solve_forces_pencil2d, PencilLayout2D};
+pub use pencil_fft::{PencilLayout2D, solve_forces_pencil2d};
 pub use slab_fft::SlabLayout;
 pub use solver::PmSolver;

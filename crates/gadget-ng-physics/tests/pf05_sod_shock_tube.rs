@@ -36,8 +36,8 @@
 
 use gadget_ng_core::Vec3;
 use gadget_ng_sph::{
-    compute_balsara_factors, compute_density, compute_sph_forces_gadget2, courant_dt,
-    sph_kdk_step_gadget2, SphParticle, GAMMA,
+    GAMMA, SphParticle, compute_balsara_factors, compute_density, compute_sph_forces_gadget2,
+    courant_dt, sph_kdk_step_gadget2,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -57,14 +57,24 @@ fn setup_sod_gadget2(n_left: usize, n_right: usize) -> Vec<SphParticle> {
     for i in 0..n_left {
         let x = -0.5 + (i as f64 + 0.5) * dx_l;
         parts.push(SphParticle::new_gas(
-            id, mass, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u_l, 2.5 * dx_l,
+            id,
+            mass,
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::zero(),
+            u_l,
+            2.5 * dx_l,
         ));
         id += 1;
     }
     for i in 0..n_right {
         let x = (i as f64 + 0.5) * dx_r;
         parts.push(SphParticle::new_gas(
-            id, mass, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u_r, 2.5 * dx_r,
+            id,
+            mass,
+            Vec3::new(x, 0.0, 0.0),
+            Vec3::zero(),
+            u_r,
+            2.5 * dx_r,
         ));
         id += 1;
     }
@@ -97,10 +107,14 @@ fn sod_riemann_density(x: f64, t: f64) -> f64 {
     // Velocidad del choque (aproximado para γ=5/3)
     let p_star = 0.3031_f64; // presión post-choque (conocida)
     let v_star = 0.9274_f64; // velocidad de contacto
-    let rho_2 = rho_l * (((gamma + 1.0) * p_star + (gamma - 1.0) * p_l)
-        / ((gamma - 1.0) * p_star + (gamma + 1.0) * p_l)).max(0.01);
-    let rho_3 = rho_r * (((gamma + 1.0) * p_star + (gamma - 1.0) * p_r)
-        / ((gamma - 1.0) * p_star + (gamma + 1.0) * p_r)).max(0.01);
+    let rho_2 = rho_l
+        * (((gamma + 1.0) * p_star + (gamma - 1.0) * p_l)
+            / ((gamma - 1.0) * p_star + (gamma + 1.0) * p_l))
+            .max(0.01);
+    let rho_3 = rho_r
+        * (((gamma + 1.0) * p_star + (gamma - 1.0) * p_r)
+            / ((gamma - 1.0) * p_star + (gamma + 1.0) * p_r))
+            .max(0.01);
 
     // Velocidad del choque
     let m = (rho_r * ((gamma + 1.0) / 2.0 * p_star / p_r + (gamma - 1.0) / 2.0)).sqrt();
@@ -144,10 +158,14 @@ fn pf05_initial_density_ratio_is_8() {
 #[test]
 fn pf05_internal_energy_left_gt_right() {
     let parts = setup_sod_gadget2(80, 10);
-    let u_l = parts.iter().filter(|p| p.position.x < -0.3)
+    let u_l = parts
+        .iter()
+        .filter(|p| p.position.x < -0.3)
         .filter_map(|p| p.gas.as_ref().map(|g| g.u))
         .fold(0.0_f64, f64::max);
-    let u_r = parts.iter().filter(|p| p.position.x > 0.3)
+    let u_r = parts
+        .iter()
+        .filter(|p| p.position.x > 0.3)
         .filter_map(|p| p.gas.as_ref().map(|g| g.u))
         .fold(0.0_f64, f64::max);
     assert!(u_l > u_r, "u_L={u_l:.4} debe ser > u_R={u_r:.4}");
@@ -158,10 +176,14 @@ fn pf05_internal_energy_left_gt_right() {
 fn pf05_sph_density_left_gt_right() {
     let mut parts = setup_sod_gadget2(16, 2);
     compute_density(&mut parts);
-    let rho_l = parts.iter().filter(|p| p.position.x < -0.3)
+    let rho_l = parts
+        .iter()
+        .filter(|p| p.position.x < -0.3)
         .filter_map(|p| p.gas.as_ref().map(|g| g.rho))
         .fold(0.0_f64, f64::max);
-    let rho_r = parts.iter().filter(|p| p.position.x > 0.3)
+    let rho_r = parts
+        .iter()
+        .filter(|p| p.position.x > 0.3)
         .filter_map(|p| p.gas.as_ref().map(|g| g.rho))
         .fold(0.0_f64, f64::max);
     assert!(rho_l > rho_r, "ρ_L={rho_l:.4} debe ser > ρ_R={rho_r:.4}");
@@ -173,7 +195,10 @@ fn pf05_courant_dt_finite() {
     let mut parts = setup_sod_gadget2(16, 2);
     compute_density(&mut parts);
     let dt = courant_dt(&parts, 0.3);
-    assert!(dt.is_finite() && dt > 0.0, "courant_dt debe ser finito > 0: {dt}");
+    assert!(
+        dt.is_finite() && dt > 0.0,
+        "courant_dt debe ser finito > 0: {dt}"
+    );
 }
 
 // ── Tests lentos ──────────────────────────────────────────────────────────────

@@ -36,11 +36,17 @@ fn psi_decays_with_damping() {
 
     // psi debe decaer (al menos por el factor de amortiguamiento)
     let decay_factor = (-c_r * dt).exp();
-    assert!(particles[0].psi_div <= psi_before,
-        "psi_div debe disminuir: {} → {}", psi_before, particles[0].psi_div);
+    assert!(
+        particles[0].psi_div <= psi_before,
+        "psi_div debe disminuir: {} → {}",
+        psi_before,
+        particles[0].psi_div
+    );
     // El valor exacto depende también del div_B calculado
-    assert!(particles[0].psi_div <= psi_before * (decay_factor + 0.1),
-        "psi_div no debe crecer más de un 10% sobre el decay_factor");
+    assert!(
+        particles[0].psi_div <= psi_before * (decay_factor + 0.1),
+        "psi_div no debe crecer más de un 10% sobre el decay_factor"
+    );
 }
 
 // ── 3. c_r = 0 → psi no se disipa (solo propaga) ────────────────────────
@@ -89,8 +95,14 @@ fn dm_not_affected() {
     let psi_before = dm.psi_div;
     let mut particles = vec![dm];
     dedner_cleaning_step(&mut particles, 1.0, 1.0, 0.1);
-    assert_eq!(particles[0].b_field.x, b_before.x, "DM: b_field no debe cambiar");
-    assert_eq!(particles[0].psi_div, psi_before, "DM: psi_div no debe cambiar");
+    assert_eq!(
+        particles[0].b_field.x, b_before.x,
+        "DM: b_field no debe cambiar"
+    );
+    assert_eq!(
+        particles[0].psi_div, psi_before,
+        "DM: psi_div no debe cambiar"
+    );
 }
 
 // ── 6. No NaN con múltiples partículas ───────────────────────────────────
@@ -98,12 +110,14 @@ fn dm_not_affected() {
 #[test]
 fn no_nan_multi_particle() {
     let n = 20;
-    let mut particles: Vec<Particle> = (0..n).map(|i| {
-        let x = (i as f64) * 0.1;
-        let b = Vec3::new((i as f64).sin(), (i as f64).cos(), 0.5);
-        let psi = (i as f64) * 0.01 - 0.1;
-        gas_with_b_psi(i, Vec3::new(x, 0.0, 0.0), b, psi)
-    }).collect();
+    let mut particles: Vec<Particle> = (0..n)
+        .map(|i| {
+            let x = (i as f64) * 0.1;
+            let b = Vec3::new((i as f64).sin(), (i as f64).cos(), 0.5);
+            let psi = (i as f64) * 0.01 - 0.1;
+            gas_with_b_psi(i, Vec3::new(x, 0.0, 0.0), b, psi)
+        })
+        .collect();
 
     dedner_cleaning_step(&mut particles, 1.0, 0.5, 0.001);
 

@@ -29,8 +29,8 @@
 //! Dwek (1998), Astrophys. J. 501, 643 — ciclo de vida del polvo.
 //! Zhukovska et al. (2014), A&A 562, A76 — modelo D/G en SPH.
 
-use gadget_ng_core::{DustSection, Particle, ParticleType};
 use crate::cooling::u_to_temperature;
+use gadget_ng_core::{DustSection, Particle, ParticleType};
 
 /// Actualiza la relación polvo/gas D/G de cada partícula de gas (Phase 130).
 ///
@@ -43,10 +43,14 @@ use crate::cooling::u_to_temperature;
 ///
 /// Las partículas de DM y estrellas no se modifican.
 pub fn update_dust(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt: f64) {
-    if !cfg.enabled { return; }
+    if !cfg.enabled {
+        return;
+    }
 
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
 
         let t = u_to_temperature(p.internal_energy.max(0.0), gamma);
         let z = p.metallicity.clamp(0.0, 1.0);

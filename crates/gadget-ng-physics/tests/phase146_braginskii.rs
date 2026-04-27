@@ -64,8 +64,11 @@ fn total_momentum_conserved() {
     let px_total_before: f64 = particles.iter().map(|p| p.mass * p.velocity.x).sum();
     apply_braginskii_viscosity(&mut particles, 0.5, 0.01);
     let px_total_after: f64 = particles.iter().map(|p| p.mass * p.velocity.x).sum();
-    assert!((px_total_after - px_total_before).abs() < 1e-10,
-        "Momento total debe conservarse: Δpx = {:.2e}", px_total_after - px_total_before);
+    assert!(
+        (px_total_after - px_total_before).abs() < 1e-10,
+        "Momento total debe conservarse: Δpx = {:.2e}",
+        px_total_after - px_total_before
+    );
 }
 
 // ── 5. B ∥ ẑ, partículas separadas en z: vz se difunde ───────────────────
@@ -80,7 +83,10 @@ fn braginskii_anisotropy_z_direction() {
     ];
     let vz0_before = particles[0].velocity.z;
     apply_braginskii_viscosity(&mut particles, 1.0, 0.01);
-    assert!(particles[0].velocity.z < vz0_before, "vz debe difundirse (∥B)");
+    assert!(
+        particles[0].velocity.z < vz0_before,
+        "vz debe difundirse (∥B)"
+    );
 }
 
 // ── 6. Partículas con B=0 no reciben impulso ─────────────────────────────
@@ -89,8 +95,18 @@ fn braginskii_anisotropy_z_direction() {
 fn zero_b_field_no_viscosity() {
     let b_zero = Vec3::zero();
     let mut particles = vec![
-        gas(0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(5.0, 0.0, 0.0), b_zero),
-        gas(1, Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.0, 0.0, 0.0), b_zero),
+        gas(
+            0,
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(5.0, 0.0, 0.0),
+            b_zero,
+        ),
+        gas(
+            1,
+            Vec3::new(0.1, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            b_zero,
+        ),
     ];
     let vx0 = particles[0].velocity.x;
     apply_braginskii_viscosity(&mut particles, 1.0, 0.01);

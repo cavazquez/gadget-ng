@@ -8,7 +8,7 @@
 
 use gadget_ng_core::Vec3;
 use gadget_ng_tree::LetTree;
-use gadget_ng_tree::{accel_from_let, RemoteMultipoleNode, RmnSoa};
+use gadget_ng_tree::{RemoteMultipoleNode, RmnSoa, accel_from_let};
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

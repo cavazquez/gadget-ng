@@ -2,7 +2,7 @@
 ///
 /// Tests: kick ocurre con prob alta, DM no recibe kick, desactivado = no-op,
 ///        velocidad del kick correcta, sfr=0 sin kick, serde de nuevos params.
-use gadget_ng_core::{FeedbackSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{FeedbackSection, Particle, Vec3};
 use gadget_ng_sph::apply_stellar_wind_feedback;
 
 fn cfg_wind(enabled: bool) -> FeedbackSection {
@@ -18,8 +18,7 @@ fn cfg_wind(enabled: bool) -> FeedbackSection {
 }
 
 fn gas(id: usize) -> Particle {
-    let mut p = Particle::new_gas(id, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
-    p
+    Particle::new_gas(id, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5)
 }
 
 // ── 1. Kick ocurre con prob alta (eta grande) ─────────────────────────────
@@ -33,9 +32,15 @@ fn stellar_wind_kick_occurs_eventually() {
         let sfr = vec![1.0];
         let mut seed = attempt.wrapping_mul(6271) + 1;
         let k = apply_stellar_wind_feedback(&mut particles, &sfr, &cfg, 1.0, &mut seed);
-        if !k.is_empty() { kicked_any = true; break; }
+        if !k.is_empty() {
+            kicked_any = true;
+            break;
+        }
     }
-    assert!(kicked_any, "Debe haber al menos un kick en 200 intentos con eta=10");
+    assert!(
+        kicked_any,
+        "Debe haber al menos un kick en 200 intentos con eta=10"
+    );
 }
 
 // ── 2. DM no recibe kick ───────────────────────────────────────────────────
@@ -92,10 +97,16 @@ fn stellar_wind_changes_velocity() {
         let dv = ((particles[0].velocity.x - v0.x).powi(2)
             + (particles[0].velocity.y - v0.y).powi(2)
             + (particles[0].velocity.z - v0.z).powi(2))
-            .sqrt();
-        if dv > 0.0 { changed = true; break; }
+        .sqrt();
+        if dv > 0.0 {
+            changed = true;
+            break;
+        }
     }
-    assert!(changed, "La velocidad debe cambiar tras un kick de viento estelar");
+    assert!(
+        changed,
+        "La velocidad debe cambiar tras un kick de viento estelar"
+    );
 }
 
 // ── 6. Serde de nuevos parámetros ─────────────────────────────────────────

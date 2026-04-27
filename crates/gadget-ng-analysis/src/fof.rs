@@ -284,9 +284,12 @@ pub fn find_halos_with_membership(
                                     if j <= i {
                                         continue;
                                     }
-                                    let dx = periodic_diff(positions[i].x, positions[j].x, box_size);
-                                    let dy = periodic_diff(positions[i].y, positions[j].y, box_size);
-                                    let dz = periodic_diff(positions[i].z, positions[j].z, box_size);
+                                    let dx =
+                                        periodic_diff(positions[i].x, positions[j].x, box_size);
+                                    let dy =
+                                        periodic_diff(positions[i].y, positions[j].y, box_size);
+                                    let dz =
+                                        periodic_diff(positions[i].z, positions[j].z, box_size);
                                     if dx * dx + dy * dy + dz * dz < ll2 {
                                         uf.union(i, j);
                                     }
@@ -366,7 +369,10 @@ pub fn particle_snapshots_from_catalog(
                     best_idx = Some(h_idx);
                 }
             }
-            super::merger_tree::ParticleSnapshot { id, halo_idx: best_idx }
+            super::merger_tree::ParticleSnapshot {
+                id,
+                halo_idx: best_idx,
+            }
         })
         .collect()
 }

@@ -3,32 +3,31 @@ use crate::error::CliError;
 #[cfg(feature = "simd")]
 use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
-    build_particles_for_gid_range, cosmology::CosmologyParams, density_contrast_rms,
-    gravity_coupling_qksl, hubble_param, peculiar_vrms, wrap_position, DirectGravity,
-    GravitySolver, IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind, SolverKind,
-    Vec3,
+    DirectGravity, GravitySolver, IntegratorKind, OpeningCriterion, Particle, RunConfig, SfcKind,
+    SolverKind, Vec3, build_particles_for_gid_range, cosmology::CosmologyParams,
+    density_contrast_rms, gravity_coupling_qksl, hubble_param, peculiar_vrms, wrap_position,
 };
 use gadget_ng_integrators::{
-    hierarchical_kdk_step, leapfrog_cosmo_kdk_step, leapfrog_kdk_step, yoshida4_cosmo_kdk_step,
-    yoshida4_kdk_step, CosmoFactors, HierarchicalState, StepStats, YOSHIDA4_W0, YOSHIDA4_W1,
+    CosmoFactors, HierarchicalState, StepStats, YOSHIDA4_W0, YOSHIDA4_W1, hierarchical_kdk_step,
+    leapfrog_cosmo_kdk_step, leapfrog_kdk_step, yoshida4_cosmo_kdk_step, yoshida4_kdk_step,
 };
 use gadget_ng_io::SnapshotReader;
 use gadget_ng_io::{
-    write_snapshot_formatted, JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotUnits,
-    SnapshotWriter,
+    JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotUnits, SnapshotWriter,
+    write_snapshot_formatted,
 };
-use gadget_ng_parallel::{gid_block_range, ParallelRuntime, SfcDecomposition, SlabDecomposition};
+use gadget_ng_parallel::{ParallelRuntime, SfcDecomposition, SlabDecomposition, gid_block_range};
 use gadget_ng_pm::distributed as pm_dist;
 use gadget_ng_pm::slab_fft::SlabLayout;
 use gadget_ng_pm::slab_pm;
-use gadget_ng_pm::{solve_forces_pencil2d, PencilLayout2D, PmSolver};
+use gadget_ng_pm::{PencilLayout2D, PmSolver, solve_forces_pencil2d};
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
 use gadget_ng_tree::{
-    accel_from_let, pack_let_nodes, unpack_let_nodes, walk_stats_begin, walk_stats_end,
-    BarnesHutGravity, Octree,
+    BarnesHutGravity, Octree, accel_from_let, pack_let_nodes, unpack_let_nodes, walk_stats_begin,
+    walk_stats_end,
 };
-use gadget_ng_treepm::{distributed as treepm_dist, TreePmSolver};
+use gadget_ng_treepm::{TreePmSolver, distributed as treepm_dist};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -436,14 +435,17 @@ fn load_checkpoint<R: ParallelRuntime + ?Sized>(
     lo: usize,
     hi: usize,
     cfg_hash: &str,
-) -> Result<(
-    Vec<Particle>,
-    u64,
-    f64,
-    Option<HierarchicalState>,
-    Option<Vec<gadget_ng_sph::BlackHole>>,
-    Option<Vec<gadget_ng_rt::ChemState>>,
-), CliError> {
+) -> Result<
+    (
+        Vec<Particle>,
+        u64,
+        f64,
+        Option<HierarchicalState>,
+        Option<Vec<gadget_ng_sph::BlackHole>>,
+        Option<Vec<gadget_ng_rt::ChemState>>,
+    ),
+    CliError,
+> {
     let ck_dir = resume_dir.join("checkpoint");
     let meta_path = ck_dir.join("checkpoint.json");
     let meta_str = fs::read_to_string(&meta_path).map_err(|e| CliError::io(&meta_path, e))?;
@@ -487,7 +489,14 @@ fn load_checkpoint<R: ParallelRuntime + ?Sized>(
     } else {
         None
     };
-    Ok((local, meta.completed_step, meta.a_current, h_state, agn_bhs, chem_states))
+    Ok((
+        local,
+        meta.completed_step,
+        meta.a_current,
+        h_state,
+        agn_bhs,
+        chem_states,
+    ))
 }
 
 pub fn cmd_config_print(cfg_path: &Path) -> Result<(), CliError> {
@@ -665,7 +674,7 @@ fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     } else {
         [0.0, 0.0, 0.0]
     };
-    if let Some(ref mut f) = diag_file {
+    if let Some(f) = diag_file {
         let mut obj = serde_json::json!({
             "step": step,
             "kinetic_energy": ke,
@@ -1226,7 +1235,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Se inicializa antes del loop si rt.enabled; de lo contrario permanece None.
     let mut rt_field_opt: Option<gadget_ng_rt::RadiationField> = if cfg.rt.enabled {
         let n = cfg.rt.rt_mesh;
-        let dx = if n > 0 { cfg.simulation.box_size / n as f64 } else { 1.0 };
+        let dx = if n > 0 {
+            cfg.simulation.box_size / n as f64
+        } else {
+            1.0
+        };
         Some(gadget_ng_rt::RadiationField::uniform(n, n, n, dx, 0.0))
     } else {
         None
@@ -1256,8 +1269,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         ($step:expr, $hs:expr, $agn_bhs:expr, $chem:expr) => {
             if checkpoint_interval > 0 && $step % checkpoint_interval == 0 {
                 save_checkpoint(
-                    rt, $step, a_current, &local, total, $hs, out_dir, &cfg_hash,
-                    $agn_bhs, $chem,
+                    rt, $step, a_current, &local, total, $hs, out_dir, &cfg_hash, $agn_bhs, $chem,
                 )?;
             }
         };
@@ -1308,7 +1320,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 a_current,
                 $step,
                 out_dir,
-                if sph_chem_states.is_empty() { None } else { Some(&sph_chem_states) },
+                if sph_chem_states.is_empty() {
+                    None
+                } else {
+                    Some(&sph_chem_states)
+                },
             );
             if _insitu_ran && !_insitu_fx.halo_centers.is_empty() {
                 halo_centers = _insitu_fx.halo_centers;
@@ -1521,11 +1537,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         };
     }
 
-
     // Agujeros negros activos durante la simulación (Phase 96 + FoF Phase 100).
     // Phase 106: si hay estado AGN en checkpoint, restaurarlo.
-    let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> =
-        resume_agn_bhs.take().unwrap_or_default();
+    let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> = resume_agn_bhs.take().unwrap_or_default();
 
     // Macro local para feedback AGN (Phase 96 + halos FoF Phase 100).
     // Coloca BH seeds en los N centros de halos más masivos (Phase 100).
@@ -1544,9 +1558,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     // Sincronizar BHs con centros de halos FoF más masivos
                     let n_new = halo_centers.len().min(n_bh);
                     if agn_bhs.len() != n_new {
-                        agn_bhs.resize_with(n_new, || gadget_ng_sph::BlackHole::new(
-                            gadget_ng_core::Vec3::zero(), agn_params.m_seed,
-                        ));
+                        agn_bhs.resize_with(n_new, || {
+                            gadget_ng_sph::BlackHole::new(
+                                gadget_ng_core::Vec3::zero(),
+                                agn_params.m_seed,
+                            )
+                        });
                     }
                     for (bh, &pos) in agn_bhs.iter_mut().zip(halo_centers.iter()) {
                         bh.pos = pos;
@@ -1559,7 +1576,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         agn_params.m_seed,
                     ));
                 }
-                gadget_ng_sph::grow_black_holes(&mut agn_bhs, &local, &agn_params, cfg.simulation.dt);
+                gadget_ng_sph::grow_black_holes(
+                    &mut agn_bhs,
+                    &local,
+                    &agn_params,
+                    cfg.simulation.dt,
+                );
                 // Phase 116: Bifurcación modo quasar / modo radio AGN
                 gadget_ng_sph::apply_agn_feedback_bimodal(
                     &mut local,
@@ -1588,39 +1610,47 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 // Phase 135: resistividad numérica artificial (Price 2008)
                 if cfg.mhd.alpha_b > 0.0 {
                     gadget_ng_mhd::apply_artificial_resistivity(
-                        &mut local, cfg.mhd.alpha_b, dt_mhd,
+                        &mut local,
+                        cfg.mhd.alpha_b,
+                        dt_mhd,
                     );
                 }
                 gadget_ng_mhd::apply_magnetic_forces(&mut local, dt_mhd);
-                gadget_ng_mhd::dedner_cleaning_step(
-                    &mut local,
-                    cfg.mhd.c_h,
-                    cfg.mhd.c_r,
-                    dt_mhd,
-                );
+                gadget_ng_mhd::dedner_cleaning_step(&mut local, cfg.mhd.c_h, cfg.mhd.c_r, dt_mhd);
                 // Phase 142: correcciones SRMHD para partículas con |v|/c > threshold
                 if cfg.mhd.relativistic_mhd {
                     gadget_ng_mhd::advance_srmhd(
-                        &mut local, dt_mhd, gadget_ng_mhd::C_LIGHT, cfg.mhd.v_rel_threshold,
+                        &mut local,
+                        dt_mhd,
+                        gadget_ng_mhd::C_LIGHT,
+                        cfg.mhd.v_rel_threshold,
                     );
                 }
                 // Phase 142: flux-freeze ICM (B ∝ ρ^{2/3} para β > beta_freeze)
                 {
                     let rho_ref_mhd = gadget_ng_mhd::mean_gas_density(&local);
                     gadget_ng_mhd::apply_flux_freeze(
-                        &mut local, cfg.sph.gamma, cfg.mhd.beta_freeze, rho_ref_mhd,
+                        &mut local,
+                        cfg.sph.gamma,
+                        cfg.mhd.beta_freeze,
+                        rho_ref_mhd,
                     );
                 }
                 // Phase 146: viscosidad anisótropa Braginskii
                 if cfg.mhd.eta_braginskii > 0.0 {
                     gadget_ng_mhd::apply_braginskii_viscosity(
-                        &mut local, cfg.mhd.eta_braginskii, dt_mhd,
+                        &mut local,
+                        cfg.mhd.eta_braginskii,
+                        dt_mhd,
                     );
                 }
                 // Phase 145: reconexión magnética Sweet-Parker
                 if cfg.mhd.reconnection_enabled {
                     gadget_ng_mhd::apply_magnetic_reconnection(
-                        &mut local, cfg.mhd.f_reconnection, cfg.sph.gamma, dt_mhd,
+                        &mut local,
+                        cfg.mhd.f_reconnection,
+                        cfg.sph.gamma,
+                        dt_mhd,
                     );
                 }
             }
@@ -1636,7 +1666,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     v_max: cfg.sidm.v_max,
                 };
                 gadget_ng_tree::apply_sidm_scattering(
-                    &mut local, &sidm_params, cfg.simulation.dt, cfg.simulation.seed + $step,
+                    &mut local,
+                    &sidm_params,
+                    cfg.simulation.dt,
+                    cfg.simulation.seed + $step,
                 );
             }
         };
@@ -1651,10 +1684,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     n: cfg.modified_gravity.n,
                 };
                 let cosmo_params = gadget_ng_core::CosmologyParams::new(
-                    cfg.cosmology.omega_m, cfg.cosmology.omega_lambda, cfg.cosmology.h0,
+                    cfg.cosmology.omega_m,
+                    cfg.cosmology.omega_lambda,
+                    cfg.cosmology.h0,
                 );
                 gadget_ng_core::apply_modified_gravity(
-                    &mut local, &fr_params, &cosmo_params, $a_cur,
+                    &mut local,
+                    &fr_params,
+                    &cosmo_params,
+                    $a_cur,
                 );
             }
         };
@@ -2388,22 +2426,25 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
             // Fase 20: migrar partículas a su slab Z al inicio de cada paso.
             // Necesario para que deposit_slab_extended reciba las partículas correctas.
-            if use_pm_slab && rt.size() > 1 {
-                if let Some(ref layout) = slab_layout_opt {
-                    let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
-                    let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
-                    rt.exchange_domain_by_z(&mut local, z_lo, z_hi);
-                }
+            if use_pm_slab
+                && rt.size() > 1
+                && let Some(ref layout) = slab_layout_opt
+            {
+                let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                rt.exchange_domain_by_z(&mut local, z_lo, z_hi);
             }
 
             // Fase 21: migrar partículas a su slab Z para TreePM distribuido.
             // Fase 23 (use_treepm_sr_sfc): este path usa SFC en su lugar (ver abajo).
-            if use_treepm_slab && !use_treepm_sr_sfc && rt.size() > 1 {
-                if let Some(ref layout) = treepm_slab_layout_opt {
-                    let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
-                    let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
-                    rt.exchange_domain_by_z(&mut local, z_lo, z_hi);
-                }
+            if use_treepm_slab
+                && !use_treepm_sr_sfc
+                && rt.size() > 1
+                && let Some(ref layout) = treepm_slab_layout_opt
+            {
+                let z_lo = layout.z_lo_idx as f64 * box_size / pm_nm as f64;
+                let z_hi = (layout.z_lo_idx + layout.nz_local) as f64 * box_size / pm_nm as f64;
+                rt.exchange_domain_by_z(&mut local, z_lo, z_hi);
             }
 
             // Fase 23: rebalanceo y migración SFC para el dominio SR.
@@ -3803,27 +3844,25 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         }
     }
 
-    if write_final_snapshot {
-        if let Some(parts) = rt.root_gather_particles(&local, total) {
-            let snap_dir = out_dir.join("snapshot_final");
-            fs::create_dir_all(&snap_dir).map_err(|e| CliError::io(&snap_dir, e))?;
-            let time_final = cfg.simulation.num_steps as f64 * cfg.simulation.dt;
-            // Con cosmología, redshift = 1/a - 1; sin cosmología, z = 0.
-            let redshift = if cfg.cosmology.enabled {
-                1.0 / a_current - 1.0
-            } else {
-                0.0
-            };
-            let env = snapshot_env_for(cfg, time_final, redshift);
-            write_snapshot_formatted(cfg.output.snapshot_format, &snap_dir, &parts, &prov, &env)?;
-            // Guardar el estado jerárquico junto al snapshot si aplica.
-            if cfg.timestep.hierarchical {
-                if let Some(ref h_state) = h_state_opt {
-                    h_state
-                        .save(&snap_dir)
-                        .map_err(|e| CliError::io(&snap_dir, e))?;
-                }
-            }
+    if write_final_snapshot && let Some(parts) = rt.root_gather_particles(&local, total) {
+        let snap_dir = out_dir.join("snapshot_final");
+        fs::create_dir_all(&snap_dir).map_err(|e| CliError::io(&snap_dir, e))?;
+        let time_final = cfg.simulation.num_steps as f64 * cfg.simulation.dt;
+        // Con cosmología, redshift = 1/a - 1; sin cosmología, z = 0.
+        let redshift = if cfg.cosmology.enabled {
+            1.0 / a_current - 1.0
+        } else {
+            0.0
+        };
+        let env = snapshot_env_for(cfg, time_final, redshift);
+        write_snapshot_formatted(cfg.output.snapshot_format, &snap_dir, &parts, &prov, &env)?;
+        // Guardar el estado jerárquico junto al snapshot si aplica.
+        if cfg.timestep.hierarchical
+            && let Some(ref h_state) = h_state_opt
+        {
+            h_state
+                .save(&snap_dir)
+                .map_err(|e| CliError::io(&snap_dir, e))?;
         }
     }
     Ok(())
@@ -3969,10 +4008,10 @@ pub fn run_visualize(
     let mut renderer = Renderer::new(cfg);
     renderer.render_frame(&positions, &velocities);
 
-    if let Some(parent) = out_png.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
-        }
+    if let Some(parent) = out_png.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
     }
     renderer
         .save_frame(out_png)
@@ -3995,8 +4034,8 @@ pub fn run_analyse(
     min_particles: usize,
     pk_mesh: usize,
 ) -> Result<(), CliError> {
-    use gadget_ng_analysis::catalog::{write_halo_catalog, write_power_spectrum};
     use gadget_ng_analysis::AnalysisParams;
+    use gadget_ng_analysis::catalog::{write_halo_catalog, write_power_spectrum};
     use gadget_ng_core::SnapshotFormat;
 
     let data = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, snapshot_dir)

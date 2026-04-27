@@ -4,13 +4,15 @@
 //! catálogo que el FoF serial estándar, y que la función auxiliar
 //! `find_halos_combined` recupera correctamente halos que cruzan una frontera artificial.
 
-use gadget_ng_analysis::fof::{find_halos, find_halos_combined};
 use gadget_ng_analysis::find_halos_parallel;
+use gadget_ng_analysis::fof::{find_halos, find_halos_combined};
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_parallel::{sfc::SfcDecomposition, SerialRuntime};
+use gadget_ng_parallel::{SerialRuntime, sfc::SfcDecomposition};
 
 fn skip() -> bool {
-    std::env::var("PHASE61_SKIP").map(|v| v == "1").unwrap_or(false)
+    std::env::var("PHASE61_SKIP")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 /// Construye un conjunto de partículas en lattice perturbado y retorna posiciones.
@@ -19,14 +21,20 @@ fn make_lattice(n_side: usize, box_size: f64, seed: u64) -> Vec<Particle> {
     let step = box_size / n_side as f64;
     let mut lcg = seed;
     let mut particles = Vec::with_capacity(n);
-        for ix in 0..n_side {
+    for ix in 0..n_side {
         for iy in 0..n_side {
             for iz in 0..n_side {
-                lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                lcg = lcg
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let dx = ((lcg >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * step * 0.1;
-                lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                lcg = lcg
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let dy = ((lcg >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * step * 0.1;
-                lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                lcg = lcg
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let dz = ((lcg >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * step * 0.1;
                 let x = (ix as f64 * step + dx).rem_euclid(box_size);
                 let y = (iy as f64 * step + dy).rem_euclid(box_size);
@@ -48,18 +56,19 @@ fn cluster(n: usize, cx: f64, cy: f64, cz: f64, radius: f64, seed: u64) -> Vec<P
     let mut lcg = seed;
     (0..n)
         .map(|i| {
-            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lcg = lcg
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let dx = ((lcg >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 2.0 * radius;
-            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lcg = lcg
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let dy = ((lcg >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 2.0 * radius;
-            lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lcg = lcg
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let dz = ((lcg >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * 2.0 * radius;
-            Particle::new(
-                i,
-                1.0,
-                Vec3::new(cx + dx, cy + dy, cz + dz),
-                Vec3::zero(),
-            )
+            Particle::new(i, 1.0, Vec3::new(cx + dx, cy + dy, cz + dz), Vec3::zero())
         })
         .collect()
 }
@@ -70,7 +79,9 @@ fn cluster(n: usize, cx: f64, cy: f64, cz: f64, radius: f64, seed: u64) -> Vec<P
 /// halos y la misma masa total que find_halos serial.
 #[test]
 fn phase61_vs_serial_p1() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     let box_size = 1.0_f64;
     let particles = make_lattice(8, box_size, 42);
@@ -103,7 +114,9 @@ fn phase61_vs_serial_p1() {
 /// partículas locales y halos recibidos.
 #[test]
 fn phase61_cross_boundary_halo_recovered() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     let box_size = 1.0_f64;
 
@@ -125,7 +138,11 @@ fn phase61_cross_boundary_halo_recovered() {
     );
 
     // Debe haber exactamente 1 halo con al menos 10 partículas (locales + halos).
-    assert_eq!(halos_combined.len(), 1, "debe encontrarse 1 halo cross-boundary");
+    assert_eq!(
+        halos_combined.len(),
+        1,
+        "debe encontrarse 1 halo cross-boundary"
+    );
     assert!(
         halos_combined[0].n_particles >= 10,
         "halo debe incluir partículas de ambas mitades: n={}",
@@ -138,7 +155,9 @@ fn phase61_cross_boundary_halo_recovered() {
 /// partículas de campo si min_particles > 1).
 #[test]
 fn phase61_mass_conservation() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     let box_size = 1.0_f64;
 

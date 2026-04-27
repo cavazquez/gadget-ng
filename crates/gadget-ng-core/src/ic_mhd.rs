@@ -36,14 +36,16 @@
 //! El valor `b0` está en las unidades internas del código. Para convertir desde
 //! nGauss comoving: `B_int = B_nG * unidades_B_factor`.
 
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 use crate::{particle::Particle, vec3::Vec3};
 
 // ── Generador LCG simple (reproducible, sin dependencias) ─────────────────────
 
 fn lcg_u64(state: &mut u64) -> f64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     ((*state >> 33) as f64) / (u32::MAX as f64)
 }
 
@@ -95,12 +97,7 @@ pub fn uniform_bfield_ic(particles: &mut [Particle], b0: f64) {
 /// La implementación actual usa una aproximación 1D a lo largo de la dirección X
 /// para el campo `B_y`. Esta es suficiente para el test V3-T5 (β_plasma).
 /// Una implementación 3D completa requiere FFT 3D y se puede agregar en el futuro.
-pub fn primordial_bfield_ic(
-    particles: &mut [Particle],
-    b0: f64,
-    spectral_index: f64,
-    seed: u64,
-) {
+pub fn primordial_bfield_ic(particles: &mut [Particle], b0: f64, spectral_index: f64, seed: u64) {
     let n = particles.len();
     if n == 0 {
         return;
@@ -201,15 +198,27 @@ pub fn primordial_bfield_ic_3d(
     // ── 2. Generar amplitudes en espacio de k y proyectar ⊥ a k ─────────────
     // Iteramos solo sobre el hemisferio kz ≥ 0 para luego imponer Hermitiana.
     for iz in 0..n {
-        let kz_int: i64 = if iz <= n / 2 { iz as i64 } else { iz as i64 - n as i64 };
+        let kz_int: i64 = if iz <= n / 2 {
+            iz as i64
+        } else {
+            iz as i64 - n as i64
+        };
         let kz = kz_int as f64 * pi2 / box_size;
 
         for iy in 0..n {
-            let ky_int: i64 = if iy <= n / 2 { iy as i64 } else { iy as i64 - n as i64 };
+            let ky_int: i64 = if iy <= n / 2 {
+                iy as i64
+            } else {
+                iy as i64 - n as i64
+            };
             let ky = ky_int as f64 * pi2 / box_size;
 
             for ix in 0..n {
-                let kx_int: i64 = if ix <= n / 2 { ix as i64 } else { ix as i64 - n as i64 };
+                let kx_int: i64 = if ix <= n / 2 {
+                    ix as i64
+                } else {
+                    ix as i64 - n as i64
+                };
                 let kx = kx_int as f64 * pi2 / box_size;
 
                 let k2 = kx * kx + ky * ky + kz * kz;
@@ -312,11 +321,7 @@ pub fn primordial_bfield_ic_3d(
     let scale = if rms > 1e-300 { b0 / rms } else { 1.0 };
 
     for (i, p) in particles.iter_mut().enumerate() {
-        p.b_field = Vec3::new(
-            bx_k[i].re * scale,
-            by_k[i].re * scale,
-            bz_k[i].re * scale,
-        );
+        p.b_field = Vec3::new(bx_k[i].re * scale, by_k[i].re * scale, bz_k[i].re * scale);
     }
 }
 
@@ -329,7 +334,7 @@ pub fn primordial_bfield_ic_3d(
 ///
 /// El resultado es equivalente a una IFFT 3D completa (separabilidad de la DFT).
 /// La normalización `1/n³` debe aplicarse por el llamador.
-fn ifft_3d_inplace(buf: &mut Vec<Complex<f64>>, n: usize) {
+fn ifft_3d_inplace(buf: &mut [Complex<f64>], n: usize) {
     let mut planner = FftPlanner::new();
     let ifft = planner.plan_fft_inverse(n);
 
@@ -386,7 +391,10 @@ fn ifft_3d_inplace(buf: &mut Vec<Complex<f64>>, n: usize) {
 /// - `particles` — slice de partículas (debe incluir partículas de gas con `u > 0`)
 /// - `gamma` — índice adiabático (típico: 5/3)
 pub fn check_plasma_beta(particles: &[Particle], gamma: f64) -> f64 {
-    let gas: Vec<&Particle> = particles.iter().filter(|p| p.internal_energy > 0.0).collect();
+    let gas: Vec<&Particle> = particles
+        .iter()
+        .filter(|p| p.internal_energy > 0.0)
+        .collect();
     if gas.is_empty() {
         return f64::INFINITY;
     }
@@ -427,10 +435,10 @@ pub fn check_plasma_beta(particles: &[Particle], gamma: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::particle::ParticleType;
     #[allow(unused_imports)]
     use super::primordial_bfield_ic_3d;
+    use super::*;
+    use crate::particle::ParticleType;
 
     fn gas_particle(id: usize, x: f64, u: f64, h: f64) -> Particle {
         let mut p = Particle::new_gas(id, 1.0, Vec3::new(x, 0.0, 0.0), Vec3::zero(), u, h);

@@ -24,9 +24,13 @@ use gadget_ng_core::{EnrichmentSection, Particle, ParticleType};
 /// Factor de normalización del kernel SPH (usado solo para peso relativo).
 #[inline]
 fn kernel_w(r: f64, h: f64) -> f64 {
-    if h <= 0.0 { return 0.0; }
+    if h <= 0.0 {
+        return 0.0;
+    }
     let q = r / h;
-    if q > 2.0 { return 0.0; }
+    if q > 2.0 {
+        return 0.0;
+    }
     // Wendland C2 3D (mismo kernel que el módulo sph principal)
     let t = 1.0 - 0.5 * q;
     let t4 = t * t * t * t;
@@ -48,13 +52,10 @@ fn kernel_w(r: f64, h: f64) -> f64 {
 /// - `sfr` — tasa de formación estelar por partícula en unidades internas [1/tiempo].
 /// - `dt` — paso de tiempo en unidades internas.
 /// - `cfg` — configuración de enriquecimiento.
-pub fn apply_enrichment(
-    particles: &mut [Particle],
-    sfr: &[f64],
-    dt: f64,
-    cfg: &EnrichmentSection,
-) {
-    if !cfg.enabled || particles.is_empty() { return; }
+pub fn apply_enrichment(particles: &mut [Particle], sfr: &[f64], dt: f64, cfg: &EnrichmentSection) {
+    if !cfg.enabled || particles.is_empty() {
+        return;
+    }
 
     let n = particles.len();
     assert_eq!(sfr.len(), n, "sfr.len() debe coincidir con particles.len()");
@@ -64,12 +65,18 @@ pub fn apply_enrichment(
 
     // ── SN II desde partículas de gas ─────────────────────────────────────
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
-        if sfr[i] <= 0.0 { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
+        if sfr[i] <= 0.0 {
+            continue;
+        }
 
         let h_i = particles[i].smoothing_length.max(1e-10);
         let delta_metal = cfg.yield_snii * sfr[i] * dt;
-        if delta_metal <= 0.0 { continue; }
+        if delta_metal <= 0.0 {
+            continue;
+        }
 
         // Encontrar vecinos y acumular pesos del kernel
         let pos_i = particles[i].position;
@@ -77,8 +84,12 @@ pub fn apply_enrichment(
         let mut weight_sum = 0.0_f64;
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
@@ -92,11 +103,15 @@ pub fn apply_enrichment(
             }
         }
 
-        if weight_sum <= 0.0 { continue; }
+        if weight_sum <= 0.0 {
+            continue;
+        }
 
         // Distribuir metales a vecinos
         for j in 0..n {
-            if weights[j] <= 0.0 { continue; }
+            if weights[j] <= 0.0 {
+                continue;
+            }
             let m_j = particles[j].mass.max(1e-30);
             delta_z[j] += (weights[j] / weight_sum) * delta_metal / m_j;
         }
@@ -105,22 +120,30 @@ pub fn apply_enrichment(
     // ── AGB desde partículas estelares ────────────────────────────────────
     // Rata gradual: ΔZ_agb = yield_agb × m_star × dt (normalizada por tiempo AGB = 1)
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Star { continue; }
+        if particles[i].ptype != ParticleType::Star {
+            continue;
+        }
 
         let h_i = particles[i].smoothing_length.max(1e-10).max(
             // Usar media de smoothing lengths de vecinos si h_star = 0
             0.1,
         );
         let delta_metal = cfg.yield_agb * particles[i].mass * dt;
-        if delta_metal <= 0.0 { continue; }
+        if delta_metal <= 0.0 {
+            continue;
+        }
 
         let pos_i = particles[i].position;
         let mut weights = vec![0.0_f64; n];
         let mut weight_sum = 0.0_f64;
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
@@ -134,10 +157,14 @@ pub fn apply_enrichment(
             }
         }
 
-        if weight_sum <= 0.0 { continue; }
+        if weight_sum <= 0.0 {
+            continue;
+        }
 
         for j in 0..n {
-            if weights[j] <= 0.0 { continue; }
+            if weights[j] <= 0.0 {
+                continue;
+            }
             let m_j = particles[j].mass.max(1e-30);
             delta_z[j] += (weights[j] / weight_sum) * delta_metal / m_j;
         }

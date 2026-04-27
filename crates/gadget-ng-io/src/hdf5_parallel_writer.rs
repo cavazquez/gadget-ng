@@ -28,9 +28,9 @@ use crate::reader::SnapshotData;
 use crate::writer::SnapshotEnv;
 
 #[cfg(feature = "hdf5")]
-use ndarray::{arr1, Array1, Array2};
-#[cfg(feature = "hdf5")]
 use gadget_ng_core::Vec3;
+#[cfg(feature = "hdf5")]
+use ndarray::{Array1, Array2, arr1};
 
 /// Opciones de escritura HDF5.
 #[derive(Debug, Clone)]
@@ -43,7 +43,10 @@ pub struct Hdf5ParallelOptions {
 
 impl Default for Hdf5ParallelOptions {
     fn default() -> Self {
-        Self { chunk_size: 65536, compression: 0 }
+        Self {
+            chunk_size: 65536,
+            compression: 0,
+        }
     }
 }
 
@@ -66,20 +69,61 @@ pub fn write_snapshot_hdf5_serial(
     // ── Header ────────────────────────────────────────────────────────────────
     let header = file.create_group("Header")?;
     let num_part: [i64; 6] = [0, n as i64, 0, 0, 0, 0];
-    header.new_attr_builder().with_data(&num_part).create("NumPart_Total")?;
-    header.new_attr_builder().with_data(&num_part).create("NumPart_ThisFile")?;
+    header
+        .new_attr_builder()
+        .with_data(&num_part)
+        .create("NumPart_Total")?;
+    header
+        .new_attr_builder()
+        .with_data(&num_part)
+        .create("NumPart_ThisFile")?;
     let mass_table: [f64; 6] = [0.0; 6];
-    header.new_attr_builder().with_data(&mass_table).create("MassTable")?;
-    header.new_attr_builder().with_data(&arr1(&[env.time])).create("Time")?;
-    header.new_attr_builder().with_data(&arr1(&[env.redshift])).create("Redshift")?;
-    header.new_attr_builder().with_data(&arr1(&[env.box_size])).create("BoxSize")?;
-    header.new_attr_builder().with_data(&arr1(&[env.h_dimless])).create("HubbleParam")?;
-    header.new_attr_builder().with_data(&arr1(&[env.omega_m])).create("Omega0")?;
-    header.new_attr_builder().with_data(&arr1(&[env.omega_lambda])).create("OmegaLambda")?;
-    header.new_attr_builder().with_data(&arr1(&[1_i32])).create("NumFilesPerSnapshot")?;
+    header
+        .new_attr_builder()
+        .with_data(&mass_table)
+        .create("MassTable")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[env.time]))
+        .create("Time")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[env.redshift]))
+        .create("Redshift")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[env.box_size]))
+        .create("BoxSize")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[env.h_dimless]))
+        .create("HubbleParam")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[env.omega_m]))
+        .create("Omega0")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[env.omega_lambda]))
+        .create("OmegaLambda")?;
+    header
+        .new_attr_builder()
+        .with_data(&arr1(&[1_i32]))
+        .create("NumFilesPerSnapshot")?;
     let flags_zero = arr1(&[0_i32]);
-    for name in ["Flag_Sfr","Flag_Feedback","Flag_Cooling","Flag_Age","Flag_Metals","Flag_StellarAge","Flag_DoublePrecision"] {
-        header.new_attr_builder().with_data(&flags_zero).create(name)?;
+    for name in [
+        "Flag_Sfr",
+        "Flag_Feedback",
+        "Flag_Cooling",
+        "Flag_Age",
+        "Flag_Metals",
+        "Flag_StellarAge",
+        "Flag_DoublePrecision",
+    ] {
+        header
+            .new_attr_builder()
+            .with_data(&flags_zero)
+            .create(name)?;
     }
 
     // ── PartType1 ─────────────────────────────────────────────────────────────
@@ -105,10 +149,18 @@ pub fn write_snapshot_hdf5_serial(
         ids[i] = p.global_id as u64;
     }
 
-    pt1.new_dataset_builder().with_data(&coords).create("Coordinates")?;
-    pt1.new_dataset_builder().with_data(&vels).create("Velocities")?;
-    pt1.new_dataset_builder().with_data(&masses).create("Masses")?;
-    pt1.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
+    pt1.new_dataset_builder()
+        .with_data(&coords)
+        .create("Coordinates")?;
+    pt1.new_dataset_builder()
+        .with_data(&vels)
+        .create("Velocities")?;
+    pt1.new_dataset_builder()
+        .with_data(&masses)
+        .create("Masses")?;
+    pt1.new_dataset_builder()
+        .with_data(&ids)
+        .create("ParticleIDs")?;
 
     Ok(())
 }
@@ -130,8 +182,16 @@ pub fn read_snapshot_hdf5_serial(path: &Path) -> Result<SnapshotData, SnapshotEr
         particles.push(Particle::new(
             ids[i] as usize,
             masses_arr[i] as f64,
-            Vec3::new(coords[[i, 0]] as f64, coords[[i, 1]] as f64, coords[[i, 2]] as f64),
-            Vec3::new(vels[[i, 0]] as f64, vels[[i, 1]] as f64, vels[[i, 2]] as f64),
+            Vec3::new(
+                coords[[i, 0]] as f64,
+                coords[[i, 1]] as f64,
+                coords[[i, 2]] as f64,
+            ),
+            Vec3::new(
+                vels[[i, 0]] as f64,
+                vels[[i, 1]] as f64,
+                vels[[i, 2]] as f64,
+            ),
         ));
     }
 
@@ -139,13 +199,18 @@ pub fn read_snapshot_hdf5_serial(path: &Path) -> Result<SnapshotData, SnapshotEr
     let box_size_attr: Array1<f64> = header.attr("BoxSize")?.read_1d()?;
     let box_size = box_size_attr[0];
 
-    Ok(SnapshotData { particles, box_size, time: 0.0, redshift: 0.0 })
+    Ok(SnapshotData {
+        particles,
+        box_size,
+        time: 0.0,
+        redshift: 0.0,
+    })
 }
 
 // ── Path paralelo (requiere feature "hdf5-parallel") ─────────────────────────
 
 #[cfg(feature = "hdf5-parallel")]
-pub use parallel_impl::{write_snapshot_hdf5_parallel, read_snapshot_hdf5_parallel};
+pub use parallel_impl::{read_snapshot_hdf5_parallel, write_snapshot_hdf5_parallel};
 
 #[cfg(feature = "hdf5-parallel")]
 mod parallel_impl {
@@ -194,10 +259,14 @@ pub fn write_snapshot_hdf5_serial(
     _env: &SnapshotEnv,
     _opts: &Hdf5ParallelOptions,
 ) -> Result<(), SnapshotError> {
-    Err(SnapshotError::UnsupportedFormat("hdf5 feature no compilado".into()))
+    Err(SnapshotError::UnsupportedFormat(
+        "hdf5 feature no compilado".into(),
+    ))
 }
 
 #[cfg(not(feature = "hdf5"))]
 pub fn read_snapshot_hdf5_serial(_path: &Path) -> Result<SnapshotData, SnapshotError> {
-    Err(SnapshotError::UnsupportedFormat("hdf5 feature no compilado".into()))
+    Err(SnapshotError::UnsupportedFormat(
+        "hdf5 feature no compilado".into(),
+    ))
 }

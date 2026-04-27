@@ -30,17 +30,17 @@
 //! 4. `fixed_variant_improves_growth_vs_legacy`         — soft (espera mejora)
 //! 5. `no_nan_inf_under_phase44_matrix`                 — hard
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, Psi2Variant,
+    RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
     amplitude_for_sigma8, build_particles,
-    cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
-    PerformanceSection, Psi2Variant, RunConfig, SimulationSection, TimestepSection, TransferKind,
-    UnitsSection, Vec3,
+    cosmology::{CosmologyParams, gravity_coupling_qksl, growth_factor_d_ratio},
+    transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_treepm::TreePmSolver;
 use serde_json::json;
 use std::f64::consts::PI;
@@ -70,12 +70,12 @@ const DT_PHYS: f64 = 2.0e-4;
 const N_DEFAULT: usize = 32;
 
 fn n_grid() -> usize {
-    if let Ok(v) = std::env::var("PHASE44_N") {
-        if let Ok(n) = v.parse::<usize>() {
-            if n.is_power_of_two() && (16..=128).contains(&n) {
-                return n;
-            }
-        }
+    if let Ok(v) = std::env::var("PHASE44_N")
+        && let Ok(n) = v.parse::<usize>()
+        && n.is_power_of_two()
+        && (16..=128).contains(&n)
+    {
+        return n;
     }
     N_DEFAULT
 }
@@ -147,9 +147,13 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

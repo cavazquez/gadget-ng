@@ -5,7 +5,7 @@
 //! El test verifica que la energía cinética no explote en una integración corta.
 
 use gadget_ng_core::{
-    build_particles, IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3, build_particles,
 };
 use gadget_ng_integrators::leapfrog_kdk_step;
 use gadget_ng_parallel::{ParallelRuntime, SerialRuntime, SlabDecomposition};
@@ -65,9 +65,13 @@ fn distributed_tree_serial_kinetic_bounded() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
 
     let rt = SerialRuntime;
@@ -158,9 +162,13 @@ fn halo_exchange_serial_returns_empty() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let rt = SerialRuntime;

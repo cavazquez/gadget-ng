@@ -2,11 +2,15 @@
 ///
 /// Tests: distribución a vecino único, conservación de masa, sin enriquecimiento
 ///        de DM/estrellas, zero sfr, yield configurable, partícula estelar AGB.
-use gadget_ng_core::{EnrichmentSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{EnrichmentSection, Particle, Vec3};
 use gadget_ng_sph::apply_enrichment;
 
 fn cfg_enabled() -> EnrichmentSection {
-    EnrichmentSection { enabled: true, yield_snii: 0.02, yield_agb: 0.04 }
+    EnrichmentSection {
+        enabled: true,
+        yield_snii: 0.02,
+        yield_agb: 0.04,
+    }
 }
 
 // ── 1. Distribución a vecino único ────────────────────────────────────────
@@ -21,7 +25,10 @@ fn enrichment_increases_neighbor_metallicity() {
     let sfr = vec![1.0, 0.0];
     let z_before = particles[1].metallicity;
     apply_enrichment(&mut particles, &sfr, 0.01, &cfg_enabled());
-    assert!(particles[1].metallicity > z_before, "el vecino debe haberse enriquecido");
+    assert!(
+        particles[1].metallicity > z_before,
+        "el vecino debe haberse enriquecido"
+    );
 }
 
 // ── 2. DM no recibe metales ───────────────────────────────────────────────
@@ -60,7 +67,10 @@ fn disabled_enrichment_no_change() {
         Particle::new_gas(1, 1.0, Vec3::new(0.5, 0.0, 0.0), Vec3::zero(), 1.0, 1.0),
     ];
     let sfr = vec![1.0, 0.0];
-    let cfg_off = EnrichmentSection { enabled: false, ..cfg_enabled() };
+    let cfg_off = EnrichmentSection {
+        enabled: false,
+        ..cfg_enabled()
+    };
     apply_enrichment(&mut particles, &sfr, 1.0, &cfg_off);
     assert_eq!(particles[1].metallicity, 0.0);
 }
@@ -76,8 +86,16 @@ fn higher_yield_gives_more_enrichment() {
     let mut p_high = p_low.clone();
     let sfr = vec![1.0, 0.0];
 
-    let cfg_low = EnrichmentSection { enabled: true, yield_snii: 0.01, yield_agb: 0.04 };
-    let cfg_high = EnrichmentSection { enabled: true, yield_snii: 0.10, yield_agb: 0.04 };
+    let cfg_low = EnrichmentSection {
+        enabled: true,
+        yield_snii: 0.01,
+        yield_agb: 0.04,
+    };
+    let cfg_high = EnrichmentSection {
+        enabled: true,
+        yield_snii: 0.10,
+        yield_agb: 0.04,
+    };
 
     apply_enrichment(&mut p_low, &sfr, 0.1, &cfg_low);
     apply_enrichment(&mut p_high, &sfr, 0.1, &cfg_high);
@@ -94,8 +112,15 @@ fn metallicity_capped_at_one() {
         Particle::new_gas(1, 1.0, Vec3::new(0.05, 0.0, 0.0), Vec3::zero(), 1.0, 0.1),
     ];
     // yield extremadamente alto + dt largo
-    let cfg = EnrichmentSection { enabled: true, yield_snii: 100.0, yield_agb: 0.0 };
+    let cfg = EnrichmentSection {
+        enabled: true,
+        yield_snii: 100.0,
+        yield_agb: 0.0,
+    };
     let sfr = vec![1.0, 0.0];
     apply_enrichment(&mut particles, &sfr, 100.0, &cfg);
-    assert!(particles[1].metallicity <= 1.0, "metalicidad no puede superar 1.0");
+    assert!(
+        particles[1].metallicity <= 1.0,
+        "metalicidad no puede superar 1.0"
+    );
 }

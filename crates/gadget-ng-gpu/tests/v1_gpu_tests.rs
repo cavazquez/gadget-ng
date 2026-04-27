@@ -75,11 +75,7 @@ fn both_backends_agree_with_cpu_n16() {
     let positions: Vec<[f32; 3]> = (0..n)
         .map(|i| {
             let t = i as f32 * 0.37_f32;
-            [
-                t.sin() * 2.0,
-                t.cos() * 1.5,
-                (t * 0.5 + 0.3).sin(),
-            ]
+            [t.sin() * 2.0, t.cos() * 1.5, (t * 0.5 + 0.3).sin()]
         })
         .collect();
     let masses: Vec<f32> = (0..n).map(|i| 0.5 + i as f32 * 0.1).collect();
@@ -136,8 +132,7 @@ fn gpu_matches_cpu_direct_gravity_n1024() {
     assert_eq!(cpu_acc.len(), n);
 
     // Intentar CUDA primero, luego HIP como fallback
-    let gpu_acc: Vec<[f32; 3]> = if let Some(cuda) =
-        gadget_ng_cuda::CudaDirectGravity::try_new(eps)
+    let gpu_acc: Vec<[f32; 3]> = if let Some(cuda) = gadget_ng_cuda::CudaDirectGravity::try_new(eps)
     {
         println!("Usando backend CUDA N={n}");
         cuda.compute(&positions, &masses)
@@ -314,20 +309,24 @@ fn energy_conservation_gpu_integrator_n256_100steps() {
     // Energía inicial
     let acc0 = gpu.compute_accelerations_raw(&flat_pos, &masses, &idx, eps2, g);
     let e0 = {
-        let ke: f32 = velocities.iter().zip(masses.iter()).map(|(v, &m)| {
-            0.5 * m * (v[0].powi(2) + v[1].powi(2) + v[2].powi(2))
-        }).sum();
-        let pe: f32 = (0..n).map(|i| {
-            let mut p = 0.0f32;
-            for j in (i+1)..n {
-                let dx = positions[j][0] - positions[i][0];
-                let dy = positions[j][1] - positions[i][1];
-                let dz = positions[j][2] - positions[i][2];
-                let r = (dx*dx + dy*dy + dz*dz + eps2).sqrt();
-                p -= g * masses[i] * masses[j] / r;
-            }
-            p
-        }).sum();
+        let ke: f32 = velocities
+            .iter()
+            .zip(masses.iter())
+            .map(|(v, &m)| 0.5 * m * (v[0].powi(2) + v[1].powi(2) + v[2].powi(2)))
+            .sum();
+        let pe: f32 = (0..n)
+            .map(|i| {
+                let mut p = 0.0f32;
+                for j in (i + 1)..n {
+                    let dx = positions[j][0] - positions[i][0];
+                    let dy = positions[j][1] - positions[i][1];
+                    let dz = positions[j][2] - positions[i][2];
+                    let r = (dx * dx + dy * dy + dz * dz + eps2).sqrt();
+                    p -= g * masses[i] * masses[j] / r;
+                }
+                p
+            })
+            .sum();
         ke + pe
     };
     println!("Energía inicial: {e0:.6e}");
@@ -365,20 +364,24 @@ fn energy_conservation_gpu_integrator_n256_100steps() {
 
     // Energía final
     let e1: f32 = {
-        let ke: f32 = velocities.iter().zip(masses.iter()).map(|(v, &m)| {
-            0.5 * m * (v[0].powi(2) + v[1].powi(2) + v[2].powi(2))
-        }).sum();
-        let pe: f32 = (0..n).map(|i| {
-            let mut p = 0.0f32;
-            for j in (i+1)..n {
-                let dx = pos_mut[j][0] - pos_mut[i][0];
-                let dy = pos_mut[j][1] - pos_mut[i][1];
-                let dz = pos_mut[j][2] - pos_mut[i][2];
-                let r = (dx*dx + dy*dy + dz*dz + eps2).sqrt();
-                p -= g * masses[i] * masses[j] / r;
-            }
-            p
-        }).sum();
+        let ke: f32 = velocities
+            .iter()
+            .zip(masses.iter())
+            .map(|(v, &m)| 0.5 * m * (v[0].powi(2) + v[1].powi(2) + v[2].powi(2)))
+            .sum();
+        let pe: f32 = (0..n)
+            .map(|i| {
+                let mut p = 0.0f32;
+                for j in (i + 1)..n {
+                    let dx = pos_mut[j][0] - pos_mut[i][0];
+                    let dy = pos_mut[j][1] - pos_mut[i][1];
+                    let dz = pos_mut[j][2] - pos_mut[i][2];
+                    let r = (dx * dx + dy * dy + dz * dz + eps2).sqrt();
+                    p -= g * masses[i] * masses[j] / r;
+                }
+                p
+            })
+            .sum();
         ke + pe
     };
 

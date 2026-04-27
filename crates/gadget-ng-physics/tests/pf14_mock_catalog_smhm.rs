@@ -22,7 +22,7 @@
 //! ```
 
 use gadget_ng_analysis::{fof::FofHalo, mock_catalog::build_mock_catalog};
-use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_core::Particle;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -108,7 +108,8 @@ fn smhm_colors_in_range() {
     for g in &catalog {
         assert!(
             g.bv >= 0.0 && g.bv <= 2.0,
-            "Color B-V fuera de rango: {:.3}", g.bv
+            "Color B-V fuera de rango: {:.3}",
+            g.bv
         );
     }
 }
@@ -124,7 +125,9 @@ fn smhm_slope_in_expected_range() {
     let particles: Vec<Particle> = Vec::new();
 
     // Crear halos con masas en escala logarítmica: 10^2 .. 10^5
-    let masses: Vec<f64> = (0..8).map(|i| 10.0_f64.powf(2.0 + i as f64 * 3.0 / 7.0)).collect();
+    let masses: Vec<f64> = (0..8)
+        .map(|i| 10.0_f64.powf(2.0 + i as f64 * 3.0 / 7.0))
+        .collect();
 
     let halos: Vec<FofHalo> = masses
         .iter()
@@ -137,7 +140,10 @@ fn smhm_slope_in_expected_range() {
 
     let catalog = build_mock_catalog(&particles, &halos, 0.1, 0.3, 99.0);
     if catalog.len() < 4 {
-        println!("SKIP: catálogo con {} galaxias (necesita ≥ 4)", catalog.len());
+        println!(
+            "SKIP: catálogo con {} galaxias (necesita ≥ 4)",
+            catalog.len()
+        );
         return;
     }
 
@@ -151,11 +157,11 @@ fn smhm_slope_in_expected_range() {
             let da = ((a.pos[0] - halo.x_com).powi(2)
                 + (a.pos[1] - halo.y_com).powi(2)
                 + (a.pos[2] - halo.z_com).powi(2))
-                .sqrt();
+            .sqrt();
             let db = ((b.pos[0] - halo.x_com).powi(2)
                 + (b.pos[1] - halo.y_com).powi(2)
                 + (b.pos[2] - halo.z_com).powi(2))
-                .sqrt();
+            .sqrt();
             da.partial_cmp(&db).unwrap()
         });
 
@@ -177,7 +183,9 @@ fn smhm_slope_in_expected_range() {
     let n = log_m_halo.len() as f64;
     let mean_x: f64 = log_m_halo.iter().sum::<f64>() / n;
     let mean_y: f64 = log_l_gal.iter().sum::<f64>() / n;
-    let num: f64 = log_m_halo.iter().zip(log_l_gal.iter())
+    let num: f64 = log_m_halo
+        .iter()
+        .zip(log_l_gal.iter())
         .map(|(x, y)| (x - mean_x) * (y - mean_y))
         .sum();
     let den: f64 = log_m_halo.iter().map(|x| (x - mean_x).powi(2)).sum();

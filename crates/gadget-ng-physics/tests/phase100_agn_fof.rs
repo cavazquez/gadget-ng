@@ -8,7 +8,7 @@
 
 use gadget_ng_analysis::find_halos_combined;
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_sph::{apply_agn_feedback, AgnParams, BlackHole};
+use gadget_ng_sph::{AgnParams, BlackHole, apply_agn_feedback};
 
 const BOX_SIZE: f64 = 20.0;
 
@@ -29,7 +29,11 @@ fn make_two_clusters() -> Vec<Particle> {
         let dx = (i % 3) as f64 * 0.2 - 0.2;
         let dy = (i % 5) as f64 * 0.1 - 0.2;
         let dz = (i / 5) as f64 * 0.1 - 0.2;
-        parts.push(make_particle(id, Vec3::new(5.0 + dx, 5.0 + dy, 5.0 + dz), 2.0));
+        parts.push(make_particle(
+            id,
+            Vec3::new(5.0 + dx, 5.0 + dy, 5.0 + dz),
+            2.0,
+        ));
         id += 1;
     }
 
@@ -38,7 +42,11 @@ fn make_two_clusters() -> Vec<Particle> {
         let dx = (i % 3) as f64 * 0.2 - 0.2;
         let dy = (i % 5) as f64 * 0.1 - 0.2;
         let dz = (i / 5) as f64 * 0.1 - 0.2;
-        parts.push(make_particle(id, Vec3::new(15.0 + dx, 15.0 + dy, 15.0 + dz), 1.0));
+        parts.push(make_particle(
+            id,
+            Vec3::new(15.0 + dx, 15.0 + dy, 15.0 + dz),
+            1.0,
+        ));
         id += 1;
     }
 
@@ -52,18 +60,36 @@ fn fof_halos_sorted_by_mass_desc() {
     let velocities: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
-    let halos = find_halos_combined(&positions, &velocities, &masses, positions.len(), BOX_SIZE, 0.2, 5, 1.0);
-    assert!(halos.len() >= 2, "Debe haber al menos 2 halos FoF, got {}", halos.len());
+    let halos = find_halos_combined(
+        &positions,
+        &velocities,
+        &masses,
+        positions.len(),
+        BOX_SIZE,
+        0.2,
+        5,
+        1.0,
+    );
+    assert!(
+        halos.len() >= 2,
+        "Debe haber al menos 2 halos FoF, got {}",
+        halos.len()
+    );
 
     // Ordenar por masa DESC
     let mut sorted = halos.clone();
-    sorted.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // El halo más masivo es el cluster A (20 × 2.0 = 40 M)
     assert!(
         sorted[0].mass > sorted[1].mass,
         "primer halo debe ser más masivo: {:.1} vs {:.1}",
-        sorted[0].mass, sorted[1].mass
+        sorted[0].mass,
+        sorted[1].mass
     );
     assert!(
         sorted[0].mass >= 30.0,
@@ -79,27 +105,49 @@ fn fof_halo_centers_near_cluster_positions() {
     let velocities: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
-    let halos = find_halos_combined(&positions, &velocities, &masses, positions.len(), BOX_SIZE, 0.2, 5, 1.0);
+    let halos = find_halos_combined(
+        &positions,
+        &velocities,
+        &masses,
+        positions.len(),
+        BOX_SIZE,
+        0.2,
+        5,
+        1.0,
+    );
     let mut sorted = halos.clone();
-    sorted.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // El halo más masivo debe estar cerca de (5,5,5)
     let h0 = &sorted[0];
-    let dist0 = ((h0.x_com - 5.0).powi(2) + (h0.y_com - 5.0).powi(2) + (h0.z_com - 5.0).powi(2)).sqrt();
+    let dist0 =
+        ((h0.x_com - 5.0).powi(2) + (h0.y_com - 5.0).powi(2) + (h0.z_com - 5.0).powi(2)).sqrt();
     assert!(
         dist0 < 1.0,
         "COM del halo más masivo debe estar cerca de (5,5,5), got ({:.2},{:.2},{:.2}), dist={:.2}",
-        h0.x_com, h0.y_com, h0.z_com, dist0
+        h0.x_com,
+        h0.y_com,
+        h0.z_com,
+        dist0
     );
 
     // El segundo halo debe estar cerca de (15,15,15)
     if sorted.len() >= 2 {
         let h1 = &sorted[1];
-        let dist1 = ((h1.x_com - 15.0).powi(2) + (h1.y_com - 15.0).powi(2) + (h1.z_com - 15.0).powi(2)).sqrt();
+        let dist1 =
+            ((h1.x_com - 15.0).powi(2) + (h1.y_com - 15.0).powi(2) + (h1.z_com - 15.0).powi(2))
+                .sqrt();
         assert!(
             dist1 < 1.0,
             "COM del segundo halo debe estar cerca de (15,15,15), got ({:.2},{:.2},{:.2}), dist={:.2}",
-            h1.x_com, h1.y_com, h1.z_com, dist1
+            h1.x_com,
+            h1.y_com,
+            h1.z_com,
+            dist1
         );
     }
 }
@@ -111,11 +159,25 @@ fn agn_bh_placed_at_halo_center() {
     let velocities: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
-    let halos = find_halos_combined(&positions, &velocities, &masses, positions.len(), BOX_SIZE, 0.2, 5, 1.0);
+    let halos = find_halos_combined(
+        &positions,
+        &velocities,
+        &masses,
+        positions.len(),
+        BOX_SIZE,
+        0.2,
+        5,
+        1.0,
+    );
     let mut sorted = halos.clone();
-    sorted.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
-    let halo_centers: Vec<Vec3> = sorted.iter()
+    let halo_centers: Vec<Vec3> = sorted
+        .iter()
         .map(|h| Vec3::new(h.x_com, h.y_com, h.z_com))
         .collect();
 
@@ -134,11 +196,15 @@ fn agn_bh_placed_at_halo_center() {
     let bh = &agn_bhs[0];
 
     // El BH debe estar en el centro del halo más masivo (cluster A, ~(5,5,5))
-    let dist = ((bh.pos.x - 5.0).powi(2) + (bh.pos.y - 5.0).powi(2) + (bh.pos.z - 5.0).powi(2)).sqrt();
+    let dist =
+        ((bh.pos.x - 5.0).powi(2) + (bh.pos.y - 5.0).powi(2) + (bh.pos.z - 5.0).powi(2)).sqrt();
     assert!(
         dist < 1.0,
         "BH debe estar en el halo más masivo (~(5,5,5)), pos=({:.2},{:.2},{:.2}), dist={:.2}",
-        bh.pos.x, bh.pos.y, bh.pos.z, dist
+        bh.pos.x,
+        bh.pos.y,
+        bh.pos.z,
+        dist
     );
 }
 
@@ -149,12 +215,28 @@ fn agn_two_bhs_match_two_halos() {
     let velocities: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
 
-    let halos = find_halos_combined(&positions, &velocities, &masses, positions.len(), BOX_SIZE, 0.2, 5, 1.0);
+    let halos = find_halos_combined(
+        &positions,
+        &velocities,
+        &masses,
+        positions.len(),
+        BOX_SIZE,
+        0.2,
+        5,
+        1.0,
+    );
     let mut sorted = halos;
-    sorted.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap_or(std::cmp::Ordering::Equal));
-    if sorted.len() < 2 { return; } // necesitamos 2 halos para este test
+    sorted.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    if sorted.len() < 2 {
+        return;
+    } // necesitamos 2 halos para este test
 
-    let halo_centers: Vec<Vec3> = sorted.iter()
+    let halo_centers: Vec<Vec3> = sorted
+        .iter()
         .map(|h| Vec3::new(h.x_com, h.y_com, h.z_com))
         .collect();
 
@@ -171,11 +253,17 @@ fn agn_two_bhs_match_two_halos() {
     assert_eq!(agn_bhs.len(), 2, "debe haber 2 BHs");
 
     // BH[0] cerca de cluster A (5,5,5)
-    let d0 = ((agn_bhs[0].pos.x - 5.0).powi(2) + (agn_bhs[0].pos.y - 5.0).powi(2) + (agn_bhs[0].pos.z - 5.0).powi(2)).sqrt();
+    let d0 = ((agn_bhs[0].pos.x - 5.0).powi(2)
+        + (agn_bhs[0].pos.y - 5.0).powi(2)
+        + (agn_bhs[0].pos.z - 5.0).powi(2))
+    .sqrt();
     assert!(d0 < 1.0, "BH[0] debe estar en cluster A, dist={:.2}", d0);
 
     // BH[1] cerca de cluster B (15,15,15)
-    let d1 = ((agn_bhs[1].pos.x - 15.0).powi(2) + (agn_bhs[1].pos.y - 15.0).powi(2) + (agn_bhs[1].pos.z - 15.0).powi(2)).sqrt();
+    let d1 = ((agn_bhs[1].pos.x - 15.0).powi(2)
+        + (agn_bhs[1].pos.y - 15.0).powi(2)
+        + (agn_bhs[1].pos.z - 15.0).powi(2))
+    .sqrt();
     assert!(d1 < 1.0, "BH[1] debe estar en cluster B, dist={:.2}", d1);
 }
 
@@ -200,7 +288,10 @@ fn agn_fallback_to_box_center_without_halos() {
     }
 
     assert_eq!(agn_bhs.len(), 1, "debe haber 1 BH semilla");
-    assert_eq!(agn_bhs[0].pos.x, center, "BH debe estar en el centro de la caja");
+    assert_eq!(
+        agn_bhs[0].pos.x, center,
+        "BH debe estar en el centro de la caja"
+    );
     assert_eq!(agn_bhs[0].pos.y, center);
     assert_eq!(agn_bhs[0].pos.z, center);
 }
@@ -226,12 +317,21 @@ fn agn_feedback_applies_near_bh() {
     let u_after: Vec<f64> = particles.iter().map(|p| p.internal_energy).collect();
 
     // Partículas en cluster A (radio < 2 del BH) deben haber ganado energía
-    let heated = particles.iter().zip(u_before.iter()).zip(u_after.iter())
-        .filter(|((p, &ub), &ua)| {
-            let r = ((p.position.x - 5.0).powi(2) + (p.position.y - 5.0).powi(2) + (p.position.z - 5.0).powi(2)).sqrt();
+    let heated = particles
+        .iter()
+        .zip(u_before.iter())
+        .zip(u_after.iter())
+        .filter(|&((p, &ub), &ua)| {
+            let r = ((p.position.x - 5.0).powi(2)
+                + (p.position.y - 5.0).powi(2)
+                + (p.position.z - 5.0).powi(2))
+            .sqrt();
             r < 2.0 && ua > ub
         })
         .count();
 
-    assert!(heated > 0, "debe haber al menos una partícula calentada por el BH en cluster A");
+    assert!(
+        heated > 0,
+        "debe haber al menos una partícula calentada por el BH en cluster A"
+    );
 }

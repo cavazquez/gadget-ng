@@ -8,17 +8,12 @@
 //!
 //! Los resultados se guardan en `target/criterion/` en formato HTML.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use gadget_ng_gpu::GpuDirectGravity;
 
 // ── Gravedad directa CPU (referencia) ────────────────────────────────────────
 
-fn direct_gravity_cpu(
-    positions: &[[f32; 3]],
-    masses: &[f32],
-    eps2: f32,
-    g: f32,
-) -> Vec<[f32; 3]> {
+fn direct_gravity_cpu(positions: &[[f32; 3]], masses: &[f32], eps2: f32, g: f32) -> Vec<[f32; 3]> {
     let n = positions.len();
     (0..n)
         .map(|qi| {

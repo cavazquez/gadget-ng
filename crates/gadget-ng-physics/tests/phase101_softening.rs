@@ -43,7 +43,10 @@ fn softening_physical_scales_with_a() {
     // Para softening = 0.1 y a = 0.5 → eps_com = 0.2 → eps2 = 0.04
     let cfg = cfg_with_softening(0.1, true, true);
     let eps2_base = cfg.softening_squared();
-    assert!((eps2_base - 0.01).abs() < 1e-12, "eps2_base debe ser softening² = 0.01");
+    assert!(
+        (eps2_base - 0.01).abs() < 1e-12,
+        "eps2_base debe ser softening² = 0.01"
+    );
 
     let a = 0.5_f64;
     let eps_com = 0.1 / a;
@@ -56,7 +59,8 @@ fn softening_physical_scales_with_a() {
     assert!(
         eps2_phys > eps2_base,
         "eps2 físico ({}) debe ser mayor que eps2_base ({}) para a < 1",
-        eps2_phys, eps2_base
+        eps2_phys,
+        eps2_base
     );
 }
 
@@ -72,7 +76,8 @@ fn softening_comovil_constant_with_a() {
         assert!(
             (eps2 - 0.01).abs() < 1e-12,
             "eps2 comóvil debe ser constante = 0.01 para a={}, got {:.6}",
-            a, eps2
+            a,
+            eps2
         );
     }
 }
@@ -90,7 +95,8 @@ fn softening_physical_equals_comoving_at_a1() {
     assert!(
         (eps2_phys - eps2_base).abs() < 1e-12,
         "a=1 → eps2_phys debe igualar eps2_base: {:.6} vs {:.6}",
-        eps2_phys, eps2_base
+        eps2_phys,
+        eps2_base
     );
 }
 
@@ -101,17 +107,25 @@ fn softening_physical_larger_at_early_times() {
     let softening = 0.1;
     let a_values = [0.1_f64, 0.2, 0.5, 0.8, 1.0];
 
-    let eps2_expected: Vec<f64> = a_values.iter().map(|&a| {
-        let eps_com = softening / a;
-        eps_com * eps_com
-    }).collect();
+    let eps2_expected: Vec<f64> = a_values
+        .iter()
+        .map(|&a| {
+            let eps_com = softening / a;
+            eps_com * eps_com
+        })
+        .collect();
 
     // Verificar monotonía: eps2 decrece a medida que a crece (hacia z=0)
     for i in 1..eps2_expected.len() {
         assert!(
             eps2_expected[i] <= eps2_expected[i - 1],
             "eps2 debe decrecer con a creciente: a[{}]={}, eps2[{}]={:.6} > eps2[{}]={:.6}",
-            i, a_values[i], i, eps2_expected[i], i-1, eps2_expected[i-1]
+            i,
+            a_values[i],
+            i,
+            eps2_expected[i],
+            i - 1,
+            eps2_expected[i - 1]
         );
     }
 }
@@ -145,7 +159,10 @@ fn softening_warnings_none_for_valid_configs() {
         assert!(
             warns.is_empty(),
             "config (softening={}, physical={}, cosmo={}) no debe generar advertencias, got: {:?}",
-            s, phys, cosmo, warns
+            s,
+            phys,
+            cosmo,
+            warns
         );
     }
 }

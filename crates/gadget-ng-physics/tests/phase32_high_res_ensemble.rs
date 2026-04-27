@@ -33,14 +33,14 @@
 //! 9. `n32_treepm_stable_no_nan`          — 50 pasos TreePM sin NaN/Inf
 //! 10. `n32_reproducibility`              — P(k) bit-idéntico a N=32³
 
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles, cosmology::CosmologyParams, transfer_eh_nowiggle,
-    wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
     InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8, build_particles,
+    cosmology::CosmologyParams, transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use gadget_ng_treepm::TreePmSolver;
 
@@ -154,9 +154,13 @@ fn make_config_a(
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -908,11 +912,7 @@ fn n32_r_of_k_cv_below_threshold() {
                 .map(|b| {
                     let k_hmpc = b.k * H_DIMLESS / BOX_MPC_H;
                     let pk_eh = theory_pk_at_k(k_hmpc);
-                    if pk_eh > 0.0 {
-                        b.pk / pk_eh
-                    } else {
-                        0.0
-                    }
+                    if pk_eh > 0.0 { b.pk / pk_eh } else { 0.0 }
                 })
                 .collect()
         })

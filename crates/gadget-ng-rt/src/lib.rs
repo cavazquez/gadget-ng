@@ -44,33 +44,28 @@ pub mod mpi;
 pub mod reionization;
 
 pub use chemistry::{
-    alpha_hii, alpha_heii, alpha_heiii,
-    apply_chemistry, beta_hi, beta_hei, beta_heii,
-    cooling_rate_approx, solve_chemistry_implicit,
-    ChemParams, ChemState, F_HE,
+    ChemParams, ChemState, F_HE, alpha_heii, alpha_heiii, alpha_hii, apply_chemistry, beta_hei,
+    beta_heii, beta_hi, cooling_rate_approx, solve_chemistry_implicit,
+};
+pub use cm21::{
+    Cm21Output, Cm21Params, Cm21PkBin, brightness_temperature, compute_cm21_output,
+    compute_delta_tb_field,
 };
 pub use coupling::{
-    apply_photoheating, deposit_gas_emission, photoionization_rate,
-    radiation_gas_coupling_step, radiation_gas_coupling_step_with_dust,
+    apply_photoheating, deposit_gas_emission, photoionization_rate, radiation_gas_coupling_step,
+    radiation_gas_coupling_step_with_dust,
 };
-pub use m1::{
-    eddington_factor, m1_update, M1Params, RadiationField, C_KMS,
+pub use igm_temp::{
+    IgmTempBin, IgmTempParams, compute_igm_temp_all, compute_igm_temp_profile,
+    temperature_from_particle,
 };
+pub use m1::{C_KMS, M1Params, RadiationField, eddington_factor, m1_update};
 pub use mpi::{
-    allreduce_radiation, exchange_radiation_halos, m1_update_slab,
-    RadiationFieldSlab, RtRuntime,
+    RadiationFieldSlab, RtRuntime, allreduce_radiation, exchange_radiation_halos, m1_update_slab,
 };
 #[cfg(feature = "mpi")]
 pub use mpi::{allreduce_radiation_mpi, exchange_radiation_halos_mpi};
 pub use reionization::{
-    compute_reionization_state, deposit_uv_sources, reionization_step, stromgren_radius,
-    ReionizationParams, ReionizationState, UvSource, ALPHA_B,
-};
-pub use igm_temp::{
-    compute_igm_temp_all, compute_igm_temp_profile, temperature_from_particle,
-    IgmTempBin, IgmTempParams,
-};
-pub use cm21::{
-    brightness_temperature, compute_cm21_output, compute_delta_tb_field,
-    Cm21Output, Cm21PkBin, Cm21Params,
+    ALPHA_B, ReionizationParams, ReionizationState, UvSource, compute_reionization_state,
+    deposit_uv_sources, reionization_step, stromgren_radius,
 };

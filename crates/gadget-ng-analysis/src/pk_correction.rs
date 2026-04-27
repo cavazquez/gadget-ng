@@ -48,8 +48,8 @@
 
 use crate::power_spectrum::PkBin;
 use gadget_ng_core::{
-    amplitude_for_sigma8, ic_zeldovich_internals as internals, transfer_eh_nowiggle,
-    EisensteinHuParams, TransferKind, Vec3,
+    EisensteinHuParams, TransferKind, Vec3, amplitude_for_sigma8,
+    ic_zeldovich_internals as internals, transfer_eh_nowiggle,
 };
 
 /// Factor analítico de grilla `A_grid(N) = 2·V² / N⁹` (Phase 34).

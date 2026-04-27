@@ -26,8 +26,8 @@
 //!    halos FoF y mide el perfil de densidad del halo más masivo.
 
 use gadget_ng_analysis::nfw::{
-    concentration_bhattacharya2013, concentration_duffy2008, fit_nfw_concentration,
-    measure_density_profile, r200_from_m200, rho_crit_z, NfwProfile, RHO_CRIT0,
+    NfwProfile, RHO_CRIT0, concentration_bhattacharya2013, concentration_duffy2008,
+    measure_density_profile, r200_from_m200, rho_crit_z,
 };
 use std::f64::consts::PI;
 
@@ -317,11 +317,11 @@ fn phase53_circular_velocity_peak() {
 /// no que el perfil sea NFW (requeriría simulación completa).
 #[test]
 fn phase53_density_profile_from_fof_halo() {
-    use gadget_ng_analysis::{analyse, AnalysisParams};
+    use gadget_ng_analysis::{AnalysisParams, analyse};
     use gadget_ng_core::{
-        build_particles, CosmologySection, GravitySection, IcKind, InitialConditionsSection,
-        NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-        TimestepSection, TransferKind, UnitsSection,
+        CosmologySection, GravitySection, IcKind, InitialConditionsSection, NormalizationMode,
+        OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
+        TransferKind, UnitsSection, build_particles,
     };
 
     let box_size = 200.0_f64;
@@ -384,9 +384,13 @@ fn phase53_density_profile_from_fof_halo() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deben fallar");

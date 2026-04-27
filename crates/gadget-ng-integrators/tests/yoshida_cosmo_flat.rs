@@ -3,7 +3,7 @@
 //! retrocompatibilidad sin regresión numérica cuando `a(t) ≡ 1`.
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_integrators::{
-    yoshida4_cosmo_kdk_step, yoshida4_kdk_step, CosmoFactors, YOSHIDA4_W0, YOSHIDA4_W1,
+    CosmoFactors, YOSHIDA4_W0, YOSHIDA4_W1, yoshida4_cosmo_kdk_step, yoshida4_kdk_step,
 };
 
 fn force_kepler(parts: &[Particle], acc: &mut [Vec3]) {

@@ -5,12 +5,10 @@
 //! 2. `sph_cooling_lowers_temperature`  — gas caliente con cooling AtomicHHe cae monótonamente.
 //! 3. `sph_cosmo_kdk_no_gravity_bounded` — sin gravedad, la energía total no explota.
 
+use gadget_ng_core::{CoolingKind, SphSection};
 use gadget_ng_core::{Particle, ParticleType, Vec3};
 use gadget_ng_integrators::CosmoFactors;
-use gadget_ng_sph::{
-    apply_cooling, sph_cosmo_kdk_step, temperature_to_u, u_to_temperature,
-};
-use gadget_ng_core::{CoolingKind, SphSection};
+use gadget_ng_sph::{apply_cooling, sph_cosmo_kdk_step, temperature_to_u, u_to_temperature};
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
 
@@ -35,7 +33,13 @@ fn lattice_gas(n_side: usize, box_size: f64, u0: f64) -> Vec<Particle> {
 }
 
 fn total_kinetic_energy(parts: &[Particle]) -> f64 {
-    parts.iter().map(|p| { let v = p.velocity.norm(); 0.5 * p.mass * v * v }).sum()
+    parts
+        .iter()
+        .map(|p| {
+            let v = p.velocity.norm();
+            0.5 * p.mass * v * v
+        })
+        .sum()
 }
 
 fn total_internal_energy(parts: &[Particle]) -> f64 {

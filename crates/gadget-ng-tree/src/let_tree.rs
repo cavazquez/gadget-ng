@@ -24,7 +24,7 @@
 //! - Hojas: aplicación exacta (mono+quad+oct del RMN original sin modificación).
 
 use crate::octree::{
-    oct_accel_softened, outer3_tf, outer_traceless, quad_accel_softened, RemoteMultipoleNode,
+    RemoteMultipoleNode, oct_accel_softened, outer_traceless, outer3_tf, quad_accel_softened,
 };
 #[cfg(feature = "simd")]
 use crate::rmn_soa::RmnSoa;
@@ -618,7 +618,7 @@ fn accel_mono_softened(pos_i: Vec3, m: f64, com: Vec3, g: f64, eps2: f64) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::octree::{accel_from_let, RemoteMultipoleNode};
+    use crate::octree::{RemoteMultipoleNode, accel_from_let};
     use gadget_ng_core::Vec3;
 
     fn dummy_rmn(com: Vec3, mass: f64) -> RemoteMultipoleNode {

@@ -6,7 +6,7 @@
 //! - Header PNG: archivo inicia con los 4 bytes mágicos `\x89PNG`.
 
 use gadget_ng_core::Vec3;
-use gadget_ng_vis::{render_density_ppm, render_ppm_projection, write_png, Projection};
+use gadget_ng_vis::{Projection, render_density_ppm, render_ppm_projection, write_png};
 
 // ── density_map_concentrated_bright ───────────────────────────────────────────
 
@@ -19,9 +19,7 @@ fn density_map_concentrated_bright() {
     let box_size = 100.0_f64;
 
     // Cluster en el centro exacto.
-    let cluster: Vec<Vec3> = (0..100)
-        .map(|_| Vec3::new(50.0, 50.0, 0.0))
-        .collect();
+    let cluster: Vec<Vec3> = (0..100).map(|_| Vec3::new(50.0, 50.0, 0.0)).collect();
 
     let pixels = render_density_ppm(&cluster, box_size, width, height, Projection::XY);
     assert_eq!(pixels.len(), width * height * 3);
@@ -45,7 +43,10 @@ fn density_map_concentrated_bright() {
         .chunks(3)
         .filter(|c| c[0] as u32 + c[1] as u32 + c[2] as u32 == max_brightness)
         .count();
-    assert!(n_bright >= 1, "debe haber al menos 1 pixel de alta densidad");
+    assert!(
+        n_bright >= 1,
+        "debe haber al menos 1 pixel de alta densidad"
+    );
 }
 
 /// Una imagen vacía con densidad debe ser completamente azul oscuro (t=0 → viridis(0)).
@@ -83,11 +84,13 @@ fn projection_xz_correct() {
         "pixel en ({expected_px}, {expected_py}) debe ser blanco R=255"
     );
     assert_eq!(
-        pixels[idx + 1], 255,
+        pixels[idx + 1],
+        255,
         "pixel en ({expected_px}, {expected_py}) debe ser blanco G=255"
     );
     assert_eq!(
-        pixels[idx + 2], 255,
+        pixels[idx + 2],
+        255,
         "pixel en ({expected_px}, {expected_py}) debe ser blanco B=255"
     );
 }
@@ -132,10 +135,7 @@ fn write_png_header() {
         .unwrap();
 
     // Los 8 bytes mágicos del PNG: \x89PNG\r\n\x1a\n
-    assert!(
-        buf.len() >= 8,
-        "el archivo PNG debe tener al menos 8 bytes"
-    );
+    assert!(buf.len() >= 8, "el archivo PNG debe tener al menos 8 bytes");
     assert_eq!(
         &buf[0..4],
         &[0x89, 0x50, 0x4e, 0x47], // \x89PNG

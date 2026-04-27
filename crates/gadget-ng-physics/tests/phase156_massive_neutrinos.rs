@@ -1,6 +1,6 @@
 //! Tests de integración — Phase 156: Neutrinos masivos.
 
-use gadget_ng_core::{neutrino_suppression, omega_nu_from_mass, CosmologyParams};
+use gadget_ng_core::{CosmologyParams, neutrino_suppression, omega_nu_from_mass};
 
 // T1: m_nu=0 → omega_nu = 0
 #[test]
@@ -18,7 +18,11 @@ fn m_nu_006_suppresses_pk() {
     let omega_nu = omega_nu_from_mass(m_nu, h);
     let f_nu = omega_nu / omega_m;
     let sup = neutrino_suppression(f_nu);
-    assert!(sup < 1.0, "La supresión debe ser < 1 para m_nu=0.06 eV, got {}", sup);
+    assert!(
+        sup < 1.0,
+        "La supresión debe ser < 1 para m_nu=0.06 eV, got {}",
+        sup
+    );
     assert!(sup > 0.0, "La supresión debe ser > 0");
 }
 
@@ -30,7 +34,10 @@ fn omega_nu_formula_correct() {
     let m_nu = 0.3;
     let expected = m_nu / (93.14 * h * h);
     let omega_nu = omega_nu_from_mass(m_nu, h);
-    assert!((omega_nu - expected).abs() < 1e-10, "Formula Omega_nu incorrecta");
+    assert!(
+        (omega_nu - expected).abs() < 1e-10,
+        "Formula Omega_nu incorrecta"
+    );
 }
 
 // T4: advance_a estable con Omega_nu
@@ -54,7 +61,12 @@ fn neutrino_suppression_linear() {
     let f_nu = 0.05;
     let expected = 1.0 - 8.0 * f_nu;
     let sup = neutrino_suppression(f_nu);
-    assert!((sup - expected).abs() < 1e-12, "Supresión debe ser 1-8*f_nu, expected={}, got={}", expected, sup);
+    assert!(
+        (sup - expected).abs() < 1e-12,
+        "Supresión debe ser 1-8*f_nu, expected={}, got={}",
+        expected,
+        sup
+    );
 }
 
 // T6: f_nu grande → supresión clampada a 0

@@ -29,14 +29,14 @@
 //!    las fuerzas PM son antisimétricas (igual magnitud, sentidos opuestos).
 
 use gadget_ng_core::{
-    build_particles,
-    cosmology::{gravity_coupling_qksl, CosmologyParams},
-    minimum_image, wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection,
+    Vec3, build_particles,
+    cosmology::{CosmologyParams, gravity_coupling_qksl},
+    minimum_image, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
-use gadget_ng_pm::{cic, fft_poisson, PmSolver};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
+use gadget_ng_pm::{PmSolver, cic, fft_poisson};
 
 const G: f64 = 1.0;
 const BOX: f64 = 1.0;
@@ -85,9 +85,13 @@ fn eds_pm_config(n: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

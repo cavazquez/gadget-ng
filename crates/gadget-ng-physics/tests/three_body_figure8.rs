@@ -169,14 +169,14 @@ fn figure8_initial_conditions_symmetric() {
     );
 
     // Energía total negativa (sistema ligado).
-    let e = total_energy(&ps.to_vec());
+    let e = total_energy(ps.as_ref());
     assert!(
         e < 0.0,
         "Energía total E = {e:.6} (debe ser negativa para sistema ligado)"
     );
 
     // Momento angular total ≈ 0 en z (simetría de la solución).
-    let l = total_angular_momentum(&ps.to_vec());
+    let l = total_angular_momentum(ps.as_ref());
     assert!(
         l.z.abs() < 1e-10,
         "|L_z| = {:.4e} (debe ser ~0 para figura-8)",
@@ -269,7 +269,7 @@ fn figure8_returns_to_start_one_period() {
     }
 
     // Energía conservada con dt=0.0005: < 0.01%.
-    let e0 = total_energy(&ics.to_vec());
+    let e0 = total_energy(ics.as_ref());
     let e_f = total_energy(&particles);
     let de_rel = (e_f - e0).abs() / e0.abs();
     assert!(

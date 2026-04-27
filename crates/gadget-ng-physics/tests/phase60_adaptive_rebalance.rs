@@ -31,7 +31,7 @@ fn should_rebalance(step: u64, start_step: u64, interval: u64, cost_pending: boo
     if interval == 0 {
         return true;
     }
-    (step - start_step) % interval == 0
+    (step - start_step).is_multiple_of(interval)
 }
 
 // ── Tests unitarios del helper ────────────────────────────────────────────────

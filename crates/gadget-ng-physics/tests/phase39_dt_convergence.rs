@@ -20,15 +20,15 @@
 //! estudio es ortogonal a la normalización ya validada externamente en
 //! Phase 38.
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles, cosmology::CosmologyParams, transfer_eh_nowiggle,
-    wrap_position, CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
     InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8, build_particles,
+    cosmology::CosmologyParams, transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use serde_json::json;
 use std::f64::consts::PI;
@@ -123,9 +123,13 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -514,13 +518,13 @@ fn matrix() -> &'static [MatrixEntry] {
     CELL.get_or_init(run_full_matrix)
 }
 
-fn find<'a>(m: &'a [MatrixEntry], dt: f64, seed: u64) -> &'a MatrixEntry {
+fn find(m: &[MatrixEntry], dt: f64, seed: u64) -> &MatrixEntry {
     m.iter()
         .find(|e| (e.dt - dt).abs() < 1e-20 && e.seed == seed)
         .unwrap_or_else(|| panic!("matrix entry not found: dt={dt} seed={seed}"))
 }
 
-fn find_snap<'a>(e: &'a MatrixEntry, a_target: f64) -> &'a SnapshotResult {
+fn find_snap(e: &MatrixEntry, a_target: f64) -> &SnapshotResult {
     e.snapshots
         .iter()
         .find(|s| (s.a_target - a_target).abs() < 1e-12)
@@ -793,7 +797,7 @@ fn dt_scaling_consistent_with_integrator_order() {
                 mean(&per_seed)
             })
             .collect();
-        let slope = loglog_slope(&DTS.to_vec(), &errs);
+        let slope = loglog_slope(DTS.as_ref(), &errs);
         let supports = slope.is_finite() && (1.0..=3.0).contains(&slope);
         per_a.push(json!({
             "a": a_t,

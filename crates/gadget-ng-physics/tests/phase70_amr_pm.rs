@@ -11,11 +11,12 @@
 //! 7. `g4_amr_stats`                   — estadísticas son consistentes.
 
 use gadget_ng_core::Vec3;
-use gadget_ng_pm::{
-    amr_pm_accels, amr_pm_accels_with_stats, AmrParams, PatchGrid,
-    amr::{deposit_to_patch, identify_refinement_patches, solve_patch},
-};
 use gadget_ng_pm::cic;
+use gadget_ng_pm::{
+    AmrParams, PatchGrid,
+    amr::{deposit_to_patch, identify_refinement_patches, solve_patch},
+    amr_pm_accels, amr_pm_accels_with_stats,
+};
 
 // ── Utilidades ────────────────────────────────────────────────────────────
 
@@ -68,7 +69,10 @@ fn g4_amr_force_no_nan() {
     for (i, a) in accels.iter().enumerate() {
         assert!(
             a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
-            "NaN/Inf en partícula {i}: ({}, {}, {})", a.x, a.y, a.z
+            "NaN/Inf en partícula {i}: ({}, {}, {})",
+            a.x,
+            a.y,
+            a.z
         );
     }
 }
@@ -102,7 +106,10 @@ fn g4_amr_refines_dense_region() {
 
     let base_rho = cic::assign(&pos, &mass, box_size, 8);
     let patches = identify_refinement_patches(&base_rho, 8, box_size, &params);
-    assert!(!patches.is_empty(), "cluster denso debe generar al menos 1 parche");
+    assert!(
+        !patches.is_empty(),
+        "cluster denso debe generar al menos 1 parche"
+    );
 
     // El parche debe estar cerca del cluster
     let found_near_cluster = patches.iter().any(|p| {
@@ -111,8 +118,11 @@ fn g4_amr_refines_dense_region() {
         let dz = (p.center.z - 0.51).abs();
         dx < 0.3 && dy < 0.3 && dz < 0.3
     });
-    assert!(found_near_cluster, "parche no detectado cerca del cluster en ({}, {}, {})",
-        patches[0].center.x, patches[0].center.y, patches[0].center.z);
+    assert!(
+        found_near_cluster,
+        "parche no detectado cerca del cluster en ({}, {}, {})",
+        patches[0].center.x, patches[0].center.y, patches[0].center.z
+    );
 }
 
 // ── Test 3: consistencia con PM base en distribución uniforme ─────────────
@@ -141,10 +151,7 @@ fn g4_amr_consistent_with_base() {
             a_amr.y - a_base.y,
             a_amr.z - a_base.z,
         ));
-        assert!(
-            err < 1e-12,
-            "partícula {i}: error AMR vs base = {err:.2e}"
-        );
+        assert!(err < 1e-12, "partícula {i}: error AMR vs base = {err:.2e}");
     }
 }
 
@@ -215,13 +222,19 @@ fn g4_patch_zero_padding_vs_periodic() {
     mass_arr.extend_from_slice(&bg_mass);
 
     let params_zp = AmrParams {
-        delta_refine: 2.0, nm_patch: 8, patch_cells_base: 3,
-        max_patches: 2, zero_pad: true,
+        delta_refine: 2.0,
+        nm_patch: 8,
+        patch_cells_base: 3,
+        max_patches: 2,
+        zero_pad: true,
         ..Default::default()
     };
     let params_per = AmrParams {
-        delta_refine: 2.0, nm_patch: 8, patch_cells_base: 3,
-        max_patches: 2, zero_pad: false,
+        delta_refine: 2.0,
+        nm_patch: 8,
+        patch_cells_base: 3,
+        max_patches: 2,
+        zero_pad: false,
         ..Default::default()
     };
 
@@ -269,5 +282,8 @@ fn g4_amr_stats() {
         stats.n_particles_refined >= 1,
         "debe haber partículas refinadas"
     );
-    assert!(stats.max_overdensity > 1.0, "sobredensidad máxima debe ser > 1");
+    assert!(
+        stats.max_overdensity > 1.0,
+        "sobredensidad máxima debe ser > 1"
+    );
 }

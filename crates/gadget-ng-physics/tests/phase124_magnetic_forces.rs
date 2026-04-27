@@ -20,8 +20,11 @@ fn pressure_scales_b_squared() {
     let b2 = Vec3::new(2.0, 0.0, 0.0);
     let p1 = magnetic_pressure(b1);
     let p2 = magnetic_pressure(b2);
-    assert!((p2 / p1 - 4.0).abs() < 1e-12,
-        "P_B debe escalar como B²: ratio={}", p2/p1);
+    assert!(
+        (p2 / p1 - 4.0).abs() < 1e-12,
+        "P_B debe escalar como B²: ratio={}",
+        p2 / p1
+    );
 }
 
 // ── 2. Tensor de Maxwell es simétrico ─────────────────────────────────────
@@ -32,8 +35,12 @@ fn maxwell_stress_symmetric() {
     let m = maxwell_stress(b);
     for i in 0..3 {
         for j in 0..3 {
-            assert!((m[i][j] - m[j][i]).abs() < 1e-12,
-                "Tensor no simétrico en ({i},{j}): {} vs {}", m[i][j], m[j][i]);
+            assert!(
+                (m[i][j] - m[j][i]).abs() < 1e-12,
+                "Tensor no simétrico en ({i},{j}): {} vs {}",
+                m[i][j],
+                m[j][i]
+            );
         }
     }
 }
@@ -47,8 +54,11 @@ fn maxwell_trace_minus_p_b() {
     let m = maxwell_stress(b);
     let trace = m[0][0] + m[1][1] + m[2][2];
     let p_b = magnetic_pressure(b);
-    assert!((trace + p_b).abs() < 1e-12,
-        "Tr(M) = −P_B: trace={trace}, -P_B={}", -p_b);
+    assert!(
+        (trace + p_b).abs() < 1e-12,
+        "Tr(M) = −P_B: trace={trace}, -P_B={}",
+        -p_b
+    );
 }
 
 // ── 4. Fuerzas magnéticas son simétricas (Newton 3ª ley) ─────────────────
@@ -68,8 +78,10 @@ fn magnetic_forces_newton_third_law() {
     // Impulso total debe conservarse: Δp_0 + Δp_1 = 0 (masas iguales)
     let dp0x = particles[0].velocity.x - v0_before.x;
     let dp1x = particles[1].velocity.x - v1_before.x;
-    assert!((dp0x + dp1x).abs() < 1e-10,
-        "Momentum x no conservado: dp0={dp0x}, dp1={dp1x}");
+    assert!(
+        (dp0x + dp1x).abs() < 1e-10,
+        "Momentum x no conservado: dp0={dp0x}, dp1={dp1x}"
+    );
 }
 
 // ── 5. DM no participa en fuerzas magnéticas ─────────────────────────────
@@ -81,7 +93,10 @@ fn dm_not_affected_by_magnetic_forces() {
     let v_before = dm.velocity;
     let mut particles = vec![dm];
     apply_magnetic_forces(&mut particles, 0.1);
-    assert_eq!(particles[0].velocity.x, v_before.x, "DM: velocidad no debe cambiar");
+    assert_eq!(
+        particles[0].velocity.x, v_before.x,
+        "DM: velocidad no debe cambiar"
+    );
 }
 
 // ── 6. B perpendicular entre partículas crea fuerza en esa dirección ─────

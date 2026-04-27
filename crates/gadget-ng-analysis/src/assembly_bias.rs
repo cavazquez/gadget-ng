@@ -20,7 +20,7 @@
 //! Wechsler & Tinker (2018), ARA&A 56, 435.
 
 use gadget_ng_core::Vec3;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 // ── Structs públicos ──────────────────────────────────────────────────────
 
@@ -109,8 +109,8 @@ pub fn compute_assembly_bias(
 
     // ── 3. Correlación de Spearman ────────────────────────────────────────
     let has_spins = halo_spins.len() == n_halos;
-    let has_conc = halo_concentrations.len() == n_halos
-        && halo_concentrations.iter().any(|&c| c > 0.0);
+    let has_conc =
+        halo_concentrations.len() == n_halos && halo_concentrations.iter().any(|&c| c > 0.0);
 
     let spearman_lambda = if has_spins {
         spearman_correlation(halo_spins, &halo_delta)
@@ -132,7 +132,12 @@ pub fn compute_assembly_bias(
     };
 
     let bias_vs_concentration = if has_conc && n_halos >= params.n_quartiles {
-        bias_by_quartile(halo_concentrations, &halo_delta, halo_masses, params.n_quartiles)
+        bias_by_quartile(
+            halo_concentrations,
+            &halo_delta,
+            halo_masses,
+            params.n_quartiles,
+        )
     } else {
         Vec::new()
     };
@@ -293,7 +298,12 @@ fn pearson_correlation(x: &[f64], y: &[f64]) -> f64 {
     }
     let mx = x.iter().sum::<f64>() / n;
     let my = y.iter().sum::<f64>() / n;
-    let cov: f64 = x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi - mx) * (yi - my)).sum::<f64>() / n;
+    let cov: f64 = x
+        .iter()
+        .zip(y.iter())
+        .map(|(&xi, &yi)| (xi - mx) * (yi - my))
+        .sum::<f64>()
+        / n;
     let sx = (x.iter().map(|&xi| (xi - mx).powi(2)).sum::<f64>() / n).sqrt();
     let sy = (y.iter().map(|&yi| (yi - my).powi(2)).sum::<f64>() / n).sqrt();
     if sx < 1e-30 || sy < 1e-30 {
@@ -319,7 +329,11 @@ fn bias_by_quartile(
 
     // Ordenar halos por prop
     let mut idx: Vec<usize> = (0..n).collect();
-    idx.sort_by(|&a, &b| prop[a].partial_cmp(&prop[b]).unwrap_or(std::cmp::Ordering::Equal));
+    idx.sort_by(|&a, &b| {
+        prop[a]
+            .partial_cmp(&prop[b])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Media global ponderada por masa
     let total_m: f64 = if masses.len() >= n {
@@ -338,7 +352,11 @@ fn bias_by_quartile(
 
     for q in 0..n_quartiles {
         let start = q * q_size;
-        let end = if q + 1 == n_quartiles { n } else { (q + 1) * q_size };
+        let end = if q + 1 == n_quartiles {
+            n
+        } else {
+            (q + 1) * q_size
+        };
         let slice = &idx[start..end];
 
         let prop_med = prop[slice[slice.len() / 2]];
@@ -430,7 +448,9 @@ mod tests {
     fn make_random_halos(n: usize, seed: u64) -> (Vec<Vec3>, Vec<f64>, Vec<f64>, Vec<f64>) {
         let mut s = seed;
         let lcg = |ss: &mut u64| -> f64 {
-            *ss = ss.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *ss = ss
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((*ss >> 33) as f64) / (u32::MAX as f64)
         };
         let mut pos = Vec::new();
@@ -457,7 +477,11 @@ mod tests {
     #[test]
     fn assembly_bias_returns_finite() {
         let (pos, mass, spins, conc) = make_random_halos(20, 42);
-        let params = AssemblyBiasParams { smooth_radius: 0.1, mesh: 8, n_quartiles: 4 };
+        let params = AssemblyBiasParams {
+            smooth_radius: 0.1,
+            mesh: 8,
+            n_quartiles: 4,
+        };
         let result = compute_assembly_bias(&pos, &mass, &spins, &conc, &pos, &mass, 1.0, &params);
         assert!(result.spearman_lambda.is_finite(), "ρ_λ no finito");
         assert!(result.spearman_concentration.is_finite(), "ρ_c no finito");
@@ -467,7 +491,11 @@ mod tests {
     #[test]
     fn assembly_bias_quartiles_count() {
         let (pos, mass, spins, conc) = make_random_halos(40, 7);
-        let params = AssemblyBiasParams { smooth_radius: 0.1, mesh: 8, n_quartiles: 4 };
+        let params = AssemblyBiasParams {
+            smooth_radius: 0.1,
+            mesh: 8,
+            n_quartiles: 4,
+        };
         let result = compute_assembly_bias(&pos, &mass, &spins, &conc, &pos, &mass, 1.0, &params);
         assert_eq!(result.bias_vs_lambda.len(), 4, "Debe haber 4 cuartiles");
         assert_eq!(result.bias_vs_concentration.len(), 4);
@@ -479,7 +507,10 @@ mod tests {
         let x: Vec<f64> = (0..10).map(|i| i as f64).collect();
         let y: Vec<f64> = (0..10).map(|i| i as f64 * 2.0 + 1.0).collect();
         let rho = spearman_correlation(&x, &y);
-        assert!((rho - 1.0).abs() < 1e-10, "ρ debe ser 1.0 para monotonía perfecta: {rho}");
+        assert!(
+            (rho - 1.0).abs() < 1e-10,
+            "ρ debe ser 1.0 para monotonía perfecta: {rho}"
+        );
     }
 
     #[test]
@@ -488,7 +519,10 @@ mod tests {
         let x: Vec<f64> = (0..10).map(|i| i as f64).collect();
         let y: Vec<f64> = (0..10).map(|i| -(i as f64)).collect();
         let rho = spearman_correlation(&x, &y);
-        assert!((rho + 1.0).abs() < 1e-10, "ρ debe ser -1.0 para monotonía inversa: {rho}");
+        assert!(
+            (rho + 1.0).abs() < 1e-10,
+            "ρ debe ser -1.0 para monotonía inversa: {rho}"
+        );
     }
 
     #[test]
@@ -497,7 +531,10 @@ mod tests {
         let x: Vec<f64> = (0..10).map(|i| i as f64).collect();
         let y = vec![3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0]; // pi decimals
         let rho = spearman_correlation(&x, &y);
-        assert!(rho.abs() < 0.7, "ρ no debería ser extremo para datos no monotónos: {rho}");
+        assert!(
+            rho.abs() < 0.7,
+            "ρ no debería ser extremo para datos no monotónos: {rho}"
+        );
     }
 
     #[test]

@@ -26,9 +26,13 @@ const E_SN_CODE: f64 = 1.54e-3;
 /// Kernel SPH simple (Wendland C2) para difusión.
 #[inline]
 fn kernel_w_cr(r: f64, h: f64) -> f64 {
-    if h <= 0.0 { return 0.0; }
+    if h <= 0.0 {
+        return 0.0;
+    }
     let q = r / h;
-    if q > 2.0 { return 0.0; }
+    if q > 2.0 {
+        return 0.0;
+    }
     let t = 1.0 - 0.5 * q;
     (21.0 / (2.0 * std::f64::consts::PI)) / (h * h * h) * t.powi(4) * (1.0 + 2.0 * q)
 }
@@ -55,16 +59,15 @@ pub fn cr_pressure(cr_energy: f64, rho: f64) -> f64 {
 /// - `sfr`: tasa de formación estelar por partícula
 /// - `cr_fraction`: fracción de E_SN → CRs
 /// - `dt`: paso de tiempo
-pub fn inject_cr_from_sn(
-    particles: &mut [Particle],
-    sfr: &[f64],
-    cr_fraction: f64,
-    dt: f64,
-) {
+pub fn inject_cr_from_sn(particles: &mut [Particle], sfr: &[f64], cr_fraction: f64, dt: f64) {
     assert_eq!(particles.len(), sfr.len());
     for i in 0..particles.len() {
-        if particles[i].ptype != ParticleType::Gas { continue; }
-        if sfr[i] <= 0.0 { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
+        if sfr[i] <= 0.0 {
+            continue;
+        }
         let delta_cr = cr_fraction * E_SN_CODE * sfr[i] * dt;
         particles[i].cr_energy += delta_cr;
     }
@@ -86,13 +89,17 @@ pub fn inject_cr_from_sn(
 #[allow(clippy::needless_range_loop)]
 pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
     let n = particles.len();
-    if n == 0 { return; }
+    if n == 0 {
+        return;
+    }
 
     // Calculamos el flujo neto para evitar aliasing
     let mut delta_cr = vec![0.0_f64; n];
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let pos_i = particles[i].position;
         let e_i = particles[i].cr_energy;
@@ -104,8 +111,12 @@ pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt
         let kappa_eff = kappa_cr / (1.0 + b_suppress * b2_i);
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;

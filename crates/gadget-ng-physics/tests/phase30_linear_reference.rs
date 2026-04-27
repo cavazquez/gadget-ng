@@ -55,14 +55,13 @@
 
 use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{gravity_coupling_qksl, CosmologyParams},
-    sigma_from_pk_bins, transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
-    Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8, build_particles,
+    cosmology::{CosmologyParams, gravity_coupling_qksl},
+    sigma_from_pk_bins, transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use gadget_ng_treepm::TreePmSolver;
 
@@ -151,9 +150,13 @@ fn config_2lpt(seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -212,9 +215,13 @@ fn config_sigma_test(seed: u64, use_2lpt: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

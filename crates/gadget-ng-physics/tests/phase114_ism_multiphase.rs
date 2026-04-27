@@ -13,7 +13,11 @@ fn gas(id: usize, u: f64, h: f64) -> Particle {
 }
 
 fn ism_cfg() -> IsmSection {
-    IsmSection { enabled: true, q_star: 2.5, f_cold: 0.5 }
+    IsmSection {
+        enabled: true,
+        q_star: 2.5,
+        f_cold: 0.5,
+    }
 }
 
 // ── 1. effective_pressure > P_thermal cuando u_cold > 0 ──────────────────
@@ -25,7 +29,10 @@ fn effective_pressure_exceeds_thermal() {
     let u_cold = 0.5;
     let p_thermal = (GAMMA - 1.0) * rho * u;
     let p_eff = effective_pressure(rho, u, u_cold, 2.5, GAMMA);
-    assert!(p_eff > p_thermal, "P_eff debe ser mayor que P_thermal con u_cold > 0");
+    assert!(
+        p_eff > p_thermal,
+        "P_eff debe ser mayor que P_thermal con u_cold > 0"
+    );
 }
 
 // ── 2. effective_pressure = P_thermal cuando u_cold = 0 ───────────────────
@@ -36,7 +43,10 @@ fn effective_pressure_equals_thermal_when_no_cold() {
     let u = 1.5;
     let p_thermal = (GAMMA - 1.0) * rho * u;
     let p_eff = effective_pressure(rho, u, 0.0, 2.5, GAMMA);
-    assert!((p_eff - p_thermal).abs() < 1e-12, "P_eff debe ser igual a P_thermal con u_cold=0");
+    assert!(
+        (p_eff - p_thermal).abs() < 1e-12,
+        "P_eff debe ser igual a P_thermal con u_cold=0"
+    );
 }
 
 // ── 3. u_cold crece para gas sobre el umbral de SFR ──────────────────────
@@ -48,7 +58,10 @@ fn u_cold_grows_for_dense_gas() {
     let sfr = vec![1.0]; // gas sobre umbral
     let u_cold_before = particles[0].u_cold;
     update_ism_phases(&mut particles, &sfr, 0.001, &cfg, 0.1);
-    assert!(particles[0].u_cold > u_cold_before, "u_cold debe crecer para gas denso con sfr > 0");
+    assert!(
+        particles[0].u_cold > u_cold_before,
+        "u_cold debe crecer para gas denso con sfr > 0"
+    );
 }
 
 // ── 4. Conservación de energía total ─────────────────────────────────────
@@ -87,7 +100,10 @@ fn u_cold_dissipates_below_threshold() {
 
 #[test]
 fn disabled_ism_no_change() {
-    let cfg = IsmSection { enabled: false, ..ism_cfg() };
+    let cfg = IsmSection {
+        enabled: false,
+        ..ism_cfg()
+    };
     let mut particles = vec![gas(0, 2.0, 0.01)];
     let sfr = vec![1.0];
     let u_before = particles[0].internal_energy;
@@ -106,5 +122,8 @@ fn effective_u_formula() {
     let q_star = 2.5;
     let expected = p.internal_energy + q_star * p.u_cold;
     let result = effective_u(&p, q_star);
-    assert!((result - expected).abs() < 1e-15, "effective_u incorrecto: {result} vs {expected}");
+    assert!(
+        (result - expected).abs() < 1e-15,
+        "effective_u incorrecto: {result} vs {expected}"
+    );
 }

@@ -3,7 +3,7 @@
 /// Tests: spawning estocástico con prob alta, conservación de masa,
 ///        herencia de metalicidad, estrellas no afectadas por SPH,
 ///        gas padre reduce masa, gas bajo m_min removido, serde de FeedbackSection.
-use gadget_ng_core::{FeedbackSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{FeedbackSection, Particle, Vec3};
 use gadget_ng_sph::spawn_star_particles;
 
 fn fb_cfg(enabled: bool) -> FeedbackSection {
@@ -34,10 +34,17 @@ fn high_sfr_produces_stars_eventually() {
         let sfr = vec![1e6]; // sfr altísima → prob ≈ 1
         let mut seed = attempt.wrapping_mul(7919) + 1;
         let mut next_gid = 100;
-        let (stars, _) = spawn_star_particles(&mut particles, &sfr, 1.0, &mut seed, &cfg, &mut next_gid);
-        if !stars.is_empty() { spawned_any = true; break; }
+        let (stars, _) =
+            spawn_star_particles(&mut particles, &sfr, 1.0, &mut seed, &cfg, &mut next_gid);
+        if !stars.is_empty() {
+            spawned_any = true;
+            break;
+        }
     }
-    assert!(spawned_any, "Debe formarse al menos una estrella con sfr altísima en 100 intentos");
+    assert!(
+        spawned_any,
+        "Debe formarse al menos una estrella con sfr altísima en 100 intentos"
+    );
 }
 
 // ── 2. Conservación de masa (gas + estrella = masa original) ──────────────
@@ -52,12 +59,23 @@ fn mass_conserved_on_spawn() {
     let sfr = vec![1e10_f64];
     let mut seed = 42u64;
     let mut next_gid = 10;
-    let (stars, to_remove) = spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
+    let (stars, to_remove) =
+        spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
 
     if !stars.is_empty() {
         let m_star: f64 = stars.iter().map(|s| s.mass).sum();
-        let m_gas_remaining = if to_remove.contains(&0) { 0.0 } else { particles[0].mass };
-        let m_total = m_star + m_gas_remaining + if to_remove.contains(&0) { particles[0].mass } else { 0.0 };
+        let m_gas_remaining = if to_remove.contains(&0) {
+            0.0
+        } else {
+            particles[0].mass
+        };
+        let m_total = m_star
+            + m_gas_remaining
+            + if to_remove.contains(&0) {
+                particles[0].mass
+            } else {
+                0.0
+            };
         // La masa total debe ser menor o igual (puede perderse algo si se eliminó gas)
         // Verificamos que m_star = m_star_fraction × m0
         assert!(
@@ -78,9 +96,13 @@ fn star_inherits_metallicity_from_gas() {
     let sfr = vec![1e10_f64];
     let mut seed = 7u64;
     let mut next_gid = 50;
-    let (stars, _) = spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
+    let (stars, _) =
+        spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
     if !stars.is_empty() {
-        assert!((stars[0].metallicity - z_gas).abs() < 1e-15, "Estrella debe heredar metalicidad del gas");
+        assert!(
+            (stars[0].metallicity - z_gas).abs() < 1e-15,
+            "Estrella debe heredar metalicidad del gas"
+        );
     }
 }
 
@@ -93,7 +115,8 @@ fn dm_particles_dont_spawn_stars() {
     let sfr = vec![1e10_f64];
     let mut seed = 11u64;
     let mut next_gid = 0;
-    let (stars, _) = spawn_star_particles(&mut particles, &sfr, 1.0, &mut seed, &cfg, &mut next_gid);
+    let (stars, _) =
+        spawn_star_particles(&mut particles, &sfr, 1.0, &mut seed, &cfg, &mut next_gid);
     assert!(stars.is_empty(), "DM no puede generar estrellas");
 }
 
@@ -107,9 +130,13 @@ fn gas_mass_reduced_after_spawn() {
     let sfr = vec![1e10_f64];
     let mut seed = 99u64;
     let mut next_gid = 200;
-    let (stars, _) = spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
+    let (stars, _) =
+        spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
     if !stars.is_empty() {
-        assert!(particles[0].mass < m0, "El gas padre debe perder masa tras el spawning");
+        assert!(
+            particles[0].mass < m0,
+            "El gas padre debe perder masa tras el spawning"
+        );
     }
 }
 
@@ -121,8 +148,8 @@ fn gas_below_min_mass_marked_for_removal() {
         enabled: true,
         sfr_min: 0.0,
         rho_sf: 0.0,
-        m_star_fraction: 0.99,  // casi toda la masa se convierte
-        m_gas_min: 0.5,         // umbral alto para forzar eliminación
+        m_star_fraction: 0.99, // casi toda la masa se convierte
+        m_gas_min: 0.5,        // umbral alto para forzar eliminación
         ..Default::default()
     };
     // Masa inicial 0.6 → tras spawn queda 0.006 < 0.5 → debe marcarse
@@ -130,9 +157,13 @@ fn gas_below_min_mass_marked_for_removal() {
     let sfr = vec![1e10_f64];
     let mut seed = 55u64;
     let mut next_gid = 0;
-    let (stars, to_remove) = spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
+    let (stars, to_remove) =
+        spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
     if !stars.is_empty() {
-        assert!(to_remove.contains(&0), "Gas con masa residual < m_gas_min debe marcarse para eliminar");
+        assert!(
+            to_remove.contains(&0),
+            "Gas con masa residual < m_gas_min debe marcarse para eliminar"
+        );
     }
 }
 

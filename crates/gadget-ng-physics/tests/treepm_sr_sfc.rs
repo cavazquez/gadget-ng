@@ -14,11 +14,11 @@
 //! 8. `sr_sfc_equals_slab3d_p1`            — SR-SFC coincide bit-a-bit con treepm_slab_3d en P=1
 
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_parallel::{halo3d::is_in_periodic_halo, ParallelRuntime, SerialRuntime};
+use gadget_ng_parallel::{ParallelRuntime, SerialRuntime, halo3d::is_in_periodic_halo};
 use gadget_ng_pm::{slab_fft::SlabLayout, slab_pm};
 use gadget_ng_treepm::{
     distributed::{
-        short_range_accels_sfc, short_range_accels_slab, SfcShortRangeParams, SlabShortRangeParams,
+        SfcShortRangeParams, SlabShortRangeParams, short_range_accels_sfc, short_range_accels_slab,
     },
     short_range::erfc_approx,
 };

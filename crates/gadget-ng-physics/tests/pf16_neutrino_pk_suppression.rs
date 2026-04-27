@@ -21,7 +21,7 @@
 //! cargo test -p gadget-ng-physics --release --test pf16_neutrino_pk_suppression -- --include-ignored
 //! ```
 
-use gadget_ng_core::{neutrino_suppression, omega_nu_from_mass, CosmologyParams};
+use gadget_ng_core::{neutrino_suppression, omega_nu_from_mass};
 
 // ── Tests rápidos ─────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ fn neutrino_suppression_m01ev_in_expected_range() {
     let omega_nu = omega_nu_from_mass(m_nu, h);
     let f_nu = omega_nu / omega_m;
     let sup = neutrino_suppression(f_nu);
-    // sup ∈ [0, 1]: fracción de potencia conservada  
+    // sup ∈ [0, 1]: fracción de potencia conservada
     // La supresión 1-sup debe estar en [0.5%, 15%] para m_ν=0.1 eV
     let suppression_pct = (1.0 - sup) * 100.0;
     assert!(
@@ -131,18 +131,24 @@ fn neutrino_suppression_sweep_mass_range() {
     let masses = [0.06, 0.1, 0.15, 0.3, 0.5];
 
     println!("Supresión de P(k) por neutrinos masivos:");
-    println!("{:>10} {:>12} {:>12} {:>12}", "m_ν (eV)", "f_ν", "sup(f_ν)", "ΔP/P (%)");
+    println!(
+        "{:>10} {:>12} {:>12} {:>12}",
+        "m_ν (eV)", "f_ν", "sup(f_ν)", "ΔP/P (%)"
+    );
 
     for &m in &masses {
         let omega_nu = omega_nu_from_mass(m, h);
         let f_nu = omega_nu / omega_m;
         let sup = neutrino_suppression(f_nu);
         let suppression_pct = (1.0 - sup) * 100.0;
-        println!("{:>10.2} {:>12.5} {:>12.4} {:>12.2}", m, f_nu, sup, suppression_pct);
+        println!(
+            "{:>10.2} {:>12.5} {:>12.4} {:>12.2}",
+            m, f_nu, sup, suppression_pct
+        );
 
         // Criterio: supresión en rango físicamente razonable
         assert!(
-            suppression_pct >= 0.1 && suppression_pct <= 50.0,
+            (0.1..=50.0).contains(&suppression_pct),
             "Supresión para m_ν={m} eV: {suppression_pct:.2}% fuera de [0.1%, 50%]"
         );
     }
@@ -152,7 +158,7 @@ fn neutrino_suppression_sweep_mass_range() {
     let sup_01 = neutrino_suppression(omega_nu_01 / omega_m);
     let sp = (1.0 - sup_01) * 100.0;
     assert!(
-        sp >= 0.3 && sp <= 15.0,
+        (0.3..=15.0).contains(&sp),
         "Supresión para m_ν=0.1 eV: {sp:.2}% (esperado en [0.3%, 15%])"
     );
 }

@@ -1,5 +1,5 @@
 //! Solver Barnes-Hut: implementa [`gadget_ng_core::GravitySolver`].
-use crate::octree::{walk_stats_begin, walk_stats_end, Octree};
+use crate::octree::{Octree, walk_stats_begin, walk_stats_end};
 use gadget_ng_core::{GravitySolver, MacSoftening, Vec3};
 
 #[derive(Debug, Clone, Copy)]

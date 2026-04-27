@@ -37,13 +37,19 @@ fn wind_cfg(v_wind: f64, eta: f64) -> WindParams {
 /// Con vientos desactivados, ninguna partícula es lanzada.
 #[test]
 fn wind_disabled_no_launch() {
-    let cfg = WindParams { enabled: false, ..Default::default() };
+    let cfg = WindParams {
+        enabled: false,
+        ..Default::default()
+    };
     let mut particles = vec![gas_particle(0, 0.01), gas_particle(1, 0.01)];
     let sfr = vec![1.0, 1.0];
     let v0 = particles[0].velocity;
     let mut seed = 42u64;
     let launched = apply_galactic_winds(&mut particles, &sfr, &cfg, 1.0, &mut seed);
-    assert!(launched.is_empty(), "no debe lanzar con vientos desactivados");
+    assert!(
+        launched.is_empty(),
+        "no debe lanzar con vientos desactivados"
+    );
     assert_eq!(particles[0].velocity.x, v0.x, "velocidad no debe cambiar");
 }
 
@@ -55,7 +61,10 @@ fn dm_particles_never_launched() {
     let sfr = vec![1e5, 1e5, 1e5]; // SFR muy alta
     let mut seed = 99u64;
     let launched = apply_galactic_winds(&mut particles, &sfr, &cfg, 1.0, &mut seed);
-    assert!(launched.is_empty(), "DM nunca debe ser lanzado: {launched:?}");
+    assert!(
+        launched.is_empty(),
+        "DM nunca debe ser lanzado: {launched:?}"
+    );
 }
 
 /// Con SFR = 0, ninguna partícula de gas es lanzada.
@@ -81,7 +90,8 @@ fn high_sfr_most_particles_launched() {
     assert!(
         launched.len() >= n * 9 / 10,
         "con SFR alta, ≥90% deben ser lanzados: {}/{}",
-        launched.len(), n
+        launched.len(),
+        n
     );
 }
 
@@ -119,9 +129,12 @@ fn wind_params_serde_roundtrip() {
         t_decoupling_myr: 5.0,
     };
     let json = serde_json::to_string(&params).unwrap();
-    assert!(json.contains("v_wind_km_s"), "debe tener v_wind_km_s: {json}");
+    assert!(
+        json.contains("v_wind_km_s"),
+        "debe tener v_wind_km_s: {json}"
+    );
     let restored: WindParams = serde_json::from_str(&json).unwrap();
-    assert_eq!(restored.enabled, true);
+    assert!(restored.enabled);
     assert!((restored.v_wind_km_s - 350.0).abs() < 1e-14);
     assert!((restored.mass_loading - 3.5).abs() < 1e-14);
 }
@@ -138,8 +151,14 @@ sfr_min = 0.0001
 "#;
     let fb: FeedbackSection = toml::from_str(toml_str).unwrap();
     assert!(!fb.wind.enabled, "wind debe estar desactivado por defecto");
-    assert!((fb.wind.v_wind_km_s - 480.0).abs() < 1e-14, "v_wind default debe ser 480.0");
-    assert!((fb.wind.mass_loading - 2.0).abs() < 1e-14, "mass_loading default debe ser 2.0");
+    assert!(
+        (fb.wind.v_wind_km_s - 480.0).abs() < 1e-14,
+        "v_wind default debe ser 480.0"
+    );
+    assert!(
+        (fb.wind.mass_loading - 2.0).abs() < 1e-14,
+        "mass_loading default debe ser 2.0"
+    );
 }
 
 /// Interacción entre SFR y vientos: compute_sfr + apply_galactic_winds integrado.
@@ -149,15 +168,26 @@ fn sfr_and_wind_pipeline() {
         enabled: true,
         rho_sf: 0.001, // umbral bajo para activar SFR
         sfr_min: 0.0,
-        wind: WindParams { enabled: true, v_wind_km_s: 200.0, mass_loading: 5.0, t_decoupling_myr: 0.0 },
+        wind: WindParams {
+            enabled: true,
+            v_wind_km_s: 200.0,
+            mass_loading: 5.0,
+            t_decoupling_myr: 0.0,
+        },
         ..Default::default()
     };
     let mut particles: Vec<Particle> = (0..10).map(|i| gas_particle(i, 0.01)).collect();
     let sfr = compute_sfr(&particles, &feedback_cfg);
     // SFR debe ser positiva para gas denso (h pequeño → ρ grande)
-    assert!(sfr.iter().any(|&s| s > 0.0), "alguna partícula debe tener SFR > 0");
+    assert!(
+        sfr.iter().any(|&s| s > 0.0),
+        "alguna partícula debe tener SFR > 0"
+    );
     let mut seed = 1234u64;
     let launched = apply_galactic_winds(&mut particles, &sfr, &feedback_cfg.wind, 1.0, &mut seed);
     // Puede que ninguna se lance en este paso (estocástico), pero la función no debe paniquear
-    assert!(launched.len() <= 10, "no puede lanzar más partículas de las que hay");
+    assert!(
+        launched.len() <= 10,
+        "no puede lanzar más partículas de las que hay"
+    );
 }

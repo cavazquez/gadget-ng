@@ -58,7 +58,9 @@ pub struct EmissionLine {
 /// - `rho`: densidad en unidades internas (proporcional a n_e²)
 /// - `t_k`: temperatura en Kelvin
 pub fn emissivity_halpha(rho: f64, t_k: f64) -> f64 {
-    if t_k < T_ION_MIN || rho <= 0.0 { return 0.0; }
+    if t_k < T_ION_MIN || rho <= 0.0 {
+        return 0.0;
+    }
     1.37e-25 * rho * rho * t_k.powf(-0.9)
 }
 
@@ -71,7 +73,9 @@ pub fn emissivity_halpha(rho: f64, t_k: f64) -> f64 {
 /// - `t_k`: temperatura en Kelvin
 /// - `metallicity`: fracción de masa en metales (Z)
 pub fn emissivity_oiii(rho: f64, t_k: f64, metallicity: f64) -> f64 {
-    if t_k < T_ION_MIN || rho <= 0.0 { return 0.0; }
+    if t_k < T_ION_MIN || rho <= 0.0 {
+        return 0.0;
+    }
     let z_rel = (metallicity / Z_SUN).max(0.0);
     1.8e-24 * rho * rho * z_rel * (-29_000.0 / t_k).exp()
 }
@@ -85,7 +89,9 @@ pub fn emissivity_oiii(rho: f64, t_k: f64, metallicity: f64) -> f64 {
 /// - `t_k`: temperatura en Kelvin
 /// - `metallicity`: fracción de masa en metales (Z)
 pub fn emissivity_nii(rho: f64, t_k: f64, metallicity: f64) -> f64 {
-    if t_k < T_ION_MIN || rho <= 0.0 { return 0.0; }
+    if t_k < T_ION_MIN || rho <= 0.0 {
+        return 0.0;
+    }
     let z_rel = (metallicity / Z_SUN).max(0.0);
     4.5e-25 * rho * rho * z_rel * (-21_500.0 / t_k).exp()
 }
@@ -107,8 +113,11 @@ pub fn compute_emission_lines(particles: &[Particle], gamma: f64) -> Vec<Emissio
         .map(|p| {
             if !p.is_gas() {
                 return EmissionLine {
-                    h_alpha: 0.0, oiii: 0.0, nii: 0.0,
-                    r_nii_halpha: 0.0, r_oiii_hbeta: 0.0,
+                    h_alpha: 0.0,
+                    oiii: 0.0,
+                    nii: 0.0,
+                    r_nii_halpha: 0.0,
+                    r_oiii_hbeta: 0.0,
                 };
             }
             let rho = if p.smoothing_length > 0.0 {
@@ -117,16 +126,22 @@ pub fn compute_emission_lines(particles: &[Particle], gamma: f64) -> Vec<Emissio
                 0.0
             };
             let t_k = u_to_temperature(p.internal_energy, gamma);
-        let ha = emissivity_halpha(rho, t_k);
-        let oiii = emissivity_oiii(rho, t_k, p.metallicity);
-        let nii = emissivity_nii(rho, t_k, p.metallicity);
+            let ha = emissivity_halpha(rho, t_k);
+            let oiii = emissivity_oiii(rho, t_k, p.metallicity);
+            let nii = emissivity_nii(rho, t_k, p.metallicity);
 
             let r_nii_halpha = if ha > 0.0 { nii / ha } else { 0.0 };
             // Hβ ≈ Hα / 2.86 (Balmer decrement)
             let h_beta = ha / 2.86;
             let r_oiii_hbeta = if h_beta > 0.0 { oiii / h_beta } else { 0.0 };
 
-            EmissionLine { h_alpha: ha, oiii, nii, r_nii_halpha, r_oiii_hbeta }
+            EmissionLine {
+                h_alpha: ha,
+                oiii,
+                nii,
+                r_nii_halpha,
+                r_oiii_hbeta,
+            }
         })
         .collect()
 }
@@ -141,8 +156,16 @@ pub fn bpt_diagram(lines: &[EmissionLine]) -> Vec<(f64, f64)> {
         .iter()
         .filter(|l| l.h_alpha > 0.0 && l.oiii > 0.0)
         .map(|l| {
-            let x = if l.r_nii_halpha > 0.0 { l.r_nii_halpha.log10() } else { f64::NEG_INFINITY };
-            let y = if l.r_oiii_hbeta > 0.0 { l.r_oiii_hbeta.log10() } else { f64::NEG_INFINITY };
+            let x = if l.r_nii_halpha > 0.0 {
+                l.r_nii_halpha.log10()
+            } else {
+                f64::NEG_INFINITY
+            };
+            let y = if l.r_oiii_hbeta > 0.0 {
+                l.r_oiii_hbeta.log10()
+            } else {
+                f64::NEG_INFINITY
+            };
             (x, y)
         })
         .collect()

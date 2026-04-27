@@ -27,7 +27,7 @@
 //! La distancia mínima a una AABB periódica también se calcula con wrap.
 
 use gadget_ng_core::Vec3;
-use gadget_ng_tree::{Octree, NO_CHILD};
+use gadget_ng_tree::{NO_CHILD, Octree};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -181,18 +181,18 @@ fn walk_short_range(tree: &Octree, xi: Vec3, skip: usize, p: &ShortRangeParams<'
         let is_leaf = node.children.iter().all(|&c| c == NO_CHILD);
 
         if is_leaf {
-            if let Some(j) = node.particle_idx {
-                if j != skip {
-                    let rj = p.positions[j];
-                    let rx = rj.x - xi.x;
-                    let ry = rj.y - xi.y;
-                    let rz = rj.z - xi.z;
-                    let r2 = rx * rx + ry * ry + rz * rz + p.eps2;
-                    let r = r2.sqrt();
-                    let w = erfc_factor(r, p.r_split);
-                    let inv3 = p.g * p.masses[j] * w / (r2 * r);
-                    *a += Vec3::new(rx * inv3, ry * inv3, rz * inv3);
-                }
+            if let Some(j) = node.particle_idx
+                && j != skip
+            {
+                let rj = p.positions[j];
+                let rx = rj.x - xi.x;
+                let ry = rj.y - xi.y;
+                let rz = rj.z - xi.z;
+                let r2 = rx * rx + ry * ry + rz * rz + p.eps2;
+                let r = r2.sqrt();
+                let w = erfc_factor(r, p.r_split);
+                let inv3 = p.g * p.masses[j] * w / (r2 * r);
+                *a += Vec3::new(rx * inv3, ry * inv3, rz * inv3);
             }
         } else {
             let d2 = dx * dx + dy * dy + dz * dz;
@@ -306,21 +306,21 @@ fn walk_short_range_periodic(
         let is_leaf = node.children.iter().all(|&c| c == NO_CHILD);
 
         if is_leaf {
-            if let Some(j) = node.particle_idx {
-                if j != skip {
-                    let rj = p.positions[j];
-                    let rx = minimum_image(rj.x - xi.x, box_size);
-                    let ry = minimum_image(rj.y - xi.y, box_size);
-                    let rz = minimum_image(rj.z - xi.z, box_size);
-                    let r2 = rx * rx + ry * ry + rz * rz + p.eps2;
-                    if r2 - p.eps2 > p.r_cut2 {
-                        continue; // fuera del cutoff con minimum_image
-                    }
-                    let r = r2.sqrt();
-                    let w = erfc_factor(r, p.r_split);
-                    let inv3 = p.g * p.masses[j] * w / (r2 * r);
-                    *a += Vec3::new(rx * inv3, ry * inv3, rz * inv3);
+            if let Some(j) = node.particle_idx
+                && j != skip
+            {
+                let rj = p.positions[j];
+                let rx = minimum_image(rj.x - xi.x, box_size);
+                let ry = minimum_image(rj.y - xi.y, box_size);
+                let rz = minimum_image(rj.z - xi.z, box_size);
+                let r2 = rx * rx + ry * ry + rz * rz + p.eps2;
+                if r2 - p.eps2 > p.r_cut2 {
+                    continue; // fuera del cutoff con minimum_image
                 }
+                let r = r2.sqrt();
+                let w = erfc_factor(r, p.r_split);
+                let inv3 = p.g * p.masses[j] * w / (r2 * r);
+                *a += Vec3::new(rx * inv3, ry * inv3, rz * inv3);
             }
         } else {
             // Distancia CoM con minimum_image para el monopolo.

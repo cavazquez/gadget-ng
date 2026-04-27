@@ -21,7 +21,11 @@ pub struct BlackHole {
 impl BlackHole {
     /// Crea un nuevo agujero negro en posición `pos` con masa `mass`.
     pub fn new(pos: Vec3, mass: f64) -> Self {
-        Self { pos, mass, accretion_rate: 0.0 }
+        Self {
+            pos,
+            mass,
+            accretion_rate: 0.0,
+        }
     }
 }
 
@@ -170,7 +174,9 @@ pub fn bubble_feedback_radio(
     dt: f64,
 ) {
     let e_radio = eps_radio * bh.accretion_rate * C_KMS * C_KMS * dt;
-    if e_radio <= 0.0 { return; }
+    if e_radio <= 0.0 {
+        return;
+    }
 
     let r2_bubble = r_bubble * r_bubble;
 
@@ -179,7 +185,9 @@ pub fn bubble_feedback_radio(
     let mut total_mass = 0.0_f64;
 
     for (i, p) in particles.iter().enumerate() {
-        if p.ptype != gadget_ng_core::ParticleType::Gas { continue; }
+        if p.ptype != gadget_ng_core::ParticleType::Gas {
+            continue;
+        }
         let dx = p.position.x - bh.pos.x;
         let dy = p.position.y - bh.pos.y;
         let dz = p.position.z - bh.pos.z;
@@ -190,7 +198,9 @@ pub fn bubble_feedback_radio(
         }
     }
 
-    if neighbors.is_empty() || total_mass <= 0.0 { return; }
+    if neighbors.is_empty() || total_mass <= 0.0 {
+        return;
+    }
 
     // Kick tangencial: perpendicular al vector BH→partícula
     // Construir un vector perpendicular usando producto vectorial con eje z
@@ -236,11 +246,17 @@ pub fn apply_agn_feedback_bimodal(
     dt: f64,
 ) {
     for bh in bhs {
-        if bh.accretion_rate <= 0.0 { continue; }
+        if bh.accretion_rate <= 0.0 {
+            continue;
+        }
 
         // Tasa de Eddington aproximada en unidades internas
         let m_edd_rate = bh.mass * 1e-10;
-        let f_edd = if m_edd_rate > 0.0 { bh.accretion_rate / m_edd_rate } else { 1.0 };
+        let f_edd = if m_edd_rate > 0.0 {
+            bh.accretion_rate / m_edd_rate
+        } else {
+            1.0
+        };
 
         if f_edd > f_edd_threshold {
             // Modo quasar: feedback térmico (comportamiento original)
@@ -321,7 +337,11 @@ mod tests {
     }
 
     fn make_bh(pos: Vec3, mass: f64, mdot: f64) -> BlackHole {
-        BlackHole { pos, mass, accretion_rate: mdot }
+        BlackHole {
+            pos,
+            mass,
+            accretion_rate: mdot,
+        }
     }
 
     /// Ṁ ∝ M_BH² verificado numéricamente.
@@ -346,7 +366,12 @@ mod tests {
     /// La partícula vecina debe ganar energía interna después del feedback.
     #[test]
     fn agn_feedback_increases_internal_energy() {
-        let params = AgnParams { eps_feedback: 0.1, m_seed: 1e5, v_kick_agn: 0.0, r_influence: 2.0 };
+        let params = AgnParams {
+            eps_feedback: 0.1,
+            m_seed: 1e5,
+            v_kick_agn: 0.0,
+            r_influence: 2.0,
+        };
         let bh = make_bh(Vec3::zero(), 1e8, 1e-3);
 
         let mut particles = vec![
@@ -365,8 +390,7 @@ mod tests {
             u_before
         );
         assert_eq!(
-            particles[1].internal_energy,
-            u_outside_before,
+            particles[1].internal_energy, u_outside_before,
             "partícula lejana no debe cambiar"
         );
     }
@@ -377,12 +401,15 @@ mod tests {
         let eps = 0.05;
         let mdot = 1e-4;
         let dt = 1.0;
-        let params = AgnParams { eps_feedback: eps, m_seed: 1e5, v_kick_agn: 0.0, r_influence: 2.0 };
+        let params = AgnParams {
+            eps_feedback: eps,
+            m_seed: 1e5,
+            v_kick_agn: 0.0,
+            r_influence: 2.0,
+        };
         let bh = make_bh(Vec3::zero(), 1e8, mdot);
 
-        let mut particles = vec![
-            make_gas_particle(Vec3::new(0.5, 0.0, 0.0), 1.0, 100.0),
-        ];
+        let mut particles = vec![make_gas_particle(Vec3::new(0.5, 0.0, 0.0), 1.0, 100.0)];
         let u_before = particles[0].internal_energy * particles[0].mass;
 
         apply_agn_feedback(&mut particles, &[bh], &params, dt);
@@ -404,16 +431,13 @@ mod tests {
     fn agn_feedback_no_neighbors() {
         let params = AgnParams::default();
         let bh = make_bh(Vec3::zero(), 1e8, 1e-3);
-        let mut particles = vec![
-            make_gas_particle(Vec3::new(10.0, 0.0, 0.0), 1.0, 100.0),
-        ];
+        let mut particles = vec![make_gas_particle(Vec3::new(10.0, 0.0, 0.0), 1.0, 100.0)];
         let u_before = particles[0].internal_energy;
 
         apply_agn_feedback(&mut particles, &[bh], &params, 1.0);
 
         assert_eq!(
-            particles[0].internal_energy,
-            u_before,
+            particles[0].internal_energy, u_before,
             "sin vecinos, energía debe ser invariante"
         );
     }
@@ -421,11 +445,14 @@ mod tests {
     /// grow_black_holes aumenta la masa del BH cuando hay gas vecino.
     #[test]
     fn grow_bh_increases_mass_with_gas() {
-        let params = AgnParams { eps_feedback: 0.0, m_seed: 1e5, v_kick_agn: 0.0, r_influence: 2.0 };
+        let params = AgnParams {
+            eps_feedback: 0.0,
+            m_seed: 1e5,
+            v_kick_agn: 0.0,
+            r_influence: 2.0,
+        };
         let mut bhs = vec![BlackHole::new(Vec3::zero(), 1e8)];
-        let particles = vec![
-            make_gas_particle(Vec3::new(0.5, 0.0, 0.0), 1.0, 1000.0),
-        ];
+        let particles = vec![make_gas_particle(Vec3::new(0.5, 0.0, 0.0), 1.0, 1000.0)];
         let mass_before = bhs[0].mass;
 
         grow_black_holes(&mut bhs, &particles, &params, 1.0);

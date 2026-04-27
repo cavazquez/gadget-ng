@@ -10,7 +10,7 @@
 //!
 //! Referencia: Greengard & Rokhlin (1987), Barnes & Hut (1986).
 
-use gadget_ng_core::{Vec3, Particle};
+use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_tree::Octree;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -21,7 +21,9 @@ const G: f64 = 1.0;
 fn uniform_sphere(n: usize, r: f64, seed: u64) -> Vec<Particle> {
     let mut rng = seed;
     let next = |rng: &mut u64| -> f64 {
-        *rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *rng = rng
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (*rng >> 33) as f64 / (u64::MAX >> 33) as f64
     };
 
@@ -50,7 +52,9 @@ fn direct_forces(particles: &[Particle]) -> Vec<Vec3> {
     let mut forces = vec![Vec3::zero(); n];
     for i in 0..n {
         for j in 0..n {
-            if i == j { continue; }
+            if i == j {
+                continue;
+            }
             let dr = particles[j].position - particles[i].position;
             let r2 = dr.dot(dr);
             let r = r2.sqrt().max(1e-10);
@@ -81,18 +85,17 @@ fn tree_rms_error(particles: &[Particle], theta: f64) -> f64 {
         let fe = f_exact[i];
         let fe_mag = (fe.x * fe.x + fe.y * fe.y + fe.z * fe.z).sqrt();
         if fe_mag > 1e-12 {
-            let err_vec = Vec3::new(
-                f_tree.x - fe.x,
-                f_tree.y - fe.y,
-                f_tree.z - fe.z,
-            );
-            let err_mag = (err_vec.x * err_vec.x + err_vec.y * err_vec.y + err_vec.z * err_vec.z).sqrt();
+            let err_vec = Vec3::new(f_tree.x - fe.x, f_tree.y - fe.y, f_tree.z - fe.z);
+            let err_mag =
+                (err_vec.x * err_vec.x + err_vec.y * err_vec.y + err_vec.z * err_vec.z).sqrt();
             sq_err += (err_mag / fe_mag).powi(2);
             n_valid += 1;
         }
     }
 
-    if n_valid == 0 { return 0.0; }
+    if n_valid == 0 {
+        return 0.0;
+    }
     (sq_err / n_valid as f64).sqrt()
 }
 
@@ -108,8 +111,10 @@ fn tree_forces_finite() {
 
     for i in 0..particles.len() {
         let f = tree.walk_accel(positions[i], i, G, 1e-6, 0.5, &positions, &masses);
-        assert!(f.x.is_finite() && f.y.is_finite() && f.z.is_finite(),
-            "Fuerza árbol no finita para partícula {i}");
+        assert!(
+            f.x.is_finite() && f.y.is_finite() && f.z.is_finite(),
+            "Fuerza árbol no finita para partícula {i}"
+        );
     }
 }
 
@@ -152,7 +157,10 @@ fn tree_introduces_some_error_for_large_theta() {
 fn tree_error_monotone_with_theta() {
     let particles = uniform_sphere(32, 1.0, 55);
     let thetas = [0.3_f64, 0.5, 0.7];
-    let errors: Vec<f64> = thetas.iter().map(|&t| tree_rms_error(&particles, t)).collect();
+    let errors: Vec<f64> = thetas
+        .iter()
+        .map(|&t| tree_rms_error(&particles, t))
+        .collect();
 
     println!("FMM error vs θ:");
     for (t, e) in thetas.iter().zip(errors.iter()) {
@@ -161,8 +169,5 @@ fn tree_error_monotone_with_theta() {
 
     // La tendencia general debe ser creciente (permitimos violaciones individuales)
     let n_violations = errors.windows(2).filter(|w| w[1] < w[0] * 0.5).count();
-    assert!(
-        n_violations == 0,
-        "Error debe aumentar con θ: {:?}", errors
-    );
+    assert!(n_violations == 0, "Error debe aumentar con θ: {:?}", errors);
 }

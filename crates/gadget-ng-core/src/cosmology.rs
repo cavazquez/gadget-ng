@@ -73,12 +73,26 @@ impl CosmologyParams {
 
     /// Crea parámetros con energía oscura dinámica CPL (Phase 155).
     pub fn new_cpl(omega_m: f64, omega_lambda: f64, h0: f64, w0: f64, wa: f64) -> Self {
-        Self { omega_m, omega_lambda, h0, w0, wa, omega_nu: 0.0 }
+        Self {
+            omega_m,
+            omega_lambda,
+            h0,
+            w0,
+            wa,
+            omega_nu: 0.0,
+        }
     }
 
     /// Crea parámetros con neutrinos masivos (Phase 156).
     pub fn new_with_nu(omega_m: f64, omega_lambda: f64, h0: f64, omega_nu: f64) -> Self {
-        Self { omega_m, omega_lambda, h0, w0: -1.0, wa: 0.0, omega_nu }
+        Self {
+            omega_m,
+            omega_lambda,
+            h0,
+            w0: -1.0,
+            wa: 0.0,
+            omega_nu,
+        }
     }
 
     /// `da/dt` con energía oscura dinámica w(a) CPL y neutrinos masivos (Phase 155/156).
@@ -468,7 +482,9 @@ pub fn hubble_param(params: CosmologyParams, a: f64) -> f64 {
 /// # Retorna
 /// Ω_ν (sin dimensiones). Para `m_nu_ev = 0.06, h = 0.674`: Ω_ν ≈ 0.00142.
 pub fn omega_nu_from_mass(m_nu_ev: f64, h100: f64) -> f64 {
-    if m_nu_ev <= 0.0 { return 0.0; }
+    if m_nu_ev <= 0.0 {
+        return 0.0;
+    }
     m_nu_ev / (93.14 * h100 * h100)
 }
 
@@ -483,7 +499,7 @@ pub fn omega_nu_from_mass(m_nu_ev: f64, h100: f64) -> f64 {
 /// # Retorna
 /// Factor multiplicativo `(1 - 8 × f_ν)` clampado a [0, 1].
 pub fn neutrino_suppression(f_nu: f64) -> f64 {
-    (1.0 - 8.0 * f_nu).max(0.0).min(1.0)
+    (1.0 - 8.0 * f_nu).clamp(0.0, 1.0)
 }
 
 /// Tasa de crecimiento lineal `f(a) = d ln D / d ln a`.

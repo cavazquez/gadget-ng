@@ -18,18 +18,18 @@
 //! Controlar con `PHASE58_SKIP=1` para omitir la simulación pesada.
 
 use gadget_ng_analysis::{
-    analyse, concentration_duffy2008, concentration_ludlow2016, fit_nfw_concentration,
-    measure_density_profile, r200_from_m200, rho_crit_z, two_point_correlation_fft,
-    two_point_correlation_pairs, AnalysisParams, RHO_CRIT_H2,
+    AnalysisParams, RHO_CRIT_H2, analyse, concentration_duffy2008, concentration_ludlow2016,
+    fit_nfw_concentration, measure_density_profile, r200_from_m200, rho_crit_z,
+    two_point_correlation_fft, two_point_correlation_pairs,
 };
 use gadget_ng_core::{
-    build_particles,
-    cosmology::{adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl, CosmologyParams},
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3, build_particles,
+    cosmology::{CosmologyParams, adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl},
+    wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use std::sync::OnceLock;
 
@@ -149,9 +149,13 @@ fn run_simulation() -> Phase58Result {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
 
     let mut parts = build_particles(&cfg).expect("[phase58] ICs no deben fallar");
@@ -208,7 +212,7 @@ fn run_simulation() -> Phase58Result {
         for p in parts.iter_mut() {
             p.position = wrap_position(p.position, BOX);
         }
-        if step % 1000 == 0 {
+        if step.is_multiple_of(1000) {
             eprintln!("[phase58] step={step} a={a:.4}");
         }
     }
@@ -359,7 +363,9 @@ fn phase58_concentration_vs_theory() {
     );
 
     if r.c_ratio_duffy.is_empty() {
-        eprintln!("[phase58] ADVERTENCIA: ningún halo con ajuste NFW válido (N=32³ puede no colapsar suficiente)");
+        eprintln!(
+            "[phase58] ADVERTENCIA: ningún halo con ajuste NFW válido (N=32³ puede no colapsar suficiente)"
+        );
         return;
     }
 

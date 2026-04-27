@@ -55,15 +55,13 @@ fn u_to_t_code(u: f64, gamma: f64) -> f64 {
 /// 3. Calcula `ν_ei = nu_ei_coeff × ρ / T_e^{3/2}` (ρ ≈ m/h³)
 /// 4. Actualiza `T_e` con el paso implícito:
 ///    `T_e_new = T_e + (T_i − T_e) × (1 − exp(−ν_ei × dt))`
-pub fn apply_electron_ion_coupling(
-    particles: &mut [Particle],
-    cfg: &TwoFluidSection,
-    dt: f64,
-) {
+pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
     const GAMMA: f64 = 5.0 / 3.0;
 
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
 
         let t_i = u_to_t_code(p.internal_energy, GAMMA);
 
@@ -101,7 +99,9 @@ pub fn mean_te_over_ti(particles: &[Particle]) -> f64 {
     let mut sum = 0.0_f64;
     let mut n = 0usize;
     for p in particles.iter() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         let t_i = u_to_t_code(p.internal_energy, GAMMA).max(1e-30);
         sum += p.t_electron / t_i;
         n += 1;

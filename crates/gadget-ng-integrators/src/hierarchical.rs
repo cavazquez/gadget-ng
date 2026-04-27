@@ -47,8 +47,8 @@
 //! sus posiciones se mejoran de O(Δt²) a O(Δt³) para la evaluación de fuerzas,
 //! sin modificar la integración simpléctica de las partículas activas.
 use gadget_ng_core::{
-    cosmology::{hubble_param, CosmologyParams},
     Particle, TimestepCriterion, Vec3,
+    cosmology::{CosmologyParams, hubble_param},
 };
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -332,7 +332,7 @@ pub fn hierarchical_kdk_step(
             let stride = 1u64 << (max_level - lvl);
             if s % stride == 0 {
                 state.elapsed[i] = 0; // reiniciar contador desde este sync
-                                      // Medio-kick START: kick sobre primera mitad de dt_i
+                // Medio-kick START: kick sobre primera mitad de dt_i
                 let half_kick_half_steps = 1u64 << (max_level - lvl); // medios sub-pasos
                 let kick_start = kick_prefix[2 * s_idx];
                 let kick_end = kick_prefix[2 * s_idx + half_kick_half_steps as usize];
@@ -434,12 +434,13 @@ pub fn hierarchical_kdk_step(
                 // Aplicar cota cosmológica: dt_i ≤ dt_cosmo_max → nivel mínimo.
                 // dt_i = dt_base / 2^level, así que dt_i ≤ dt_cosmo_max
                 // equivale a 2^level ≥ dt_base / dt_cosmo_max.
-                if let Some(dt_cosmo_max) = cosmo_dt_max {
-                    if dt_cosmo_max > 0.0 && dt_cosmo_max < dt_base {
-                        let min_level_cosmo =
-                            ((dt_base / dt_cosmo_max).log2().ceil() as u32).min(max_level);
-                        new_level = new_level.max(min_level_cosmo);
-                    }
+                if let Some(dt_cosmo_max) = cosmo_dt_max
+                    && dt_cosmo_max > 0.0
+                    && dt_cosmo_max < dt_base
+                {
+                    let min_level_cosmo =
+                        ((dt_base / dt_cosmo_max).log2().ceil() as u32).min(max_level);
+                    new_level = new_level.max(min_level_cosmo);
                 }
 
                 // Guardar aceleración actual como referencia para el próximo ciclo.

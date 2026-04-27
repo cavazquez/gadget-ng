@@ -75,7 +75,7 @@ fn main() {
 
     // Fuentes a compilar: pm_gravity.cu y direct_gravity.cu
     let kernel_sources = [
-        ("pm_gravity",     "cuda/pm_gravity.cu"),
+        ("pm_gravity", "cuda/pm_gravity.cu"),
         ("direct_gravity", "cuda/direct_gravity.cu"),
     ];
 
@@ -103,12 +103,16 @@ fn main() {
         match status {
             Ok(s) if s.success() => {}
             Ok(s) => {
-                println!("cargo:warning=nvcc falló al compilar {name} (código {s}). CUDA deshabilitado.");
+                println!(
+                    "cargo:warning=nvcc falló al compilar {name} (código {s}). CUDA deshabilitado."
+                );
                 println!("cargo:rustc-cfg=cuda_unavailable");
                 return;
             }
             Err(e) => {
-                println!("cargo:warning=No se pudo ejecutar nvcc para {name}: {e}. CUDA deshabilitado.");
+                println!(
+                    "cargo:warning=No se pudo ejecutar nvcc para {name}: {e}. CUDA deshabilitado."
+                );
                 println!("cargo:rustc-cfg=cuda_unavailable");
                 return;
             }
@@ -117,7 +121,10 @@ fn main() {
     }
 
     // ar rcs libpm_cuda.a pm_gravity.o direct_gravity.o
-    let mut ar_args = vec!["rcs".to_string(), lib_path.to_str().expect("lib path").to_string()];
+    let mut ar_args = vec![
+        "rcs".to_string(),
+        lib_path.to_str().expect("lib path").to_string(),
+    ];
     for obj in &obj_paths {
         ar_args.push(obj.to_str().expect("obj path").to_string());
     }
@@ -170,12 +177,12 @@ fn find_nvcc(cuda_path: Option<&Path>) -> Option<PathBuf> {
     }
 
     // Opción 2: nvcc en PATH
-    if let Ok(out) = Command::new("which").arg("nvcc").output() {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !s.is_empty() {
-                return Some(PathBuf::from(s));
-            }
+    if let Ok(out) = Command::new("which").arg("nvcc").output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !s.is_empty() {
+            return Some(PathBuf::from(s));
         }
     }
 
@@ -199,19 +206,19 @@ fn detect_cuda_arch() -> String {
         .args(["--query-gpu=compute_cap", "--format=csv,noheader"])
         .output();
 
-    if let Ok(o) = out {
-        if o.status.success() {
-            let cap = String::from_utf8_lossy(&o.stdout);
-            // Tomar la primera GPU; eliminar el punto (6.1 → sm_61)
-            if let Some(line) = cap.lines().next() {
-                let sm = line.trim().replace('.', "");
-                if !sm.is_empty() {
-                    println!(
-                        "cargo:warning=GPU detectada: compute capability {}, compilando para sm_{sm}",
-                        line.trim()
-                    );
-                    return format!("sm_{sm}");
-                }
+    if let Ok(o) = out
+        && o.status.success()
+    {
+        let cap = String::from_utf8_lossy(&o.stdout);
+        // Tomar la primera GPU; eliminar el punto (6.1 → sm_61)
+        if let Some(line) = cap.lines().next() {
+            let sm = line.trim().replace('.', "");
+            if !sm.is_empty() {
+                println!(
+                    "cargo:warning=GPU detectada: compute capability {}, compilando para sm_{sm}",
+                    line.trim()
+                );
+                return format!("sm_{sm}");
             }
         }
     }
@@ -251,13 +258,12 @@ fn find_cufft_lib(cuda_path: Option<&Path>) -> Option<PathBuf> {
     if let Ok(out) = Command::new("pkg-config")
         .args(["--libs-only-L", "cufft"])
         .output()
+        && out.status.success()
     {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let dir = s.trim_start_matches("-L");
-            if !dir.is_empty() {
-                return Some(PathBuf::from(dir));
-            }
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let dir = s.trim_start_matches("-L");
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
         }
     }
 

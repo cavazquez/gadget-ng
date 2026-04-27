@@ -37,9 +37,9 @@
 //! se limita a la fase precolapso para ser interpretable.
 
 use gadget_ng_core::{
-    build_particles, CosmologySection, GravitySection, IcKind, InitialConditionsSection,
-    OutputSection, Particle, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    UnitsSection, Vec3,
+    CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection, Particle,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection, Vec3,
+    build_particles,
 };
 use gadget_ng_integrators::leapfrog_kdk_step;
 use gadget_ng_tree::BarnesHutGravity;
@@ -82,9 +82,13 @@ fn collapse_config() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

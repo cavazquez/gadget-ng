@@ -65,10 +65,7 @@ fn velocity_variance(particles: &[Particle]) -> f64 {
     if n < 1.0 {
         return 0.0;
     }
-    let sum_v2: f64 = particles
-        .iter()
-        .map(|p| p.velocity.dot(p.velocity))
-        .sum();
+    let sum_v2: f64 = particles.iter().map(|p| p.velocity.dot(p.velocity)).sum();
     sum_v2 / n
 }
 
@@ -89,16 +86,16 @@ fn fit_spectral_slope(k_bins: &[(f64, f64)]) -> f64 {
     let mean_y: f64 = data.iter().map(|(_, y)| y).sum::<f64>() / n;
     let num: f64 = data.iter().map(|(x, y)| (x - mean_x) * (y - mean_y)).sum();
     let den: f64 = data.iter().map(|(x, _)| (x - mean_x).powi(2)).sum();
-    if den < 1e-30 {
-        0.0
-    } else {
-        num / den
-    }
+    if den < 1e-30 { 0.0 } else { num / den }
 }
 
 /// Calcula espectro cinético por bins de k. Usa velocidades de las partículas.
 /// Devuelve (k_center, E_k) para cada bin.
-fn kinetic_power_spectrum_bins(particles: &[Particle], box_size: f64, n_bins: usize) -> Vec<(f64, f64)> {
+fn kinetic_power_spectrum_bins(
+    particles: &[Particle],
+    box_size: f64,
+    n_bins: usize,
+) -> Vec<(f64, f64)> {
     let k_min = 2.0 * std::f64::consts::PI / box_size;
     let k_max = k_min * (n_bins as f64);
     let mut bins = vec![(0.0_f64, 0.0_f64); n_bins];
@@ -134,9 +131,12 @@ fn kinetic_power_spectrum_bins(particles: &[Particle], box_size: f64, n_bins: us
             im_vz += p.velocity.z * phase.sin();
         }
         let n_p = particles.len() as f64;
-        let ek = (re_vx * re_vx + im_vx * im_vx
-            + re_vy * re_vy + im_vy * im_vy
-            + re_vz * re_vz + im_vz * im_vz)
+        let ek = (re_vx * re_vx
+            + im_vx * im_vx
+            + re_vy * re_vy
+            + im_vy * im_vy
+            + re_vz * re_vz
+            + im_vz * im_vz)
             / (n_p * n_p);
         bins[ib].1 = ek;
         counts[ib] += 1;
@@ -176,8 +176,14 @@ fn turbulence_stats_finite() {
         apply_turbulent_forcing(&mut particles, &cfg, dt, step as u64);
     }
     let (mach_s, mach_a) = turbulence_stats(&particles, 5.0 / 3.0);
-    assert!(mach_s.is_finite() && mach_s >= 0.0, "Mach sónico debe ser finito ≥ 0: {mach_s}");
-    assert!(mach_a.is_finite() && mach_a >= 0.0, "Mach Alfvénico debe ser finito ≥ 0: {mach_a}");
+    assert!(
+        mach_s.is_finite() && mach_s >= 0.0,
+        "Mach sónico debe ser finito ≥ 0: {mach_s}"
+    );
+    assert!(
+        mach_a.is_finite() && mach_a >= 0.0,
+        "Mach Alfvénico debe ser finito ≥ 0: {mach_a}"
+    );
 }
 
 /// La amplitud del forzado controla el nivel de energía: amplitud mayor → más energía.

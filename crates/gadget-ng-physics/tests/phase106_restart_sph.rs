@@ -10,9 +10,11 @@
 //! de los tipos involucrados y el formato de los ficheros JSON generados.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-use gadget_ng_io::{JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotReader, SnapshotWriter};
-use gadget_ng_sph::BlackHole;
+use gadget_ng_io::{
+    JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotReader, SnapshotWriter,
+};
 use gadget_ng_rt::ChemState;
+use gadget_ng_sph::BlackHole;
 use std::fs;
 use tempfile::tempdir;
 
@@ -21,11 +23,24 @@ fn prov() -> Provenance {
 }
 
 fn env() -> SnapshotEnv {
-    SnapshotEnv { time: 1.0, redshift: 0.5, box_size: 10.0, units: None, ..Default::default() }
+    SnapshotEnv {
+        time: 1.0,
+        redshift: 0.5,
+        box_size: 10.0,
+        units: None,
+        ..Default::default()
+    }
 }
 
 fn gas(id: usize) -> Particle {
-    Particle::new_gas(id, 1.0, Vec3::new(id as f64, 0.0, 0.0), Vec3::zero(), 3.5 + id as f64, 0.05)
+    Particle::new_gas(
+        id,
+        1.0,
+        Vec3::new(id as f64, 0.0, 0.0),
+        Vec3::zero(),
+        3.5 + id as f64,
+        0.05,
+    )
 }
 
 // ── Helpers de serialización ────────────────────────────────────────────────
@@ -106,7 +121,10 @@ fn chem_states_checkpoint_roundtrip() {
     save_chem_states(dir.path(), &states);
     let restored = load_chem_states(dir.path());
     assert_eq!(restored.len(), 2);
-    assert!((restored[0].x_hii - 0.5).abs() < 1e-15, "x_hii debe ser 0.5");
+    assert!(
+        (restored[0].x_hii - 0.5).abs() < 1e-15,
+        "x_hii debe ser 0.5"
+    );
     assert!((restored[1].x_hii - cs1.x_hii).abs() < 1e-15);
 }
 
@@ -116,7 +134,9 @@ fn chem_states_checkpoint_roundtrip() {
 fn sph_fields_in_checkpoint_jsonl() {
     let dir = tempdir().unwrap();
     let particles = vec![gas(0), gas(1), gas(2)];
-    JsonlWriter.write(dir.path(), &particles, &prov(), &env()).unwrap();
+    JsonlWriter
+        .write(dir.path(), &particles, &prov(), &env())
+        .unwrap();
     let data = JsonlReader.read(dir.path()).unwrap();
     assert_eq!(data.particles.len(), 3);
     for (orig, back) in particles.iter().zip(data.particles.iter()) {
@@ -132,7 +152,9 @@ fn full_checkpoint_all_state() {
     let dir = tempdir().unwrap();
     // 1. Partículas SPH
     let particles = vec![gas(0), gas(1)];
-    JsonlWriter.write(dir.path(), &particles, &prov(), &env()).unwrap();
+    JsonlWriter
+        .write(dir.path(), &particles, &prov(), &env())
+        .unwrap();
     // 2. AGN BHs
     let bhs = vec![BlackHole::new(Vec3::new(5.0, 5.0, 5.0), 1e6)];
     save_agn_bhs(dir.path(), &bhs);

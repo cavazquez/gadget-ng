@@ -24,15 +24,17 @@ pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
     use crate::MU0;
 
     let mut m_total = 0.0_f64;
-    let mut mb_sum = 0.0_f64;   // Σ m_i |B_i|
-    let mut mb2_sum = 0.0_f64;  // Σ m_i |B_i|²
+    let mut mb_sum = 0.0_f64; // Σ m_i |B_i|
+    let mut mb2_sum = 0.0_f64; // Σ m_i |B_i|²
     let mut b_max = 0.0_f64;
     let mut e_mag = 0.0_f64;
     let mut n_gas = 0usize;
 
     for p in particles.iter() {
-        if p.ptype != ParticleType::Gas { continue; }
-        let b2 = p.b_field.x*p.b_field.x + p.b_field.y*p.b_field.y + p.b_field.z*p.b_field.z;
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
         let b_mag = b2.sqrt();
 
         m_total += p.mass;
@@ -43,7 +45,9 @@ pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
         n_gas += 1;
     }
 
-    if n_gas == 0 || m_total <= 0.0 { return None; }
+    if n_gas == 0 || m_total <= 0.0 {
+        return None;
+    }
 
     Some(BFieldStats {
         b_mean: mb_sum / m_total,
@@ -74,7 +78,9 @@ pub fn magnetic_power_spectrum(
     box_size: f64,
     n_bins: usize,
 ) -> Vec<(f64, f64)> {
-    if n_bins == 0 || box_size <= 0.0 { return Vec::new(); }
+    if n_bins == 0 || box_size <= 0.0 {
+        return Vec::new();
+    }
 
     // Rango de k: de k_min = 2π/L hasta k_max = 2π/h_min
     let k_fund = 2.0 * std::f64::consts::PI / box_size;
@@ -83,25 +89,35 @@ pub fn magnetic_power_spectrum(
     let mut b2_vals: Vec<f64> = Vec::new();
 
     for p in particles.iter() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         let h = p.smoothing_length;
-        if h <= 0.0 { continue; }
-        let b2 = p.b_field.x*p.b_field.x + p.b_field.y*p.b_field.y + p.b_field.z*p.b_field.z;
+        if h <= 0.0 {
+            continue;
+        }
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
         let k_p = 2.0 * std::f64::consts::PI / h;
         k_vals.push(k_p);
         b2_vals.push(b2 * p.mass);
     }
 
-    if k_vals.is_empty() { return Vec::new(); }
+    if k_vals.is_empty() {
+        return Vec::new();
+    }
 
     let k_min = k_fund.min(k_vals.iter().cloned().fold(f64::INFINITY, f64::min));
     let k_max = k_vals.iter().cloned().fold(0.0_f64, f64::max);
-    if k_max <= k_min { return Vec::new(); }
+    if k_max <= k_min {
+        return Vec::new();
+    }
 
     let log_k_min = k_min.ln();
     let log_k_max = k_max.ln();
     let dlog_k = (log_k_max - log_k_min) / n_bins as f64;
-    if dlog_k <= 0.0 { return Vec::new(); }
+    if dlog_k <= 0.0 {
+        return Vec::new();
+    }
 
     let mut bin_power = vec![0.0_f64; n_bins];
     let mut bin_count = vec![0usize; n_bins];
@@ -115,7 +131,9 @@ pub fn magnetic_power_spectrum(
 
     let mut result = Vec::new();
     for i in 0..n_bins {
-        if bin_count[i] == 0 { continue; }
+        if bin_count[i] == 0 {
+            continue;
+        }
         let k_center = (log_k_min + (i as f64 + 0.5) * dlog_k).exp();
         result.push((k_center, bin_power[i]));
     }

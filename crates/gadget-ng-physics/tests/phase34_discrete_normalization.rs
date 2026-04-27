@@ -34,14 +34,14 @@
 //! consumidos por los scripts de análisis en
 //! `experiments/nbody/phase34_discrete_normalization/`.
 
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, ic_zeldovich_internals as internals, transfer_eh_nowiggle,
     CosmologySection, EisensteinHuParams, GravitySection, IcKind, InitialConditionsSection,
     OutputSection, Particle, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
-    TransferKind, UnitsSection, Vec3,
+    TransferKind, UnitsSection, Vec3, amplitude_for_sigma8, ic_zeldovich_internals as internals,
+    transfer_eh_nowiggle,
 };
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use serde_json::json;
 use std::f64::consts::PI;
 use std::fs;
@@ -118,11 +118,7 @@ fn loglog_slope(xs: &[f64], ys: &[f64]) -> f64 {
     let my = mean(&ly);
     let num: f64 = lx.iter().zip(&ly).map(|(a, b)| (a - mx) * (b - my)).sum();
     let den: f64 = lx.iter().map(|a| (a - mx).powi(2)).sum();
-    if den == 0.0 {
-        f64::NAN
-    } else {
-        num / den
-    }
+    if den == 0.0 { f64::NAN } else { num / den }
 }
 
 /// Directorio donde se vuelcan los JSONs reproducibles.
@@ -244,7 +240,7 @@ fn pk_from_delta_kspace_no_cic(delta_k: &[Complex<f64>], n: usize, box_size: f64
         .iter()
         .zip(n_modes.iter())
         .enumerate()
-        .filter(|(_, (_, &nm))| nm > 0)
+        .filter(|&(_, (_, &nm))| nm > 0)
         .map(|(bin, (&ps, &nm))| PkBin {
             k: (bin as f64 + 1.0) * k_fund,
             pk: ps / nm as f64,
@@ -323,7 +319,7 @@ fn pk_particles_without_deconv(
         .iter()
         .zip(n_modes.iter())
         .enumerate()
-        .filter(|(_, (_, &nm))| nm > 0)
+        .filter(|&(_, (_, &nm))| nm > 0)
         .map(|(bin, (&ps, &nm))| PkBin {
             k: (bin as f64 + 1.0) * k_fund,
             pk: ps / nm as f64,
@@ -478,9 +474,13 @@ fn make_config(seed: u64, n: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

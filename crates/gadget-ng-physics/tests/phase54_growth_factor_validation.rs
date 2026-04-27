@@ -15,20 +15,20 @@
 //!
 //! Correr con: `cargo test -p gadget-ng-physics --release --test phase54_growth_factor_validation -- --test-threads=1 --nocapture`
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8,
+    build_particles,
     cosmology::{
-        adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl, growth_factor_d_ratio,
-        CosmologyParams,
+        CosmologyParams, adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl,
+        growth_factor_d_ratio,
     },
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
-    Vec3,
+    transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use serde_json::json;
 use std::f64::consts::PI;
@@ -128,9 +128,13 @@ fn build_run_config(n: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -210,7 +214,7 @@ fn evolve_pm_to_a_adaptive(
             break;
         }
         step += 1;
-        if step % 200 == 0 {
+        if step.is_multiple_of(200) {
             eprintln!("[phase54] N={n_mesh} step={step} a={a:.4} → a_target={a_target:.4}");
         }
         let acc_max = scratch

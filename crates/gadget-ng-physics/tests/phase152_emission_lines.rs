@@ -19,7 +19,11 @@ fn halpha_positive_hot_gas() {
     let rho = 0.01;
     let t_ion = 1.0e4;
     let ha = emissivity_halpha(rho, t_ion);
-    assert!(ha > 0.0, "Hα debe ser positiva para gas ionizado, got {}", ha);
+    assert!(
+        ha > 0.0,
+        "Hα debe ser positiva para gas ionizado, got {}",
+        ha
+    );
 }
 
 // T2: Líneas = 0 sin gas ionizado (T < T_min)
@@ -44,7 +48,12 @@ fn nii_halpha_increases_with_metallicity() {
     let nii_low = emissivity_nii(rho, t, 0.001);
     let nii_high = emissivity_nii(rho, t, 0.05);
     assert!(ha > 0.0, "Hα debe ser positiva");
-    assert!(nii_high > nii_low, "[NII] debe crecer con Z: low={}, high={}", nii_low, nii_high);
+    assert!(
+        nii_high > nii_low,
+        "[NII] debe crecer con Z: low={}, high={}",
+        nii_low,
+        nii_high
+    );
 }
 
 // T4: [OIII] crece con metalicidad (proporcional a Z/Z_sun)
@@ -54,7 +63,12 @@ fn oiii_grows_with_metallicity() {
     let t = 2.0e4;
     let oiii_low = emissivity_oiii(rho, t, 0.001);
     let oiii_high = emissivity_oiii(rho, t, 0.05);
-    assert!(oiii_high > oiii_low, "[OIII] debe crecer con Z: low={}, high={}", oiii_low, oiii_high);
+    assert!(
+        oiii_high > oiii_low,
+        "[OIII] debe crecer con Z: low={}, high={}",
+        oiii_low,
+        oiii_high
+    );
 }
 
 // T5: diagrama BPT tiene puntos para gas ionizado
@@ -66,7 +80,10 @@ fn bpt_diagram_has_points() {
     }
     let lines = compute_emission_lines(&particles, GAMMA);
     let bpt = bpt_diagram(&lines);
-    assert!(!bpt.is_empty(), "El diagrama BPT debe tener puntos para gas ionizado caliente");
+    assert!(
+        !bpt.is_empty(),
+        "El diagrama BPT debe tener puntos para gas ionizado caliente"
+    );
 }
 
 // T6: N=100 partículas sin panics
@@ -74,7 +91,11 @@ fn bpt_diagram_has_points() {
 fn emission_lines_n100_no_panic() {
     let mut particles = Vec::new();
     for i in 0..100 {
-        let u = if i % 4 == 0 { 0.001 } else { 5e3 + i as f64 * 100.0 };
+        let u = if i % 4 == 0 {
+            0.001
+        } else {
+            5e3 + i as f64 * 100.0
+        };
         let z = 0.001 + i as f64 * 0.0004;
         particles.push(gas_particle(u, 0.2, z));
     }

@@ -5,7 +5,7 @@ use gadget_ng_core::{Particle, Vec3};
 use ndarray::{Array1, Array2};
 
 use crate::error::SnapshotError;
-use crate::gadget4_attrs::{write_gadget4_header, Gadget4Header};
+use crate::gadget4_attrs::{Gadget4Header, write_gadget4_header};
 use crate::provenance::Provenance;
 use crate::reader::{SnapshotData, SnapshotReader};
 use crate::snapshot::{build_meta, write_sidecar_json};
@@ -30,8 +30,14 @@ impl SnapshotWriter for Hdf5Writer {
 
         // Separar gas (internal_energy > 0) de DM (internal_energy == 0)
         // Phase 102: PartType0 = gas SPH, PartType1 = DM colisionless
-        let gas: Vec<&Particle> = particles.iter().filter(|p| p.internal_energy > 0.0).collect();
-        let dm: Vec<&Particle> = particles.iter().filter(|p| p.internal_energy == 0.0).collect();
+        let gas: Vec<&Particle> = particles
+            .iter()
+            .filter(|p| p.internal_energy > 0.0)
+            .collect();
+        let dm: Vec<&Particle> = particles
+            .iter()
+            .filter(|p| p.internal_energy == 0.0)
+            .collect();
         let n_gas = gas.len();
         let n_dm = dm.len();
 
@@ -97,25 +103,52 @@ impl SnapshotWriter for Hdf5Writer {
                 psi_div[i] = p.psi_div;
             }
             let pt0 = file.create_group("PartType0")?;
-            pt0.new_dataset_builder().with_data(&coords).create("Coordinates")?;
-            pt0.new_dataset_builder().with_data(&vels).create("Velocities")?;
-            pt0.new_dataset_builder().with_data(&masses).create("Masses")?;
-            pt0.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
-            pt0.new_dataset_builder().with_data(&u_int).create("InternalEnergy")?;
-            pt0.new_dataset_builder().with_data(&h_sml).create("SmoothingLength")?;
+            pt0.new_dataset_builder()
+                .with_data(&coords)
+                .create("Coordinates")?;
+            pt0.new_dataset_builder()
+                .with_data(&vels)
+                .create("Velocities")?;
+            pt0.new_dataset_builder()
+                .with_data(&masses)
+                .create("Masses")?;
+            pt0.new_dataset_builder()
+                .with_data(&ids)
+                .create("ParticleIDs")?;
+            pt0.new_dataset_builder()
+                .with_data(&u_int)
+                .create("InternalEnergy")?;
+            pt0.new_dataset_builder()
+                .with_data(&h_sml)
+                .create("SmoothingLength")?;
             // Phase 131: campos físicos extendidos (siempre escritos para compatibilidad total)
-            pt0.new_dataset_builder().with_data(&metallicity).create("Metallicity")?;
-            pt0.new_dataset_builder().with_data(&cr_energy).create("CosmicRayEnergy")?;
-            pt0.new_dataset_builder().with_data(&h2_fraction).create("H2Fraction")?;
-            pt0.new_dataset_builder().with_data(&dust_to_gas).create("DustToGas")?;
-            pt0.new_dataset_builder().with_data(&b_field).create("MagneticField")?;
-            pt0.new_dataset_builder().with_data(&psi_div).create("DednerPsi")?;
+            pt0.new_dataset_builder()
+                .with_data(&metallicity)
+                .create("Metallicity")?;
+            pt0.new_dataset_builder()
+                .with_data(&cr_energy)
+                .create("CosmicRayEnergy")?;
+            pt0.new_dataset_builder()
+                .with_data(&h2_fraction)
+                .create("H2Fraction")?;
+            pt0.new_dataset_builder()
+                .with_data(&dust_to_gas)
+                .create("DustToGas")?;
+            pt0.new_dataset_builder()
+                .with_data(&b_field)
+                .create("MagneticField")?;
+            pt0.new_dataset_builder()
+                .with_data(&psi_div)
+                .create("DednerPsi")?;
         }
 
         // --- PartType4 = estrellas (Phase 131) ---
         {
             use gadget_ng_core::ParticleType;
-            let stars: Vec<&Particle> = particles.iter().filter(|p| p.ptype == ParticleType::Star).collect();
+            let stars: Vec<&Particle> = particles
+                .iter()
+                .filter(|p| p.ptype == ParticleType::Star)
+                .collect();
             let n_stars = stars.len();
             if n_stars > 0 {
                 let mut coords = Array2::<f64>::zeros((n_stars, 3));
@@ -137,12 +170,24 @@ impl SnapshotWriter for Hdf5Writer {
                     star_metallicity[i] = p.metallicity;
                 }
                 let pt4 = file.create_group("PartType4")?;
-                pt4.new_dataset_builder().with_data(&coords).create("Coordinates")?;
-                pt4.new_dataset_builder().with_data(&vels).create("Velocities")?;
-                pt4.new_dataset_builder().with_data(&masses).create("Masses")?;
-                pt4.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
-                pt4.new_dataset_builder().with_data(&stellar_age).create("StellarAge")?;
-                pt4.new_dataset_builder().with_data(&star_metallicity).create("Metallicity")?;
+                pt4.new_dataset_builder()
+                    .with_data(&coords)
+                    .create("Coordinates")?;
+                pt4.new_dataset_builder()
+                    .with_data(&vels)
+                    .create("Velocities")?;
+                pt4.new_dataset_builder()
+                    .with_data(&masses)
+                    .create("Masses")?;
+                pt4.new_dataset_builder()
+                    .with_data(&ids)
+                    .create("ParticleIDs")?;
+                pt4.new_dataset_builder()
+                    .with_data(&stellar_age)
+                    .create("StellarAge")?;
+                pt4.new_dataset_builder()
+                    .with_data(&star_metallicity)
+                    .create("Metallicity")?;
             }
         }
 
@@ -163,10 +208,18 @@ impl SnapshotWriter for Hdf5Writer {
                 ids[i] = p.global_id as i64;
             }
             let pt1 = file.create_group("PartType1")?;
-            pt1.new_dataset_builder().with_data(&coords).create("Coordinates")?;
-            pt1.new_dataset_builder().with_data(&vels).create("Velocities")?;
-            pt1.new_dataset_builder().with_data(&masses).create("Masses")?;
-            pt1.new_dataset_builder().with_data(&ids).create("ParticleIDs")?;
+            pt1.new_dataset_builder()
+                .with_data(&coords)
+                .create("Coordinates")?;
+            pt1.new_dataset_builder()
+                .with_data(&vels)
+                .create("Velocities")?;
+            pt1.new_dataset_builder()
+                .with_data(&masses)
+                .create("Masses")?;
+            pt1.new_dataset_builder()
+                .with_data(&ids)
+                .create("ParticleIDs")?;
         }
 
         // --- Provenance embebido ---
@@ -203,10 +256,12 @@ impl SnapshotReader for Hdf5Reader {
             let vels: Vec<f64> = pt0.dataset("Velocities")?.read_raw()?;
             let masses: Vec<f64> = pt0.dataset("Masses")?.read_raw()?;
             let ids: Vec<i64> = pt0.dataset("ParticleIDs")?.read_raw()?;
-            let u_int_opt: Option<Vec<f64>> = pt0.dataset("InternalEnergy")
+            let u_int_opt: Option<Vec<f64>> = pt0
+                .dataset("InternalEnergy")
                 .ok()
                 .and_then(|d| d.read_raw().ok());
-            let h_sml_opt: Option<Vec<f64>> = pt0.dataset("SmoothingLength")
+            let h_sml_opt: Option<Vec<f64>> = pt0
+                .dataset("SmoothingLength")
                 .ok()
                 .and_then(|d| d.read_raw().ok());
             let n = ids.len();
@@ -217,8 +272,12 @@ impl SnapshotReader for Hdf5Reader {
                     Vec3::new(coords[i * 3], coords[i * 3 + 1], coords[i * 3 + 2]),
                     Vec3::new(vels[i * 3], vels[i * 3 + 1], vels[i * 3 + 2]),
                 );
-                if let Some(ref u) = u_int_opt { p.internal_energy = u[i]; }
-                if let Some(ref h) = h_sml_opt { p.smoothing_length = h[i]; }
+                if let Some(ref u) = u_int_opt {
+                    p.internal_energy = u[i];
+                }
+                if let Some(ref h) = h_sml_opt {
+                    p.smoothing_length = h[i];
+                }
                 particles.push(p);
             }
         }

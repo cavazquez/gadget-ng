@@ -24,12 +24,12 @@
 //!    que con `a = 1` sobre el mismo par de partículas.
 
 use gadget_ng_core::{
+    CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection, Particle,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection, Vec3,
     build_particles, build_particles_for_gid_range, cosmology::CosmologyParams,
-    density_contrast_rms, hubble_param, peculiar_vrms, CosmologySection, GravitySection, IcKind,
-    InitialConditionsSection, OutputSection, Particle, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, UnitsSection, Vec3,
+    density_contrast_rms, hubble_param, peculiar_vrms,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 
 // ── Constantes de prueba ──────────────────────────────────────────────────────
 
@@ -77,9 +77,13 @@ fn eds_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCon
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -121,9 +125,13 @@ fn lcdm_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCo
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -139,7 +147,7 @@ fn direct_accel(parts: &[Particle], g: f64, eps2: f64) -> Vec<Vec3> {
             let dr = parts[j].position - parts[i].position;
             let r2 = dr.dot(dr) + eps2;
             let r3 = r2.sqrt() * r2;
-            acc[i] = acc[i] + dr * (g * parts[j].mass / r3);
+            acc[i] += dr * (g * parts[j].mass / r3);
         }
     }
     acc
@@ -522,7 +530,7 @@ fn cosmo_perturbed_lattice_gid_range_consistent() {
             .iter()
             .chain(hi.iter())
             .find(|q| q.global_id == p.global_id);
-        let q = found.expect(&format!("gid {} no encontrado en rangos", p.global_id));
+        let q = found.unwrap_or_else(|| panic!("gid {} no encontrado en rangos", p.global_id));
         assert!(
             (q.position.x - p.position.x).abs() < 1e-14
                 && (q.position.y - p.position.y).abs() < 1e-14

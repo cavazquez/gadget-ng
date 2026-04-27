@@ -34,17 +34,17 @@
 //! La medición empírica de σ₈(a_init) sobre el IC (top-hat `R=8 Mpc/h`) permite
 //! verificar cuantitativamente la convención física (tests 2 y 3).
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{growth_factor_d_ratio, CosmologyParams},
-    sigma_from_pk_bins, transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams,
-    GravitySection, GravitySolver, IcKind, InitialConditionsSection, NormalizationMode,
-    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
-    UnitsSection, Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8,
+    build_particles,
+    cosmology::{CosmologyParams, growth_factor_d_ratio},
+    sigma_from_pk_bins, transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use serde_json::json;
 use std::f64::consts::PI;
@@ -161,9 +161,13 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -261,7 +265,7 @@ fn measure_sigma8_from_corrected(ks_hmpc: &[f64], pk_mpc_h3: &[f64], r_mpc_h: f6
     let bins: Vec<(f64, f64)> = ks_hmpc
         .iter()
         .zip(pk_mpc_h3.iter())
-        .filter(|(&k, &p)| k > 0.0 && p > 0.0 && p.is_finite())
+        .filter(|&(&k, &p)| k > 0.0 && p > 0.0 && p.is_finite())
         .map(|(&k, &p)| (k, p))
         .collect();
     sigma_from_pk_bins(&bins, r_mpc_h)
@@ -731,7 +735,7 @@ fn sigma8_at_ainit_matches_linear_prediction() {
     let ratios_modes: Vec<f64> = sigma8_legacy_vec
         .iter()
         .zip(sigma8_z0_vec.iter())
-        .filter(|(&l, _)| l > 0.0)
+        .filter(|&(&l, _)| l > 0.0)
         .map(|(&l, &z)| z / l)
         .collect();
     let mean_mode_ratio = mean(&ratios_modes);

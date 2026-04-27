@@ -79,7 +79,11 @@ pub struct HaloCatalogHeader {
 
 impl HaloCatalogHeader {
     pub fn new(redshift: f64, box_size: f64, n_halos: usize, n_subhalos: usize) -> Self {
-        let scale_factor = if redshift > -1.0 { 1.0 / (1.0 + redshift) } else { 1.0 };
+        let scale_factor = if redshift > -1.0 {
+            1.0 / (1.0 + redshift)
+        } else {
+            1.0
+        };
         Self {
             redshift,
             scale_factor,
@@ -146,7 +150,14 @@ pub fn write_halo_catalog_hdf5(
 #[cfg(not(feature = "hdf5"))]
 pub fn read_halo_catalog_hdf5(
     _path: &std::path::Path,
-) -> Result<(HaloCatalogHeader, Vec<HaloCatalogEntry>, Vec<SubhaloCatalogEntry>), SnapshotError> {
+) -> Result<
+    (
+        HaloCatalogHeader,
+        Vec<HaloCatalogEntry>,
+        Vec<SubhaloCatalogEntry>,
+    ),
+    SnapshotError,
+> {
     Err(SnapshotError::UnsupportedFormat(
         "hdf5 (recompilar con --features hdf5)".into(),
     ))
@@ -168,11 +179,21 @@ mod hdf5_impl {
 
         // ── /Header ──────────────────────────────────────────────────────
         let hdr = file.create_group("Header")?;
-        hdr.new_attr_builder().with_data(&ndarray::arr1(&[header.redshift])).create("z")?;
-        hdr.new_attr_builder().with_data(&ndarray::arr1(&[header.scale_factor])).create("a")?;
-        hdr.new_attr_builder().with_data(&ndarray::arr1(&[header.box_size])).create("BoxSize")?;
-        hdr.new_attr_builder().with_data(&ndarray::arr1(&[header.n_halos])).create("N_halos")?;
-        hdr.new_attr_builder().with_data(&ndarray::arr1(&[header.n_subhalos])).create("N_subhalos")?;
+        hdr.new_attr_builder()
+            .with_data(&ndarray::arr1(&[header.redshift]))
+            .create("z")?;
+        hdr.new_attr_builder()
+            .with_data(&ndarray::arr1(&[header.scale_factor]))
+            .create("a")?;
+        hdr.new_attr_builder()
+            .with_data(&ndarray::arr1(&[header.box_size]))
+            .create("BoxSize")?;
+        hdr.new_attr_builder()
+            .with_data(&ndarray::arr1(&[header.n_halos]))
+            .create("N_halos")?;
+        hdr.new_attr_builder()
+            .with_data(&ndarray::arr1(&[header.n_subhalos]))
+            .create("N_subhalos")?;
 
         // ── /Halos/ ───────────────────────────────────────────────────────
         let n = halos.len();
@@ -199,7 +220,9 @@ mod hdf5_impl {
             hg.new_dataset_builder().with_data(&pos).create("Pos")?;
             hg.new_dataset_builder().with_data(&vel).create("Vel")?;
             hg.new_dataset_builder().with_data(&r200).create("R200")?;
-            hg.new_dataset_builder().with_data(&spin).create("Spin_Peebles")?;
+            hg.new_dataset_builder()
+                .with_data(&spin)
+                .create("Spin_Peebles")?;
             hg.new_dataset_builder().with_data(&npart).create("Npart")?;
         }
 
@@ -209,7 +232,8 @@ mod hdf5_impl {
             let sg = file.create_group("Subhalos")?;
             let smass = Array1::from_vec(subhalos.iter().map(|s| s.mass).collect::<Vec<_>>());
             let mut spos = Array2::<f64>::zeros((m, 3));
-            let sparent = Array1::from_vec(subhalos.iter().map(|s| s.parent_halo).collect::<Vec<_>>());
+            let sparent =
+                Array1::from_vec(subhalos.iter().map(|s| s.parent_halo).collect::<Vec<_>>());
             for (i, s) in subhalos.iter().enumerate() {
                 spos[[i, 0]] = s.pos[0];
                 spos[[i, 1]] = s.pos[1];
@@ -217,7 +241,9 @@ mod hdf5_impl {
             }
             sg.new_dataset_builder().with_data(&smass).create("Mass")?;
             sg.new_dataset_builder().with_data(&spos).create("Pos")?;
-            sg.new_dataset_builder().with_data(&sparent).create("ParentHalo")?;
+            sg.new_dataset_builder()
+                .with_data(&sparent)
+                .create("ParentHalo")?;
         }
 
         Ok(())
@@ -226,7 +252,14 @@ mod hdf5_impl {
     /// Lee el catálogo de halos desde HDF5.
     pub fn read_halo_catalog_hdf5(
         path: &std::path::Path,
-    ) -> Result<(HaloCatalogHeader, Vec<HaloCatalogEntry>, Vec<SubhaloCatalogEntry>), SnapshotError> {
+    ) -> Result<
+        (
+            HaloCatalogHeader,
+            Vec<HaloCatalogEntry>,
+            Vec<SubhaloCatalogEntry>,
+        ),
+        SnapshotError,
+    > {
         let file = hdf5::File::open(path)?;
 
         // Header
@@ -237,8 +270,11 @@ mod hdf5_impl {
         let nh: Vec<i64> = hdr.attr("N_halos")?.read_raw()?;
         let ns: Vec<i64> = hdr.attr("N_subhalos")?.read_raw()?;
         let header = HaloCatalogHeader {
-            redshift: z[0], scale_factor: a[0], box_size: bs[0],
-            n_halos: nh[0], n_subhalos: ns[0],
+            redshift: z[0],
+            scale_factor: a[0],
+            box_size: bs[0],
+            n_halos: nh[0],
+            n_subhalos: ns[0],
         };
 
         // Halos
@@ -249,14 +285,16 @@ mod hdf5_impl {
             let r200: Vec<f64> = hg.dataset("R200")?.read_raw()?;
             let spin: Vec<f64> = hg.dataset("Spin_Peebles")?.read_raw()?;
             let npart: Vec<i64> = hg.dataset("Npart")?.read_raw()?;
-            (0..mass.len()).map(|i| HaloCatalogEntry {
-                mass: mass[i],
-                pos: [pos_flat[i * 3], pos_flat[i * 3 + 1], pos_flat[i * 3 + 2]],
-                vel: [vel_flat[i * 3], vel_flat[i * 3 + 1], vel_flat[i * 3 + 2]],
-                r200: r200[i],
-                spin_peebles: spin[i],
-                npart: npart[i],
-            }).collect()
+            (0..mass.len())
+                .map(|i| HaloCatalogEntry {
+                    mass: mass[i],
+                    pos: [pos_flat[i * 3], pos_flat[i * 3 + 1], pos_flat[i * 3 + 2]],
+                    vel: [vel_flat[i * 3], vel_flat[i * 3 + 1], vel_flat[i * 3 + 2]],
+                    r200: r200[i],
+                    spin_peebles: spin[i],
+                    npart: npart[i],
+                })
+                .collect()
         } else {
             Vec::new()
         };
@@ -266,11 +304,13 @@ mod hdf5_impl {
             let smass: Vec<f64> = sg.dataset("Mass")?.read_raw()?;
             let spos_flat: Vec<f64> = sg.dataset("Pos")?.read_raw()?;
             let sparent: Vec<i64> = sg.dataset("ParentHalo")?.read_raw()?;
-            (0..smass.len()).map(|i| SubhaloCatalogEntry {
-                mass: smass[i],
-                pos: [spos_flat[i * 3], spos_flat[i * 3 + 1], spos_flat[i * 3 + 2]],
-                parent_halo: sparent[i],
-            }).collect()
+            (0..smass.len())
+                .map(|i| SubhaloCatalogEntry {
+                    mass: smass[i],
+                    pos: [spos_flat[i * 3], spos_flat[i * 3 + 1], spos_flat[i * 3 + 2]],
+                    parent_halo: sparent[i],
+                })
+                .collect()
         } else {
             Vec::new()
         };
@@ -285,14 +325,16 @@ mod tests {
     use tempfile::tempdir;
 
     fn sample_halos(n: usize) -> Vec<HaloCatalogEntry> {
-        (0..n).map(|i| HaloCatalogEntry {
-            mass: 1e12 * (i + 1) as f64,
-            pos: [i as f64 * 0.1, 0.0, 0.0],
-            vel: [0.0, i as f64 * 10.0, 0.0],
-            r200: 0.5 * (i + 1) as f64,
-            spin_peebles: 0.03 + i as f64 * 0.001,
-            npart: 100 * (i + 1) as i64,
-        }).collect()
+        (0..n)
+            .map(|i| HaloCatalogEntry {
+                mass: 1e12 * (i + 1) as f64,
+                pos: [i as f64 * 0.1, 0.0, 0.0],
+                vel: [0.0, i as f64 * 10.0, 0.0],
+                r200: 0.5 * (i + 1) as f64,
+                spin_peebles: 0.03 + i as f64 * 0.001,
+                npart: 100 * (i + 1) as i64,
+            })
+            .collect()
     }
 
     #[test]
@@ -333,8 +375,12 @@ mod tests {
     #[test]
     fn halo_entry_serializes() {
         let e = HaloCatalogEntry {
-            mass: 1e12, pos: [1.0, 2.0, 3.0], vel: [10.0, 0.0, -5.0],
-            r200: 0.5, spin_peebles: 0.04, npart: 200,
+            mass: 1e12,
+            pos: [1.0, 2.0, 3.0],
+            vel: [10.0, 0.0, -5.0],
+            r200: 0.5,
+            spin_peebles: 0.04,
+            npart: 200,
         };
         let s = serde_json::to_string(&e).unwrap();
         let e2: HaloCatalogEntry = serde_json::from_str(&s).unwrap();
@@ -354,8 +400,16 @@ mod tests {
             let header = HaloCatalogHeader::new(1.0, 100.0, 4, 2);
             let halos = sample_halos(4);
             let subhalos = vec![
-                SubhaloCatalogEntry { mass: 1e11, pos: [0.1, 0.0, 0.0], parent_halo: 0 },
-                SubhaloCatalogEntry { mass: 5e10, pos: [0.5, 0.0, 0.0], parent_halo: 1 },
+                SubhaloCatalogEntry {
+                    mass: 1e11,
+                    pos: [0.1, 0.0, 0.0],
+                    parent_halo: 0,
+                },
+                SubhaloCatalogEntry {
+                    mass: 5e10,
+                    pos: [0.5, 0.0, 0.0],
+                    parent_halo: 1,
+                },
             ];
 
             write_halo_catalog_hdf5(&path, &header, &halos, &subhalos).unwrap();

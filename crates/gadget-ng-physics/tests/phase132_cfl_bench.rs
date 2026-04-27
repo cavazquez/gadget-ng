@@ -23,7 +23,10 @@ fn alfven_dt_restricts_when_b_is_strong() {
     let dt_global = 0.1_f64;
     let dt_a = alfven_dt(&particles, 0.3);
     let dt_mhd = dt_global.min(dt_a);
-    assert!(dt_a < dt_global, "dt_alfven={dt_a:.4e} debe < dt_global={dt_global}");
+    assert!(
+        dt_a < dt_global,
+        "dt_alfven={dt_a:.4e} debe < dt_global={dt_global}"
+    );
     assert_eq!(dt_mhd, dt_a, "CFL usa dt_alfven");
 }
 
@@ -35,7 +38,10 @@ fn alfven_dt_no_restrict_with_weak_b() {
     let dt_global = 0.001_f64;
     let dt_a = alfven_dt(&particles, 0.3);
     let dt_mhd = dt_global.min(dt_a);
-    assert!(dt_a > dt_global, "dt_alfven={dt_a:.4e} debe > dt_global={dt_global}");
+    assert!(
+        dt_a > dt_global,
+        "dt_alfven={dt_a:.4e} debe > dt_global={dt_global}"
+    );
     assert_eq!(dt_mhd, dt_global, "CFL usa dt_global");
 }
 
@@ -50,8 +56,11 @@ fn cfl_unified_is_minimum() {
         let particles = vec![gas_with_b(0, Vec3::zero(), Vec3::new(b, 0.0, 0.0), 0.1)];
         let dt_a = alfven_dt(&particles, cfl);
         let dt_mhd = dt_global.min(dt_a);
-        assert_eq!(dt_mhd, dt_global.min(dt_a),
-            "B={b}: CFL={dt_mhd:.4e} debe ser mín(dt_g={dt_global}, dt_a={dt_a:.4e})");
+        assert_eq!(
+            dt_mhd,
+            dt_global.min(dt_a),
+            "B={b}: CFL={dt_mhd:.4e} debe ser mín(dt_g={dt_global}, dt_a={dt_a:.4e})"
+        );
     }
 }
 
@@ -69,7 +78,11 @@ fn alfven_dt_scales_with_b() {
     let dt3 = alfven_dt(&p3, 0.3);
 
     // B×2 → v_A×2 → dt_A/2
-    assert!((dt3 / dt1 - 0.5).abs() < 0.05, "B×2 → dt_A/2: {:.4} vs 0.5", dt3 / dt1);
+    assert!(
+        (dt3 / dt1 - 0.5).abs() < 0.05,
+        "B×2 → dt_A/2: {:.4} vs 0.5",
+        dt3 / dt1
+    );
     // B más fuerte siempre da dt menor
     assert!(dt3 < dt1, "B mayor → dt_A menor");
 }
@@ -80,10 +93,12 @@ fn alfven_dt_scales_with_b() {
 fn full_mhd_step_with_cfl_produces_finite_result() {
     let n = 20;
     let b0 = 10.0_f64; // B fuerte → dt_alfven < dt_global
-    let mut particles: Vec<Particle> = (0..n).map(|i| {
-        let x = (i as f64) / (n as f64);
-        gas_with_b(i, Vec3::new(x, 0.0, 0.0), Vec3::new(b0, 0.1, 0.0), 0.2)
-    }).collect();
+    let mut particles: Vec<Particle> = (0..n)
+        .map(|i| {
+            let x = (i as f64) / (n as f64);
+            gas_with_b(i, Vec3::new(x, 0.0, 0.0), Vec3::new(b0, 0.1, 0.0), 0.2)
+        })
+        .collect();
 
     let dt_global = 0.01_f64;
     let dt_a = alfven_dt(&particles, 0.3);

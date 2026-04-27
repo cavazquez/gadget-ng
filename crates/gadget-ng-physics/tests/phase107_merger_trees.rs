@@ -7,8 +7,8 @@
 //!    cuando se usa membresía real (halo_idx != None).
 
 use gadget_ng_analysis::{
-    build_merger_forest, find_halos_with_membership, particle_snapshots_from_catalog,
-    FofHalo, ParticleSnapshot,
+    FofHalo, ParticleSnapshot, build_merger_forest, find_halos_with_membership,
+    particle_snapshots_from_catalog,
 };
 use gadget_ng_core::Vec3;
 
@@ -32,8 +32,12 @@ fn make_fof_halo(halo_id: usize, x: f64, y: f64, z: f64, n: usize, r_vir: f64) -
         halo_id,
         n_particles: n,
         mass: n as f64,
-        x_com: x, y_com: y, z_com: z,
-        vx_com: 0.0, vy_com: 0.0, vz_com: 0.0,
+        x_com: x,
+        y_com: y,
+        z_com: z,
+        vx_com: 0.0,
+        vy_com: 0.0,
+        vz_com: 0.0,
         velocity_dispersion: 0.0,
         r_vir,
     }
@@ -59,26 +63,42 @@ fn membership_two_separated_clusters() {
     let velocities = vec![Vec3::zero(); n];
     let masses = vec![1.0f64; n];
 
-    let (halos, membership) = find_halos_with_membership(
-        &positions, &velocities, &masses, box_size, 0.2, 5, 0.0,
-    );
+    let (halos, membership) =
+        find_halos_with_membership(&positions, &velocities, &masses, box_size, 0.2, 5, 0.0);
 
-    assert!(halos.len() >= 2, "debe haber al menos 2 halos: {}", halos.len());
-    assert_eq!(membership.len(), n, "membresía debe tener mismo tamaño que partículas");
+    assert!(
+        halos.len() >= 2,
+        "debe haber al menos 2 halos: {}",
+        halos.len()
+    );
+    assert_eq!(
+        membership.len(),
+        n,
+        "membresía debe tener mismo tamaño que partículas"
+    );
 
     // Las primeras 20 partículas deben pertenecer a algún halo
     let halo_a_count = membership[..20].iter().filter(|m| m.is_some()).count();
-    assert!(halo_a_count >= 15, "al menos 15/20 partículas del cluster A en un halo: {halo_a_count}");
+    assert!(
+        halo_a_count >= 15,
+        "al menos 15/20 partículas del cluster A en un halo: {halo_a_count}"
+    );
 
     // Las siguientes 10 partículas también deben pertenecer a algún halo
     let halo_b_count = membership[20..30].iter().filter(|m| m.is_some()).count();
-    assert!(halo_b_count >= 8, "al menos 8/10 partículas del cluster B en un halo: {halo_b_count}");
+    assert!(
+        halo_b_count >= 8,
+        "al menos 8/10 partículas del cluster B en un halo: {halo_b_count}"
+    );
 
     // Los halos deben ser grupos distintos
     if halo_a_count > 0 && halo_b_count > 0 {
         let idx_a = membership[0].unwrap();
         let idx_b = membership[20].unwrap();
-        assert_ne!(idx_a, idx_b, "clusters A y B deben estar en halos distintos");
+        assert_ne!(
+            idx_a, idx_b,
+            "clusters A y B deben estar en halos distintos"
+        );
     }
 }
 
@@ -98,8 +118,16 @@ fn catalog_proximity_assigns_halo_idx() {
 
     let snaps = particle_snapshots_from_catalog(&positions, &ids, &halos, box_size);
     assert_eq!(snaps.len(), 3);
-    assert_eq!(snaps[0].halo_idx, Some(0), "partícula 0 debe estar en halo 0");
-    assert_eq!(snaps[1].halo_idx, Some(0), "partícula 1 debe estar en halo 0");
+    assert_eq!(
+        snaps[0].halo_idx,
+        Some(0),
+        "partícula 0 debe estar en halo 0"
+    );
+    assert_eq!(
+        snaps[1].halo_idx,
+        Some(0),
+        "partícula 1 debe estar en halo 0"
+    );
     assert_eq!(snaps[2].halo_idx, None, "partícula 2 debe ser campo");
 }
 
@@ -112,8 +140,14 @@ fn merger_forest_detects_fusion() {
 
     // IDs 0-7 en halo 0, IDs 8-15 en halo 1
     let parts_s0: Vec<ParticleSnapshot> = (0u64..8)
-        .map(|id| ParticleSnapshot { id, halo_idx: Some(0) })
-        .chain((8u64..16).map(|id| ParticleSnapshot { id, halo_idx: Some(1) }))
+        .map(|id| ParticleSnapshot {
+            id,
+            halo_idx: Some(0),
+        })
+        .chain((8u64..16).map(|id| ParticleSnapshot {
+            id,
+            halo_idx: Some(1),
+        }))
         .collect();
 
     // Snapshot 1: los dos halos se fusionaron en uno solo (recibe IDs 0-15)
@@ -121,13 +155,13 @@ fn merger_forest_detects_fusion() {
 
     // Todas las partículas del snapshot anterior ahora están en el mismo halo
     let parts_s1: Vec<ParticleSnapshot> = (0u64..16)
-        .map(|id| ParticleSnapshot { id, halo_idx: Some(0) })
+        .map(|id| ParticleSnapshot {
+            id,
+            halo_idx: Some(0),
+        })
         .collect();
 
-    let catalogs = vec![
-        (vec![h0_s0, h1_s0], parts_s0),
-        (vec![h0_s1], parts_s1),
-    ];
+    let catalogs = vec![(vec![h0_s0, h1_s0], parts_s0), (vec![h0_s1], parts_s1)];
 
     let forest = build_merger_forest(&catalogs, 0.1);
 
@@ -137,7 +171,10 @@ fn merger_forest_detects_fusion() {
 
     // Al menos un nodo del snapshot 0 debe tener prog_main_id apuntando al halo 0 del snapshot 1
     let has_connection = snap0_nodes.iter().any(|n| n.prog_main_id.is_some());
-    assert!(has_connection, "al menos un halo del snapshot 0 debe tener progenitor en snapshot 1");
+    assert!(
+        has_connection,
+        "al menos un halo del snapshot 0 debe tener progenitor en snapshot 1"
+    );
 }
 
 /// Snapshot sin halos produce forest vacío.
@@ -154,7 +191,10 @@ fn empty_catalogs_produce_empty_forest() {
 fn single_snapshot_no_progenitors() {
     let h = make_fof_halo(0, 50.0, 50.0, 50.0, 10, 5.0);
     let parts: Vec<ParticleSnapshot> = (0u64..10)
-        .map(|id| ParticleSnapshot { id, halo_idx: Some(0) })
+        .map(|id| ParticleSnapshot {
+            id,
+            halo_idx: Some(0),
+        })
         .collect();
     let catalogs = vec![(vec![h], parts)];
     let forest = build_merger_forest(&catalogs, 0.1);

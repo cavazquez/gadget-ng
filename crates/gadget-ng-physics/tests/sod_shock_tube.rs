@@ -24,7 +24,7 @@
 //!   `cargo test -p gadget-ng-physics --release -- --include-ignored`
 
 use gadget_ng_core::Vec3;
-use gadget_ng_sph::{compute_density, SphParticle};
+use gadget_ng_sph::{SphParticle, compute_density};
 
 /// Genera partículas 1D para el tubo de Sod.
 fn setup_sod_tube(n_left: usize, n_right: usize) -> Vec<SphParticle> {
@@ -192,7 +192,7 @@ fn sod_internal_energy_ratio() {
 #[test]
 #[ignore = "Requiere: cargo test -p gadget-ng-physics --release -- --include-ignored"]
 fn sod_shock_compresses_right_region() {
-    use gadget_ng_sph::{compute_sph_forces, sph_kdk_step, GAMMA};
+    use gadget_ng_sph::{GAMMA, compute_sph_forces, sph_kdk_step};
 
     fn no_gravity(_: &mut [SphParticle]) {}
     fn max_cs(parts: &[SphParticle]) -> f64 {

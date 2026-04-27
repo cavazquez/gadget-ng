@@ -214,11 +214,7 @@ pub fn identify_refinement_patches(
 ///
 /// Solo deposita partículas dentro del parche; las que quedan fuera se ignoran.
 /// La CIC es lineal (sin wrap periódico) para posiciones en [origin, origin + size].
-pub fn deposit_to_patch(
-    positions: &[Vec3],
-    masses: &[f64],
-    patch: &mut PatchGrid,
-) {
+pub fn deposit_to_patch(positions: &[Vec3], masses: &[f64], patch: &mut PatchGrid) {
     let nm = patch.nm;
     let nm2 = nm * nm;
     let origin = patch.origin();
@@ -233,9 +229,12 @@ pub fn deposit_to_patch(
         let lz = pos.z - origin.z;
 
         // Ignorar partículas fuera del parche
-        if lx < 0.0 || lx >= patch.size
-            || ly < 0.0 || ly >= patch.size
-            || lz < 0.0 || lz >= patch.size
+        if lx < 0.0
+            || lx >= patch.size
+            || ly < 0.0
+            || ly >= patch.size
+            || lz < 0.0
+            || lz >= patch.size
         {
             continue;
         }
@@ -259,13 +258,19 @@ pub fn deposit_to_patch(
 
         for (diz, &wz_v) in wz.iter().enumerate() {
             let iz = iz0 + diz;
-            if iz >= nm { continue; }
+            if iz >= nm {
+                continue;
+            }
             for (diy, &wy_v) in wy.iter().enumerate() {
                 let iy = iy0 + diy;
-                if iy >= nm { continue; }
+                if iy >= nm {
+                    continue;
+                }
                 for (dix, &wx_v) in wx.iter().enumerate() {
                     let ix = ix0 + dix;
-                    if ix >= nm { continue; }
+                    if ix >= nm {
+                        continue;
+                    }
                     patch.density[iz * nm2 + iy * nm + ix] += m * wx_v * wy_v * wz_v;
                 }
             }
@@ -350,9 +355,12 @@ pub fn interpolate_patch_forces(patch: &PatchGrid, positions: &[Vec3]) -> Vec<Ve
         let ly = pos.y - origin.y;
         let lz = pos.z - origin.z;
 
-        if lx < 0.0 || lx >= patch.size
-            || ly < 0.0 || ly >= patch.size
-            || lz < 0.0 || lz >= patch.size
+        if lx < 0.0
+            || lx >= patch.size
+            || ly < 0.0
+            || ly >= patch.size
+            || lz < 0.0
+            || lz >= patch.size
         {
             continue;
         }
@@ -379,13 +387,19 @@ pub fn interpolate_patch_forces(patch: &PatchGrid, positions: &[Vec3]) -> Vec<Ve
 
         for (diz, &wz_v) in wz.iter().enumerate() {
             let iz = iz0 + diz;
-            if iz >= nm { continue; }
+            if iz >= nm {
+                continue;
+            }
             for (diy, &wy_v) in wy.iter().enumerate() {
                 let iy = iy0 + diy;
-                if iy >= nm { continue; }
+                if iy >= nm {
+                    continue;
+                }
                 for (dix, &wx_v) in wx.iter().enumerate() {
                     let ix = ix0 + dix;
-                    if ix >= nm { continue; }
+                    if ix >= nm {
+                        continue;
+                    }
                     let w = wx_v * wy_v * wz_v;
                     let idx = iz * nm2 + iy * nm + ix;
                     ax += w * patch.forces[0][idx];
@@ -446,14 +460,7 @@ pub fn amr_pm_accels(
     let base_density = cic::assign(positions, masses, box_size, nm_base);
     let [fx_base, fy_base, fz_base] =
         fft_poisson::solve_forces(&base_density, g, nm_base, box_size);
-    let mut accels = cic::interpolate(
-        &fx_base,
-        &fy_base,
-        &fz_base,
-        positions,
-        box_size,
-        nm_base,
-    );
+    let mut accels = cic::interpolate(&fx_base, &fy_base, &fz_base, positions, box_size, nm_base);
 
     // ── Paso 4: identificar parches ────────────────────────────────────────
     let mut patches = identify_refinement_patches(&base_density, nm_base, box_size, params);
@@ -547,12 +554,22 @@ pub fn amr_pm_accels_with_stats(
 
     let nm3 = nm_base * nm_base * nm_base;
     let rho_mean = base_density.iter().sum::<f64>() / nm3 as f64;
-    let rho_max = base_density.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let max_od = if rho_mean > 0.0 { rho_max / rho_mean } else { 0.0 };
+    let rho_max = base_density
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_od = if rho_mean > 0.0 {
+        rho_max / rho_mean
+    } else {
+        0.0
+    };
 
     let patches_list = identify_refinement_patches(&base_density, nm_base, box_size, params);
     let n_patches = patches_list.len();
-    let n_refined = positions.iter().filter(|&&p| patches_list.iter().any(|pg| pg.contains(p))).count();
+    let n_refined = positions
+        .iter()
+        .filter(|&&p| patches_list.iter().any(|pg| pg.contains(p)))
+        .count();
 
     let accels = amr_pm_accels(positions, masses, box_size, nm_base, g, params);
     let stats = AmrStats {
@@ -582,12 +599,21 @@ pub struct AmrLevel {
 impl AmrLevel {
     /// Crea un nivel vacío.
     pub fn empty(depth: usize) -> Self {
-        Self { patches: Vec::new(), child_levels: Vec::new(), depth }
+        Self {
+            patches: Vec::new(),
+            child_levels: Vec::new(),
+            depth,
+        }
     }
 
     /// Número total de parches en todo el árbol.
     pub fn total_patches(&self) -> usize {
-        self.patches.len() + self.child_levels.iter().map(|c| c.total_patches()).sum::<usize>()
+        self.patches.len()
+            + self
+                .child_levels
+                .iter()
+                .map(|c| c.total_patches())
+                .sum::<usize>()
     }
 }
 
@@ -632,16 +658,25 @@ pub fn build_amr_hierarchy(
     if current_level + 1 < params.max_levels {
         for patch in &patches {
             // Filtrar partículas dentro del parche
-            let patch_pos: Vec<Vec3> = positions.iter().cloned()
-                .filter(|&p| patch.contains(p)).collect();
-            let patch_mass: Vec<f64> = positions.iter().zip(masses.iter())
-                .filter(|(&p, _)| patch.contains(p))
-                .map(|(_, &m)| m).collect();
+            let patch_pos: Vec<Vec3> = positions
+                .iter()
+                .cloned()
+                .filter(|&p| patch.contains(p))
+                .collect();
+            let patch_mass: Vec<f64> = positions
+                .iter()
+                .zip(masses.iter())
+                .filter(|&(&p, _)| patch.contains(p))
+                .map(|(_, &m)| m)
+                .collect();
 
             if patch_pos.len() >= 8 {
                 let child = build_amr_hierarchy(
-                    &patch_pos, &patch_mass,
-                    patch.size, g, params,
+                    &patch_pos,
+                    &patch_mass,
+                    patch.size,
+                    g,
+                    params,
                     current_level + 1,
                 );
                 child_levels.push(child);
@@ -651,7 +686,11 @@ pub fn build_amr_hierarchy(
         }
     }
 
-    AmrLevel { patches, child_levels, depth: current_level }
+    AmrLevel {
+        patches,
+        child_levels,
+        depth: current_level,
+    }
 }
 
 /// Solver AMR multi-nivel: extiende `amr_pm_accels` a N niveles recursivos.
@@ -700,14 +739,23 @@ pub fn amr_pm_accels_multilevel(
     if params.max_levels >= 2 {
         for patch in &patches_l1 {
             // Sub-nivel dentro del parche L1
-            let sub_pos: Vec<Vec3> = positions.iter().cloned()
-                .filter(|&p| patch.contains(p)).collect();
-            let sub_mass: Vec<f64> = positions.iter().zip(masses.iter())
-                .filter(|(&p, _)| patch.contains(p))
-                .map(|(_, &m)| m).collect();
-            let sub_idx: Vec<usize> = positions.iter().enumerate()
-                .filter(|(_, &p)| patch.contains(p))
-                .map(|(i, _)| i).collect();
+            let sub_pos: Vec<Vec3> = positions
+                .iter()
+                .cloned()
+                .filter(|&p| patch.contains(p))
+                .collect();
+            let sub_mass: Vec<f64> = positions
+                .iter()
+                .zip(masses.iter())
+                .filter(|&(&p, _)| patch.contains(p))
+                .map(|(_, &m)| m)
+                .collect();
+            let sub_idx: Vec<usize> = positions
+                .iter()
+                .enumerate()
+                .filter(|&(_, &p)| patch.contains(p))
+                .map(|(i, _)| i)
+                .collect();
 
             if sub_pos.len() < 8 {
                 continue;
@@ -721,7 +769,12 @@ pub fn amr_pm_accels_multilevel(
 
             // Resolver sub-nivel en el espacio local del parche
             let sub_accels_l2 = amr_pm_accels(
-                &sub_pos, &sub_mass, patch.size, params.nm_patch, g, &params_l2,
+                &sub_pos,
+                &sub_mass,
+                patch.size,
+                params.nm_patch,
+                g,
+                &params_l2,
             );
 
             // Mapear sub-aceleraciones de vuelta al índice global
@@ -734,12 +787,16 @@ pub fn amr_pm_accels_multilevel(
                 );
                 // Peso: 1 en el centro del parche, suavizado en los bordes
                 let o = patch.origin();
-                let fx = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].x - o.x) / patch.size;
-                let fy = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].y - o.y) / patch.size;
-                let fz = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].z - o.z) / patch.size;
+                let fx = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].x - o.x)
+                    / patch.size;
+                let fy = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].y - o.y)
+                    / patch.size;
+                let fz = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].z - o.z)
+                    / patch.size;
                 let w = ((1.0 - 2.0 * (fx - 0.5).abs())
                     * (1.0 - 2.0 * (fy - 0.5).abs())
-                    * (1.0 - 2.0 * (fz - 0.5).abs())).max(0.0);
+                    * (1.0 - 2.0 * (fz - 0.5).abs()))
+                .max(0.0);
 
                 accels[global_i] = Vec3::new(
                     accels[global_i].x + w * delta.x,
@@ -776,7 +833,7 @@ fn apply_patch_corrections(
                     let w = ((1.0 - 2.0 * (frac_x - 0.5).abs())
                         * (1.0 - 2.0 * (frac_y - 0.5).abs())
                         * (1.0 - 2.0 * (frac_z - 0.5).abs()))
-                        .max(0.0);
+                    .max(0.0);
                     let delta = Vec3::new(
                         f_p.x - accels[i].x,
                         f_p.y - accels[i].y,
@@ -818,7 +875,10 @@ pub fn amr_pm_accels_multilevel_with_stats(
 
     let base_density = cic::assign(positions, masses, box_size, nm_base);
     let patches_l1 = identify_refinement_patches(&base_density, nm_base, box_size, params);
-    let n_refined = positions.iter().filter(|&&p| patches_l1.iter().any(|pg| pg.contains(p))).count();
+    let n_refined = positions
+        .iter()
+        .filter(|&&p| patches_l1.iter().any(|pg| pg.contains(p)))
+        .count();
 
     let stats = AmrMultilevelStats {
         patches_per_level: vec![patches_l1.len()],
@@ -858,7 +918,10 @@ mod tests {
         // CIC en un lattice crea variaciones de densidad de O(1) en ρ_mean;
         // un umbral de 50× garantiza que no se activen parches.
         let (pos, mass) = uniform_grid(8, 1.0);
-        let params = AmrParams { delta_refine: 50.0, ..Default::default() };
+        let params = AmrParams {
+            delta_refine: 50.0,
+            ..Default::default()
+        };
         let base_rho = cic::assign(&pos, &mass, 1.0, 16);
         let patches = identify_refinement_patches(&base_rho, 16, 1.0, &params);
         assert!(
@@ -895,7 +958,10 @@ mod tests {
         };
         let base_rho = cic::assign(&pos, &mass, box_size, 8);
         let patches = identify_refinement_patches(&base_rho, 8, box_size, &params);
-        assert!(!patches.is_empty(), "cluster concentrado debe crear al menos un parche");
+        assert!(
+            !patches.is_empty(),
+            "cluster concentrado debe crear al menos un parche"
+        );
     }
 
     #[test]
@@ -914,15 +980,15 @@ mod tests {
         let mut patch = PatchGrid::new(center, 0.4, 8);
 
         // Partículas dentro del parche
-        let pos = vec![
-            Vec3::new(0.45, 0.45, 0.45),
-            Vec3::new(0.55, 0.55, 0.55),
-        ];
+        let pos = vec![Vec3::new(0.45, 0.45, 0.45), Vec3::new(0.55, 0.55, 0.55)];
         let mass = vec![2.0, 3.0];
 
         deposit_to_patch(&pos, &mass, &mut patch);
         let total_mass: f64 = patch.density.iter().sum();
-        assert!((total_mass - 5.0).abs() < 1e-10, "masa no conservada: {total_mass}");
+        assert!(
+            (total_mass - 5.0).abs() < 1e-10,
+            "masa no conservada: {total_mass}"
+        );
     }
 
     #[test]
@@ -943,7 +1009,9 @@ mod tests {
             assert!(
                 a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
                 "aceleración no finita en partícula {i}: ({}, {}, {})",
-                a.x, a.y, a.z
+                a.x,
+                a.y,
+                a.z
             );
         }
     }
@@ -967,7 +1035,10 @@ mod tests {
         };
         let (_, stats) = amr_pm_accels_with_stats(&pos, &mass, 1.0, 8, 1.0, &params);
         assert!(stats.n_patches >= 1, "debería haber al menos 1 parche");
-        assert!(stats.max_overdensity > 1.0, "sobredensidad máxima debe ser > 1");
+        assert!(
+            stats.max_overdensity > 1.0,
+            "sobredensidad máxima debe ser > 1"
+        );
     }
 
     #[test]
@@ -1004,8 +1075,10 @@ mod tests {
         let a1 = amr_pm_accels_multilevel(&pos, &mass, 1.0, 8, 1.0, &params);
         assert_eq!(a1.len(), pos.len());
         for (i, a) in a1.iter().enumerate() {
-            assert!(a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
-                "multilevel L1: aceleración no finita en partícula {i}");
+            assert!(
+                a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
+                "multilevel L1: aceleración no finita en partícula {i}"
+            );
         }
     }
 
@@ -1030,8 +1103,13 @@ mod tests {
         let accels = amr_pm_accels_multilevel(&pos, &mass, 1.0, 8, 1.0, &params);
         assert_eq!(accels.len(), pos.len());
         for (i, a) in accels.iter().enumerate() {
-            assert!(a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
-                "multilevel L3: NaN en partícula {i}: ({},{},{})", a.x, a.y, a.z);
+            assert!(
+                a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
+                "multilevel L3: NaN en partícula {i}: ({},{},{})",
+                a.x,
+                a.y,
+                a.z
+            );
         }
     }
 
@@ -1049,7 +1127,8 @@ mod tests {
             max_levels: 2,
             refine_factor: 4.0,
         };
-        let (accels, stats) = amr_pm_accels_multilevel_with_stats(&pos, &mass, 1.0, 8, 1.0, &params);
+        let (accels, stats) =
+            amr_pm_accels_multilevel_with_stats(&pos, &mass, 1.0, 8, 1.0, &params);
         assert_eq!(accels.len(), pos.len());
         assert!(stats.max_depth <= 3);
         assert!(stats.patches_per_level[0] >= 1 || stats.n_refined == 0);

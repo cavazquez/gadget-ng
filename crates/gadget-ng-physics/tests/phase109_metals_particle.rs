@@ -4,8 +4,12 @@
 ///        ptype variants, EnrichmentSection defaults.
 use gadget_ng_core::{EnrichmentSection, Particle, ParticleType, Vec3};
 
-fn pos() -> Vec3 { Vec3::new(1.0, 2.0, 3.0) }
-fn vel() -> Vec3 { Vec3::new(0.1, 0.2, 0.3) }
+fn pos() -> Vec3 {
+    Vec3::new(1.0, 2.0, 3.0)
+}
+fn vel() -> Vec3 {
+    Vec3::new(0.1, 0.2, 0.3)
+}
 
 // ── 1. new_star constructor ────────────────────────────────────────────────
 
@@ -49,7 +53,11 @@ fn is_star_and_is_gas_exclusive() {
 
 #[test]
 fn particle_type_three_variants() {
-    let types = [ParticleType::DarkMatter, ParticleType::Gas, ParticleType::Star];
+    let types = [
+        ParticleType::DarkMatter,
+        ParticleType::Gas,
+        ParticleType::Star,
+    ];
     assert_eq!(types.len(), 3);
     // Cada variante es distinta
     assert_ne!(types[0], types[1]);
@@ -109,7 +117,11 @@ fn enrichment_section_defaults() {
 
 #[test]
 fn enrichment_section_serde_roundtrip() {
-    let cfg = EnrichmentSection { enabled: true, yield_snii: 0.035, yield_agb: 0.06 };
+    let cfg = EnrichmentSection {
+        enabled: true,
+        yield_snii: 0.035,
+        yield_agb: 0.06,
+    };
     let json = serde_json::to_string(&cfg).unwrap();
     let cfg2: EnrichmentSection = serde_json::from_str(&json).unwrap();
     assert!(cfg2.enabled);

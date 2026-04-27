@@ -40,7 +40,6 @@ use crate::m1::RadiationField;
 /// Tasa de recombinación case-B de HII [cm³/s] a T = 10⁴ K (Osterbrock 2006).
 pub const ALPHA_B: f64 = 2.6e-13;
 
-
 // ── Structs ───────────────────────────────────────────────────────────────────
 
 /// Fuente de fotones UV puntual (p. ej. galaxia o cuásar).
@@ -105,12 +104,7 @@ impl Default for ReionizationParams {
 /// - `sources`  — lista de fuentes UV
 /// - `box_size` — tamaño de la caja periódica
 /// - `dt`       — paso de tiempo
-pub fn deposit_uv_sources(
-    rad: &mut RadiationField,
-    sources: &[UvSource],
-    box_size: f64,
-    dt: f64,
-) {
+pub fn deposit_uv_sources(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
     let nx = rad.nx;
     let ny = rad.ny;
     let nz = rad.nz;
@@ -270,11 +264,17 @@ mod tests {
 
         let e_total_after = rad.energy_density.iter().sum::<f64>();
         let dv = dx * dx * dx;
-        assert!(e_total_after > e_total_before, "Energía debe aumentar tras depositar fuente UV");
+        assert!(
+            e_total_after > e_total_before,
+            "Energía debe aumentar tras depositar fuente UV"
+        );
         // La energía añadida debería ser luminosity × dt / dv
         let added = (e_total_after - e_total_before) * dv;
         let expected = 1.0 * 0.01; // luminosity × dt
-        assert!((added - expected).abs() < 1e-12, "Energía añadida = {added}, esperado = {expected}");
+        assert!(
+            (added - expected).abs() < 1e-12,
+            "Energía añadida = {added}, esperado = {expected}"
+        );
     }
 
     #[test]
@@ -298,7 +298,10 @@ mod tests {
     fn compute_reionization_state_neutral() {
         let states = make_neutral_states(100);
         let state = compute_reionization_state(&states, 10.0, 1);
-        assert!(state.x_hii_mean < 1e-6, "Estado neutro: x_hii_mean debe ser ~0");
+        assert!(
+            state.x_hii_mean < 1e-6,
+            "Estado neutro: x_hii_mean debe ser ~0"
+        );
         assert!(state.ionized_volume_fraction < 1e-6);
         assert_eq!(state.n_sources, 1);
         assert_eq!(state.z, 10.0);
@@ -308,8 +311,14 @@ mod tests {
     fn compute_reionization_state_ionized() {
         let states = make_ionized_states(100);
         let state = compute_reionization_state(&states, 7.0, 3);
-        assert!(state.x_hii_mean > 0.7, "Gas ionizado: x_hii_mean debe ser > 0.7");
-        assert!(state.ionized_volume_fraction > 0.9, "Fracción ionizada debe ser > 0.9");
+        assert!(
+            state.x_hii_mean > 0.7,
+            "Gas ionizado: x_hii_mean debe ser > 0.7"
+        );
+        assert!(
+            state.ionized_volume_fraction > 0.9,
+            "Fracción ionizada debe ser > 0.9"
+        );
     }
 
     #[test]
@@ -336,12 +345,23 @@ mod tests {
             substeps: 1,
             ..Default::default()
         };
-        let state = reionization_step(&mut rad, &mut chem_states, &sources, &params, 0.001, box_size, 9.0);
+        let state = reionization_step(
+            &mut rad,
+            &mut chem_states,
+            &sources,
+            &params,
+            0.001,
+            box_size,
+            9.0,
+        );
         assert_eq!(state.n_sources, 1);
         assert!(state.z > 0.0);
         // El campo de energía debe tener al menos una celda con energía positiva
         let has_energy = rad.energy_density.iter().any(|&e| e > 0.0);
-        assert!(has_energy, "Alguna celda debe tener energía UV tras el paso de reionización");
+        assert!(
+            has_energy,
+            "Alguna celda debe tener energía UV tras el paso de reionización"
+        );
     }
 
     #[test]
@@ -350,7 +370,10 @@ mod tests {
         let rs = stromgren_radius(1e48, 1e-3);
         let rs_kpc = rs / 3.086e21; // convertir cm → kpc
         // Radio típico de esfera de Strömgren: 0.1 - 10 Mpc
-        assert!(rs_kpc > 1.0 && rs_kpc < 1e7, "R_S = {rs_kpc:.2e} kpc fuera del rango esperado");
+        assert!(
+            rs_kpc > 1.0 && rs_kpc < 1e7,
+            "R_S = {rs_kpc:.2e} kpc fuera del rango esperado"
+        );
     }
 
     #[test]
@@ -359,7 +382,11 @@ mod tests {
         let rs1 = stromgren_radius(1e48, 1e-3);
         let rs2 = stromgren_radius(2e48, 1e-3);
         let ratio = rs2 / rs1;
-        assert!((ratio - 2.0f64.cbrt()).abs() < 1e-10, "Ratio = {ratio}, esperado = {:.4}", 2.0f64.cbrt());
+        assert!(
+            (ratio - 2.0f64.cbrt()).abs() < 1e-10,
+            "Ratio = {ratio}, esperado = {:.4}",
+            2.0f64.cbrt()
+        );
     }
 
     #[test]

@@ -19,8 +19,8 @@
 //! Morris & Monaghan (1997), J. Comput. Phys. 136, 41–60.
 //! Price & Monaghan (2005), MNRAS 364, 384–406.
 
-use gadget_ng_core::{BFieldKind, MhdSection, Particle, ParticleType, Vec3};
 use crate::MU0;
+use gadget_ng_core::{BFieldKind, MhdSection, Particle, ParticleType, Vec3};
 
 /// Gradiente del kernel SPH cúbico (en 3D): `∇W(r, h)`.
 ///
@@ -28,7 +28,9 @@ use crate::MU0;
 fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
     let r2 = r_vec.x * r_vec.x + r_vec.y * r_vec.y + r_vec.z * r_vec.z;
     let r = r2.sqrt();
-    if r < 1e-10 || h <= 0.0 { return Vec3::zero(); }
+    if r < 1e-10 || h <= 0.0 {
+        return Vec3::zero();
+    }
     let q = r / h;
     // Derivada del kernel cúbico B-spline
     let dw_dq = if q < 1.0 {
@@ -58,15 +60,21 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
     let mut db = vec![Vec3::zero(); n];
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let rho_i = (particles[i].mass / (h_i * h_i * h_i)).max(1e-30);
         let b_i = particles[i].b_field;
         let v_i = particles[i].velocity;
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let h_j = particles[j].smoothing_length.max(1e-10);
             let rho_j = (particles[j].mass / (h_j * h_j * h_j)).max(1e-30);
@@ -84,8 +92,16 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
             let grad_w = kernel_gradient(r_ij, h_ij);
 
             // v_ij = v_i - v_j
-            let v_ij = Vec3 { x: v_i.x - v_j.x, y: v_i.y - v_j.y, z: v_i.z - v_j.z };
-            let b_ij = Vec3 { x: b_i.x - b_j.x, y: b_i.y - b_j.y, z: b_i.z - b_j.z };
+            let v_ij = Vec3 {
+                x: v_i.x - v_j.x,
+                y: v_i.y - v_j.y,
+                z: v_i.z - v_j.z,
+            };
+            let b_ij = Vec3 {
+                x: b_i.x - b_j.x,
+                y: b_i.y - b_j.y,
+                z: b_i.z - b_j.z,
+            };
 
             // Contribución de j a dB_i/dt (formulación simétrica):
             // dB_i/dt += (m_j/ρ_j) [(B_ij·∇W_ij) v_ij - (v_ij·∇W_ij) B_ij]
@@ -103,7 +119,9 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
 
     // Integración explícita de Euler
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         particles[i].b_field.x += db[i].x * dt;
         particles[i].b_field.y += db[i].y * dt;
         particles[i].b_field.z += db[i].z * dt;
@@ -124,7 +142,9 @@ pub fn init_b_field(particles: &mut [Particle], cfg: &MhdSection, box_size: f64)
     let l = box_size.max(1e-10);
 
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         p.b_field = match cfg.b0_kind {
             BFieldKind::None => Vec3::zero(),
             BFieldKind::Uniform => b0,
@@ -141,11 +161,7 @@ pub fn init_b_field(particles: &mut [Particle], cfg: &MhdSection, box_size: f64)
                 let x = p.position.x / l;
                 let y = p.position.y / l;
                 let two_pi = 2.0 * std::f64::consts::PI;
-                Vec3::new(
-                    b_mag * (two_pi * y).sin(),
-                    b_mag * (two_pi * x).cos(),
-                    0.0,
-                )
+                Vec3::new(b_mag * (two_pi * y).sin(), b_mag * (two_pi * x).cos(), 0.0)
             }
         };
     }
@@ -154,7 +170,9 @@ pub fn init_b_field(particles: &mut [Particle], cfg: &MhdSection, box_size: f64)
 /// Genera un número pseudo-aleatorio ∈ [−1, 1] a partir de una semilla u64.
 #[inline]
 fn lcg_uniform(seed: u64) -> f64 {
-    let s = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let s = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     let bits = (s >> 33) as u32;
     (bits as f64 / u32::MAX as f64) * 2.0 - 1.0
 }
@@ -171,7 +189,9 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
     let mut v_a_max = 0.0_f64;
 
     for p in particles.iter() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         let h = p.smoothing_length.max(1e-10);
         let rho = (p.mass / (h * h * h)).max(1e-30);
         let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
@@ -200,39 +220,53 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
 /// Con `alpha_b = 0.0` es un no-op.
 #[allow(clippy::needless_range_loop)]
 pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt: f64) {
-    if alpha_b <= 0.0 { return; }
+    if alpha_b <= 0.0 {
+        return;
+    }
     let n = particles.len();
-    if n == 0 { return; }
+    if n == 0 {
+        return;
+    }
 
     let mut db = vec![Vec3::zero(); n];
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let pos_i = particles[i].position;
         let b_i = particles[i].b_field;
         let vel_i = particles[i].velocity;
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
             let dz = particles[j].position.z - pos_i.z;
-            let r2 = dx*dx + dy*dy + dz*dz;
+            let r2 = dx * dx + dy * dy + dz * dz;
             let r = r2.sqrt();
-            if r < 1e-14 { continue; }
+            if r < 1e-14 {
+                continue;
+            }
 
             let h_j = particles[j].smoothing_length.max(1e-10);
             let h_avg = 0.5 * (h_i + h_j);
-            if r > 2.0 * h_avg { continue; }
+            if r > 2.0 * h_avg {
+                continue;
+            }
 
             // Velocidad de señal: diferencia relativa de velocidades
             let dvx = particles[j].velocity.x - vel_i.x;
             let dvy = particles[j].velocity.y - vel_i.y;
             let dvz = particles[j].velocity.z - vel_i.z;
-            let v_sig = (dvx*dvx + dvy*dvy + dvz*dvz).sqrt();
+            let v_sig = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
 
             // Resistividad artificial: η_art = alpha_b × h_i × v_sig
             let eta_art = alpha_b * h_i * v_sig;

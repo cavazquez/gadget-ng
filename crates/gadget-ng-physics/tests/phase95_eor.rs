@@ -9,8 +9,8 @@
 
 use gadget_ng_core::Vec3;
 use gadget_ng_rt::{
-    brightness_temperature, compute_reionization_state, reionization_step,
     ChemState, Cm21Params, M1Params, RadiationField, ReionizationParams, UvSource,
+    brightness_temperature, compute_reionization_state, reionization_step,
 };
 
 const BOX_SIZE: f64 = 10.0;
@@ -33,8 +33,14 @@ fn make_m1_params() -> M1Params {
 
 fn make_uv_sources() -> Vec<UvSource> {
     vec![
-        UvSource { pos: Vec3::new(2.5, 2.5, 2.5), luminosity: 10.0 },
-        UvSource { pos: Vec3::new(7.5, 7.5, 7.5), luminosity: 10.0 },
+        UvSource {
+            pos: Vec3::new(2.5, 2.5, 2.5),
+            luminosity: 10.0,
+        },
+        UvSource {
+            pos: Vec3::new(7.5, 7.5, 7.5),
+            luminosity: 10.0,
+        },
     ]
 }
 
@@ -167,7 +173,7 @@ fn reionization_params_defaults() {
 #[test]
 fn coupled_chem_reduces_21cm_signal() {
     use gadget_ng_core::{Particle, Vec3};
-    use gadget_ng_rt::{compute_cm21_output, Cm21Params};
+    use gadget_ng_rt::{Cm21Params, compute_cm21_output};
 
     let box_size = 10.0;
     let n_mesh = 8;
@@ -181,7 +187,11 @@ fn coupled_chem_reduces_21cm_signal() {
                 let mut p = Particle::new(
                     ix * n_mesh * n_mesh + iy * n_mesh + iz,
                     1.0,
-                    Vec3::new((ix as f64 + 0.5) * dx, (iy as f64 + 0.5) * dx, (iz as f64 + 0.5) * dx),
+                    Vec3::new(
+                        (ix as f64 + 0.5) * dx,
+                        (iy as f64 + 0.5) * dx,
+                        (iz as f64 + 0.5) * dx,
+                    ),
                     Vec3::zero(),
                 );
                 p.internal_energy = 100.0;
@@ -195,15 +205,30 @@ fn coupled_chem_reduces_21cm_signal() {
     let z = 9.0;
 
     // Caso 1: estados neutros (x_HII = 0) → señal máxima
-    let chem_neutral: Vec<ChemState> = (0..n_part).map(|_| ChemState {
-        x_hi: 1.0, x_hii: 0.0, x_hei: 1.0, x_heii: 0.0, x_heiii: 0.0, x_e: 0.0,
-    }).collect();
-    let out_neutral = compute_cm21_output(&particles, &chem_neutral, box_size, z, n_mesh, 4, &params);
+    let chem_neutral: Vec<ChemState> = (0..n_part)
+        .map(|_| ChemState {
+            x_hi: 1.0,
+            x_hii: 0.0,
+            x_hei: 1.0,
+            x_heii: 0.0,
+            x_heiii: 0.0,
+            x_e: 0.0,
+        })
+        .collect();
+    let out_neutral =
+        compute_cm21_output(&particles, &chem_neutral, box_size, z, n_mesh, 4, &params);
 
     // Caso 2: gas 50% ionizado (x_HII = 0.5) → señal reducida a la mitad
-    let chem_half: Vec<ChemState> = (0..n_part).map(|_| ChemState {
-        x_hi: 0.5, x_hii: 0.5, x_hei: 1.0, x_heii: 0.0, x_heiii: 0.0, x_e: 0.5,
-    }).collect();
+    let chem_half: Vec<ChemState> = (0..n_part)
+        .map(|_| ChemState {
+            x_hi: 0.5,
+            x_hii: 0.5,
+            x_hei: 1.0,
+            x_heii: 0.0,
+            x_heiii: 0.0,
+            x_e: 0.5,
+        })
+        .collect();
     let out_half = compute_cm21_output(&particles, &chem_half, box_size, z, n_mesh, 4, &params);
 
     assert!(

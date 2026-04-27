@@ -27,11 +27,11 @@
 //!    El desplazamiento total con 2LPT difiere del 1LPT (Ψ² ≠ 0).
 
 use gadget_ng_core::{
-    build_particles, cosmology::CosmologyParams, wrap_position, CosmologySection, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3, build_particles, cosmology::CosmologyParams, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use gadget_ng_treepm::TreePmSolver;
 
@@ -102,9 +102,13 @@ fn lpt2_config(seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -459,6 +463,8 @@ fn lpt2_vs_1lpt_differ() {
         "{}/{} partículas difieren entre 1LPT y 2LPT (esperado > {})\n\
         Si differ_count = 0: Ψ² es cero (bug en 2LPT).\n\
         Si differ_count pequeño: la corrección tiene magnitud esperada pero la rejilla es insuficiente.",
-        differ_count, N_PART, N_PART / 2
+        differ_count,
+        N_PART,
+        N_PART / 2
     );
 }

@@ -89,11 +89,7 @@ impl Default for IgmTempParams {
 ///
 /// # Retorna
 /// Temperatura en Kelvin.
-pub fn temperature_from_particle(
-    internal_energy: f64,
-    chem: &ChemState,
-    gamma: f64,
-) -> f64 {
+pub fn temperature_from_particle(internal_energy: f64, chem: &ChemState, gamma: f64) -> f64 {
     chem.temperature_from_internal_energy(internal_energy, gamma)
 }
 
@@ -118,7 +114,10 @@ pub fn compute_igm_temp_profile(
     params: &IgmTempParams,
 ) -> IgmTempBin {
     if particles.is_empty() || chem_states.is_empty() {
-        return IgmTempBin { z, ..Default::default() };
+        return IgmTempBin {
+            z,
+            ..Default::default()
+        };
     }
 
     let n = particles.len().min(chem_states.len());
@@ -146,12 +145,19 @@ pub fn compute_igm_temp_profile(
     }
 
     if temperatures.is_empty() {
-        return IgmTempBin { z, ..Default::default() };
+        return IgmTempBin {
+            z,
+            ..Default::default()
+        };
     }
 
     let n_p = temperatures.len();
     let t_mean = temperatures.iter().sum::<f64>() / n_p as f64;
-    let t_var = temperatures.iter().map(|&t| (t - t_mean).powi(2)).sum::<f64>() / n_p as f64;
+    let t_var = temperatures
+        .iter()
+        .map(|&t| (t - t_mean).powi(2))
+        .sum::<f64>()
+        / n_p as f64;
     let t_sigma = t_var.sqrt();
 
     // Percentiles (sortear)
@@ -212,7 +218,14 @@ mod tests {
         } else {
             0.1 // default
         };
-        Particle::new_gas(0, mass, Vec3::new(0.5, 0.5, 0.5), Vec3::new(0.0, 0.0, 0.0), internal_energy, h)
+        Particle::new_gas(
+            0,
+            mass,
+            Vec3::new(0.5, 0.5, 0.5),
+            Vec3::new(0.0, 0.0, 0.0),
+            internal_energy,
+            h,
+        )
     }
 
     fn neutral_chem() -> ChemState {
@@ -279,10 +292,14 @@ mod tests {
 
         let result = compute_igm_temp_profile(&particles, &chems, 0.0, 7.0, &params);
         assert_eq!(result.n_particles, n);
-        assert!((result.t_mean - result.t_median).abs() / result.t_mean < 0.01,
-            "Con energía uniforme, media ≈ mediana");
-        assert!(result.t_sigma < result.t_mean * 0.01,
-            "Con energía uniforme, sigma debe ser muy pequeña");
+        assert!(
+            (result.t_mean - result.t_median).abs() / result.t_mean < 0.01,
+            "Con energía uniforme, media ≈ mediana"
+        );
+        assert!(
+            result.t_sigma < result.t_mean * 0.01,
+            "Con energía uniforme, sigma debe ser muy pequeña"
+        );
     }
 
     #[test]
@@ -294,7 +311,10 @@ mod tests {
         ];
         let chems = vec![warm_ionized_chem(), warm_ionized_chem()];
         let result = compute_igm_temp_all(&particles, &chems, 7.0, 5.0 / 3.0);
-        assert_eq!(result.n_particles, 2, "compute_igm_temp_all incluye todas las partículas");
+        assert_eq!(
+            result.n_particles, 2,
+            "compute_igm_temp_all incluye todas las partículas"
+        );
     }
 
     #[test]

@@ -32,16 +32,15 @@
 //! unidades físicas calibradas.
 
 use gadget_ng_analysis::{
-    halofit::{halofit_pk, p_linear_eh, HalofitCosmo},
-    pk_correction::{correct_pk, RnModel},
-    power_spectrum::{power_spectrum, PkBin},
+    halofit::{HalofitCosmo, halofit_pk, p_linear_eh},
+    pk_correction::{RnModel, correct_pk},
+    power_spectrum::{PkBin, power_spectrum},
 };
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{growth_factor_d_ratio, CosmologyParams},
     CosmologySection, EisensteinHuParams, GravitySection, IcKind, InitialConditionsSection,
     NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8, build_particles,
+    cosmology::{CosmologyParams, growth_factor_d_ratio},
 };
 use std::f64::consts::PI;
 
@@ -145,9 +144,13 @@ fn build_ic() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

@@ -124,8 +124,7 @@ pub fn build_merger_forest(
 
         // Para cada halo en el snapshot actual, votar progenitores en el siguiente.
         for (h_idx, h) in curr_halos.iter().enumerate() {
-            let mut votes: std::collections::HashMap<u64, usize> =
-                std::collections::HashMap::new();
+            let mut votes: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
             let curr_part: Vec<&ParticleSnapshot> = curr_particles
                 .iter()
                 .filter(|p| p.halo_idx == Some(h_idx))
@@ -154,9 +153,10 @@ pub fn build_merger_forest(
             let frac_main = main_votes as f64 / n_curr as f64;
 
             // Actualizar el nodo actual con su descendente principal.
-            if let Some(node) = all_nodes.iter_mut().find(|n| {
-                n.snapshot == snap_idx && n.halo_id == h.halo_id as u64
-            }) {
+            if let Some(node) = all_nodes
+                .iter_mut()
+                .find(|n| n.snapshot == snap_idx && n.halo_id == h.halo_id as u64)
+            {
                 if frac_main >= min_shared_fraction {
                     node.prog_main_id = Some(main_descendant_id);
                 }
@@ -244,9 +244,10 @@ pub fn mah_main_branch(
 
     loop {
         // Buscar el nodo actual.
-        let node = forest.nodes.iter().find(|n| {
-            n.snapshot == current_snap && n.halo_id == current_halo_id
-        });
+        let node = forest
+            .nodes
+            .iter()
+            .find(|n| n.snapshot == current_snap && n.halo_id == current_halo_id);
         let node = match node {
             Some(n) => n,
             None => break,
@@ -263,9 +264,10 @@ pub fn mah_main_branch(
             break;
         }
         let prev_snap = current_snap - 1;
-        let progenitor = forest.nodes.iter().find(|n| {
-            n.snapshot == prev_snap && n.prog_main_id == Some(current_halo_id)
-        });
+        let progenitor = forest
+            .nodes
+            .iter()
+            .find(|n| n.snapshot == prev_snap && n.prog_main_id == Some(current_halo_id));
         match progenitor {
             Some(prog) => {
                 current_halo_id = prog.halo_id;

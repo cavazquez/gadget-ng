@@ -9,15 +9,15 @@ pub mod sidm;
 
 pub use barnes_hut::BarnesHutGravity;
 pub use let_tree::{
-    let_tree_prof_begin, let_tree_prof_end, let_tree_tile_prof_read, LetTree, DEFAULT_LEAF_MAX,
+    DEFAULT_LEAF_MAX, LetTree, let_tree_prof_begin, let_tree_prof_end, let_tree_tile_prof_read,
 };
 #[cfg(feature = "simd")]
 pub use octree::accel_from_let_soa;
 pub use octree::{
-    accel_from_let, pack_let_nodes, unpack_let_nodes, walk_stats_begin, walk_stats_end, OctNode,
-    Octree, RemoteMultipoleNode, WalkStats, NO_CHILD, RMN_FLOATS,
+    NO_CHILD, OctNode, Octree, RMN_FLOATS, RemoteMultipoleNode, WalkStats, accel_from_let,
+    pack_let_nodes, unpack_let_nodes, walk_stats_begin, walk_stats_end,
 };
 #[cfg(feature = "simd")]
 pub use rayon_bh::RayonBarnesHutGravity;
 pub use rmn_soa::RmnSoa;
-pub use sidm::{apply_sidm_scattering, scatter_probability, SidmParams};
+pub use sidm::{SidmParams, apply_sidm_scattering, scatter_probability};

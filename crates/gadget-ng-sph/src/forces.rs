@@ -199,7 +199,11 @@ pub fn compute_sph_forces_gadget2(particles: &mut [SphParticle]) {
                 continue;
             }
 
-            let r_hat = if r > 1e-300 { r_ij * (1.0 / r) } else { Vec3::zero() };
+            let r_hat = if r > 1e-300 {
+                r_ij * (1.0 / r)
+            } else {
+                Vec3::zero()
+            };
             let nabla_w_i = r_hat * (gw_i / hi);
             let nabla_w_j = r_hat * (gw_j / hj);
             // Gradiente promediado para el término viscoso

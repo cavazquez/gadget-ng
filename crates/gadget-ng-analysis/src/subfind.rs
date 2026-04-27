@@ -103,11 +103,7 @@ fn kernel_w(r: f64, h: f64) -> f64 {
 /// `ρ_i = Σ_j m_j W(|r_ij|, h)`.
 ///
 /// Funciona para N < ~5000. Para N mayor se necesita un kd-tree.
-pub fn local_density_sph(
-    positions: &[Vec3],
-    masses: &[f64],
-    k_neighbors: usize,
-) -> Vec<f64> {
+pub fn local_density_sph(positions: &[Vec3], masses: &[f64], k_neighbors: usize) -> Vec<f64> {
     let n = positions.len();
     let k = k_neighbors.min(n.saturating_sub(1)).max(1);
     let mut densities = vec![0.0_f64; n];
@@ -126,7 +122,11 @@ pub fn local_density_sph(
         dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
         // h = distancia al k-ésimo vecino (o a todos si n < k).
-        let h = dists.get(k - 1).map(|(d, _)| *d * 2.0).unwrap_or(1.0).max(1e-10);
+        let h = dists
+            .get(k - 1)
+            .map(|(d, _)| *d * 2.0)
+            .unwrap_or(1.0)
+            .max(1e-10);
 
         // Densidad SPH: Σ_j m_j W(r_ij, h).
         let rho: f64 = dists[..dists.len().min(k * 2)]
@@ -228,7 +228,11 @@ pub fn find_subhalos(
 
     // 2. Ordenar partículas por densidad descendente.
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| rho[b].partial_cmp(&rho[a]).unwrap_or(std::cmp::Ordering::Equal));
+    order.sort_by(|&a, &b| {
+        rho[b]
+            .partial_cmp(&rho[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // 3. Walk de densidad descendente con union-find.
     //    Para cada partícula (en orden de densidad descendente), buscar el vecino
@@ -289,30 +293,43 @@ pub fn find_subhalos(
         // Propiedades del grupo.
         let mass_total: f64 = members.iter().map(|&i| masses[i]).sum();
         let x_com = {
-            let s: Vec3 = members.iter().map(|&i| positions[i] * masses[i]).fold(Vec3::zero(), |a, b| a + b);
+            let s: Vec3 = members
+                .iter()
+                .map(|&i| positions[i] * masses[i])
+                .fold(Vec3::zero(), |a, b| a + b);
             let c = s * (1.0 / mass_total);
             [c.x, c.y, c.z]
         };
         let v_com = {
-            let s: Vec3 = members.iter().map(|&i| velocities[i] * masses[i]).fold(Vec3::zero(), |a, b| a + b);
+            let s: Vec3 = members
+                .iter()
+                .map(|&i| velocities[i] * masses[i])
+                .fold(Vec3::zero(), |a, b| a + b);
             let c = s * (1.0 / mass_total);
             [c.x, c.y, c.z]
         };
         let v_disp = {
             let vcm = Vec3::new(v_com[0], v_com[1], v_com[2]);
-            let var: f64 = members.iter().map(|&i| {
-                let dv = velocities[i] - vcm;
-                dv.x * dv.x + dv.y * dv.y + dv.z * dv.z
-            }).sum::<f64>() / members.len() as f64;
+            let var: f64 = members
+                .iter()
+                .map(|&i| {
+                    let dv = velocities[i] - vcm;
+                    dv.x * dv.x + dv.y * dv.y + dv.z * dv.z
+                })
+                .sum::<f64>()
+                / members.len() as f64;
             (var / 3.0).sqrt()
         };
 
         // Energía cinética.
         let vcm = Vec3::new(v_com[0], v_com[1], v_com[2]);
-        let e_kin: f64 = members.iter().map(|&i| {
-            let dv = velocities[i] - vcm;
-            0.5 * masses[i] * (dv.x * dv.x + dv.y * dv.y + dv.z * dv.z)
-        }).sum();
+        let e_kin: f64 = members
+            .iter()
+            .map(|&i| {
+                let dv = velocities[i] - vcm;
+                0.5 * masses[i] * (dv.x * dv.x + dv.y * dv.y + dv.z * dv.z)
+            })
+            .sum();
 
         // Energía potencial (suma directa para N < umbral).
         let sub_pos: Vec<Vec3> = members.iter().map(|&i| positions[i]).collect();
@@ -345,7 +362,11 @@ pub fn find_subhalos(
     }
 
     // 6. Ordenar por masa descendente.
-    subhalos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap_or(std::cmp::Ordering::Equal));
+    subhalos.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Re-asignar IDs en orden de masa.
     for (idx, s) in subhalos.iter_mut().enumerate() {
@@ -382,15 +403,24 @@ mod tests {
         let n_side = 4usize;
         let box_size = 4.0_f64;
         let dx = box_size / n_side as f64;
-        let pos: Vec<Vec3> = (0..n_side.pow(3)).map(|k| {
-            let iz = k / (n_side * n_side);
-            let iy = (k / n_side) % n_side;
-            let ix = k % n_side;
-            Vec3::new((ix as f64 + 0.5) * dx, (iy as f64 + 0.5) * dx, (iz as f64 + 0.5) * dx)
-        }).collect();
+        let pos: Vec<Vec3> = (0..n_side.pow(3))
+            .map(|k| {
+                let iz = k / (n_side * n_side);
+                let iy = (k / n_side) % n_side;
+                let ix = k % n_side;
+                Vec3::new(
+                    (ix as f64 + 0.5) * dx,
+                    (iy as f64 + 0.5) * dx,
+                    (iz as f64 + 0.5) * dx,
+                )
+            })
+            .collect();
         let mass = vec![1.0f64; pos.len()];
         let rho = local_density_sph(&pos, &mass, 8);
-        assert!(rho.iter().all(|&r| r > 0.0), "densidades deben ser positivas");
+        assert!(
+            rho.iter().all(|&r| r > 0.0),
+            "densidades deben ser positivas"
+        );
     }
 
     #[test]

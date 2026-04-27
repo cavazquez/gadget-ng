@@ -21,7 +21,7 @@
 //! Scoccimarro (2000), ApJ 544, 597; Sefusatti & Komatsu (2007), PRD 76, 083004.
 
 use gadget_ng_core::Vec3;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 // ── Tipos públicos ─────────────────────────────────────────────────────────
 
@@ -97,7 +97,11 @@ pub fn bispectrum_equilateral(
         let n_modes = count_shell_modes(&delta_k, n, box_size, k_lo, k_hi);
         let n_triangles = n_modes * n_modes * n_modes / 6;
 
-        result.push(BkBin { k: k_cen, bk, n_triangles });
+        result.push(BkBin {
+            k: k_cen,
+            bk,
+            n_triangles,
+        });
     }
 
     result
@@ -138,16 +142,20 @@ pub fn bispectrum_isosceles(
             let dk2_x = shell_ifft(&delta_k, n, box_size, k2 - dk * 0.5, k2 + dk * 0.5);
             let dk3_x = shell_ifft(&delta_k, n, box_size, k3 - dk * 0.5, k3 + dk * 0.5);
 
-            let mean_prod: f64 = (0..n3)
-                .map(|i| dk1_x[i] * dk2_x[i] * dk3_x[i])
-                .sum::<f64>() / n3 as f64;
+            let mean_prod: f64 =
+                (0..n3).map(|i| dk1_x[i] * dk2_x[i] * dk3_x[i]).sum::<f64>() / n3 as f64;
             let bk = mean_prod * vol * vol;
 
             let n2 = count_shell_modes(&delta_k, n, box_size, k2 - dk * 0.5, k2 + dk * 0.5);
             let n3_modes = count_shell_modes(&delta_k, n, box_size, k3 - dk * 0.5, k3 + dk * 0.5);
             let n_triangles = n1 * n2 * n3_modes;
 
-            result.push(BkIsoscelesBin { k1, k2, bk, n_triangles });
+            result.push(BkIsoscelesBin {
+                k1,
+                k2,
+                bk,
+                n_triangles,
+            });
         }
     }
 
@@ -230,13 +238,7 @@ fn compute_delta_k(
 }
 
 /// Extrae los modos en la cáscara [k_lo, k_hi), hace IFFT y retorna campo real.
-fn shell_ifft(
-    delta_k: &[Complex<f64>],
-    n: usize,
-    box_size: f64,
-    k_lo: f64,
-    k_hi: f64,
-) -> Vec<f64> {
+fn shell_ifft(delta_k: &[Complex<f64>], n: usize, box_size: f64, k_lo: f64, k_hi: f64) -> Vec<f64> {
     let n3 = n * n * n;
     let k_fund = 2.0 * std::f64::consts::PI / box_size;
     let mut filtered = vec![Complex::new(0.0, 0.0); n3];
@@ -303,7 +305,11 @@ fn count_shell_modes(
 
 #[inline]
 fn freq(i: usize, n: usize) -> i64 {
-    if i <= n / 2 { i as i64 } else { i as i64 - n as i64 }
+    if i <= n / 2 {
+        i as i64
+    } else {
+        i as i64 - n as i64
+    }
 }
 
 fn cic_assign(rho: &mut [f64], pos: Vec3, m: f64, n: usize, cell: f64) {
@@ -329,7 +335,13 @@ fn cic_assign(rho: &mut [f64], pos: Vec3, m: f64, n: usize, cell: f64) {
     }
 }
 
-fn fft_axis(buf: &mut [Complex<f64>], nx: usize, ny: usize, nz: usize, fft: &std::sync::Arc<dyn rustfft::Fft<f64>>) {
+fn fft_axis(
+    buf: &mut [Complex<f64>],
+    nx: usize,
+    ny: usize,
+    nz: usize,
+    fft: &std::sync::Arc<dyn rustfft::Fft<f64>>,
+) {
     let mut tmp = vec![Complex::new(0.0, 0.0); ny];
     for ix in 0..nx {
         for iz in 0..nz {
@@ -395,7 +407,11 @@ mod tests {
         let bins = bispectrum_equilateral(&pos, &mass, 1.0, 8, 4);
         assert_eq!(bins.len(), 4);
         for b in &bins {
-            assert!(b.bk.abs() < 1.0, "B_eq no debería ser grande para distribución uniforme: {}", b.bk);
+            assert!(
+                b.bk.abs() < 1.0,
+                "B_eq no debería ser grande para distribución uniforme: {}",
+                b.bk
+            );
         }
     }
 
@@ -416,11 +432,17 @@ mod tests {
         let mut mass = Vec::new();
         let mut seed = 12345u64;
         for _ in 0..64 {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let x = ((seed >> 33) as f64) / (u32::MAX as f64);
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let y = ((seed >> 33) as f64) / (u32::MAX as f64);
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let z = ((seed >> 33) as f64) / (u32::MAX as f64);
             pos.push(Vec3::new(x, y, z));
             mass.push(1.0);
@@ -433,7 +455,11 @@ mod tests {
 
     #[test]
     fn bk_bin_struct_serializes() {
-        let b = BkBin { k: 1.0, bk: 2.5, n_triangles: 100 };
+        let b = BkBin {
+            k: 1.0,
+            bk: 2.5,
+            n_triangles: 100,
+        };
         let s = serde_json::to_string(&b).unwrap();
         let b2: BkBin = serde_json::from_str(&s).unwrap();
         assert!((b2.k - 1.0).abs() < 1e-10);

@@ -148,7 +148,7 @@ impl ChemState {
         let mu = 4.0 / (3.0 + self.x_hii + self.x_heii + 2.0 * self.x_heiii + 3.0 * self.x_hei);
         let u_cgs = u_code * U_CODE_TO_ERG_G;
         let t = u_cgs * (gamma - 1.0) * mu * M_P_CGS / K_B_CGS;
-        t.max(1.0)  // temperatura mínima 1 K
+        t.max(1.0) // temperatura mínima 1 K
     }
 }
 
@@ -250,15 +250,12 @@ pub fn solve_chemistry_implicit(
 
         // ── Tasas netas para HI/HII ───────────────────────────────────────
         let rate_hii = (gamma_hi + b_hi * xe) * st.x_hi - a_hii * xe * st.x_hii;
-        let rate_hei = (gamma_hei + b_hei * xe) * st.x_hei
-            - a_heii * xe * st.x_heii
-            - b_heii * xe * st.x_heii
-            + a_heiii * xe * st.x_heiii;
+        let rate_hei =
+            (gamma_hei + b_hei * xe) * st.x_hei - a_heii * xe * st.x_heii - b_heii * xe * st.x_heii
+                + a_heiii * xe * st.x_heiii;
 
         // ── Paso de tiempo de química adaptativo ──────────────────────────
-        let max_rate = rate_hii.abs()
-            .max(rate_hei.abs())
-            .max(1e-30);
+        let max_rate = rate_hii.abs().max(rate_hei.abs()).max(1e-30);
 
         let dt_chem = (0.1 / max_rate).min(dt - t_elapsed).max(1e-20);
 
@@ -271,8 +268,8 @@ pub fn solve_chemistry_implicit(
         // HeII: ionización desde HeI + recombinación desde HeIII
         let i_hei = (gamma_hei + b_hei * xe) * st.x_hei;
         let r_heii = (a_heii + b_heii) * xe;
-        st.x_heii = (st.x_heii + dt_chem * (i_hei + a_heiii * xe * st.x_heiii))
-            / (1.0 + dt_chem * r_heii);
+        st.x_heii =
+            (st.x_heii + dt_chem * (i_hei + a_heiii * xe * st.x_heiii)) / (1.0 + dt_chem * r_heii);
 
         // HeIII: ionización desde HeII
         let i_heii = b_heii * xe * st.x_heii;
@@ -304,7 +301,10 @@ pub struct ChemParams {
 
 impl Default for ChemParams {
     fn default() -> Self {
-        Self { gamma: 5.0 / 3.0, n_h_ref: 1e-4 }
+        Self {
+            gamma: 5.0 / 3.0,
+            n_h_ref: 1e-4,
+        }
     }
 }
 
@@ -474,22 +474,27 @@ mod tests {
     #[test]
     fn solve_chemistry_neutral_no_photons_stays_neutral() {
         let st = ChemState::neutral();
-        let t = 1e3;  // temperatura baja: pocas ionizaciones colisionales
+        let t = 1e3; // temperatura baja: pocas ionizaciones colisionales
         let result = solve_chemistry_implicit(&st, 0.0, 0.0, t, 1e-5);
         // Con T muy baja y sin fotones, debe permanecer casi neutro
-        assert!(result.x_hi > 0.9, "HI debe permanecer neutro: x_hi = {}", result.x_hi);
+        assert!(
+            result.x_hi > 0.9,
+            "HI debe permanecer neutro: x_hi = {}",
+            result.x_hi
+        );
     }
 
     #[test]
     fn solve_chemistry_ionized_recombines() {
         let st = ChemState::fully_ionized();
-        let t = 1e4;  // temperatura de recombinación eficiente
+        let t = 1e4; // temperatura de recombinación eficiente
         // Sin fotones, debe recombinar con el tiempo
         let result = solve_chemistry_implicit(&st, 0.0, 0.0, t, 1e10);
         assert!(
             result.x_hi > st.x_hi,
             "HI debe crecer por recombinación: {} → {}",
-            st.x_hi, result.x_hi
+            st.x_hi,
+            result.x_hi
         );
     }
 
@@ -502,7 +507,10 @@ mod tests {
         assert!((h_total - 1.0).abs() < 0.05, "H no conservado: {h_total}");
         // He conservado: x_hei + x_heii + x_heiii ≈ F_HE
         let he_total = result.x_hei + result.x_heii + result.x_heiii;
-        assert!((he_total - F_HE).abs() < 0.01 * F_HE + 1e-10, "He no conservado: {he_total}");
+        assert!(
+            (he_total - F_HE).abs() < 0.01 * F_HE + 1e-10,
+            "He no conservado: {he_total}"
+        );
     }
 
     #[test]

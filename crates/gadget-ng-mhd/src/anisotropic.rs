@@ -29,15 +29,19 @@
 //! Parrish & Stone (2005), ApJ 633, 334 — conducción anisótropa en SPH.
 //! Sharma & Hammett (2007), J. Comput. Phys. 227, 123 — implementación discreta.
 
-use gadget_ng_core::{Particle, ParticleType, Vec3};
 use crate::MU0;
+use gadget_ng_core::{Particle, ParticleType, Vec3};
 
 /// Kernel SPH simple para difusión (Wendland C2).
 #[inline]
 fn kernel_w(r: f64, h: f64) -> f64 {
-    if h <= 0.0 { return 0.0; }
+    if h <= 0.0 {
+        return 0.0;
+    }
     let q = r / h;
-    if q > 2.0 { return 0.0; }
+    if q > 2.0 {
+        return 0.0;
+    }
     let t = 1.0 - 0.5 * q;
     (21.0 / (2.0 * std::f64::consts::PI * h * h * h)) * t.powi(4) * (1.0 + 2.0 * q)
 }
@@ -45,7 +49,7 @@ fn kernel_w(r: f64, h: f64) -> f64 {
 /// Convierte energía interna `u` a temperatura con `γ = gamma`.
 #[inline]
 fn u_to_t(u: f64, gamma: f64) -> f64 {
-    const MU_MEAN: f64 = 0.588;      // peso molecular medio (H+He totalmente ionizado)
+    const MU_MEAN: f64 = 0.588; // peso molecular medio (H+He totalmente ionizado)
     const KB_OVER_MU: f64 = 8.314e7; // erg/g/K (R en CGS)
     u.max(0.0) * (gamma - 1.0) / (KB_OVER_MU / MU_MEAN)
 }
@@ -76,37 +80,49 @@ pub fn apply_anisotropic_conduction(
     dt: f64,
 ) {
     let n = particles.len();
-    if n == 0 { return; }
+    if n == 0 {
+        return;
+    }
 
     let mut delta_u = vec![0.0_f64; n];
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let pos_i = particles[i].position;
         let t_i = u_to_t(particles[i].internal_energy, gamma);
         let b_i = particles[i].b_field;
-        let b_mag_i = (b_i.x*b_i.x + b_i.y*b_i.y + b_i.z*b_i.z).sqrt().max(1e-30);
-        let bhat_i = Vec3::new(b_i.x/b_mag_i, b_i.y/b_mag_i, b_i.z/b_mag_i);
+        let b_mag_i = (b_i.x * b_i.x + b_i.y * b_i.y + b_i.z * b_i.z)
+            .sqrt()
+            .max(1e-30);
+        let bhat_i = Vec3::new(b_i.x / b_mag_i, b_i.y / b_mag_i, b_i.z / b_mag_i);
 
-        for j in (i+1)..n {
-            if particles[j].ptype != ParticleType::Gas { continue; }
+        for j in (i + 1)..n {
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
             let dz = particles[j].position.z - pos_i.z;
-            let r = (dx*dx + dy*dy + dz*dz).sqrt();
-            if r < 1e-14 { continue; }
+            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            if r < 1e-14 {
+                continue;
+            }
 
             let h_avg = 0.5 * (h_i + particles[j].smoothing_length.max(1e-10));
             let w = kernel_w(r, 2.0 * h_avg);
-            if w <= 0.0 { continue; }
+            if w <= 0.0 {
+                continue;
+            }
 
             // cos²(θ) = (B̂_i · r̂_ij)²
             let rhat_x = dx / r;
             let rhat_y = dy / r;
             let rhat_z = dz / r;
-            let cos_theta = bhat_i.x*rhat_x + bhat_i.y*rhat_y + bhat_i.z*rhat_z;
+            let cos_theta = bhat_i.x * rhat_x + bhat_i.y * rhat_y + bhat_i.z * rhat_z;
             let cos2 = cos_theta * cos_theta;
 
             let kappa_eff = kappa_perp + (kappa_par - kappa_perp) * cos2;
@@ -134,48 +150,55 @@ pub fn apply_anisotropic_conduction(
 ///
 /// Con `B = 0` degenera en difusión isótropa.
 #[allow(clippy::needless_range_loop)]
-pub fn diffuse_cr_anisotropic(
-    particles: &mut [Particle],
-    kappa_cr: f64,
-    b_suppress: f64,
-    dt: f64,
-) {
+pub fn diffuse_cr_anisotropic(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
     let n = particles.len();
-    if n == 0 { return; }
+    if n == 0 {
+        return;
+    }
 
     let mut delta_cr = vec![0.0_f64; n];
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let pos_i = particles[i].position;
         let e_i = particles[i].cr_energy;
         let b_i = particles[i].b_field;
-        let b2_i = b_i.x*b_i.x + b_i.y*b_i.y + b_i.z*b_i.z;
+        let b2_i = b_i.x * b_i.x + b_i.y * b_i.y + b_i.z * b_i.z;
         let b_mag_i = b2_i.sqrt().max(1e-30);
-        let bhat_i = Vec3::new(b_i.x/b_mag_i, b_i.y/b_mag_i, b_i.z/b_mag_i);
+        let bhat_i = Vec3::new(b_i.x / b_mag_i, b_i.y / b_mag_i, b_i.z / b_mag_i);
 
         // Supresión por |B|² (Phase 129)
         let kappa_eff_base = kappa_cr / (1.0 + b_suppress * b2_i);
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
 
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
             let dz = particles[j].position.z - pos_i.z;
-            let r = (dx*dx + dy*dy + dz*dz).sqrt();
-            if r < 1e-14 { continue; }
+            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            if r < 1e-14 {
+                continue;
+            }
 
             let w = kernel_w(r, 2.0 * h_i);
-            if w <= 0.0 { continue; }
+            if w <= 0.0 {
+                continue;
+            }
 
             // Dirección de difusión: cos²(θ_B) = (B̂ · r̂)²
             let rhat_x = dx / r;
             let rhat_y = dy / r;
             let rhat_z = dz / r;
-            let cos_theta = bhat_i.x*rhat_x + bhat_i.y*rhat_y + bhat_i.z*rhat_z;
+            let cos_theta = bhat_i.x * rhat_x + bhat_i.y * rhat_y + bhat_i.z * rhat_z;
             let cos2 = cos_theta * cos_theta;
 
             // Con B=0: cos2 promedia a 1/3 (isótropo); con B fuerte: solo ∥B
@@ -196,7 +219,9 @@ pub fn diffuse_cr_anisotropic(
 /// Un β grande (>1) indica que la presión térmica domina sobre la presión magnética.
 /// Un β pequeño (<1) indica que el campo magnético domina.
 pub fn beta_plasma(p_thermal: f64, b: Vec3) -> f64 {
-    let b2 = b.x*b.x + b.y*b.y + b.z*b.z;
-    if b2 < 1e-60 { return f64::INFINITY; }
+    let b2 = b.x * b.x + b.y * b.y + b.z * b.z;
+    if b2 < 1e-60 {
+        return f64::INFINITY;
+    }
     2.0 * MU0 * p_thermal / b2
 }

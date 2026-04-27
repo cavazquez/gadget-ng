@@ -7,7 +7,7 @@
 //! perturbación de velocidad pequeña (régimen lineal).
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-use gadget_ng_mhd::{advance_srmhd, em_energy_density, C_LIGHT};
+use gadget_ng_mhd::{C_LIGHT, advance_srmhd, em_energy_density};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,17 +36,21 @@ fn setup_alfven_wave(n: usize, b0: f64, v_perp: f64) -> Vec<Particle> {
 
 /// Energía cinética total.
 fn kinetic_energy(particles: &[Particle]) -> f64 {
-    particles.iter().map(|p| {
-        let v2 = p.velocity.dot(p.velocity);
-        0.5 * p.mass * v2
-    }).sum()
+    particles
+        .iter()
+        .map(|p| {
+            let v2 = p.velocity.dot(p.velocity);
+            0.5 * p.mass * v2
+        })
+        .sum()
 }
 
 /// Energía EM total (proporcional a B²/2).
 fn em_energy(particles: &[Particle]) -> f64 {
-    particles.iter().map(|p| {
-        p.mass * em_energy_density(p.b_field)
-    }).sum()
+    particles
+        .iter()
+        .map(|p| p.mass * em_energy_density(p.b_field))
+        .sum()
 }
 
 // ── Tests rápidos ─────────────────────────────────────────────────────────────
@@ -56,7 +60,10 @@ fn em_energy(particles: &[Particle]) -> f64 {
 fn rmhd_initial_em_energy_finite() {
     let particles = setup_alfven_wave(16, 1.0, 0.01);
     let e_em = em_energy(&particles);
-    assert!(e_em.is_finite() && e_em > 0.0, "E_EM inicial debe ser > 0: {e_em:.4e}");
+    assert!(
+        e_em.is_finite() && e_em > 0.0,
+        "E_EM inicial debe ser > 0: {e_em:.4e}"
+    );
 }
 
 /// `em_energy_density` crece cuadráticamente con B.
@@ -68,7 +75,8 @@ fn em_energy_density_quadratic_in_b() {
     let e2 = em_energy_density(b2);
     assert!(
         (e2 / e1 - 4.0).abs() < 1e-10,
-        "E_EM ∝ B²: e(2B)/e(B) = {:.6} (esperado 4.0)", e2 / e1
+        "E_EM ∝ B²: e(2B)/e(B) = {:.6} (esperado 4.0)",
+        e2 / e1
     );
 }
 
@@ -95,7 +103,10 @@ fn rmhd_kinetic_energy_nonzero_after_step() {
     let ek1 = kinetic_energy(&particles);
     // La energía cinética existe (no es idéntica a la inicial)
     assert!(ek0.is_finite(), "E_K inicial debe ser finita: {ek0:.4e}");
-    assert!(ek1.is_finite(), "E_K tras advance debe ser finita: {ek1:.4e}");
+    assert!(
+        ek1.is_finite(),
+        "E_K tras advance debe ser finita: {ek1:.4e}"
+    );
 }
 
 // ── Test lento ────────────────────────────────────────────────────────────────

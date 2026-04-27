@@ -29,7 +29,7 @@
 //! Esto es **P× menos** que el `allreduce` de Fase 19 (`nm³` f64 por rank).
 
 use gadget_ng_parallel::ParallelRuntime;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Arc;
 
 // ── Layout de slabs ───────────────────────────────────────────────────────────

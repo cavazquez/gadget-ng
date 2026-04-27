@@ -1,6 +1,6 @@
 //! Masa y centro de masa de la raíz del octree coinciden con el sistema de partículas.
 use gadget_ng_core::{
-    build_particles, IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3, build_particles,
 };
 use gadget_ng_tree::Octree;
 
@@ -30,9 +30,13 @@ fn root_mass_and_com_match_particles() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();

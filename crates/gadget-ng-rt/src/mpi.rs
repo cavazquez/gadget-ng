@@ -300,14 +300,18 @@ pub fn allreduce_radiation_mpi<C: mpi::collective::CommunicatorCollectives>(
     world: &C,
 ) {
     use mpi::collective::SystemOperation;
-    let e_send  = rad.energy_density.clone();
+    let e_send = rad.energy_density.clone();
     let fx_send = rad.flux_x.clone();
     let fy_send = rad.flux_y.clone();
     let fz_send = rad.flux_z.clone();
-    world.all_reduce_into(&e_send[..],  &mut rad.energy_density[..], SystemOperation::sum());
-    world.all_reduce_into(&fx_send[..], &mut rad.flux_x[..],         SystemOperation::sum());
-    world.all_reduce_into(&fy_send[..], &mut rad.flux_y[..],         SystemOperation::sum());
-    world.all_reduce_into(&fz_send[..], &mut rad.flux_z[..],         SystemOperation::sum());
+    world.all_reduce_into(
+        &e_send[..],
+        &mut rad.energy_density[..],
+        SystemOperation::sum(),
+    );
+    world.all_reduce_into(&fx_send[..], &mut rad.flux_x[..], SystemOperation::sum());
+    world.all_reduce_into(&fy_send[..], &mut rad.flux_y[..], SystemOperation::sum());
+    world.all_reduce_into(&fz_send[..], &mut rad.flux_z[..], SystemOperation::sum());
 }
 
 /// Intercambia capas halo ghost entre ranks vecinos con MPI real (`MPI_Send`/`MPI_Recv`).
@@ -328,11 +332,11 @@ pub fn exchange_radiation_halos_mpi<C: mpi::traits::Communicator>(
 ) {
     use mpi::traits::*;
 
-    let rank    = world.rank() as usize;
-    let size    = world.size() as usize;
-    let nx      = slab.nx;
-    let nz      = slab.nz;
-    let ny_loc  = slab.ny_local;
+    let rank = world.rank() as usize;
+    let size = world.size() as usize;
+    let nx = slab.nx;
+    let nz = slab.nz;
+    let ny_loc = slab.ny_local;
 
     if size == 1 {
         // Serial: condición periódica
@@ -346,29 +350,29 @@ pub fn exchange_radiation_halos_mpi<C: mpi::traits::Communicator>(
     let pack_size = 4 * layer_len;
 
     // Empaquetar primera y última capas locales
-    let mut send_to_left  = vec![0.0f64; pack_size]; // primera capa → halo superior del vecino izquierdo
+    let mut send_to_left = vec![0.0f64; pack_size]; // primera capa → halo superior del vecino izquierdo
     let mut send_to_right = vec![0.0f64; pack_size]; // última capa  → halo inferior del vecino derecho
 
     for iz in 0..nz {
         for ix in 0..nx {
             let flat = iz * nx + ix;
             let si_first = slab.idx_local(ix, 0, iz);
-            let si_last  = slab.idx_local(ix, ny_loc - 1, iz);
-            send_to_left[flat]              = slab.energy[si_first];
-            send_to_left[layer_len + flat]  = slab.flux_x[si_first];
-            send_to_left[2*layer_len+flat]  = slab.flux_y[si_first];
-            send_to_left[3*layer_len+flat]  = slab.flux_z[si_first];
-            send_to_right[flat]             = slab.energy[si_last];
+            let si_last = slab.idx_local(ix, ny_loc - 1, iz);
+            send_to_left[flat] = slab.energy[si_first];
+            send_to_left[layer_len + flat] = slab.flux_x[si_first];
+            send_to_left[2 * layer_len + flat] = slab.flux_y[si_first];
+            send_to_left[3 * layer_len + flat] = slab.flux_z[si_first];
+            send_to_right[flat] = slab.energy[si_last];
             send_to_right[layer_len + flat] = slab.flux_x[si_last];
-            send_to_right[2*layer_len+flat] = slab.flux_y[si_last];
-            send_to_right[3*layer_len+flat] = slab.flux_z[si_last];
+            send_to_right[2 * layer_len + flat] = slab.flux_y[si_last];
+            send_to_right[3 * layer_len + flat] = slab.flux_z[si_last];
         }
     }
 
-    let left_rank  = ((rank as i64 - 1).rem_euclid(size as i64)) as i32;
+    let left_rank = ((rank as i64 - 1).rem_euclid(size as i64)) as i32;
     let right_rank = ((rank + 1) % size) as i32;
 
-    let mut recv_from_left  = vec![0.0f64; pack_size];
+    let mut recv_from_left = vec![0.0f64; pack_size];
     let mut recv_from_right = vec![0.0f64; pack_size];
 
     // Ronda 1: ranks pares envían →derecha (última capa), luego reciben ←izquierda
@@ -404,14 +408,14 @@ pub fn exchange_radiation_halos_mpi<C: mpi::traits::Communicator>(
             let flat = iz * nx + ix;
             let hi_lo = slab.idx_slab(ix, 0, iz);
             let hi_hi = slab.idx_slab(ix, ny_loc + 1, iz);
-            slab.energy[hi_lo]  = recv_from_left[flat];
-            slab.flux_x[hi_lo]  = recv_from_left[layer_len + flat];
-            slab.flux_y[hi_lo]  = recv_from_left[2*layer_len+flat];
-            slab.flux_z[hi_lo]  = recv_from_left[3*layer_len+flat];
-            slab.energy[hi_hi]  = recv_from_right[flat];
-            slab.flux_x[hi_hi]  = recv_from_right[layer_len + flat];
-            slab.flux_y[hi_hi]  = recv_from_right[2*layer_len+flat];
-            slab.flux_z[hi_hi]  = recv_from_right[3*layer_len+flat];
+            slab.energy[hi_lo] = recv_from_left[flat];
+            slab.flux_x[hi_lo] = recv_from_left[layer_len + flat];
+            slab.flux_y[hi_lo] = recv_from_left[2 * layer_len + flat];
+            slab.flux_z[hi_lo] = recv_from_left[3 * layer_len + flat];
+            slab.energy[hi_hi] = recv_from_right[flat];
+            slab.flux_x[hi_hi] = recv_from_right[layer_len + flat];
+            slab.flux_y[hi_hi] = recv_from_right[2 * layer_len + flat];
+            slab.flux_z[hi_hi] = recv_from_right[3 * layer_len + flat];
         }
     }
 }
@@ -473,8 +477,14 @@ mod tests {
         let e_halo_lo = slab.energy[slab.idx_slab(0, 0, 0)];
         let e_halo_hi = slab.energy[slab.idx_slab(0, n + 1, 0)];
 
-        assert_eq!(e_halo_lo, e_last, "Halo inferior debe copiar última capa local");
-        assert_eq!(e_halo_hi, e_first, "Halo superior debe copiar primera capa local");
+        assert_eq!(
+            e_halo_lo, e_last,
+            "Halo inferior debe copiar última capa local"
+        );
+        assert_eq!(
+            e_halo_hi, e_first,
+            "Halo superior debe copiar primera capa local"
+        );
     }
 
     #[test]
@@ -499,7 +509,9 @@ mod tests {
 
     #[cfg(feature = "mpi")]
     fn get_mpi_world() -> mpi::topology::SimpleCommunicator {
-        MPI_UNIVERSE.get_or_init(|| mpi::initialize().unwrap()).world()
+        MPI_UNIVERSE
+            .get_or_init(|| mpi::initialize().unwrap())
+            .world()
     }
 
     #[cfg(feature = "mpi")]
@@ -507,7 +519,9 @@ mod tests {
     fn allreduce_radiation_mpi_single_rank() {
         use mpi::traits::Communicator;
         let world = get_mpi_world();
-        if world.size() > 1 { return; } // solo en serial
+        if world.size() > 1 {
+            return;
+        } // solo en serial
 
         let n = 4;
         let mut rf = make_uniform_rf(n, 2.0);
@@ -522,7 +536,9 @@ mod tests {
     fn exchange_halos_mpi_single_rank_periodic() {
         use mpi::traits::Communicator;
         let world = get_mpi_world();
-        if world.size() > 1 { return; }
+        if world.size() > 1 {
+            return;
+        }
 
         let n = 4;
         let global = make_uniform_rf(n, 3.0);

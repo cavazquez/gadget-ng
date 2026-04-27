@@ -9,8 +9,8 @@
 
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::{
-    sfc::{global_bbox, partition_local, SfcDecomposition},
     ParallelRuntime, SerialRuntime,
+    sfc::{SfcDecomposition, global_bbox, partition_local},
 };
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ fn sfc_build_with_bbox_balance() {
     // Tolerancia ±40%: cada rango debe tener entre 150 y 350 partículas.
     for (r, &c) in counts.iter().enumerate() {
         assert!(
-            c >= 150 && c <= 350,
+            (150..=350).contains(&c),
             "rango {r} tiene {c} partículas (desequilibrado tras build_with_bbox)"
         );
     }

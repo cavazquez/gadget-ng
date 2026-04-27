@@ -275,13 +275,18 @@ mod tests {
     #[test]
     fn gas_particle_sph_fields_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let particles = vec![
-            gas_particle(0, 3.5, 0.05),
-            gas_particle(1, 7.2, 0.12),
-        ];
+        let particles = vec![gas_particle(0, 3.5, 0.05), gas_particle(1, 7.2, 0.12)];
         let prov = dummy_provenance();
-        let env = SnapshotEnv { time: 1.0, redshift: 0.0, box_size: 10.0, units: None, ..Default::default() };
-        JsonlWriter.write(dir.path(), &particles, &prov, &env).unwrap();
+        let env = SnapshotEnv {
+            time: 1.0,
+            redshift: 0.0,
+            box_size: 10.0,
+            units: None,
+            ..Default::default()
+        };
+        JsonlWriter
+            .write(dir.path(), &particles, &prov, &env)
+            .unwrap();
         let data = JsonlReader.read(dir.path()).unwrap();
         assert_eq!(data.particles.len(), 2);
         for (orig, restored) in particles.iter().zip(data.particles.iter()) {
@@ -299,8 +304,16 @@ mod tests {
         let gas = gas_particle(1, 5.0, 0.08);
         let particles = vec![dm.clone(), gas.clone()];
         let prov = dummy_provenance();
-        let env = SnapshotEnv { time: 0.5, redshift: 0.5, box_size: 1.0, units: None, ..Default::default() };
-        JsonlWriter.write(dir.path(), &particles, &prov, &env).unwrap();
+        let env = SnapshotEnv {
+            time: 0.5,
+            redshift: 0.5,
+            box_size: 1.0,
+            units: None,
+            ..Default::default()
+        };
+        JsonlWriter
+            .write(dir.path(), &particles, &prov, &env)
+            .unwrap();
         let data = JsonlReader.read(dir.path()).unwrap();
         assert_eq!(data.particles[0].ptype, ParticleType::DarkMatter);
         assert_eq!(data.particles[0].internal_energy, 0.0);
@@ -312,7 +325,8 @@ mod tests {
     /// Phase 105: backward compatibility — JSONL without SPH fields deserializes with defaults.
     #[test]
     fn backward_compat_no_sph_fields() {
-        let legacy_line = r#"{"global_id":0,"mass":1.0,"px":0.1,"py":0.2,"pz":0.3,"vx":0.0,"vy":0.0,"vz":0.0}"#;
+        let legacy_line =
+            r#"{"global_id":0,"mass":1.0,"px":0.1,"py":0.2,"pz":0.3,"vx":0.0,"vy":0.0,"vz":0.0}"#;
         let rec: ParticleRecord = serde_json::from_str(legacy_line).unwrap();
         assert_eq!(rec.internal_energy, 0.0);
         assert_eq!(rec.smoothing_length, 0.0);
@@ -328,8 +342,17 @@ mod tests {
         let gas = gas_particle(0, 1.0, 0.1);
         let rec = ParticleRecord::from(&gas);
         let json = serde_json::to_string(&rec).unwrap();
-        assert!(json.contains("Gas"), "ptype should serialize as 'Gas': {json}");
-        assert!(json.contains("internal_energy"), "should contain internal_energy: {json}");
-        assert!(json.contains("smoothing_length"), "should contain smoothing_length: {json}");
+        assert!(
+            json.contains("Gas"),
+            "ptype should serialize as 'Gas': {json}"
+        );
+        assert!(
+            json.contains("internal_energy"),
+            "should contain internal_energy: {json}"
+        );
+        assert!(
+            json.contains("smoothing_length"),
+            "should contain smoothing_length: {json}"
+        );
     }
 }

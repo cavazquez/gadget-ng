@@ -1,7 +1,7 @@
 //! Integración corta con Barnes-Hut: la energía cinética no explota (cota conservadora).
 use gadget_ng_core::{
-    accelerations_all_particles, build_particles, IcKind, InitialConditionsSection, RunConfig,
-    SimulationSection, Vec3,
+    IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    accelerations_all_particles, build_particles,
 };
 use gadget_ng_integrators::leapfrog_kdk_step;
 use gadget_ng_tree::BarnesHutGravity;
@@ -39,9 +39,13 @@ fn stepping_with_barnes_hut_kinetic_bounded() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
     let eps2 = cfg.softening_squared();
     let g = cfg.simulation.gravitational_constant;

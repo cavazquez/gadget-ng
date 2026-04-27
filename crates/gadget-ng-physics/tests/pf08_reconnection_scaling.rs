@@ -37,8 +37,14 @@ fn sweet_parker_rate_increases_with_alfven() {
     let r1 = sweet_parker_rate(0.5, l, eta);
     let r2 = sweet_parker_rate(1.0, l, eta);
     let r3 = sweet_parker_rate(2.0, l, eta);
-    assert!(r2 > r1, "Γ_SP debe crecer con v_A: r1={r1:.4e}, r2={r2:.4e}");
-    assert!(r3 > r2, "Γ_SP debe crecer con v_A: r2={r2:.4e}, r3={r3:.4e}");
+    assert!(
+        r2 > r1,
+        "Γ_SP debe crecer con v_A: r1={r1:.4e}, r2={r2:.4e}"
+    );
+    assert!(
+        r3 > r2,
+        "Γ_SP debe crecer con v_A: r2={r2:.4e}, r3={r3:.4e}"
+    );
 }
 
 /// La tasa Sweet-Parker decrece con la longitud de la capa de difusión.
@@ -49,8 +55,14 @@ fn sweet_parker_rate_decreases_with_length() {
     let r1 = sweet_parker_rate(v_a, 0.5, eta);
     let r2 = sweet_parker_rate(v_a, 1.0, eta);
     let r3 = sweet_parker_rate(v_a, 2.0, eta);
-    assert!(r1 > r2, "Γ_SP debe decrecer con l: r1={r1:.4e} > r2={r2:.4e}");
-    assert!(r2 > r3, "Γ_SP debe decrecer con l: r2={r2:.4e} > r3={r3:.4e}");
+    assert!(
+        r1 > r2,
+        "Γ_SP debe decrecer con l: r1={r1:.4e} > r2={r2:.4e}"
+    );
+    assert!(
+        r2 > r3,
+        "Γ_SP debe decrecer con l: r2={r2:.4e} > r3={r3:.4e}"
+    );
 }
 
 /// La fórmula Sweet-Parker es consistente: Γ = v_A / √(R_m) = v_A · √(η/(v_A·l)).
@@ -73,5 +85,8 @@ fn sweet_parker_formula_consistent() {
 fn sweet_parker_rate_positive() {
     let rate = sweet_parker_rate(1.0, 1.0, 1e-3);
     assert!(rate > 0.0, "La tasa Sweet-Parker debe ser positiva: {rate}");
-    assert!(rate.is_finite(), "La tasa Sweet-Parker debe ser finita: {rate}");
+    assert!(
+        rate.is_finite(),
+        "La tasa Sweet-Parker debe ser finita: {rate}"
+    );
 }

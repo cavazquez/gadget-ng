@@ -100,9 +100,8 @@ impl CudaDirectGravity {
             let g = 1.0_f32; // G en unidades internas (ajustar si se necesita otro valor)
 
             // Crear handle CUDA
-            let handle: *mut c_void = unsafe {
-                ffi::cuda_direct_create(eps2, self.block_size as i32)
-            };
+            let handle: *mut c_void =
+                unsafe { ffi::cuda_direct_create(eps2, self.block_size as i32) };
             assert!(!handle.is_null(), "cuda_direct_create devolvió NULL");
 
             // Extraer componentes de posición en arrays contiguos
@@ -122,9 +121,13 @@ impl CudaDirectGravity {
             let ret = unsafe {
                 ffi::cuda_direct_solve(
                     handle,
-                    x.as_ptr(), y.as_ptr(), z.as_ptr(),
+                    x.as_ptr(),
+                    y.as_ptr(),
+                    z.as_ptr(),
                     mass.as_ptr(),
-                    ax.as_mut_ptr(), ay.as_mut_ptr(), az.as_mut_ptr(),
+                    ax.as_mut_ptr(),
+                    ay.as_mut_ptr(),
+                    az.as_mut_ptr(),
                     n as i32,
                     g,
                 )
@@ -180,7 +183,10 @@ mod tests {
     fn recommended_max_n_is_positive() {
         // El límite recomendado debe ser un número positivo razonable.
         // No requiere hardware.
-        let solver = CudaDirectGravity { eps: 0.01, block_size: 256 };
+        let solver = CudaDirectGravity {
+            eps: 0.01,
+            block_size: 256,
+        };
         assert!(solver.recommended_max_n() > 0);
     }
 }

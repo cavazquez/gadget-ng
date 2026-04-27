@@ -92,7 +92,9 @@ pub fn cooling_rate_atomic(u: f64, _rho: f64, gamma: f64, t_floor_k: f64) -> f64
 pub fn cooling_rate_metal(u: f64, rho: f64, metallicity: f64, gamma: f64, t_floor_k: f64) -> f64 {
     let lambda_hhe = cooling_rate_atomic(u, rho, gamma, t_floor_k);
     let t = u_to_temperature(u, gamma);
-    if t <= t_floor_k { return 0.0; }
+    if t <= t_floor_k {
+        return 0.0;
+    }
 
     // Normalización de metalicidad solar
     const Z_SUN: f64 = 0.0127;
@@ -120,8 +122,8 @@ const COOLING_TABLE_Z: [f64; 7] = [0.0, 1e-4, 1e-3, 0.01, 0.1, 1.0, 2.0];
 
 /// Tabla de log10(T/K) (20 bins, de 4.0 a 8.5).
 const COOLING_TABLE_LOG_T: [f64; 20] = [
-    4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25,
-    6.5, 6.75, 7.0, 7.25, 7.5, 7.75, 8.0, 8.25, 8.5, 8.75,
+    4.0, 4.25, 4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25, 6.5, 6.75, 7.0, 7.25, 7.5, 7.75, 8.0,
+    8.25, 8.5, 8.75,
 ];
 
 /// Tabla de tasas de enfriamiento Λ en unidades internas [(km/s)² / tiempo].
@@ -132,38 +134,38 @@ const COOLING_TABLE_LOG_T: [f64; 20] = [
 const COOLING_TABLE: [[f64; 20]; 7] = [
     // Z/Z_sun = 0.0 (primordial)
     [
-        0.0,    0.0,    1e-7, 5e-7, 3e-6, 1e-5, 2e-5, 3e-5, 2.5e-5, 2e-5,
-        1.5e-5, 1e-5,   8e-6, 6e-6, 5e-6, 4.5e-6, 4e-6, 4e-6, 4e-6, 4e-6,
+        0.0, 0.0, 1e-7, 5e-7, 3e-6, 1e-5, 2e-5, 3e-5, 2.5e-5, 2e-5, 1.5e-5, 1e-5, 8e-6, 6e-6, 5e-6,
+        4.5e-6, 4e-6, 4e-6, 4e-6, 4e-6,
     ],
     // Z/Z_sun = 1e-4
     [
-        0.0,    0.0,    1.1e-7, 5.2e-7, 3.1e-6, 1.05e-5, 2.1e-5, 3.1e-5, 2.6e-5, 2.1e-5,
-        1.6e-5, 1.1e-5, 8.2e-6, 6.2e-6, 5.2e-6, 4.6e-6, 4.1e-6, 4.1e-6, 4.1e-6, 4.1e-6,
+        0.0, 0.0, 1.1e-7, 5.2e-7, 3.1e-6, 1.05e-5, 2.1e-5, 3.1e-5, 2.6e-5, 2.1e-5, 1.6e-5, 1.1e-5,
+        8.2e-6, 6.2e-6, 5.2e-6, 4.6e-6, 4.1e-6, 4.1e-6, 4.1e-6, 4.1e-6,
     ],
     // Z/Z_sun = 1e-3
     [
-        0.0,    0.0,    2e-7, 8e-7, 4e-6, 1.3e-5, 2.5e-5, 3.5e-5, 3e-5, 2.4e-5,
-        1.8e-5, 1.3e-5, 1e-5, 8e-6, 6.5e-6, 5.5e-6, 5e-6, 5e-6, 5e-6, 5e-6,
+        0.0, 0.0, 2e-7, 8e-7, 4e-6, 1.3e-5, 2.5e-5, 3.5e-5, 3e-5, 2.4e-5, 1.8e-5, 1.3e-5, 1e-5,
+        8e-6, 6.5e-6, 5.5e-6, 5e-6, 5e-6, 5e-6, 5e-6,
     ],
     // Z/Z_sun = 0.01
     [
-        0.0,    0.0,    5e-7, 2e-6, 8e-6, 2.5e-5, 4e-5, 5e-5, 4.5e-5, 3.5e-5,
-        2.5e-5, 1.8e-5, 1.4e-5, 1.1e-5, 9e-6, 8e-6, 7e-6, 7e-6, 7e-6, 7e-6,
+        0.0, 0.0, 5e-7, 2e-6, 8e-6, 2.5e-5, 4e-5, 5e-5, 4.5e-5, 3.5e-5, 2.5e-5, 1.8e-5, 1.4e-5,
+        1.1e-5, 9e-6, 8e-6, 7e-6, 7e-6, 7e-6, 7e-6,
     ],
     // Z/Z_sun = 0.1
     [
-        0.0,    0.0,    2e-6, 8e-6, 3e-5, 8e-5, 1.2e-4, 1.4e-4, 1.2e-4, 9e-5,
-        6.5e-5, 4.5e-5, 3.5e-5, 2.8e-5, 2.3e-5, 2e-5, 1.8e-5, 1.8e-5, 1.8e-5, 1.8e-5,
+        0.0, 0.0, 2e-6, 8e-6, 3e-5, 8e-5, 1.2e-4, 1.4e-4, 1.2e-4, 9e-5, 6.5e-5, 4.5e-5, 3.5e-5,
+        2.8e-5, 2.3e-5, 2e-5, 1.8e-5, 1.8e-5, 1.8e-5, 1.8e-5,
     ],
     // Z/Z_sun = 1.0 (solar)
     [
-        0.0,    0.0,    1.5e-5, 6e-5, 2e-4, 5e-4, 7e-4, 8e-4, 7e-4, 5e-4,
-        3.5e-4, 2.5e-4, 1.8e-4, 1.4e-4, 1.1e-4, 9e-5, 8e-5, 8e-5, 8e-5, 8e-5,
+        0.0, 0.0, 1.5e-5, 6e-5, 2e-4, 5e-4, 7e-4, 8e-4, 7e-4, 5e-4, 3.5e-4, 2.5e-4, 1.8e-4, 1.4e-4,
+        1.1e-4, 9e-5, 8e-5, 8e-5, 8e-5, 8e-5,
     ],
     // Z/Z_sun = 2.0 (super-solar)
     [
-        0.0,    0.0,    2.5e-5, 1e-4, 3.5e-4, 8e-4, 1.1e-3, 1.2e-3, 1.05e-3, 7.5e-4,
-        5e-4,   3.5e-4, 2.5e-4, 1.9e-4, 1.5e-4, 1.25e-4, 1.1e-4, 1.1e-4, 1.1e-4, 1.1e-4,
+        0.0, 0.0, 2.5e-5, 1e-4, 3.5e-4, 8e-4, 1.1e-3, 1.2e-3, 1.05e-3, 7.5e-4, 5e-4, 3.5e-4,
+        2.5e-4, 1.9e-4, 1.5e-4, 1.25e-4, 1.1e-4, 1.1e-4, 1.1e-4, 1.1e-4,
     ],
 ];
 
@@ -182,10 +184,16 @@ const COOLING_TABLE: [[f64; 20]; 7] = [
 /// - `gamma`: índice adiabático
 /// - `t_floor_k`: temperatura mínima [K]; por debajo retorna 0
 pub fn cooling_rate_tabular(
-    u: f64, _rho: f64, metallicity: f64, gamma: f64, t_floor_k: f64,
+    u: f64,
+    _rho: f64,
+    metallicity: f64,
+    gamma: f64,
+    t_floor_k: f64,
 ) -> f64 {
     let t = u_to_temperature(u, gamma);
-    if t <= t_floor_k || t <= 0.0 { return 0.0; }
+    if t <= t_floor_k || t <= 0.0 {
+        return 0.0;
+    }
 
     let log_t = t.log10();
 
@@ -200,12 +208,19 @@ pub fn cooling_rate_tabular(
         .position(|w| log_t_cl >= w[0] && log_t_cl <= w[1])
         .unwrap_or(COOLING_TABLE_LOG_T.len() - 2);
     let dt = COOLING_TABLE_LOG_T[i_t + 1] - COOLING_TABLE_LOG_T[i_t];
-    let ft = if dt > 0.0 { (log_t_cl - COOLING_TABLE_LOG_T[i_t]) / dt } else { 0.0 };
+    let ft = if dt > 0.0 {
+        (log_t_cl - COOLING_TABLE_LOG_T[i_t]) / dt
+    } else {
+        0.0
+    };
 
     // Normalización de metalicidad
     const Z_SUN: f64 = 0.0127;
     let z_over_zsun = (metallicity / Z_SUN).max(0.0);
-    let z_cl = z_over_zsun.clamp(COOLING_TABLE_Z[0], COOLING_TABLE_Z[COOLING_TABLE_Z.len() - 1]);
+    let z_cl = z_over_zsun.clamp(
+        COOLING_TABLE_Z[0],
+        COOLING_TABLE_Z[COOLING_TABLE_Z.len() - 1],
+    );
 
     // Buscar índice en Z
     let i_z = COOLING_TABLE_Z
@@ -213,7 +228,11 @@ pub fn cooling_rate_tabular(
         .position(|w| z_cl >= w[0] && z_cl <= w[1])
         .unwrap_or(COOLING_TABLE_Z.len() - 2);
     let dz = COOLING_TABLE_Z[i_z + 1] - COOLING_TABLE_Z[i_z];
-    let fz = if dz > 0.0 { (z_cl - COOLING_TABLE_Z[i_z]) / dz } else { 0.0 };
+    let fz = if dz > 0.0 {
+        (z_cl - COOLING_TABLE_Z[i_z]) / dz
+    } else {
+        0.0
+    };
 
     // Interpolación bilineal
     let l00 = COOLING_TABLE[i_z][i_t];
@@ -256,14 +275,24 @@ pub fn apply_cooling(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
             CoolingKind::AtomicHHe => {
                 cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
             }
-            CoolingKind::MetalCooling => {
-                cooling_rate_metal(p.internal_energy, rho_local, p.metallicity, gamma, t_floor_k)
-            }
-            CoolingKind::MetalTabular => {
-                cooling_rate_tabular(p.internal_energy, rho_local, p.metallicity, gamma, t_floor_k)
-            }
+            CoolingKind::MetalCooling => cooling_rate_metal(
+                p.internal_energy,
+                rho_local,
+                p.metallicity,
+                gamma,
+                t_floor_k,
+            ),
+            CoolingKind::MetalTabular => cooling_rate_tabular(
+                p.internal_energy,
+                rho_local,
+                p.metallicity,
+                gamma,
+                t_floor_k,
+            ),
         };
-        if lambda == 0.0 { continue; }
+        if lambda == 0.0 {
+            continue;
+        }
         // du/dt = -Λ · X_H² · ρ / m
         let du_dt = -lambda * X_H * X_H * rho_local;
         p.internal_energy = (p.internal_energy + du_dt * dt).max(u_floor);
@@ -294,18 +323,29 @@ pub fn apply_cooling_mhd(particles: &mut [Particle], cfg: &SphSection, dt: f64) 
             CoolingKind::AtomicHHe => {
                 cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
             }
-            CoolingKind::MetalCooling => {
-                cooling_rate_metal(p.internal_energy, rho_local, p.metallicity, gamma, t_floor_k)
-            }
-            CoolingKind::MetalTabular => {
-                cooling_rate_tabular(p.internal_energy, rho_local, p.metallicity, gamma, t_floor_k)
-            }
+            CoolingKind::MetalCooling => cooling_rate_metal(
+                p.internal_energy,
+                rho_local,
+                p.metallicity,
+                gamma,
+                t_floor_k,
+            ),
+            CoolingKind::MetalTabular => cooling_rate_tabular(
+                p.internal_energy,
+                rho_local,
+                p.metallicity,
+                gamma,
+                t_floor_k,
+            ),
         };
-        if lambda == 0.0 { continue; }
+        if lambda == 0.0 {
+            continue;
+        }
 
         // Supresión magnética: β = 2 P_th / |B|² (con μ₀=1 en unidades internas)
         let mag_suppression = if f_mag > 0.0 {
-            let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+            let b2 =
+                p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
             if b2 > 1e-60 {
                 let p_th = (gamma - 1.0) * rho_local * p.internal_energy;
                 let beta = 2.0 * p_th / b2;

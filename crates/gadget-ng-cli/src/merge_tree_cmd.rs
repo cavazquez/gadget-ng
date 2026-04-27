@@ -13,7 +13,7 @@
 
 use crate::error::CliError;
 use gadget_ng_analysis::{
-    build_merger_forest, particle_snapshots_from_catalog, FofHalo, MergerForest, ParticleSnapshot,
+    FofHalo, MergerForest, ParticleSnapshot, build_merger_forest, particle_snapshots_from_catalog,
 };
 use gadget_ng_core::SnapshotFormat;
 use std::path::Path;
@@ -39,8 +39,7 @@ pub fn run_merge_tree(
     if snap_dirs.is_empty() {
         let forest = MergerForest::default();
         let json = serde_json::to_string_pretty(&forest)?;
-        std::fs::write(out_path, json)
-            .map_err(|e| CliError::io(out_path, e))?;
+        std::fs::write(out_path, json).map_err(|e| CliError::io(out_path, e))?;
         return Ok(());
     }
 
@@ -54,7 +53,9 @@ pub fn run_merge_tree(
             let mut halos = Vec::new();
             for line in content.lines() {
                 let line = line.trim();
-                if line.is_empty() { continue; }
+                if line.is_empty() {
+                    continue;
+                }
                 let h: FofHalo = serde_json::from_str(line)?;
                 halos.push(h);
             }
@@ -71,8 +72,11 @@ pub fn run_merge_tree(
         let box_size = snap_data.box_size;
         let positions: Vec<gadget_ng_core::Vec3> =
             snap_data.particles.iter().map(|p| p.position).collect();
-        let global_ids: Vec<u64> =
-            snap_data.particles.iter().map(|p| p.global_id as u64).collect();
+        let global_ids: Vec<u64> = snap_data
+            .particles
+            .iter()
+            .map(|p| p.global_id as u64)
+            .collect();
 
         let part_snapshots = if halos.is_empty() {
             // Sin halos: todas las partículas son campo
@@ -90,16 +94,14 @@ pub fn run_merge_tree(
     let forest = build_merger_forest(&catalogs, min_shared);
 
     // Crear directorio padre si es necesario.
-    if let Some(parent) = out_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| CliError::io(parent, e))?;
-        }
+    if let Some(parent) = out_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(|e| CliError::io(parent, e))?;
     }
 
     let json = serde_json::to_string_pretty(&forest)?;
-    std::fs::write(out_path, json)
-        .map_err(|e| CliError::io(out_path, e))?;
+    std::fs::write(out_path, json).map_err(|e| CliError::io(out_path, e))?;
 
     eprintln!(
         "[merge-tree] {} nodos, {} raíces → {:?}",

@@ -972,11 +972,21 @@ pub struct CosmologySection {
     pub m_nu_ev: f64,
 }
 
-fn default_omega_m() -> f64 { 0.3 }
-fn default_omega_lambda() -> f64 { 0.7 }
-fn default_h0() -> f64 { 0.1 }
-fn default_a_init() -> f64 { 1.0 }
-fn default_w0() -> f64 { -1.0 }
+fn default_omega_m() -> f64 {
+    0.3
+}
+fn default_omega_lambda() -> f64 {
+    0.7
+}
+fn default_h0() -> f64 {
+    0.1
+}
+fn default_a_init() -> f64 {
+    1.0
+}
+fn default_w0() -> f64 {
+    -1.0
+}
 
 impl Default for CosmologySection {
     fn default() -> Self {
@@ -1166,10 +1176,18 @@ pub struct SphSection {
     pub mag_suppress_cooling: f64,
 }
 
-fn default_gamma() -> f64 { 5.0 / 3.0 }
-fn default_alpha_visc() -> f64 { 1.0 }
-fn default_n_neigh() -> usize { 32 }
-fn default_t_floor_k() -> f64 { 1e4 }
+fn default_gamma() -> f64 {
+    5.0 / 3.0
+}
+fn default_alpha_visc() -> f64 {
+    1.0
+}
+fn default_n_neigh() -> usize {
+    32
+}
+fn default_t_floor_k() -> f64 {
+    1e4
+}
 
 impl Default for SphSection {
     fn default() -> Self {
@@ -1269,8 +1287,12 @@ pub struct WindParams {
     pub t_decoupling_myr: f64,
 }
 
-fn default_v_wind() -> f64 { 480.0 }
-fn default_mass_loading() -> f64 { 2.0 }
+fn default_v_wind() -> f64 {
+    480.0
+}
+fn default_mass_loading() -> f64 {
+    2.0
+}
 
 impl Default for WindParams {
     fn default() -> Self {
@@ -1283,17 +1305,39 @@ impl Default for WindParams {
     }
 }
 
-fn default_v_kick() -> f64 { 350.0 }
-fn default_eps_sn() -> f64 { 0.1 }
-fn default_rho_sf() -> f64 { 0.1 }
-fn default_sfr_min() -> f64 { 1e-4 }
-fn default_m_star_fraction() -> f64 { 0.5 }
-fn default_m_gas_min() -> f64 { 0.01 }
-fn default_a_ia() -> f64 { 2e-3 }
-fn default_t_ia_min_gyr() -> f64 { 0.1 }
-fn default_e_ia_code() -> f64 { 1.54e-3 * 1.3 } // E_Ia ≈ 1.3 × E_SN
-fn default_v_stellar_wind() -> f64 { 2000.0 }
-fn default_eta_stellar_wind() -> f64 { 0.1 }
+fn default_v_kick() -> f64 {
+    350.0
+}
+fn default_eps_sn() -> f64 {
+    0.1
+}
+fn default_rho_sf() -> f64 {
+    0.1
+}
+fn default_sfr_min() -> f64 {
+    1e-4
+}
+fn default_m_star_fraction() -> f64 {
+    0.5
+}
+fn default_m_gas_min() -> f64 {
+    0.01
+}
+fn default_a_ia() -> f64 {
+    2e-3
+}
+fn default_t_ia_min_gyr() -> f64 {
+    0.1
+}
+fn default_e_ia_code() -> f64 {
+    1.54e-3 * 1.3
+} // E_Ia ≈ 1.3 × E_SN
+fn default_v_stellar_wind() -> f64 {
+    2000.0
+}
+fn default_eta_stellar_wind() -> f64 {
+    0.1
+}
 
 impl Default for FeedbackSection {
     fn default() -> Self {
@@ -1339,8 +1383,12 @@ pub struct EnrichmentSection {
     pub yield_agb: f64,
 }
 
-fn default_yield_snii() -> f64 { 0.02 }
-fn default_yield_agb() -> f64 { 0.04 }
+fn default_yield_snii() -> f64 {
+    0.02
+}
+fn default_yield_agb() -> f64 {
+    0.04
+}
 
 impl Default for EnrichmentSection {
     fn default() -> Self {
@@ -1376,8 +1424,12 @@ pub struct IsmSection {
     pub f_cold: f64,
 }
 
-fn default_q_star() -> f64 { 2.5 }
-fn default_f_cold() -> f64 { 0.5 }
+fn default_q_star() -> f64 {
+    2.5
+}
+fn default_f_cold() -> f64 {
+    0.5
+}
 
 impl Default for IsmSection {
     fn default() -> Self {
@@ -1410,8 +1462,12 @@ pub struct MolecularSection {
     pub sfr_h2_boost: f64,
 }
 
-fn default_rho_h2_threshold() -> f64 { 100.0 }
-fn default_sfr_h2_boost() -> f64 { 2.0 }
+fn default_rho_h2_threshold() -> f64 {
+    100.0
+}
+fn default_sfr_h2_boost() -> f64 {
+    2.0
+}
 
 impl Default for MolecularSection {
     fn default() -> Self {
@@ -1455,10 +1511,18 @@ pub struct ConductionSection {
     pub kappa_perp: f64,
 }
 
-fn default_kappa_spitzer() -> f64 { 1e-4 }
-fn default_psi_suppression() -> f64 { 0.1 }
-fn default_kappa_par() -> f64 { 1e-4 }
-fn default_kappa_perp() -> f64 { 1e-6 }
+fn default_kappa_spitzer() -> f64 {
+    1e-4
+}
+fn default_psi_suppression() -> f64 {
+    0.1
+}
+fn default_kappa_par() -> f64 {
+    1e-4
+}
+fn default_kappa_perp() -> f64 {
+    1e-6
+}
 
 impl Default for ConductionSection {
     fn default() -> Self {
@@ -1500,9 +1564,15 @@ pub struct CrSection {
     pub b_cr_suppress: f64,
 }
 
-fn default_cr_fraction() -> f64 { 0.1 }
-fn default_kappa_cr() -> f64 { 3e-3 }
-fn default_b_cr_suppress() -> f64 { 1.0 }
+fn default_cr_fraction() -> f64 {
+    0.1
+}
+fn default_kappa_cr() -> f64 {
+    3e-3
+}
+fn default_b_cr_suppress() -> f64 {
+    1.0
+}
 
 impl Default for CrSection {
     fn default() -> Self {
@@ -1564,14 +1634,30 @@ pub struct AgnSection {
     pub eps_radio: f64,
 }
 
-fn default_eps_feedback() -> f64 { 0.05 }
-fn default_m_seed() -> f64 { 1e5 }
-fn default_v_kick_agn() -> f64 { 500.0 }
-fn default_r_influence() -> f64 { 1.0 }
-fn default_n_agn_bh() -> usize { 1 }
-fn default_f_edd_threshold() -> f64 { 0.01 }
-fn default_r_bubble() -> f64 { 2.0 }
-fn default_eps_radio() -> f64 { 0.2 }
+fn default_eps_feedback() -> f64 {
+    0.05
+}
+fn default_m_seed() -> f64 {
+    1e5
+}
+fn default_v_kick_agn() -> f64 {
+    500.0
+}
+fn default_r_influence() -> f64 {
+    1.0
+}
+fn default_n_agn_bh() -> usize {
+    1
+}
+fn default_f_edd_threshold() -> f64 {
+    0.01
+}
+fn default_r_bubble() -> f64 {
+    2.0
+}
+fn default_eps_radio() -> f64 {
+    0.2
+}
 
 impl Default for AgnSection {
     fn default() -> Self {
@@ -1609,10 +1695,18 @@ pub struct RtSection {
     pub substeps: usize,
 }
 
-fn default_c_red_factor() -> f64 { 100.0 }
-fn default_kappa_abs() -> f64 { 1.0 }
-fn default_rt_mesh() -> usize { 32 }
-fn default_rt_substeps() -> usize { 5 }
+fn default_c_red_factor() -> f64 {
+    100.0
+}
+fn default_kappa_abs() -> f64 {
+    1.0
+}
+fn default_rt_mesh() -> usize {
+    32
+}
+fn default_rt_substeps() -> usize {
+    5
+}
 
 impl Default for RtSection {
     fn default() -> Self {
@@ -1661,9 +1755,15 @@ pub struct ReionizationSection {
     pub uv_from_halos: bool,
 }
 
-fn default_uv_luminosity() -> f64 { 1.0 }
-fn default_z_reion_start() -> f64 { 12.0 }
-fn default_z_reion_end() -> f64 { 6.0 }
+fn default_uv_luminosity() -> f64 {
+    1.0
+}
+fn default_z_reion_start() -> f64 {
+    12.0
+}
+fn default_z_reion_end() -> f64 {
+    6.0
+}
 
 impl Default for ReionizationSection {
     fn default() -> Self {
@@ -1738,11 +1838,21 @@ pub struct InsituAnalysisSection {
     pub output_dir: Option<std::path::PathBuf>,
 }
 
-fn default_insitu_interval() -> u64 { 0 }
-fn default_pk_mesh() -> usize { 32 }
-fn default_fof_b() -> f64 { 0.2 }
-fn default_fof_min_part() -> usize { 20 }
-fn default_ab_smooth_r() -> f64 { 5.0 }
+fn default_insitu_interval() -> u64 {
+    0
+}
+fn default_pk_mesh() -> usize {
+    32
+}
+fn default_fof_b() -> f64 {
+    0.2
+}
+fn default_fof_min_part() -> usize {
+    20
+}
+fn default_ab_smooth_r() -> f64 {
+    5.0
+}
 
 impl Default for InsituAnalysisSection {
     fn default() -> Self {
@@ -1818,7 +1928,7 @@ impl RunConfig {
         if self.simulation.physical_softening && !self.cosmology.enabled {
             warnings.push(
                 "physical_softening = true no tiene efecto sin cosmology.enabled = true \
-                 (el softening comóvil fijo ya es constante en simulaciones newtonianas)"
+                 (el softening comóvil fijo ya es constante en simulaciones newtonianas)",
             );
         }
         warnings
@@ -1980,10 +2090,18 @@ pub struct DustSection {
     pub kappa_dust_uv: f64,
 }
 
-fn default_d_to_g_max() -> f64 { 0.01 }
-fn default_t_destroy_k() -> f64 { 1e6 }
-fn default_tau_grow() -> f64 { 1.0 }
-fn default_kappa_dust_uv() -> f64 { 1000.0 }
+fn default_d_to_g_max() -> f64 {
+    0.01
+}
+fn default_t_destroy_k() -> f64 {
+    1e6
+}
+fn default_tau_grow() -> f64 {
+    1.0
+}
+fn default_kappa_dust_uv() -> f64 {
+    1000.0
+}
 
 impl Default for DustSection {
     fn default() -> Self {
@@ -1997,15 +2115,33 @@ impl Default for DustSection {
     }
 }
 
-fn default_mhd_c_h() -> f64 { 1.0 }
-fn default_mhd_c_r() -> f64 { 0.5 }
-fn default_cfl_mhd() -> f64 { 0.3 }
-fn default_alpha_b() -> f64 { 0.5 }
-fn default_beta_freeze() -> f64 { 100.0 }
-fn default_v_rel_threshold() -> f64 { 0.1 }
-fn default_f_reconnection() -> f64 { 0.01 }
-fn default_v_jet() -> f64 { 0.3 }
-fn default_n_jet_halos() -> usize { 1 }
+fn default_mhd_c_h() -> f64 {
+    1.0
+}
+fn default_mhd_c_r() -> f64 {
+    0.5
+}
+fn default_cfl_mhd() -> f64 {
+    0.3
+}
+fn default_alpha_b() -> f64 {
+    0.5
+}
+fn default_beta_freeze() -> f64 {
+    100.0
+}
+fn default_v_rel_threshold() -> f64 {
+    0.1
+}
+fn default_f_reconnection() -> f64 {
+    0.01
+}
+fn default_v_jet() -> f64 {
+    0.3
+}
+fn default_n_jet_halos() -> usize {
+    1
+}
 
 impl Default for MhdSection {
     fn default() -> Self {
@@ -2057,11 +2193,21 @@ pub struct TurbulenceSection {
     pub spectral_index: f64,
 }
 
-fn default_turb_amplitude() -> f64 { 1e-3 }
-fn default_turb_tau() -> f64 { 1.0 }
-fn default_turb_k_min() -> f64 { 1.0 }
-fn default_turb_k_max() -> f64 { 4.0 }
-fn default_turb_spectral_index() -> f64 { 5.0 / 3.0 }
+fn default_turb_amplitude() -> f64 {
+    1e-3
+}
+fn default_turb_tau() -> f64 {
+    1.0
+}
+fn default_turb_k_min() -> f64 {
+    1.0
+}
+fn default_turb_k_max() -> f64 {
+    4.0
+}
+fn default_turb_spectral_index() -> f64 {
+    5.0 / 3.0
+}
 
 impl Default for TurbulenceSection {
     fn default() -> Self {
@@ -2094,7 +2240,9 @@ pub struct TwoFluidSection {
     pub t_e_init_k: f64,
 }
 
-fn default_nu_ei_coeff() -> f64 { 1.0 }
+fn default_nu_ei_coeff() -> f64 {
+    1.0
+}
 
 impl Default for TwoFluidSection {
     fn default() -> Self {
@@ -2122,8 +2270,12 @@ pub struct SidmSection {
     pub v_max: f64,
 }
 
-fn default_sidm_sigma_m() -> f64 { 1.0e-5 }
-fn default_sidm_v_max() -> f64 { 1.0e6 }
+fn default_sidm_sigma_m() -> f64 {
+    1.0e-5
+}
+fn default_sidm_v_max() -> f64 {
+    1.0e6
+}
 
 impl Default for SidmSection {
     fn default() -> Self {
@@ -2154,9 +2306,15 @@ pub struct ModifiedGravitySection {
     pub n: f64,
 }
 
-fn default_mg_model() -> String { "hu_sawicki".to_string() }
-fn default_f_r0() -> f64 { 1.0e-4 }
-fn default_mg_n() -> f64 { 1.0 }
+fn default_mg_model() -> String {
+    "hu_sawicki".to_string()
+}
+fn default_f_r0() -> f64 {
+    1.0e-4
+}
+fn default_mg_n() -> f64 {
+    1.0
+}
 
 impl Default for ModifiedGravitySection {
     fn default() -> Self {

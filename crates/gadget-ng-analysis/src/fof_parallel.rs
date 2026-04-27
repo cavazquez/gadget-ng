@@ -30,9 +30,9 @@
 //! ```
 
 use gadget_ng_core::Particle;
-use gadget_ng_parallel::{sfc::SfcDecomposition, ParallelRuntime};
+use gadget_ng_parallel::{ParallelRuntime, sfc::SfcDecomposition};
 
-use crate::fof::{find_halos, find_halos_combined, FofHalo};
+use crate::fof::{FofHalo, find_halos, find_halos_combined};
 
 /// Ejecuta FoF sobre las partículas locales usando intercambio MPI de frontera.
 ///
@@ -62,7 +62,15 @@ pub fn find_halos_parallel<R: ParallelRuntime>(
         let positions: Vec<_> = local.iter().map(|p| p.position).collect();
         let velocities: Vec<_> = local.iter().map(|p| p.velocity).collect();
         let masses: Vec<_> = local.iter().map(|p| p.mass).collect();
-        return find_halos(&positions, &velocities, &masses, box_size, b, min_particles, rho_crit);
+        return find_halos(
+            &positions,
+            &velocities,
+            &masses,
+            box_size,
+            b,
+            min_particles,
+            rho_crit,
+        );
     }
 
     // Calcular la longitud de enlace basada en el número total de partículas.

@@ -20,7 +20,7 @@
 
 use crate::ChemState;
 use gadget_ng_core::Particle;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Parámetros para el cálculo de estadísticas 21cm.
 #[derive(Debug, Clone)]
@@ -143,7 +143,12 @@ pub fn compute_cm21_output(
     let delta_tb = compute_delta_tb_field(particles, chem_states, z, params);
 
     if delta_tb.is_empty() {
-        return Cm21Output { z, delta_tb_mean: 0.0, delta_tb_sigma: 0.0, pk_21cm: Vec::new() };
+        return Cm21Output {
+            z,
+            delta_tb_mean: 0.0,
+            delta_tb_sigma: 0.0,
+            pk_21cm: Vec::new(),
+        };
     }
 
     let mean = delta_tb.iter().sum::<f64>() / delta_tb.len() as f64;
@@ -156,19 +161,19 @@ pub fn compute_cm21_output(
         Vec::new()
     };
 
-    Cm21Output { z, delta_tb_mean: mean, delta_tb_sigma: sigma, pk_21cm }
+    Cm21Output {
+        z,
+        delta_tb_mean: mean,
+        delta_tb_sigma: sigma,
+        pk_21cm,
+    }
 }
 
 /// Deposita el campo δT_b en una malla 3D usando CIC trilineal periódico.
 ///
 /// Cada partícula contribuye a las 8 celdas vecinas con peso proporcional
 /// a la fracción volumétrica dentro de cada celda.
-fn deposit_cic(
-    delta_tb: &[f64],
-    particles: &[Particle],
-    n_mesh: usize,
-    dx: f64,
-) -> Vec<f64> {
+fn deposit_cic(delta_tb: &[f64], particles: &[Particle], n_mesh: usize, dx: f64) -> Vec<f64> {
     let n3 = n_mesh * n_mesh * n_mesh;
     let mut grid = vec![0.0_f64; n3];
     let n = particles.len().min(delta_tb.len());
@@ -216,10 +221,7 @@ fn fft3d_real(grid_real: &[f64], n_mesh: usize) -> Vec<Complex<f64>> {
     let fft = planner.plan_fft_forward(n_mesh);
 
     // Convertir a complejo
-    let mut data: Vec<Complex<f64>> = grid_real
-        .iter()
-        .map(|&v| Complex::new(v, 0.0))
-        .collect();
+    let mut data: Vec<Complex<f64>> = grid_real.iter().map(|&v| Complex::new(v, 0.0)).collect();
 
     // FFT sobre el eje Z (dim 2, stride 1, n_mesh elementos consecutivos)
     for ix in 0..n_mesh {
@@ -294,7 +296,7 @@ fn compute_pk_21cm_fft(
 
     // 4. Binning esférico de |δ̃|² en k
     let k_fund = 2.0 * std::f64::consts::PI / box_size; // k fundamental [h/Mpc]
-    let k_nyq = std::f64::consts::PI / dx;               // k Nyquist
+    let k_nyq = std::f64::consts::PI / dx; // k Nyquist
     let dk = (k_nyq - k_fund) / n_pk_bins as f64;
     let vol = box_size.powi(3);
     let norm = vol / (n3 * n3) as f64; // factor de normalización de la DFT discreta
@@ -332,7 +334,10 @@ fn compute_pk_21cm_fft(
             let k_mean = k_sum / count as f64;
             let pk_mean = pk_sum / count as f64;
             let delta_sq = k_mean.powi(3) * pk_mean / two_pi_sq;
-            Cm21PkBin { k: k_mean, delta_sq }
+            Cm21PkBin {
+                k: k_mean,
+                delta_sq,
+            }
         })
         .collect()
 }
@@ -342,7 +347,11 @@ fn compute_pk_21cm_fft(
 fn freq_to_k(idx: usize, n: usize, k_fund: f64) -> f64 {
     let i = idx as isize;
     let n = n as isize;
-    if i <= n / 2 { i as f64 * k_fund } else { (i - n) as f64 * k_fund }
+    if i <= n / 2 {
+        i as f64 * k_fund
+    } else {
+        (i - n) as f64 * k_fund
+    }
 }
 
 #[cfg(test)]
@@ -372,14 +381,22 @@ mod tests {
     fn delta_tb_zero_at_full_ionization() {
         let params = Cm21Params::default();
         let dtb = brightness_temperature(1.0, 1.5, 8.0, &params);
-        assert!(dtb.abs() < 1e-12, "δT_b debe ser 0 con x_HII=1, got {}", dtb);
+        assert!(
+            dtb.abs() < 1e-12,
+            "δT_b debe ser 0 con x_HII=1, got {}",
+            dtb
+        );
     }
 
     #[test]
     fn delta_tb_positive_before_reionization() {
         let params = Cm21Params::default();
         let dtb = brightness_temperature(0.0, 1.0, 9.0, &params);
-        assert!(dtb > 0.0, "δT_b debe ser positiva antes de reionización, got {}", dtb);
+        assert!(
+            dtb > 0.0,
+            "δT_b debe ser positiva antes de reionización, got {}",
+            dtb
+        );
         let expected = 27.0 * ((1.0 + 9.0) / 10.0_f64).sqrt();
         assert!(
             (dtb - expected).abs() < 0.1,
@@ -466,7 +483,10 @@ mod tests {
             );
         }
         assert_eq!(out.pk_21cm.len(), 4, "deben haber 4 bins k");
-        assert!(out.delta_tb_mean > 0.0, "señal media debe ser positiva antes de reionización");
+        assert!(
+            out.delta_tb_mean > 0.0,
+            "señal media debe ser positiva antes de reionización"
+        );
         let _ = n_part;
     }
 
@@ -509,7 +529,8 @@ mod tests {
             assert!(
                 pk_vals[0] >= pk_vals[pk_vals.len() - 1],
                 "el modo fundamental debe dominar: Δ²(k_min)={:.3e} vs Δ²(k_max)={:.3e}",
-                pk_vals[0], pk_vals[pk_vals.len() - 1]
+                pk_vals[0],
+                pk_vals[pk_vals.len() - 1]
             );
         }
     }
@@ -526,7 +547,13 @@ mod tests {
         let mut dtb = Vec::new();
         for i in 0..n {
             let x = (i as f64 + 0.5) * box_size / n as f64;
-            particles.push(make_particle(x % box_size, (x * 1.3) % box_size, (x * 0.7) % box_size, 1.0, 0.3));
+            particles.push(make_particle(
+                x % box_size,
+                (x * 1.3) % box_size,
+                (x * 0.7) % box_size,
+                1.0,
+                0.3,
+            ));
             dtb.push(1.0_f64); // δT_b = 1 para todos
         }
 
@@ -535,7 +562,8 @@ mod tests {
         assert!(
             (total - n as f64).abs() < 1e-10,
             "CIC debe conservar la suma total: {} ≠ {}",
-            total, n
+            total,
+            n
         );
     }
 

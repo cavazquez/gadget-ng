@@ -4,7 +4,7 @@
 //! Intenta usar wgpu si está disponible; cae en el backend CPU si no hay GPU.
 
 use crate::canvas::CpuCanvas;
-use crate::color::{velocity_scalars, ColorMode};
+use crate::color::{ColorMode, velocity_scalars};
 use crate::export::save_png;
 use crate::projection::Projection;
 use gadget_ng_core::Vec3;

@@ -32,12 +32,21 @@ fn p79_config_parses_ok() {
     }
     let content = std::fs::read_to_string(&path).expect("leer config");
     let cfg: RunConfig = toml::from_str(&content).expect("parsear validation_128.toml");
-    assert_eq!(cfg.simulation.particle_count, 2_097_152, "128³ = 2,097,152 partículas");
+    assert_eq!(
+        cfg.simulation.particle_count, 2_097_152,
+        "128³ = 2,097,152 partículas"
+    );
     assert!(cfg.cosmology.enabled, "cosmología debe estar activa");
     assert!(cfg.cosmology.periodic, "caja periódica requerida");
     assert!(cfg.timestep.hierarchical, "block timesteps requeridos");
-    assert!(cfg.insitu_analysis.enabled, "análisis in-situ debe estar activo");
-    assert!(cfg.insitu_analysis.pk_rsd_bins > 0, "P(k,μ) debe estar configurado");
+    assert!(
+        cfg.insitu_analysis.enabled,
+        "análisis in-situ debe estar activo"
+    );
+    assert!(
+        cfg.insitu_analysis.pk_rsd_bins > 0,
+        "P(k,μ) debe estar configurado"
+    );
 }
 
 #[test]
@@ -76,10 +85,16 @@ fn p79_config_params_valid() {
     let box_size = cfg.simulation.box_size;
     let n_cube = (cfg.simulation.particle_count as f64).cbrt();
     let interpart = box_size / n_cube;
-    assert!(eps > 0.0 && eps < interpart,         "softening debe ser << separación inter-partícula");
+    assert!(
+        eps > 0.0 && eps < interpart,
+        "softening debe ser << separación inter-partícula"
+    );
 
     // Caja razonable para 128³
-    assert!(box_size >= 50.0 && box_size <= 1000.0, "box_size fuera de rango: {box_size:.1}");
+    assert!(
+        (50.0..=1000.0).contains(&box_size),
+        "box_size fuera de rango: {box_size:.1}"
+    );
 }
 
 // ── Test 4: ICs N=32³ sin NaN ─────────────────────────────────────────────
@@ -112,7 +127,7 @@ fn p79_ic_32cube_no_nan() {
 
 #[test]
 fn p79_sigma8_within_range() {
-    use gadget_ng_core::{build_particles, RunConfig};
+    use gadget_ng_core::{RunConfig, build_particles};
 
     let path = repo_root().join("configs/validation_128_test.toml");
     if !path.exists() {
@@ -128,14 +143,19 @@ fn p79_sigma8_within_range() {
     // Calcular dispersión de densidad como proxy de σ₈
     let n = particles.len();
     let mean_pos_x = particles.iter().map(|p| p.position.x).sum::<f64>() / n as f64;
-    let var_x = particles.iter()
+    let var_x = particles
+        .iter()
         .map(|p| (p.position.x - mean_pos_x).powi(2))
-        .sum::<f64>() / n as f64;
+        .sum::<f64>()
+        / n as f64;
     let sigma_x = var_x.sqrt();
 
     // Para una distribución uniforme perturbada, la dispersión de posición
     // debe ser << box_size pero > 0
-    assert!(sigma_x > 0.0 && sigma_x < box_size, "σ_x debe ser razonable: {sigma_x}");
+    assert!(
+        sigma_x > 0.0 && sigma_x < box_size,
+        "σ_x debe ser razonable: {sigma_x}"
+    );
 
     // Verificar σ₈ usando el power spectrum
     let positions: Vec<_> = particles.iter().map(|p| p.position).collect();
@@ -150,7 +170,11 @@ fn p79_sigma8_within_range() {
     for b in &pk {
         let k = b.k;
         let x = k * r8;
-        let w = if x < 1e-6 { 1.0 } else { 3.0 * (x.sin() - x * x.cos()) / (x * x * x) };
+        let w = if x < 1e-6 {
+            1.0
+        } else {
+            3.0 * (x.sin() - x * x.cos()) / (x * x * x)
+        };
         sigma2 += b.pk * w * w * k * k * dk / (2.0 * std::f64::consts::PI * std::f64::consts::PI);
     }
     let sigma8_sim = sigma2.sqrt();
@@ -173,7 +197,10 @@ fn p79_cosmo_params_consistent() {
     let cfg: RunConfig = toml::from_str(&content).unwrap();
 
     // Verificar que auto_g está activo (G calculada automáticamente)
-    assert!(cfg.cosmology.auto_g, "auto_g debe estar activo para calibración automática de G");
+    assert!(
+        cfg.cosmology.auto_g,
+        "auto_g debe estar activo para calibración automática de G"
+    );
 
     // H₀ en unidades gadget-ng (h × 100 km/s/Mpc → en unidades internas)
     let h0 = cfg.cosmology.h0;

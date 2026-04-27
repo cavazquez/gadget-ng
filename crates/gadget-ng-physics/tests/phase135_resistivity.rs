@@ -24,8 +24,14 @@ fn zero_alpha_no_op() {
     let b0_before = particles[0].b_field.x;
     let b1_before = particles[1].b_field.x;
     apply_artificial_resistivity(&mut particles, 0.0, 0.01);
-    assert_eq!(particles[0].b_field.x, b0_before, "alpha_b=0: B no debe cambiar");
-    assert_eq!(particles[1].b_field.x, b1_before, "alpha_b=0: B no debe cambiar");
+    assert_eq!(
+        particles[0].b_field.x, b0_before,
+        "alpha_b=0: B no debe cambiar"
+    );
+    assert_eq!(
+        particles[1].b_field.x, b1_before,
+        "alpha_b=0: B no debe cambiar"
+    );
 }
 
 // ── 2. Resistividad suaviza discontinuidad de B ───────────────────────────
@@ -34,8 +40,18 @@ fn zero_alpha_no_op() {
 fn resistivity_smooths_b_discontinuity() {
     // velocidades distintas para que v_sig > 0
     let mut particles = vec![
-        gas_with_b_vel(0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(2.0, 0.0, 0.0), Vec3::new(2.0, 0.0, 0.0)),
-        gas_with_b_vel(1, Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+        gas_with_b_vel(
+            0,
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        ),
+        gas_with_b_vel(
+            1,
+            Vec3::new(0.1, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(-1.0, 0.0, 0.0),
+        ),
     ];
     let b0_before = particles[0].b_field.x;
     let b1_before = particles[1].b_field.x;
@@ -60,8 +76,11 @@ fn uniform_b_no_change() {
     let b_before: Vec<f64> = particles.iter().map(|p| p.b_field.x).collect();
     apply_artificial_resistivity(&mut particles, 0.5, 0.01);
     for (i, p) in particles.iter().enumerate() {
-        assert!((p.b_field.x - b_before[i]).abs() < 1e-10,
-            "Campo uniforme no debe cambiar: p{i}, ΔB={:.2e}", (p.b_field.x - b_before[i]).abs());
+        assert!(
+            (p.b_field.x - b_before[i]).abs() < 1e-10,
+            "Campo uniforme no debe cambiar: p{i}, ΔB={:.2e}",
+            (p.b_field.x - b_before[i]).abs()
+        );
     }
 }
 
@@ -88,10 +107,22 @@ fn b_remains_finite_after_many_steps() {
 
 #[test]
 fn resistivity_reduces_b_gradient() {
-    let make = || vec![
-        gas_with_b_vel(0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 0.0, 0.0), Vec3::new(3.0, 0.0, 0.0)),
-        gas_with_b_vel(1, Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.0, 0.0, 0.0), Vec3::new(-2.0, 0.0, 0.0)),
-    ];
+    let make = || {
+        vec![
+            gas_with_b_vel(
+                0,
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(10.0, 0.0, 0.0),
+                Vec3::new(3.0, 0.0, 0.0),
+            ),
+            gas_with_b_vel(
+                1,
+                Vec3::new(0.1, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(-2.0, 0.0, 0.0),
+            ),
+        ]
+    };
     let mut particles = make();
     let db_before = (particles[0].b_field.x - particles[1].b_field.x).abs();
 
@@ -100,18 +131,32 @@ fn resistivity_reduces_b_gradient() {
     }
 
     let db_after = (particles[0].b_field.x - particles[1].b_field.x).abs();
-    assert!(db_after < db_before,
-        "Gradiente ΔB debe reducirse: {db_before:.4} → {db_after:.4}");
+    assert!(
+        db_after < db_before,
+        "Gradiente ΔB debe reducirse: {db_before:.4} → {db_after:.4}"
+    );
 }
 
 // ── 6. Alpha_b mayor → mayor difusión en un paso ─────────────────────────
 
 #[test]
 fn larger_alpha_b_more_diffusion() {
-    let make = || vec![
-        gas_with_b_vel(0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(4.0, 0.0, 0.0), Vec3::new(3.0, 0.0, 0.0)),
-        gas_with_b_vel(1, Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.0, 0.0, 0.0), Vec3::new(-2.0, 0.0, 0.0)),
-    ];
+    let make = || {
+        vec![
+            gas_with_b_vel(
+                0,
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(4.0, 0.0, 0.0),
+                Vec3::new(3.0, 0.0, 0.0),
+            ),
+            gas_with_b_vel(
+                1,
+                Vec3::new(0.1, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(-2.0, 0.0, 0.0),
+            ),
+        ]
+    };
     let mut p_low = make();
     let mut p_high = make();
     let b0 = p_low[0].b_field.x;
@@ -119,5 +164,8 @@ fn larger_alpha_b_more_diffusion() {
     apply_artificial_resistivity(&mut p_high, 0.9, 0.01);
     let d_low = (p_low[0].b_field.x - b0).abs();
     let d_high = (p_high[0].b_field.x - b0).abs();
-    assert!(d_high > d_low, "alpha_b mayor → más difusión: {d_high:.4e} vs {d_low:.4e}");
+    assert!(
+        d_high > d_low,
+        "alpha_b mayor → más difusión: {d_high:.4e} vs {d_low:.4e}"
+    );
 }

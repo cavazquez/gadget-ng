@@ -345,7 +345,7 @@ pub fn p_linear_eh(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gadget_ng_core::{amplitude_for_sigma8, EisensteinHuParams};
+    use gadget_ng_core::{EisensteinHuParams, amplitude_for_sigma8};
 
     fn eh() -> EisensteinHuParams {
         EisensteinHuParams {
@@ -516,7 +516,7 @@ mod tests {
     /// está en k más alto porque la amplitud de P(k) decrece con z.
     #[test]
     fn k_sigma_increases_with_redshift() {
-        use gadget_ng_core::cosmology::{growth_factor_d_ratio, CosmologyParams};
+        use gadget_ng_core::cosmology::{CosmologyParams, growth_factor_d_ratio};
 
         let e = eh();
         let amp = amplitude_for_sigma8(0.8, 0.965, &e);

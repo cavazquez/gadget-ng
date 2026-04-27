@@ -85,7 +85,10 @@ impl RadiationField {
             flux_x: vec![0.0; n3],
             flux_y: vec![0.0; n3],
             flux_z: vec![0.0; n3],
-            nx, ny, nz, dx,
+            nx,
+            ny,
+            nz,
+            dx,
         }
     }
 
@@ -200,8 +203,14 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
                 let il = rad.idx(ix, iy, iz);
                 let ir = rad.idx(ixr, iy, iz);
                 let (fe, ffx) = hll_flux_x(
-                    rad.energy_density[il], rad.flux_x[il], rad.flux_y[il], rad.flux_z[il],
-                    rad.energy_density[ir], rad.flux_x[ir], rad.flux_y[ir], rad.flux_z[ir],
+                    rad.energy_density[il],
+                    rad.flux_x[il],
+                    rad.flux_y[il],
+                    rad.flux_z[il],
+                    rad.energy_density[ir],
+                    rad.flux_x[ir],
+                    rad.flux_y[ir],
+                    rad.flux_z[ir],
                     c_red,
                 );
                 let dtdx = dt / dx;
@@ -221,8 +230,14 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
                 let il = rad.idx(ix, iy, iz);
                 let ir = rad.idx(ix, iyr, iz);
                 let (fe, ffy) = hll_flux_x(
-                    rad.energy_density[il], rad.flux_y[il], rad.flux_x[il], rad.flux_z[il],
-                    rad.energy_density[ir], rad.flux_y[ir], rad.flux_x[ir], rad.flux_z[ir],
+                    rad.energy_density[il],
+                    rad.flux_y[il],
+                    rad.flux_x[il],
+                    rad.flux_z[il],
+                    rad.energy_density[ir],
+                    rad.flux_y[ir],
+                    rad.flux_x[ir],
+                    rad.flux_z[ir],
                     c_red,
                 );
                 let dtdx = dt / dx;
@@ -242,8 +257,14 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
                 let il = rad.idx(ix, iy, iz);
                 let ir = rad.idx(ix, iy, izr);
                 let (fe, ffz) = hll_flux_x(
-                    rad.energy_density[il], rad.flux_z[il], rad.flux_x[il], rad.flux_y[il],
-                    rad.energy_density[ir], rad.flux_z[ir], rad.flux_x[ir], rad.flux_y[ir],
+                    rad.energy_density[il],
+                    rad.flux_z[il],
+                    rad.flux_x[il],
+                    rad.flux_y[il],
+                    rad.energy_density[ir],
+                    rad.flux_z[ir],
+                    rad.flux_x[ir],
+                    rad.flux_y[ir],
                     c_red,
                 );
                 let dtdx = dt / dx;
@@ -273,8 +294,14 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
 /// y el flujo de Fx es c_red² × f_edd × E.
 #[allow(clippy::too_many_arguments)]
 fn hll_flux_x(
-    el: f64, fxl: f64, _fyl: f64, _fzl: f64,
-    er: f64, fxr: f64, _fyr: f64, _fzr: f64,
+    el: f64,
+    fxl: f64,
+    _fyl: f64,
+    _fzl: f64,
+    er: f64,
+    fxr: f64,
+    _fyr: f64,
+    _fzr: f64,
     c_red: f64,
 ) -> (f64, f64) {
     let xi_l = (fxl.abs() / (c_red * el.max(1e-300))).clamp(0.0, 1.0);
@@ -329,7 +356,9 @@ mod tests {
     #[test]
     fn eddington_factor_monotone() {
         // f debe ser creciente en [0, 1]
-        let vals: Vec<f64> = (0..=10).map(|i| eddington_factor(i as f64 / 10.0)).collect();
+        let vals: Vec<f64> = (0..=10)
+            .map(|i| eddington_factor(i as f64 / 10.0))
+            .collect();
         for i in 1..vals.len() {
             assert!(vals[i] >= vals[i - 1], "f debe ser creciente: {vals:?}");
         }
@@ -348,14 +377,21 @@ mod tests {
         let rad = RadiationField::uniform(4, 4, 4, 1.0, 2.0);
         let dv = 1.0_f64;
         let e_total = rad.total_energy(dv);
-        assert!((e_total - 128.0).abs() < 1e-10, "E_total = 64 × 2 = 128: {e_total}");
+        assert!(
+            (e_total - 128.0).abs() < 1e-10,
+            "E_total = 64 × 2 = 128: {e_total}"
+        );
     }
 
     #[test]
     fn m1_update_conserves_energy_vacuum() {
         // En vacío (sin absorción), la energía debe conservarse aproximadamente
         let mut rad = RadiationField::uniform(8, 8, 8, 1.0, 1.0);
-        let params = M1Params { kappa_abs: 0.0, kappa_scat: 0.0, ..Default::default() };
+        let params = M1Params {
+            kappa_abs: 0.0,
+            kappa_scat: 0.0,
+            ..Default::default()
+        };
         let dv = 1.0_f64;
         let e0 = rad.total_energy(dv);
         m1_update(&mut rad, 0.1, &params);
@@ -363,7 +399,8 @@ mod tests {
         // Con distribución uniforme, E se conserva exactamente (no hay flujo neto)
         assert!(
             (e1 - e0).abs() / e0 < 0.01,
-            "Energía no conservada: ΔE/E = {:.4}", (e1 - e0).abs() / e0
+            "Energía no conservada: ΔE/E = {:.4}",
+            (e1 - e0).abs() / e0
         );
     }
 
@@ -371,11 +408,20 @@ mod tests {
     fn m1_update_absorption_decays() {
         // Con absorción, la energía debe decrecer
         let mut rad = RadiationField::uniform(4, 4, 4, 1.0, 1.0);
-        let params = M1Params { kappa_abs: 1.0, kappa_scat: 0.0, c_red_factor: 10.0, substeps: 1, ..Default::default() };
+        let params = M1Params {
+            kappa_abs: 1.0,
+            kappa_scat: 0.0,
+            c_red_factor: 10.0,
+            substeps: 1,
+            ..Default::default()
+        };
         let e0 = rad.total_energy(1.0);
         m1_update(&mut rad, 0.1, &params);
         let e1 = rad.total_energy(1.0);
-        assert!(e1 < e0, "Con absorción, energía debe decrecer: E0={e0:.4}, E1={e1:.4}");
+        assert!(
+            e1 < e0,
+            "Con absorción, energía debe decrecer: E0={e0:.4}, E1={e1:.4}"
+        );
     }
 
     #[test]
@@ -391,7 +437,10 @@ mod tests {
                 }
             }
         }
-        let params = M1Params { kappa_abs: 0.1, ..Default::default() };
+        let params = M1Params {
+            kappa_abs: 0.1,
+            ..Default::default()
+        };
         m1_update(&mut rad, 0.01, &params);
         for (i, &e) in rad.energy_density.iter().enumerate() {
             assert!(e >= 0.0, "Energía negativa en celda {i}: {e}");
@@ -404,7 +453,10 @@ mod tests {
         let c_red = 100.0;
         let (fe, ffx) = hll_flux_x(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, c_red);
         // Para E_l = E_r y F_l = F_r = 0, el flujo de E debe ser 0
-        assert!(fe.abs() < 1e-10, "Flujo de E no nulo para estados iguales: {fe}");
+        assert!(
+            fe.abs() < 1e-10,
+            "Flujo de E no nulo para estados iguales: {fe}"
+        );
         // El flujo de Fx es c² × f × E (puro tensor de presión)
         assert!(ffx.is_finite(), "Flujo de Fx no finito: {ffx}");
     }

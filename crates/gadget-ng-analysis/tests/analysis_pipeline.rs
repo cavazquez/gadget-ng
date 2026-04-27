@@ -1,6 +1,6 @@
 use gadget_ng_analysis::{
-    analyse, read_halo_catalog, read_power_spectrum, write_halo_catalog, write_power_spectrum,
-    AnalysisParams,
+    AnalysisParams, analyse, read_halo_catalog, read_power_spectrum, write_halo_catalog,
+    write_power_spectrum,
 };
 use gadget_ng_core::{Particle, Vec3};
 

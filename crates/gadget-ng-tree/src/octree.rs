@@ -1022,7 +1022,7 @@ fn bounding_cube(pos: &[Vec3]) -> (Vec3, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gadget_ng_core::{pairwise_accel_plummer, Vec3};
+    use gadget_ng_core::{Vec3, pairwise_accel_plummer};
 
     /// Verifica que el tensor cuadrupolar de una distribución simétricamente
     /// opuesta (dos masas iguales en ±r) tiene los términos correctos.

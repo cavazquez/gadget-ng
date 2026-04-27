@@ -6,10 +6,12 @@
 //! - `advance_srmhd`           — N = 100 (~10% relativistas)
 //! - `srmhd_conserved_to_primitive` — llamada unitaria, 1000 iteraciones
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use gadget_ng_core::{Particle, ParticleType, TurbulenceSection, Vec3};
-use gadget_ng_mhd::{advance_srmhd, apply_flux_freeze, apply_turbulent_forcing, mean_gas_density,
-                    srmhd_conserved_to_primitive, C_LIGHT};
+use gadget_ng_mhd::{
+    C_LIGHT, advance_srmhd, apply_flux_freeze, apply_turbulent_forcing, mean_gas_density,
+    srmhd_conserved_to_primitive,
+};
 
 fn make_gas_particles(n: usize) -> Vec<Particle> {
     (0..n)
@@ -18,7 +20,11 @@ fn make_gas_particles(n: usize) -> Vec<Particle> {
             let mut p = Particle::new_gas(
                 i,
                 1.0,
-                Vec3::new(fi * 0.01, (fi * 0.013).sin() * 0.1, (fi * 0.017).cos() * 0.1),
+                Vec3::new(
+                    fi * 0.01,
+                    (fi * 0.013).sin() * 0.1,
+                    (fi * 0.017).cos() * 0.1,
+                ),
                 Vec3::new(fi * 1e-3, 0.0, 0.0),
                 1e10,
                 0.2,

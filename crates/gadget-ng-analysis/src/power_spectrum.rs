@@ -9,7 +9,7 @@
 //! La salida es un vector de `PkBin`, ordenado por k creciente.
 
 use gadget_ng_core::Vec3;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Un bin de potencia.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -116,7 +116,7 @@ pub fn power_spectrum(
         .iter()
         .zip(n_modes.iter())
         .enumerate()
-        .filter(|(_, (_, &nm))| nm > 0)
+        .filter(|&(_, (_, &nm))| nm > 0)
         .map(|(bin, (&ps, &nm))| PkBin {
             k: (bin as f64 + 1.0) * k_fund,
             pk: ps / nm as f64,
@@ -130,11 +130,7 @@ pub fn power_spectrum(
 fn freq(i: usize, n: usize) -> i32 {
     let h = (n / 2) as i32;
     let ii = i as i32;
-    if ii <= h {
-        ii
-    } else {
-        ii - n as i32
-    }
+    if ii <= h { ii } else { ii - n as i32 }
 }
 
 /// sinc(x) = sin(πx) / (πx) para la deconvolución CIC (ventana de orden 2).

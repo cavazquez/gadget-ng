@@ -1,5 +1,5 @@
-use crate::sfc::SfcDecomposition;
 use crate::ParallelRuntime;
+use crate::sfc::SfcDecomposition;
 use gadget_ng_core::{Particle, Vec3};
 
 #[derive(Debug, Default, Clone, Copy)]

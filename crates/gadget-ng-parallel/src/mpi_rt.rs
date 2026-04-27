@@ -1,12 +1,12 @@
-use crate::pack;
 use crate::ParallelRuntime;
+use crate::pack;
 use gadget_ng_core::{Particle, Vec3};
+use mpi::Count;
 use mpi::collective::SystemOperation;
 use mpi::datatype::{Partition, PartitionMut};
 use mpi::environment::Universe;
 use mpi::request::WaitGuard;
 use mpi::traits::*;
-use mpi::Count;
 
 pub struct MpiRuntime {
     _universe: Universe,

@@ -287,13 +287,25 @@ fn main() -> Result<(), CliError> {
                         };
                         let pixels = match vis_mode.to_lowercase().as_str() {
                             "density" => gadget_ng_vis::render_density_ppm(
-                                &positions, data.box_size, 1024, 1024, proj,
+                                &positions,
+                                data.box_size,
+                                1024,
+                                1024,
+                                proj,
                             ),
                             _ => gadget_ng_vis::render_ppm_projection(
-                                &positions, data.box_size, 1024, 1024, proj,
+                                &positions,
+                                data.box_size,
+                                1024,
+                                1024,
+                                proj,
                             ),
                         };
-                        let ext = if vis_format.to_lowercase() == "png" { "png" } else { "ppm" };
+                        let ext = if vis_format.to_lowercase() == "png" {
+                            "png"
+                        } else {
+                            "ppm"
+                        };
                         let out_path = out.join(format!("snapshot_final.{ext}"));
                         let result = if ext == "png" {
                             gadget_ng_vis::write_png(&out_path, &pixels, 1024, 1024)

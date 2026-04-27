@@ -12,7 +12,7 @@
 
 use gadget_ng_core::Vec3;
 use gadget_ng_sph::{
-    compute_balsara_factors, compute_density, compute_sph_forces_gadget2, SphParticle,
+    SphParticle, compute_balsara_factors, compute_density, compute_sph_forces_gadget2,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -33,7 +33,14 @@ fn setup_uniform_gas_sph(n_side: usize, box_size: f64) -> Vec<SphParticle> {
                     (iy as f64 + 0.5) * dx,
                     (iz as f64 + 0.5) * dx,
                 );
-                particles.push(SphParticle::new_gas(id, mass, pos, Vec3::zero(), u0, 2.0 * dx));
+                particles.push(SphParticle::new_gas(
+                    id,
+                    mass,
+                    pos,
+                    Vec3::zero(),
+                    u0,
+                    2.0 * dx,
+                ));
                 id += 1;
             }
         }
@@ -50,7 +57,9 @@ fn setup_random_gas_sph(n: usize, box_size: f64, seed: u64) -> Vec<SphParticle> 
 
     let mut rng = seed;
     let next = |r: &mut u64| -> f64 {
-        *r = r.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *r = r
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (*r >> 33) as f64 / (u64::MAX >> 33) as f64
     };
 
@@ -61,14 +70,21 @@ fn setup_random_gas_sph(n: usize, box_size: f64, seed: u64) -> Vec<SphParticle> 
             for iz in 0..n_side {
                 // Perturbación pequeña (30% del spacing)
                 let eps = 0.3;
-                let x = ((ix as f64 + 0.5 + eps * (next(&mut rng) - 0.5)) * dx)
-                    .rem_euclid(box_size);
-                let y = ((iy as f64 + 0.5 + eps * (next(&mut rng) - 0.5)) * dx)
-                    .rem_euclid(box_size);
-                let z = ((iz as f64 + 0.5 + eps * (next(&mut rng) - 0.5)) * dx)
-                    .rem_euclid(box_size);
+                let x =
+                    ((ix as f64 + 0.5 + eps * (next(&mut rng) - 0.5)) * dx).rem_euclid(box_size);
+                let y =
+                    ((iy as f64 + 0.5 + eps * (next(&mut rng) - 0.5)) * dx).rem_euclid(box_size);
+                let z =
+                    ((iz as f64 + 0.5 + eps * (next(&mut rng) - 0.5)) * dx).rem_euclid(box_size);
                 let pos = Vec3::new(x, y, z);
-                particles.push(SphParticle::new_gas(id, mass, pos, Vec3::zero(), u0, 2.0 * dx));
+                particles.push(SphParticle::new_gas(
+                    id,
+                    mass,
+                    pos,
+                    Vec3::zero(),
+                    u0,
+                    2.0 * dx,
+                ));
                 id += 1;
             }
         }
@@ -120,9 +136,12 @@ fn sph_density_uniform_on_lattice() {
     let interior: Vec<f64> = particles
         .iter()
         .filter(|p| {
-            p.position.x > 0.25 && p.position.x < 0.75
-                && p.position.y > 0.25 && p.position.y < 0.75
-                && p.position.z > 0.25 && p.position.z < 0.75
+            p.position.x > 0.25
+                && p.position.x < 0.75
+                && p.position.y > 0.25
+                && p.position.y < 0.75
+                && p.position.z > 0.25
+                && p.position.z < 0.75
         })
         .filter_map(|p| p.gas.as_ref().map(|g| g.rho))
         .collect();
@@ -133,11 +152,21 @@ fn sph_density_uniform_on_lattice() {
     }
 
     let mean_rho = interior.iter().sum::<f64>() / interior.len() as f64;
-    let var_rho: f64 = interior.iter().map(|&r| (r - mean_rho).powi(2)).sum::<f64>()
+    let var_rho: f64 = interior
+        .iter()
+        .map(|&r| (r - mean_rho).powi(2))
+        .sum::<f64>()
         / interior.len() as f64;
-    let cv = if mean_rho > 0.0 { var_rho.sqrt() / mean_rho } else { 0.0 };
+    let cv = if mean_rho > 0.0 {
+        var_rho.sqrt() / mean_rho
+    } else {
+        0.0
+    };
 
-    println!("SPH interior density CV: {cv:.4} (N_interior={})", interior.len());
+    println!(
+        "SPH interior density CV: {cv:.4} (N_interior={})",
+        interior.len()
+    );
     assert!(
         cv < 0.30,
         "Coeficiente de variación de densidad SPH interior: {cv:.4} (esperado < 30%)"
@@ -156,7 +185,8 @@ fn sph_pressures_positive_finite() {
         if let Some(g) = &p.gas {
             assert!(
                 g.pressure.is_finite() && g.pressure >= 0.0,
-                "Presión no válida: {}", g.pressure
+                "Presión no válida: {}",
+                g.pressure
             );
         }
     }

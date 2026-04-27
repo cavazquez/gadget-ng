@@ -1,7 +1,7 @@
 //! Subcomando `gadget-ng mah` — Historia de Acreción de Masa (Phase 67).
 
 use crate::error::CliError;
-use gadget_ng_analysis::{mah_main_branch, mah_mcbride2009, MergerForest};
+use gadget_ng_analysis::{MergerForest, mah_main_branch, mah_mcbride2009};
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
@@ -35,10 +35,9 @@ pub fn run_mah(
     out_path: &Path,
 ) -> Result<(), CliError> {
     // Cargar el merger tree.
-    let json_str = fs::read_to_string(merger_tree_path)
-        .map_err(|e| CliError::io(merger_tree_path, e))?;
-    let forest: MergerForest =
-        serde_json::from_str(&json_str)?;
+    let json_str =
+        fs::read_to_string(merger_tree_path).map_err(|e| CliError::io(merger_tree_path, e))?;
+    let forest: MergerForest = serde_json::from_str(&json_str)?;
 
     // Extraer MAH.
     let mah = mah_main_branch(&forest, root_id, redshifts);
@@ -78,10 +77,10 @@ pub fn run_mah(
     };
 
     // Escribir JSON.
-    if let Some(parent) = out_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| CliError::io(out_path, e))?;
-        }
+    if let Some(parent) = out_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|e| CliError::io(out_path, e))?;
     }
     let json = serde_json::to_string_pretty(&output)?;
     fs::write(out_path, json).map_err(|e| CliError::io(out_path, e))?;

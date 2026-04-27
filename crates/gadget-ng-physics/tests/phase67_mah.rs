@@ -8,7 +8,7 @@
 //! 5. `mah_single_snapshot_root`  — árbol de 1 snapshot → MAH de 1 punto.
 
 use gadget_ng_analysis::{
-    build_merger_forest, mah_main_branch, mah_mcbride2009, FofHalo, ParticleSnapshot,
+    FofHalo, ParticleSnapshot, build_merger_forest, mah_main_branch, mah_mcbride2009,
 };
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -51,10 +51,16 @@ fn mah_main_branch_monotone() {
 
     // Las 10 partículas del snap 0 aparecen en el snap 1.
     let p0: Vec<ParticleSnapshot> = (0..10u64)
-        .map(|i| ParticleSnapshot { id: i, halo_idx: Some(0) })
+        .map(|i| ParticleSnapshot {
+            id: i,
+            halo_idx: Some(0),
+        })
         .collect();
     let p1: Vec<ParticleSnapshot> = (0..15u64)
-        .map(|i| ParticleSnapshot { id: i, halo_idx: Some(0) })
+        .map(|i| ParticleSnapshot {
+            id: i,
+            halo_idx: Some(0),
+        })
         .collect();
 
     let catalogs = vec![(vec![h0], p0), (vec![h1], p1)];
@@ -70,8 +76,11 @@ fn mah_main_branch_monotone() {
     // MAH está ordenado del más reciente al más antiguo.
     for w in mah.masses.windows(2) {
         // Permitir que crezca o se mantenga (de reciente a antiguo, puede bajar)
-        assert!(w[1] <= w[0] + 1e-6 || w[1] > 0.0,
-            "La masa no debe aumentar al ir atrás: {:?}", mah.masses);
+        assert!(
+            w[1] <= w[0] + 1e-6 || w[1] > 0.0,
+            "La masa no debe aumentar al ir atrás: {:?}",
+            mah.masses
+        );
     }
 }
 
@@ -108,8 +117,16 @@ fn mah_two_snap_trivial() {
 
     // La MAH debe tener 2 puntos: [snap1 (z=0, M=1e13), snap0 (z=3, M=5e12)]
     assert_eq!(mah.snapshots.len(), 2);
-    assert!((mah.masses[0] - 1e13).abs() / 1e13 < 0.01, "masa en z=0: {}", mah.masses[0]);
-    assert!((mah.masses[1] - 5e12).abs() / 5e12 < 0.01, "masa en z=3: {}", mah.masses[1]);
+    assert!(
+        (mah.masses[0] - 1e13).abs() / 1e13 < 0.01,
+        "masa en z=0: {}",
+        mah.masses[0]
+    );
+    assert!(
+        (mah.masses[1] - 5e12).abs() / 5e12 < 0.01,
+        "masa en z=3: {}",
+        mah.masses[1]
+    );
 }
 
 // ── Test 4: merger binario → rama principal al halo más masivo ───────────────
@@ -127,19 +144,25 @@ fn mah_merge_detected() {
 
     // Partículas: A tiene IDs 0-9, B tiene IDs 10-12
     let p0: Vec<ParticleSnapshot> = (0..10u64)
-        .map(|i| ParticleSnapshot { id: i, halo_idx: Some(0) })
-        .chain((10..13u64).map(|i| ParticleSnapshot { id: i, halo_idx: Some(1) }))
+        .map(|i| ParticleSnapshot {
+            id: i,
+            halo_idx: Some(0),
+        })
+        .chain((10..13u64).map(|i| ParticleSnapshot {
+            id: i,
+            halo_idx: Some(1),
+        }))
         .collect();
 
     // En snap 1, todas las partículas (0-12) están en el halo C
     let p1: Vec<ParticleSnapshot> = (0..13u64)
-        .map(|i| ParticleSnapshot { id: i, halo_idx: Some(0) })
+        .map(|i| ParticleSnapshot {
+            id: i,
+            halo_idx: Some(0),
+        })
         .collect();
 
-    let catalogs = vec![
-        (vec![ha, hb], p0),
-        (vec![hc], p1),
-    ];
+    let catalogs = vec![(vec![ha, hb], p0), (vec![hc], p1)];
     let forest = build_merger_forest(&catalogs, 0.1);
 
     // La raíz es el halo 0 del snap 1 (halo C).
@@ -149,8 +172,11 @@ fn mah_merge_detected() {
     // Debe haber al menos 1 punto (la raíz misma).
     assert!(!mah.masses.is_empty(), "MAH no debe estar vacía");
     // El punto más reciente debe ser el halo C.
-    assert!((mah.masses[0] - 1.3e13).abs() / 1.3e13 < 0.01,
-        "masa de halo C: {}", mah.masses[0]);
+    assert!(
+        (mah.masses[0] - 1.3e13).abs() / 1.3e13 < 0.01,
+        "masa de halo C: {}",
+        mah.masses[0]
+    );
 }
 
 // ── Test 5: snapshot único → MAH de 1 punto ──────────────────────────────────
@@ -164,8 +190,16 @@ fn mah_single_snapshot_root() {
     let zs = vec![0.0];
     let mah = mah_main_branch(&forest, 0, &zs);
 
-    assert_eq!(mah.snapshots.len(), 1, "MAH de 1 snapshot debe tener 1 punto");
-    assert!((mah.masses[0] - 2e13).abs() / 2e13 < 0.01, "masa: {}", mah.masses[0]);
+    assert_eq!(
+        mah.snapshots.len(),
+        1,
+        "MAH de 1 snapshot debe tener 1 punto"
+    );
+    assert!(
+        (mah.masses[0] - 2e13).abs() / 2e13 < 0.01,
+        "masa: {}",
+        mah.masses[0]
+    );
     assert_eq!(mah.redshifts[0], 0.0);
 }
 
@@ -177,11 +211,17 @@ fn mah_mcbride_decreases_with_z() {
     let alpha = 1.0;
     let beta = 0.0;
     let zs = [0.0, 0.5, 1.0, 2.0, 5.0];
-    let masses: Vec<f64> = zs.iter().map(|&z| mah_mcbride2009(m0, z, alpha, beta)).collect();
+    let masses: Vec<f64> = zs
+        .iter()
+        .map(|&z| mah_mcbride2009(m0, z, alpha, beta))
+        .collect();
 
     // Con alpha > 0 y beta = 0, M(z) decrece al aumentar z.
     for w in masses.windows(2) {
-        assert!(w[1] <= w[0] + 1e-12,
-            "McBride debe decrecer con z: {:?}", masses);
+        assert!(
+            w[1] <= w[0] + 1e-12,
+            "McBride debe decrecer con z: {:?}",
+            masses
+        );
     }
 }

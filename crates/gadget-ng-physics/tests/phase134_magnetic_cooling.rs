@@ -33,8 +33,10 @@ fn zero_f_mag_equals_classic() {
     let cfg = sph_cfg(0.0);
     apply_cooling(&mut p1, &cfg, 0.01);
     apply_cooling_mhd(&mut p2, &cfg, 0.01);
-    assert!((p1[0].internal_energy - p2[0].internal_energy).abs() < 1e-14,
-        "f_mag=0 debe ser idéntico al cooling clásico");
+    assert!(
+        (p1[0].internal_energy - p2[0].internal_energy).abs() < 1e-14,
+        "f_mag=0 debe ser idéntico al cooling clásico"
+    );
 }
 
 // ── 2. B muy fuerte + f_mag>0 → cooling suprimido ────────────────────────
@@ -43,8 +45,8 @@ fn zero_f_mag_equals_classic() {
 fn strong_b_suppresses_cooling() {
     // B=1e9 → β ≈ 0.035 con U_HOT → f_mag/β >> 1 → supresión significativa
     let b_strong = Vec3::new(1e9, 0.0, 0.0);
-    let mut p_no = vec![hot_gas(0, b_strong)];    // f_mag=0: sin supresión
-    let mut p_sup = vec![hot_gas(0, b_strong)];   // f_mag=0.1: con supresión
+    let mut p_no = vec![hot_gas(0, b_strong)]; // f_mag=0: sin supresión
+    let mut p_sup = vec![hot_gas(0, b_strong)]; // f_mag=0.1: con supresión
 
     let cfg_no = sph_cfg(0.0);
     let cfg_sup = sph_cfg(0.1);
@@ -52,9 +54,12 @@ fn strong_b_suppresses_cooling() {
     apply_cooling_mhd(&mut p_no, &cfg_no, 0.1);
     apply_cooling_mhd(&mut p_sup, &cfg_sup, 0.1);
 
-    assert!(p_sup[0].internal_energy > p_no[0].internal_energy,
+    assert!(
+        p_sup[0].internal_energy > p_no[0].internal_energy,
         "Cooling suprimido debe dejar más u: {:.6e} vs {:.6e}",
-        p_sup[0].internal_energy, p_no[0].internal_energy);
+        p_sup[0].internal_energy,
+        p_no[0].internal_energy
+    );
 }
 
 // ── 3. B=0 → sin diferencia con/sin supresión ────────────────────────────
@@ -70,8 +75,10 @@ fn zero_b_no_suppression() {
     apply_cooling_mhd(&mut p1, &cfg_suppress, 0.1);
     apply_cooling_mhd(&mut p2, &cfg_no, 0.1);
 
-    assert!((p1[0].internal_energy - p2[0].internal_energy).abs() < 1e-12,
-        "B=0: supresión no debe cambiar resultado");
+    assert!(
+        (p1[0].internal_energy - p2[0].internal_energy).abs() < 1e-12,
+        "B=0: supresión no debe cambiar resultado"
+    );
 }
 
 // ── 4. β pequeño (B muy fuerte) → supresión máxima ───────────────────────
@@ -89,7 +96,10 @@ fn very_strong_b_max_suppression() {
     let du_weak = u_before - p_weak_b[0].internal_energy;
     let du_strong = u_before - p_strong_b[0].internal_energy;
 
-    assert!(du_strong < du_weak, "B muy fuerte → menos cooling: ΔU_strong={du_strong:.4e} vs ΔU_weak={du_weak:.4e}");
+    assert!(
+        du_strong < du_weak,
+        "B muy fuerte → menos cooling: ΔU_strong={du_strong:.4e} vs ΔU_weak={du_weak:.4e}"
+    );
 }
 
 // ── 5. Gas frío no se enfría bajo t_floor ────────────────────────────────
@@ -116,9 +126,9 @@ fn cold_gas_not_cooled_below_floor() {
 #[test]
 fn cooling_mhd_conserves_mass() {
     let cfg = sph_cfg(0.1);
-    let mut particles: Vec<Particle> = (0..10).map(|i| {
-        hot_gas(i, Vec3::new(f64::from(i as u8) * 0.1, 0.0, 0.0))
-    }).collect();
+    let mut particles: Vec<Particle> = (0..10)
+        .map(|i| hot_gas(i, Vec3::new(f64::from(i as u8) * 0.1, 0.0, 0.0)))
+        .collect();
     let m_before: f64 = particles.iter().map(|p| p.mass).sum();
     apply_cooling_mhd(&mut particles, &cfg, 0.01);
     let m_after: f64 = particles.iter().map(|p| p.mass).sum();

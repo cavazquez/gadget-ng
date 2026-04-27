@@ -55,7 +55,11 @@ fn sph_accel_and_dudt(
                 continue;
             }
 
-            let r_hat = if r > 1e-300 { r_ij * (1.0 / r) } else { Vec3::zero() };
+            let r_hat = if r > 1e-300 {
+                r_ij * (1.0 / r)
+            } else {
+                Vec3::zero()
+            };
             let nabla_w_i = r_hat * (gw_i / hi);
             let nabla_w_j = r_hat * (gw_j / hj);
             let pj_rho2 = pressure[j] / (rho[j] * rho[j]);
@@ -85,7 +89,11 @@ fn sph_accel_and_dudt(
 /// Calcula densidad y presión SPH usando los campos de `Particle`.
 ///
 /// Devuelve `(rho[i], pressure[i])` para cada partícula.
-fn compute_rho_pressure(particles: &mut [Particle], n_neigh: f64, gamma: f64) -> (Vec<f64>, Vec<f64>) {
+fn compute_rho_pressure(
+    particles: &mut [Particle],
+    n_neigh: f64,
+    gamma: f64,
+) -> (Vec<f64>, Vec<f64>) {
     let n = particles.len();
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
@@ -106,7 +114,9 @@ fn compute_rho_pressure(particles: &mut [Particle], n_neigh: f64, gamma: f64) ->
             let mut rho = 0.0_f64;
             let mut drho = 0.0_f64;
             for j in 0..n {
-                if particles[j].ptype != ParticleType::Gas { continue; }
+                if particles[j].ptype != ParticleType::Gas {
+                    continue;
+                }
                 let r = (pos[j] - pi).norm();
                 rho += mass[j] * w(r, h);
                 let gw = grad_w(r, h);

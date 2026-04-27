@@ -68,7 +68,7 @@ fn main() {
     let lib_path = out_dir.join("libpm_hip.a");
 
     let kernel_sources = [
-        ("pm_gravity_hip",     "hip/pm_gravity.hip"),
+        ("pm_gravity_hip", "hip/pm_gravity.hip"),
         ("direct_gravity_hip", "hip/direct_gravity.hip"),
     ];
 
@@ -94,12 +94,16 @@ fn main() {
         match status {
             Ok(s) if s.success() => {}
             Ok(s) => {
-                println!("cargo:warning=hipcc falló al compilar {name} (código {s}). HIP deshabilitado.");
+                println!(
+                    "cargo:warning=hipcc falló al compilar {name} (código {s}). HIP deshabilitado."
+                );
                 println!("cargo:rustc-cfg=hip_unavailable");
                 return;
             }
             Err(e) => {
-                println!("cargo:warning=No se pudo ejecutar hipcc para {name}: {e}. HIP deshabilitado.");
+                println!(
+                    "cargo:warning=No se pudo ejecutar hipcc para {name}: {e}. HIP deshabilitado."
+                );
                 println!("cargo:rustc-cfg=hip_unavailable");
                 return;
             }
@@ -108,7 +112,10 @@ fn main() {
     }
 
     // ar rcs libpm_hip.a pm_gravity_hip.o direct_gravity_hip.o
-    let mut ar_args = vec!["rcs".to_string(), lib_path.to_str().expect("lib path").to_string()];
+    let mut ar_args = vec![
+        "rcs".to_string(),
+        lib_path.to_str().expect("lib path").to_string(),
+    ];
     for obj in &obj_paths {
         ar_args.push(obj.to_str().expect("obj path").to_string());
     }
@@ -159,12 +166,12 @@ fn find_hipcc(rocm_path: Option<&Path>) -> Option<PathBuf> {
         }
     }
 
-    if let Ok(out) = Command::new("which").arg("hipcc").output() {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !s.is_empty() {
-                return Some(PathBuf::from(s));
-            }
+    if let Ok(out) = Command::new("which").arg("hipcc").output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !s.is_empty() {
+            return Some(PathBuf::from(s));
         }
     }
 
@@ -196,13 +203,12 @@ fn find_rocfft_lib(rocm_path: Option<&Path>) -> Option<PathBuf> {
     if let Ok(out) = Command::new("pkg-config")
         .args(["--libs-only-L", "rocfft"])
         .output()
+        && out.status.success()
     {
-        if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let dir = s.trim_start_matches("-L");
-            if !dir.is_empty() {
-                return Some(PathBuf::from(dir));
-            }
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let dir = s.trim_start_matches("-L");
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
         }
     }
 

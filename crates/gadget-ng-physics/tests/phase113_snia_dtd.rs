@@ -3,7 +3,7 @@
 /// Tests: rate decrece con edad, no Ia para estrellas jóvenes,
 ///        inyección de energía positiva, distribución de Fe a gas vecino,
 ///        DTD integrada da fracción razonable, serde de parámetros.
-use gadget_ng_core::{FeedbackSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{FeedbackSection, Particle, Vec3};
 use gadget_ng_sph::{advance_stellar_ages, apply_snia_feedback};
 
 fn fb_cfg() -> FeedbackSection {
@@ -39,7 +39,10 @@ fn no_ia_for_young_stars() {
     let u_before = particles[1].internal_energy;
     let mut seed = 42u64;
     apply_snia_feedback(&mut particles, 1.0, &mut seed, &cfg);
-    assert_eq!(particles[1].internal_energy, u_before, "No debe inyectarse energía para estrella joven");
+    assert_eq!(
+        particles[1].internal_energy, u_before,
+        "No debe inyectarse energía para estrella joven"
+    );
 }
 
 // ── 2. Feedback desactivado no hace nada ─────────────────────────────────
@@ -48,10 +51,7 @@ fn no_ia_for_young_stars() {
 fn disabled_no_ia() {
     let mut cfg = fb_cfg();
     cfg.enabled = false;
-    let mut particles = vec![
-        star_with_age(0, 5.0),
-        gas_nearby(1, 0.3),
-    ];
+    let mut particles = vec![star_with_age(0, 5.0), gas_nearby(1, 0.3)];
     let u_before = particles[1].internal_energy;
     let mut seed = 7u64;
     apply_snia_feedback(&mut particles, 1.0, &mut seed, &cfg);
@@ -77,7 +77,10 @@ fn energy_injected_to_neighbor() {
             break;
         }
     }
-    assert!(injected, "Debe inyectarse energía al gas vecino en alguno de los 500 intentos");
+    assert!(
+        injected,
+        "Debe inyectarse energía al gas vecino en alguno de los 500 intentos"
+    );
 }
 
 // ── 4. Metalicidad (Fe) se distribuye a gas vecino ────────────────────────
@@ -136,11 +139,14 @@ fn feedback_snia_params_serde() {
 fn advance_stellar_ages_test() {
     let mut particles = vec![
         star_with_age(0, 1.0),
-        gas_nearby(1, 0.5), // gas no debe cambiar
+        gas_nearby(1, 0.5),                                // gas no debe cambiar
         Particle::new(2, 1.0, Vec3::zero(), Vec3::zero()), // DM no cambia
     ];
     advance_stellar_ages(&mut particles, 0.1);
-    assert!((particles[0].stellar_age - 1.1).abs() < 1e-12, "Edad estelar debe aumentar");
+    assert!(
+        (particles[0].stellar_age - 1.1).abs() < 1e-12,
+        "Edad estelar debe aumentar"
+    );
     assert_eq!(particles[1].stellar_age, 0.0, "Gas no tiene edad estelar");
     assert_eq!(particles[2].stellar_age, 0.0, "DM no tiene edad estelar");
 }

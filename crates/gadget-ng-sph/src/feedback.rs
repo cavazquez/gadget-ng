@@ -136,7 +136,9 @@ pub fn apply_sn_feedback(
         let prob = 1.0 - (-sfr_i * dt / m).exp();
 
         // LCG aleatorio
-        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
 
         if rand_val < prob {
@@ -156,7 +158,9 @@ pub fn apply_sn_feedback(
 /// Genera un vector unitario aleatorio en la esfera usando un LCG.
 fn random_unit_vector(seed: &mut u64) -> (f64, f64, f64) {
     let lcg = |s: &mut u64| -> f64 {
-        *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((*s >> 33) as f64 / u32::MAX as f64) * 2.0 - 1.0
     };
     loop {
@@ -215,7 +219,9 @@ pub fn apply_galactic_winds(
         // Probabilidad de ser lanzado como viento en este paso.
         let prob = 1.0 - (-(eta * sfr_i * dt) / m).exp();
 
-        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
 
         if rand_val < prob {
@@ -232,10 +238,15 @@ pub fn apply_galactic_winds(
 /// Calcula la energía total inyectada por SN en un paso.
 ///
 /// Util para monitorear la conservación de energía.
-pub fn total_sn_energy_injection(sfr: &[f64], masses: &[f64], cfg: &FeedbackSection, dt: f64) -> f64 {
+pub fn total_sn_energy_injection(
+    sfr: &[f64],
+    masses: &[f64],
+    cfg: &FeedbackSection,
+    dt: f64,
+) -> f64 {
     sfr.iter()
         .zip(masses.iter())
-        .filter(|(&s, _)| s >= cfg.sfr_min)
+        .filter(|&(&s, _)| s >= cfg.sfr_min)
         .map(|(&s, &_m)| E_SN_PER_MSUN * cfg.eps_sn * s * dt)
         .sum()
 }
@@ -267,14 +278,22 @@ pub fn spawn_star_particles(
     let mut new_stars: Vec<Particle> = Vec::new();
     let mut to_remove: Vec<usize> = Vec::new();
 
-    if !cfg.enabled { return (new_stars, to_remove); }
+    if !cfg.enabled {
+        return (new_stars, to_remove);
+    }
 
     for i in 0..particles.len() {
-        if particles[i].ptype != gadget_ng_core::ParticleType::Gas { continue; }
-        if sfr[i] < cfg.sfr_min { continue; }
+        if particles[i].ptype != gadget_ng_core::ParticleType::Gas {
+            continue;
+        }
+        if sfr[i] < cfg.sfr_min {
+            continue;
+        }
 
         let m_i = particles[i].mass;
-        if m_i <= 0.0 { continue; }
+        if m_i <= 0.0 {
+            continue;
+        }
 
         // Probabilidad de spawning
         let prob = 1.0 - (-sfr[i] * dt / m_i).exp();
@@ -327,16 +346,22 @@ pub fn apply_snia_feedback(
     seed: &mut u64,
     cfg: &FeedbackSection,
 ) {
-    if !cfg.enabled { return; }
+    if !cfg.enabled {
+        return;
+    }
 
     let n = particles.len();
     let mut delta_u = vec![0.0_f64; n];
     let mut delta_z = vec![0.0_f64; n];
 
     for i in 0..n {
-        if particles[i].ptype != gadget_ng_core::ParticleType::Star { continue; }
+        if particles[i].ptype != gadget_ng_core::ParticleType::Star {
+            continue;
+        }
         let age = particles[i].stellar_age;
-        if age < cfg.t_ia_min_gyr { continue; }
+        if age < cfg.t_ia_min_gyr {
+            continue;
+        }
 
         // Tasa DTD power-law: R = A_Ia × (t/Gyr)^{-1}
         let rate = cfg.a_ia * (age).recip(); // SN / Gyr / M_sun
@@ -348,7 +373,9 @@ pub fn apply_snia_feedback(
         *seed ^= *seed << 17;
         let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
         let prob = 1.0 - (-n_exp).exp();
-        if rand_val >= prob { continue; }
+        if rand_val >= prob {
+            continue;
+        }
 
         // Distribuir energía y Fe a vecinos de gas
         let h_i = particles[i].smoothing_length.max(0.1);
@@ -359,8 +386,12 @@ pub fn apply_snia_feedback(
         let mut weight_sum = 0.0_f64;
 
         for j in 0..n {
-            if i == j { continue; }
-            if particles[j].ptype != gadget_ng_core::ParticleType::Gas { continue; }
+            if i == j {
+                continue;
+            }
+            if particles[j].ptype != gadget_ng_core::ParticleType::Gas {
+                continue;
+            }
             let dx = particles[j].position.x - pos_i.x;
             let dy = particles[j].position.y - pos_i.y;
             let dz = particles[j].position.z - pos_i.z;
@@ -393,7 +424,9 @@ pub fn apply_snia_feedback(
         }
 
         for j in 0..n {
-            if weights[j] <= 0.0 { continue; }
+            if weights[j] <= 0.0 {
+                continue;
+            }
             let frac = weights[j] / weight_sum;
             let m_j = particles[j].mass.max(1e-30);
             delta_u[j] += frac * cfg.e_ia_code;
@@ -403,7 +436,9 @@ pub fn apply_snia_feedback(
 
     // Aplicar incrementos
     for i in 0..n {
-        if delta_u[i] > 0.0 { particles[i].internal_energy += delta_u[i]; }
+        if delta_u[i] > 0.0 {
+            particles[i].internal_energy += delta_u[i];
+        }
         if delta_z[i] > 0.0 {
             particles[i].metallicity = (particles[i].metallicity + delta_z[i]).min(1.0);
         }
@@ -440,14 +475,20 @@ pub fn apply_stellar_wind_feedback(
     seed: &mut u64,
 ) -> Vec<usize> {
     let mut kicked = Vec::new();
-    if !cfg.stellar_wind_enabled { return kicked; }
+    if !cfg.stellar_wind_enabled {
+        return kicked;
+    }
 
     // Velocidad del viento en unidades internas (km/s → km/s ya está bien)
     let v_wind = cfg.v_stellar_wind_km_s;
 
     for i in 0..particles.len() {
-        if particles[i].ptype != gadget_ng_core::ParticleType::Gas { continue; }
-        if sfr[i] < cfg.sfr_min { continue; }
+        if particles[i].ptype != gadget_ng_core::ParticleType::Gas {
+            continue;
+        }
+        if sfr[i] < cfg.sfr_min {
+            continue;
+        }
 
         let m_i = particles[i].mass.max(1e-30);
         // Probabilidad: p = η_w × sfr × dt / m
@@ -475,11 +516,7 @@ mod tests {
     use gadget_ng_core::{FeedbackSection, Particle, ParticleType, Vec3};
 
     fn gas_particle(id: usize, rho_scale: f64) -> Particle {
-        let mut p = Particle::new(
-            id, 1.0,
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(0.0, 0.0, 0.0),
-        );
+        let mut p = Particle::new(id, 1.0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 0.0));
         p.ptype = ParticleType::Gas;
         p.smoothing_length = rho_scale;
         p.internal_energy = 1.0;
@@ -488,7 +525,10 @@ mod tests {
 
     #[test]
     fn sfr_zero_below_threshold() {
-        let cfg = FeedbackSection { rho_sf: 1.0, ..Default::default() };
+        let cfg = FeedbackSection {
+            rho_sf: 1.0,
+            ..Default::default()
+        };
         let p = gas_particle(0, 100.0); // rho muy baja (h grande)
         let sfr = compute_sfr(&[p], &cfg);
         assert_eq!(sfr[0], 0.0, "SFR debe ser 0 bajo el umbral");
@@ -496,11 +536,18 @@ mod tests {
 
     #[test]
     fn sfr_positive_above_threshold() {
-        let cfg = FeedbackSection { rho_sf: 0.001, ..Default::default() };
+        let cfg = FeedbackSection {
+            rho_sf: 0.001,
+            ..Default::default()
+        };
         let mut p = gas_particle(0, 0.01); // h pequeño → ρ alta
         p.mass = 1.0;
         let sfr = compute_sfr(&[p], &cfg);
-        assert!(sfr[0] > 0.0, "SFR debe ser positiva sobre el umbral: {}", sfr[0]);
+        assert!(
+            sfr[0] > 0.0,
+            "SFR debe ser positiva sobre el umbral: {}",
+            sfr[0]
+        );
     }
 
     #[test]
@@ -513,13 +560,19 @@ mod tests {
 
     #[test]
     fn feedback_disabled_no_kick() {
-        let cfg = FeedbackSection { enabled: false, ..Default::default() };
+        let cfg = FeedbackSection {
+            enabled: false,
+            ..Default::default()
+        };
         let mut particles = vec![gas_particle(0, 0.01)];
         let sfr = vec![1.0]; // sfr alta
         let vel_before = particles[0].velocity;
         let mut seed = 42u64;
         apply_sn_feedback(&mut particles, &sfr, &cfg, 0.1, &mut seed);
-        assert_eq!(particles[0].velocity.x, vel_before.x, "Sin kick si disabled");
+        assert_eq!(
+            particles[0].velocity.x, vel_before.x,
+            "Sin kick si disabled"
+        );
     }
 
     #[test]
@@ -539,13 +592,16 @@ mod tests {
             let sfr = vec![1.0];
             let v0 = p.velocity.x;
             let mut seed = (i as u64 + 1) * 12345;
-            apply_sn_feedback(&mut std::slice::from_mut(&mut p), &sfr, &cfg, 1.0, &mut seed);
+            apply_sn_feedback(std::slice::from_mut(&mut p), &sfr, &cfg, 1.0, &mut seed);
             if (p.velocity.x - v0).abs() > 1e-10 {
                 kicked = true;
                 break;
             }
         }
-        assert!(kicked, "Al menos un kick debe aplicarse en 50 intentos con p alto");
+        assert!(
+            kicked,
+            "Al menos un kick debe aplicarse en 50 intentos con p alto"
+        );
     }
 
     #[test]
@@ -566,18 +622,25 @@ mod tests {
         let v0y = p.velocity.y;
         let v0z = p.velocity.z;
         let mut seed = 99u64;
-        apply_sn_feedback(&mut std::slice::from_mut(&mut p), &sfr, &cfg, 1e-10, &mut seed);
+        apply_sn_feedback(std::slice::from_mut(&mut p), &sfr, &cfg, 1e-10, &mut seed);
         let dv = ((p.velocity.x - v0x).powi(2)
             + (p.velocity.y - v0y).powi(2)
             + (p.velocity.z - v0z).powi(2))
-            .sqrt();
+        .sqrt();
         // Con sfr=1e10 y dt=1e-10, prob ≈ 1; verificar que se aplicó algún kick o energía
-        assert!(dv <= v_kick + 1.0, "La magnitud del kick no debe exceder v_kick: {dv}");
+        assert!(
+            dv <= v_kick + 1.0,
+            "La magnitud del kick no debe exceder v_kick: {dv}"
+        );
     }
 
     #[test]
     fn energy_injection_positive() {
-        let cfg = FeedbackSection { enabled: true, sfr_min: 0.0, ..Default::default() };
+        let cfg = FeedbackSection {
+            enabled: true,
+            sfr_min: 0.0,
+            ..Default::default()
+        };
         let sfr = vec![1.0, 2.0, 0.0];
         let masses = vec![1.0, 1.0, 1.0];
         let e = total_sn_energy_injection(&sfr, &masses, &cfg, 0.1);

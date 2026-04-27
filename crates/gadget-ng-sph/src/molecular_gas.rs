@@ -6,10 +6,14 @@ use gadget_ng_core::{MolecularSection, Particle, ParticleType};
 
 /// Actualiza la fracción de gas molecular H₂ en cada partícula de gas (Phase 122).
 pub fn update_h2_fraction(particles: &mut [Particle], cfg: &MolecularSection, dt: f64) {
-    if !cfg.enabled { return; }
+    if !cfg.enabled {
+        return;
+    }
     let t_dissoc = 10.0; // tiempo de fotodisociación en unidades internas
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         // Aproximación: densidad ∝ masa / h³ (SPH estándar)
         let h = p.smoothing_length.max(1e-10);
         let rho = p.mass / (h * h * h);

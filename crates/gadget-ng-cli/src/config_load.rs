@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 use figment::providers::Format;
-use figment::{providers::Env, Figment};
+use figment::{Figment, providers::Env};
 
 pub fn load_run_config(path: &Path) -> Result<RunConfig, CliError> {
     let figment = Figment::new()

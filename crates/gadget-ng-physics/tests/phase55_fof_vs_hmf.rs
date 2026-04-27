@@ -11,16 +11,16 @@
 //! Correr con: `cargo test -p gadget-ng-physics --release --test phase55_fof_vs_hmf -- --test-threads=1 --nocapture`
 
 use gadget_ng_analysis::{
-    analyse, mass_function_table, AnalysisParams, HmfBin, HmfParams, RHO_CRIT_H2,
+    AnalysisParams, HmfBin, HmfParams, RHO_CRIT_H2, analyse, mass_function_table,
 };
 use gadget_ng_core::{
-    build_particles,
-    cosmology::{adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl, CosmologyParams},
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3, build_particles,
+    cosmology::{CosmologyParams, adaptive_dt_cosmo, g_code_consistent, gravity_coupling_qksl},
+    wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use serde_json::json;
 use std::fs;
@@ -119,9 +119,13 @@ fn build_run_config(n: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -188,7 +192,7 @@ fn evolve_pm_to_a_adaptive(
         for p in parts.iter_mut() {
             p.position = wrap_position(p.position, BOX);
         }
-        if step % 500 == 0 {
+        if step.is_multiple_of(500) {
             eprintln!("[phase55] N={n_mesh} step={step} a={a:.4}");
         }
     }
@@ -525,7 +529,7 @@ fn phase55_fof_vs_hmf_ratio_n128() {
             fof_m, fof_dn, st_dn, ratio
         );
         ratios_total += 1;
-        if ratio >= 0.05 && ratio <= 20.0 {
+        if (0.05..=20.0).contains(&ratio) {
             ratios_ok += 1;
         }
     }

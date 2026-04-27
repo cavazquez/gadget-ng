@@ -18,8 +18,8 @@
 //!
 //! Price & Monaghan (2005), MNRAS 364, 384.
 
-use gadget_ng_core::{Particle, ParticleType, Vec3};
 use crate::MU0;
+use gadget_ng_core::{Particle, ParticleType, Vec3};
 
 /// Calcula la presión magnética escalar `P_B = |B|² / (2μ₀)`.
 pub fn magnetic_pressure(b: Vec3) -> f64 {
@@ -32,9 +32,9 @@ pub fn magnetic_pressure(b: Vec3) -> f64 {
 pub fn maxwell_stress(b: Vec3) -> [[f64; 3]; 3] {
     let p_b = magnetic_pressure(b);
     [
-        [b.x * b.x / MU0 - p_b,  b.x * b.y / MU0,          b.x * b.z / MU0         ],
-        [b.y * b.x / MU0,          b.y * b.y / MU0 - p_b,   b.y * b.z / MU0         ],
-        [b.z * b.x / MU0,          b.z * b.y / MU0,          b.z * b.z / MU0 - p_b  ],
+        [b.x * b.x / MU0 - p_b, b.x * b.y / MU0, b.x * b.z / MU0],
+        [b.y * b.x / MU0, b.y * b.y / MU0 - p_b, b.y * b.z / MU0],
+        [b.z * b.x / MU0, b.z * b.y / MU0, b.z * b.z / MU0 - p_b],
     ]
 }
 
@@ -42,7 +42,9 @@ pub fn maxwell_stress(b: Vec3) -> [[f64; 3]; 3] {
 fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
     let r2 = r_vec.x * r_vec.x + r_vec.y * r_vec.y + r_vec.z * r_vec.z;
     let r = r2.sqrt();
-    if r < 1e-10 || h <= 0.0 { return Vec3::zero(); }
+    if r < 1e-10 || h <= 0.0 {
+        return Vec3::zero();
+    }
     let q = r / h;
     let dw_dq = if q < 1.0 {
         8.0 / (std::f64::consts::PI * h.powi(3)) * (-6.0 * q + 9.0 * q * q)
@@ -52,7 +54,11 @@ fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
         0.0
     };
     let dw_dr = dw_dq / h;
-    Vec3 { x: dw_dr * r_vec.x / r, y: dw_dr * r_vec.y / r, z: dw_dr * r_vec.z / r }
+    Vec3 {
+        x: dw_dr * r_vec.x / r,
+        y: dw_dr * r_vec.y / r,
+        z: dw_dr * r_vec.z / r,
+    }
 }
 
 /// Aplica las fuerzas magnéticas (tensor de Maxwell SPH) a las partículas de gas (Phase 124).
@@ -68,19 +74,29 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
     let mut acc_mag = vec![Vec3::zero(); n];
 
     // Precalcular densidades y tensores de Maxwell
-    let rho: Vec<f64> = particles.iter().map(|p| {
-        let h = p.smoothing_length.max(1e-10);
-        (p.mass / (h * h * h)).max(1e-30)
-    }).collect();
-    let maxwell: Vec<[[f64; 3]; 3]> = particles.iter().map(|p| maxwell_stress(p.b_field)).collect();
+    let rho: Vec<f64> = particles
+        .iter()
+        .map(|p| {
+            let h = p.smoothing_length.max(1e-10);
+            (p.mass / (h * h * h)).max(1e-30)
+        })
+        .collect();
+    let maxwell: Vec<[[f64; 3]; 3]> = particles
+        .iter()
+        .map(|p| maxwell_stress(p.b_field))
+        .collect();
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let rho_i2 = rho[i] * rho[i];
         let m_i = &maxwell[i];
 
         for j in (i + 1)..n {
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
             let rho_j2 = rho[j] * rho[j];
             let m_j = &maxwell[j];
 
@@ -89,7 +105,8 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
                 y: particles[j].position.y - particles[i].position.y,
                 z: particles[j].position.z - particles[i].position.z,
             };
-            let h_ij = 0.5 * (particles[i].smoothing_length + particles[j].smoothing_length).max(1e-10);
+            let h_ij =
+                0.5 * (particles[i].smoothing_length + particles[j].smoothing_length).max(1e-10);
             let grad_w = kernel_gradient(r_ij, h_ij);
             let gw = [grad_w.x, grad_w.y, grad_w.z];
 
@@ -116,7 +133,9 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
 
     // Integración de Euler: v += a * dt
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         particles[i].velocity.x += acc_mag[i].x * dt;
         particles[i].velocity.y += acc_mag[i].y * dt;
         particles[i].velocity.z += acc_mag[i].z * dt;

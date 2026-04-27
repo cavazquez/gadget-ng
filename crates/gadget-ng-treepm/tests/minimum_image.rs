@@ -11,7 +11,7 @@
 
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_treepm::{
-    distributed::{short_range_accels_slab, SlabShortRangeParams},
+    distributed::{SlabShortRangeParams, short_range_accels_slab},
     short_range::{erfc_approx, erfc_factor, min_dist2_to_aabb_periodic, minimum_image},
 };
 

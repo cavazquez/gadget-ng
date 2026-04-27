@@ -16,8 +16,8 @@
 //! Alfvén (1942) — conservación de flujo magnético.
 //! Subramanian & Barrow (1998), PhysRevD 58 — amplificación de B en bariones.
 
-use gadget_ng_core::{Particle, ParticleType};
 use crate::MU0;
+use gadget_ng_core::{Particle, ParticleType};
 
 /// Aplica el criterio de flux-freeze a partículas de gas con β > beta_freeze (Phase 138).
 ///
@@ -28,17 +28,16 @@ use crate::MU0;
 ///
 /// `rho_ref` es la densidad de referencia respecto a la cual se calcula la amplificación.
 /// En la práctica suele ser la densidad inicial o la densidad media del halo.
-pub fn apply_flux_freeze(
-    particles: &mut [Particle],
-    gamma: f64,
-    beta_freeze: f64,
-    rho_ref: f64,
-) {
+pub fn apply_flux_freeze(particles: &mut [Particle], gamma: f64, beta_freeze: f64, rho_ref: f64) {
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
 
-        let b2 = p.b_field.x*p.b_field.x + p.b_field.y*p.b_field.y + p.b_field.z*p.b_field.z;
-        if b2 < 1e-60 { continue; } // B=0: nada que congelar
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+        if b2 < 1e-60 {
+            continue;
+        } // B=0: nada que congelar
 
         let h = p.smoothing_length.max(1e-10);
         let rho = (p.mass / (h * h * h)).max(1e-30);
@@ -60,7 +59,9 @@ pub fn mean_gas_density(particles: &[Particle]) -> f64 {
     let mut rho_sum = 0.0_f64;
     let mut n = 0usize;
     for p in particles.iter() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         let h = p.smoothing_length.max(1e-10);
         rho_sum += p.mass / (h * h * h);
         n += 1;
@@ -73,7 +74,9 @@ pub fn mean_gas_density(particles: &[Particle]) -> f64 {
 /// Retorna el error relativo |B_actual / B_expected - 1|.
 /// `b0` y `rho0` son los valores de referencia (estado inicial o densdiad del halo).
 pub fn flux_freeze_error(b_actual: f64, b0: f64, rho: f64, rho0: f64) -> f64 {
-    if b0 < 1e-30 || rho0 < 1e-30 { return 0.0; }
+    if b0 < 1e-30 || rho0 < 1e-30 {
+        return 0.0;
+    }
     let b_expected = b0 * (rho / rho0).powf(2.0 / 3.0);
     (b_actual / b_expected - 1.0).abs()
 }

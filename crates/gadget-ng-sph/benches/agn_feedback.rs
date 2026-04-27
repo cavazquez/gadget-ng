@@ -9,9 +9,11 @@
 //! ```
 //! Resultados en `target/criterion/agn_feedback/`.
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_sph::{apply_agn_feedback, bondi_accretion_rate, grow_black_holes, AgnParams, BlackHole};
+use gadget_ng_sph::{
+    AgnParams, BlackHole, apply_agn_feedback, bondi_accretion_rate, grow_black_holes,
+};
 
 fn make_gas_particles(n: usize, box_size: f64) -> Vec<Particle> {
     let n_side = (n as f64).cbrt().ceil() as usize;
@@ -57,7 +59,7 @@ fn bench_apply_agn_feedback(c: &mut Criterion) {
     let params = AgnParams {
         eps_feedback: 0.05,
         m_seed: 1e5,
-        v_kick_agn: 0.0,  // solo térmico, sin kick (más limpio para benchmark)
+        v_kick_agn: 0.0, // solo térmico, sin kick (más limpio para benchmark)
         r_influence: 5.0,
     };
     let dt = 0.01;
@@ -68,16 +70,12 @@ fn bench_apply_agn_feedback(c: &mut Criterion) {
     for &n_part in &[64_usize, 512, 4096, 32768] {
         let bhs = make_black_holes(1, box_size);
         group.throughput(Throughput::Elements(n_part as u64));
-        group.bench_with_input(
-            BenchmarkId::new("N_particles", n_part),
-            &n_part,
-            |b, &n| {
-                let mut particles = make_gas_particles(n, box_size);
-                b.iter(|| {
-                    apply_agn_feedback(&mut particles, &bhs, &params, dt);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("N_particles", n_part), &n_part, |b, &n| {
+            let mut particles = make_gas_particles(n, box_size);
+            b.iter(|| {
+                apply_agn_feedback(&mut particles, &bhs, &params, dt);
+            });
+        });
     }
 
     // Barrido sobre número de agujeros negros (N_part fijo = 4096)
@@ -86,15 +84,11 @@ fn bench_apply_agn_feedback(c: &mut Criterion) {
         let mut particles = make_gas_particles(n_part_fixed, box_size);
         let bhs = make_black_holes(n_bh, box_size);
         group.throughput(Throughput::Elements(n_bh as u64));
-        group.bench_with_input(
-            BenchmarkId::new("N_black_holes", n_bh),
-            &n_bh,
-            |b, _| {
-                b.iter(|| {
-                    apply_agn_feedback(&mut particles, &bhs, &params, dt);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("N_black_holes", n_bh), &n_bh, |b, _| {
+            b.iter(|| {
+                apply_agn_feedback(&mut particles, &bhs, &params, dt);
+            });
+        });
     }
 
     group.finish();
@@ -105,14 +99,16 @@ fn bench_bondi_rate(c: &mut Criterion) {
 
     let bh_masses = [1e6_f64, 1e7, 1e8, 1e9];
     for &mass in &bh_masses {
-        let bh = BlackHole { pos: Vec3::zero(), mass, accretion_rate: 0.0 };
+        let bh = BlackHole {
+            pos: Vec3::zero(),
+            mass,
+            accretion_rate: 0.0,
+        };
         group.bench_with_input(
             BenchmarkId::new("M_bh", format!("{:.0e}", mass)),
             &mass,
             |b, _| {
-                b.iter(|| {
-                    bondi_accretion_rate(&bh, 1.0, 10.0)
-                });
+                b.iter(|| bondi_accretion_rate(&bh, 1.0, 10.0));
             },
         );
     }
@@ -135,20 +131,21 @@ fn bench_grow_black_holes(c: &mut Criterion) {
     for &n_part in &[64_usize, 512, 4096] {
         let particles = make_gas_particles(n_part, box_size);
         group.throughput(Throughput::Elements(n_part as u64));
-        group.bench_with_input(
-            BenchmarkId::new("N_particles", n_part),
-            &n_part,
-            |b, _| {
-                let mut bhs = make_black_holes(1, box_size);
-                b.iter(|| {
-                    grow_black_holes(&mut bhs, &particles, &params, dt);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("N_particles", n_part), &n_part, |b, _| {
+            let mut bhs = make_black_holes(1, box_size);
+            b.iter(|| {
+                grow_black_holes(&mut bhs, &particles, &params, dt);
+            });
+        });
     }
 
     group.finish();
 }
 
-criterion_group!(benches, bench_apply_agn_feedback, bench_bondi_rate, bench_grow_black_holes);
+criterion_group!(
+    benches,
+    bench_apply_agn_feedback,
+    bench_bondi_rate,
+    bench_grow_black_holes
+);
 criterion_main!(benches);

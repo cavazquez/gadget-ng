@@ -10,7 +10,7 @@
 //! alrededor del baricentro. `G = 1`, período `T = 2π·r / v_c`.
 
 use gadget_ng_core::{Particle, TimestepCriterion, Vec3};
-use gadget_ng_integrators::{hierarchical_kdk_step, HierarchicalState};
+use gadget_ng_integrators::{HierarchicalState, hierarchical_kdk_step};
 
 const G: f64 = 1.0;
 const M_EACH: f64 = 0.5;

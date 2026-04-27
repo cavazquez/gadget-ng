@@ -27,13 +27,13 @@
 //!    con `auto_g=true`. Verifica que la simulación completa sin explosión.
 
 use gadget_ng_core::{
-    build_particles, cosmo_consistency_error,
-    cosmology::{gravity_coupling_qksl, CosmologyParams},
-    g_code_consistent, wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3, build_particles, cosmo_consistency_error,
+    cosmology::{CosmologyParams, gravity_coupling_qksl},
+    g_code_consistent, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -95,9 +95,13 @@ fn base_cfg(g_override: f64, auto_g: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

@@ -25,7 +25,6 @@ use gadget_ng_core::Vec3;
 
 use crate::amr::{AmrLevel, AmrParams, PatchGrid};
 
-
 // ── Mensaje serializable de parche ────────────────────────────────────────────
 
 /// Representación serializable de un parche AMR para envío entre ranks.
@@ -90,10 +89,7 @@ impl AmrRuntime {
 ///
 /// # Retorna
 /// Lista de `AmrPatchMessage` con fuerzas disponibles en todos los ranks.
-pub fn broadcast_patch_forces(
-    patches: &[PatchGrid],
-    rt: &AmrRuntime,
-) -> Vec<AmrPatchMessage> {
+pub fn broadcast_patch_forces(patches: &[PatchGrid], rt: &AmrRuntime) -> Vec<AmrPatchMessage> {
     if rt.size == 1 {
         // Serial: solo convertir formato
         return patches.iter().map(AmrPatchMessage::from_patch).collect();
@@ -148,7 +144,9 @@ pub fn amr_pm_accels_multilevel_mpi(
 ) -> Vec<Vec3> {
     if rt.size == 1 {
         // Serial: delegar al solver mono-proceso
-        return crate::amr::amr_pm_accels_multilevel(positions, masses, box_size, nm_base, g, params);
+        return crate::amr::amr_pm_accels_multilevel(
+            positions, masses, box_size, nm_base, g, params,
+        );
     }
 
     // Stub MPI: documentar la secuencia de operaciones
@@ -302,7 +300,9 @@ pub fn amr_pm_accels_multilevel_mpi_real<C: mpi::collective::CommunicatorCollect
     use mpi::collective::SystemOperation;
 
     if world.size() == 1 {
-        return crate::amr::amr_pm_accels_multilevel(positions, masses, box_size, nm_base, g, params);
+        return crate::amr::amr_pm_accels_multilevel(
+            positions, masses, box_size, nm_base, g, params,
+        );
     }
 
     // Paso 1: Cada rank construye densidad local en el grid base
@@ -311,14 +311,19 @@ pub fn amr_pm_accels_multilevel_mpi_real<C: mpi::collective::CommunicatorCollect
 
     // Paso 2: Allreduce para obtener densidad global
     let mut density_global = vec![0.0f64; n3];
-    world.all_reduce_into(&density_local[..], &mut density_global[..], SystemOperation::sum());
+    world.all_reduce_into(
+        &density_local[..],
+        &mut density_global[..],
+        SystemOperation::sum(),
+    );
 
     // Paso 3: Rank 0 identifica parches y calcula fuerzas
     let rank = world.rank() as usize;
 
     let mut patches_solved: Vec<PatchGrid> = Vec::new();
     if rank == 0 {
-        let mut patches = crate::amr::identify_refinement_patches(&density_global, nm_base, box_size, params);
+        let mut patches =
+            crate::amr::identify_refinement_patches(&density_global, nm_base, box_size, params);
         for p in &mut patches {
             crate::amr::solve_patch(p, box_size, params.zero_pad);
         }
@@ -357,7 +362,11 @@ pub fn build_amr_hierarchy_mpi_real<C: mpi::collective::CommunicatorCollectives>
     let density_local = crate::cic::assign(positions, masses, box_size, nm_base);
     let n3 = nm_base * nm_base * nm_base;
     let mut density_global = vec![0.0f64; n3];
-    world.all_reduce_into(&density_local[..], &mut density_global[..], SystemOperation::sum());
+    world.all_reduce_into(
+        &density_local[..],
+        &mut density_global[..],
+        SystemOperation::sum(),
+    );
 
     // Usar la densidad global para identificar el primer nivel de parches
     // La jerarquía completa se construye de forma idéntica en todos los ranks
@@ -374,11 +383,17 @@ mod tests {
         let mut rng: u64 = 12345;
         let pos: Vec<Vec3> = (0..n)
             .map(|_| {
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let x = (rng >> 33) as f64 / u32::MAX as f64;
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let y = (rng >> 33) as f64 / u32::MAX as f64;
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let z = (rng >> 33) as f64 / u32::MAX as f64;
                 Vec3::new(x, y, z)
             })
@@ -403,13 +418,18 @@ mod tests {
         };
         let rt = AmrRuntime::serial();
 
-        let acc_mpi = amr_pm_accels_multilevel_mpi(&pos, &mass, box_size, nm_base, 1.0, &params, &rt);
-        let acc_direct = crate::amr::amr_pm_accels_multilevel(&pos, &mass, box_size, nm_base, 1.0, &params);
+        let acc_mpi =
+            amr_pm_accels_multilevel_mpi(&pos, &mass, box_size, nm_base, 1.0, &params, &rt);
+        let acc_direct =
+            crate::amr::amr_pm_accels_multilevel(&pos, &mass, box_size, nm_base, 1.0, &params);
 
         assert_eq!(acc_mpi.len(), acc_direct.len());
         for (a, b) in acc_mpi.iter().zip(acc_direct.iter()) {
             let diff = (a.x - b.x).abs() + (a.y - b.y).abs() + (a.z - b.z).abs();
-            assert!(diff < 1e-12, "Divergencia entre serial MPI y directo: {diff}");
+            assert!(
+                diff < 1e-12,
+                "Divergencia entre serial MPI y directo: {diff}"
+            );
         }
     }
 
@@ -473,7 +493,9 @@ mod tests {
 
     #[cfg(feature = "mpi")]
     fn get_mpi_world() -> mpi::topology::SimpleCommunicator {
-        MPI_UNIVERSE.get_or_init(|| mpi::initialize().unwrap()).world()
+        MPI_UNIVERSE
+            .get_or_init(|| mpi::initialize().unwrap())
+            .world()
     }
 
     #[cfg(feature = "mpi")]
@@ -481,7 +503,9 @@ mod tests {
     fn broadcast_patch_forces_mpi_single_rank() {
         use mpi::traits::Communicator;
         let world = get_mpi_world();
-        if world.size() > 1 { return; }
+        if world.size() > 1 {
+            return;
+        }
 
         let (pos, mass) = make_positions(32);
         let nm_base = 8;
@@ -497,7 +521,9 @@ mod tests {
         let density = crate::cic::assign(&pos, &mass, 1.0, nm_base);
         let patches = crate::amr::identify_refinement_patches(&density, nm_base, 1.0, &params);
         let mut solved = patches.clone();
-        for p in &mut solved { crate::amr::solve_patch(p, 1.0, true); }
+        for p in &mut solved {
+            crate::amr::solve_patch(p, 1.0, true);
+        }
 
         let msgs = broadcast_patch_forces_mpi(&solved, &world);
         assert_eq!(msgs.len(), solved.len());
@@ -511,7 +537,9 @@ mod tests {
     fn amr_pm_accels_mpi_real_single_rank_matches_serial() {
         use mpi::traits::Communicator;
         let world = get_mpi_world();
-        if world.size() > 1 { return; }
+        if world.size() > 1 {
+            return;
+        }
 
         let (pos, mass) = make_positions(64);
         let params = AmrParams {

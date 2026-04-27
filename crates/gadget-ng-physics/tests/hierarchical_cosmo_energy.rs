@@ -6,8 +6,8 @@
 //!    durante una evolución de corta duración (~10 pasos).
 //! 3. La cota kappa_h restringe los bins de las partículas activas.
 
-use gadget_ng_core::{cosmology::CosmologyParams, Particle, TimestepCriterion, Vec3};
-use gadget_ng_integrators::{hierarchical_kdk_step, HierarchicalState};
+use gadget_ng_core::{Particle, TimestepCriterion, Vec3, cosmology::CosmologyParams};
+use gadget_ng_integrators::{HierarchicalState, hierarchical_kdk_step};
 
 const G: f64 = 1.0;
 const EPS2: f64 = 0.01;

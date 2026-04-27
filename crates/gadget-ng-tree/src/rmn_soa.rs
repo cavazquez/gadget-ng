@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! Representación **SoA (Structure of Arrays)** para lotes de [`RemoteMultipoleNode`].
 #![allow(clippy::too_many_arguments)]
 //!
@@ -328,66 +329,68 @@ unsafe fn mono_pass_avx2(
     debug_assert_eq!(n, r_inv_out.len());
 
     // Registros de broadcast (4 copias del escalar en ymm)
-    let xi4 = _mm256_set1_pd(xi);
-    let yi4 = _mm256_set1_pd(yi);
-    let zi4 = _mm256_set1_pd(zi);
-    let eps24 = _mm256_set1_pd(eps2);
-    let ng4 = _mm256_set1_pd(neg_g); // −g
-    let ones = _mm256_set1_pd(1.0);
+    let xi4 = unsafe { _mm256_set1_pd(xi) };
+    let yi4 = unsafe { _mm256_set1_pd(yi) };
+    let zi4 = unsafe { _mm256_set1_pd(zi) };
+    let eps24 = unsafe { _mm256_set1_pd(eps2) };
+    let ng4 = unsafe { _mm256_set1_pd(neg_g) }; // −g
+    let ones = unsafe { _mm256_set1_pd(1.0) };
 
     // Acumuladores de aceleración (4 lanes en paralelo)
-    let mut ax4 = _mm256_setzero_pd();
-    let mut ay4 = _mm256_setzero_pd();
-    let mut az4 = _mm256_setzero_pd();
+    let mut ax4 = unsafe { _mm256_setzero_pd() };
+    let mut ay4 = unsafe { _mm256_setzero_pd() };
+    let mut az4 = unsafe { _mm256_setzero_pd() };
 
     let chunks = n / 4;
     let tail_start = chunks * 4;
 
-    // ── Loop vectorizado: 4 elementos por iteración ───────────────────────────
+    // ── Loop vectorizado: 4 elementos por iteración ─────────────────────────────────────
     for i in 0..chunks {
         let base = i * 4;
 
         // Carga 4 coordenadas de los nodos LET (acceso secuencial, cache-friendly)
-        let cxj = _mm256_loadu_pd(cx.as_ptr().add(base));
-        let cyj = _mm256_loadu_pd(cy.as_ptr().add(base));
-        let czj = _mm256_loadu_pd(cz.as_ptr().add(base));
-        let mj = _mm256_loadu_pd(mass.as_ptr().add(base));
+        let cxj = unsafe { _mm256_loadu_pd(cx.as_ptr().add(base)) };
+        let cyj = unsafe { _mm256_loadu_pd(cy.as_ptr().add(base)) };
+        let czj = unsafe { _mm256_loadu_pd(cz.as_ptr().add(base)) };
+        let mj = unsafe { _mm256_loadu_pd(mass.as_ptr().add(base)) };
 
         // r = pos_i − com_j  (vectorizado para las 4 lanes)
-        let rx = _mm256_sub_pd(xi4, cxj);
-        let ry = _mm256_sub_pd(yi4, cyj);
-        let rz = _mm256_sub_pd(zi4, czj);
+        let rx = unsafe { _mm256_sub_pd(xi4, cxj) };
+        let ry = unsafe { _mm256_sub_pd(yi4, cyj) };
+        let rz = unsafe { _mm256_sub_pd(zi4, czj) };
 
         // r² + ε² usando FMA: rz*rz + (ry*ry + (rx*rx + eps2))
-        let r2 = _mm256_fmadd_pd(
-            rz,
-            rz,
-            _mm256_fmadd_pd(ry, ry, _mm256_fmadd_pd(rx, rx, eps24)),
-        );
+        let r2 = unsafe {
+            _mm256_fmadd_pd(
+                rz,
+                rz,
+                _mm256_fmadd_pd(ry, ry, _mm256_fmadd_pd(rx, rx, eps24)),
+            )
+        };
 
         // r_inv = 1 / sqrt(r²+ε²)   → instrucción vsqrtpd + vdivpd
-        let r_inv = _mm256_div_pd(ones, _mm256_sqrt_pd(r2));
+        let r_inv = unsafe { _mm256_div_pd(ones, _mm256_sqrt_pd(r2)) };
 
         // Almacena r_inv para que Pass 2 compute quad+oct sin más sqrt
-        _mm256_storeu_pd(r_inv_out.as_mut_ptr().add(base), r_inv);
+        unsafe { _mm256_storeu_pd(r_inv_out.as_mut_ptr().add(base), r_inv) };
 
         // r3_inv = r_inv³ = r_inv * r_inv * r_inv
-        let r_inv2 = _mm256_mul_pd(r_inv, r_inv);
-        let r3_inv = _mm256_mul_pd(r_inv2, r_inv);
+        let r_inv2 = unsafe { _mm256_mul_pd(r_inv, r_inv) };
+        let r3_inv = unsafe { _mm256_mul_pd(r_inv2, r_inv) };
 
         // factor = −g * mj * r3_inv  (−g ya está en neg_g)
-        let factor = _mm256_mul_pd(ng4, _mm256_mul_pd(mj, r3_inv));
+        let factor = unsafe { _mm256_mul_pd(ng4, _mm256_mul_pd(mj, r3_inv)) };
 
         // ax += factor * rx   (FMA: factor*rx + ax4)
-        ax4 = _mm256_fmadd_pd(factor, rx, ax4);
-        ay4 = _mm256_fmadd_pd(factor, ry, ay4);
-        az4 = _mm256_fmadd_pd(factor, rz, az4);
+        ax4 = unsafe { _mm256_fmadd_pd(factor, rx, ax4) };
+        ay4 = unsafe { _mm256_fmadd_pd(factor, ry, ay4) };
+        az4 = unsafe { _mm256_fmadd_pd(factor, rz, az4) };
     }
 
     // Reducción horizontal: suma los 4 lanes de cada acumulador
-    let mut ax = hadd_m256d(ax4);
-    let mut ay = hadd_m256d(ay4);
-    let mut az = hadd_m256d(az4);
+    let mut ax = unsafe { hadd_m256d(ax4) };
+    let mut ay = unsafe { hadd_m256d(ay4) };
+    let mut az = unsafe { hadd_m256d(az4) };
 
     // ── Tail escalar: elementos restantes (0–3) ───────────────────────────────
     for j in tail_start..n {
@@ -578,7 +581,8 @@ unsafe fn accel_p15_avx2_range(
         let rinv_slice = &mut r_inv_buf[..chunk_len];
 
         // Pass 1: AVX2 monopolar + almacena r_inv
-        let (ax1, ay1, az1) = mono_pass_avx2(xi, yi, zi, cx, cy, cz, mass, neg_g, eps2, rinv_slice);
+        let (ax1, ay1, az1) =
+            unsafe { mono_pass_avx2(xi, yi, zi, cx, cy, cz, mass, neg_g, eps2, rinv_slice) };
         total_ax += ax1;
         total_ay += ay1;
         total_az += az1;
@@ -706,63 +710,65 @@ unsafe fn mono_pass_avx2_4xi(
     debug_assert_eq!(n, r_inv_out.len());
 
     // Cargar posiciones de las 4 partículas en registros ymm
-    let xi4 = _mm256_loadu_pd(xi.as_ptr()); // [xi[0], xi[1], xi[2], xi[3]]
-    let yi4 = _mm256_loadu_pd(yi.as_ptr());
-    let zi4 = _mm256_loadu_pd(zi.as_ptr());
-    let eps24 = _mm256_set1_pd(eps2);
-    let ones = _mm256_set1_pd(1.0);
+    let xi4 = unsafe { _mm256_loadu_pd(xi.as_ptr()) }; // [xi[0], xi[1], xi[2], xi[3]]
+    let yi4 = unsafe { _mm256_loadu_pd(yi.as_ptr()) };
+    let zi4 = unsafe { _mm256_loadu_pd(zi.as_ptr()) };
+    let eps24 = unsafe { _mm256_set1_pd(eps2) };
+    let ones = unsafe { _mm256_set1_pd(1.0) };
 
     // Acumuladores: cada lane k acumula para partícula k
-    let mut ax4 = _mm256_setzero_pd();
-    let mut ay4 = _mm256_setzero_pd();
-    let mut az4 = _mm256_setzero_pd();
+    let mut ax4 = unsafe { _mm256_setzero_pd() };
+    let mut ay4 = unsafe { _mm256_setzero_pd() };
+    let mut az4 = unsafe { _mm256_setzero_pd() };
 
     // Loop sobre RMNs (1 por iteración SIMD — 4 partículas en paralelo)
     for j in 0..n {
         // Broadcast coordenadas del nodo j → mismo valor en las 4 lanes
-        let cxj = _mm256_set1_pd(cx[j]);
-        let cyj = _mm256_set1_pd(cy[j]);
-        let czj = _mm256_set1_pd(cz[j]);
-        let mj_ng = _mm256_set1_pd(neg_g * mass[j]);
+        let cxj = unsafe { _mm256_set1_pd(cx[j]) };
+        let cyj = unsafe { _mm256_set1_pd(cy[j]) };
+        let czj = unsafe { _mm256_set1_pd(cz[j]) };
+        let mj_ng = unsafe { _mm256_set1_pd(neg_g * mass[j]) };
 
         // r = pos_i - com_j para las 4 partículas simultáneamente
-        let rx = _mm256_sub_pd(xi4, cxj);
-        let ry = _mm256_sub_pd(yi4, cyj);
-        let rz = _mm256_sub_pd(zi4, czj);
+        let rx = unsafe { _mm256_sub_pd(xi4, cxj) };
+        let ry = unsafe { _mm256_sub_pd(yi4, cyj) };
+        let rz = unsafe { _mm256_sub_pd(zi4, czj) };
 
         // r² + ε² via FMA: rz²+ry²+rx²+eps2
-        let r2 = _mm256_fmadd_pd(
-            rz,
-            rz,
-            _mm256_fmadd_pd(ry, ry, _mm256_fmadd_pd(rx, rx, eps24)),
-        );
+        let r2 = unsafe {
+            _mm256_fmadd_pd(
+                rz,
+                rz,
+                _mm256_fmadd_pd(ry, ry, _mm256_fmadd_pd(rx, rx, eps24)),
+            )
+        };
 
         // r_inv = 1 / sqrt(r²+ε²) para las 4 partículas (vsqrtpd ymm)
-        let r_inv = _mm256_div_pd(ones, _mm256_sqrt_pd(r2));
+        let r_inv = unsafe { _mm256_div_pd(ones, _mm256_sqrt_pd(r2)) };
 
         // Almacenar r_inv para las 4 partículas → Pass 2 (quad+oct sin sqrt)
-        _mm256_storeu_pd(r_inv_out[j].as_mut_ptr(), r_inv);
+        unsafe { _mm256_storeu_pd(r_inv_out[j].as_mut_ptr(), r_inv) };
 
         // r3_inv = r_inv³ = r_inv * r_inv * r_inv
-        let r_inv2 = _mm256_mul_pd(r_inv, r_inv);
-        let r3_inv = _mm256_mul_pd(r_inv2, r_inv);
+        let r_inv2 = unsafe { _mm256_mul_pd(r_inv, r_inv) };
+        let r3_inv = unsafe { _mm256_mul_pd(r_inv2, r_inv) };
 
         // factor = neg_g * mass[j] * r3_inv  (ya tiene el signo correcto)
-        let factor = _mm256_mul_pd(mj_ng, r3_inv);
+        let factor = unsafe { _mm256_mul_pd(mj_ng, r3_inv) };
 
         // acc += factor * r  (FMA: factor*r + acc)
-        ax4 = _mm256_fmadd_pd(factor, rx, ax4);
-        ay4 = _mm256_fmadd_pd(factor, ry, ay4);
-        az4 = _mm256_fmadd_pd(factor, rz, az4);
+        ax4 = unsafe { _mm256_fmadd_pd(factor, rx, ax4) };
+        ay4 = unsafe { _mm256_fmadd_pd(factor, ry, ay4) };
+        az4 = unsafe { _mm256_fmadd_pd(factor, rz, az4) };
     }
 
     // Extraer resultados: cada lane k contiene la aceleración monopolar de partícula k
     let mut ax_out = [0.0_f64; 4];
     let mut ay_out = [0.0_f64; 4];
     let mut az_out = [0.0_f64; 4];
-    _mm256_storeu_pd(ax_out.as_mut_ptr(), ax4);
-    _mm256_storeu_pd(ay_out.as_mut_ptr(), ay4);
-    _mm256_storeu_pd(az_out.as_mut_ptr(), az4);
+    unsafe { _mm256_storeu_pd(ax_out.as_mut_ptr(), ax4) };
+    unsafe { _mm256_storeu_pd(ay_out.as_mut_ptr(), ay4) };
+    unsafe { _mm256_storeu_pd(az_out.as_mut_ptr(), az4) };
 
     (ax_out, ay_out, az_out)
 }
@@ -932,7 +938,7 @@ unsafe fn accel_p16_avx2_range_4xi(
 
         // Pass 1: AVX2 monopolar tileado — 4 partículas × chunk_len RMNs
         let (ax1, ay1, az1) =
-            mono_pass_avx2_4xi(xi, yi, zi, cx, cy, cz, mass, neg_g, eps2, rinv_slice);
+            unsafe { mono_pass_avx2_4xi(xi, yi, zi, cx, cy, cz, mass, neg_g, eps2, rinv_slice) };
 
         // Pass 2: quad+oct escalar tileado — sin sqrt adicionales
         let (ax2, ay2, az2) = quad_oct_pass_scalar_4xi(
@@ -1019,7 +1025,7 @@ impl RmnSoa {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::octree::{accel_from_let, RemoteMultipoleNode};
+    use crate::octree::{RemoteMultipoleNode, accel_from_let};
 
     fn make_rmn(cx: f64, cy: f64, cz: f64, mass: f64) -> RemoteMultipoleNode {
         RemoteMultipoleNode {

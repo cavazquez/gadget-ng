@@ -1,7 +1,7 @@
 //! Paridad numérica: aceleraciones locales por bloque de `global_id` coinciden con cálculo global.
 use gadget_ng_core::{
-    build_particles, build_particles_for_gid_range, DirectGravity, GravitySolver, IcKind,
-    InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    DirectGravity, GravitySolver, IcKind, InitialConditionsSection, RunConfig, SimulationSection,
+    Vec3, build_particles, build_particles_for_gid_range,
 };
 
 fn small_lattice_cfg() -> RunConfig {
@@ -29,9 +29,13 @@ fn small_lattice_cfg() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

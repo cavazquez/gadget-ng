@@ -24,7 +24,12 @@ fn kepler_initial() -> Vec<Particle> {
     let v_circ = (G * m_central / r).sqrt(); // = 10.0
 
     let mut p0 = Particle::new(0, m_central, Vec3::new(0.0, 0.0, 0.0), Vec3::zero());
-    let mut p1 = Particle::new(1, m_test, Vec3::new(r, 0.0, 0.0), Vec3::new(0.0, v_circ, 0.0));
+    let mut p1 = Particle::new(
+        1,
+        m_test,
+        Vec3::new(r, 0.0, 0.0),
+        Vec3::new(0.0, v_circ, 0.0),
+    );
     p0.smoothing_length = 1e-4;
     p1.smoothing_length = 1e-4;
     vec![p0, p1]
@@ -65,7 +70,9 @@ fn energy_error_for_dt(dt: f64, t_final: f64) -> f64 {
             out.iter_mut().for_each(|a| *a = Vec3::zero());
             for i in 0..p.len() {
                 for j in 0..p.len() {
-                    if i == j { continue; }
+                    if i == j {
+                        continue;
+                    }
                     let dr = p[j].position - p[i].position;
                     let r2 = dr.dot(dr);
                     let r = r2.sqrt().max(1e-10);
@@ -154,7 +161,9 @@ fn leapfrog_no_nan_after_steps() {
             out.iter_mut().for_each(|a| *a = Vec3::zero());
             for i in 0..p.len() {
                 for j in 0..p.len() {
-                    if i == j { continue; }
+                    if i == j {
+                        continue;
+                    }
                     let dr = p[j].position - p[i].position;
                     let r2 = dr.dot(dr);
                     let r = r2.sqrt().max(1e-10);

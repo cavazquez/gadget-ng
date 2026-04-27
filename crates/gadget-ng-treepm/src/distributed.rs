@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::ParallelRuntime;
-use gadget_ng_pm::{slab_pm, SlabLayout};
+use gadget_ng_pm::{SlabLayout, slab_pm};
 
 use crate::short_range;
 use crate::short_range::ShortRangeParamsPeriodic;

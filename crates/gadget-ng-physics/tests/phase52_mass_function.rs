@@ -30,7 +30,7 @@
 // ── Imports ───────────────────────────────────────────────────────────────────
 
 use gadget_ng_analysis::halo_mass_function::{
-    mass_function_table, multiplicity_ps, multiplicity_st, sigma_m, total_halo_density, HmfParams,
+    HmfParams, mass_function_table, multiplicity_ps, multiplicity_st, sigma_m, total_halo_density,
 };
 use std::f64::consts::PI;
 
@@ -371,11 +371,11 @@ fn phase52_hmf_cluster_abundance() {
 /// coincidencia estadística exacta.
 #[test]
 fn phase52_fof_vs_hmf_qualitative() {
-    use gadget_ng_analysis::{analyse, AnalysisParams};
+    use gadget_ng_analysis::{AnalysisParams, analyse};
     use gadget_ng_core::{
-        build_particles, CosmologySection, GravitySection, IcKind, InitialConditionsSection,
-        NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-        TimestepSection, TransferKind, UnitsSection,
+        CosmologySection, GravitySection, IcKind, InitialConditionsSection, NormalizationMode,
+        OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
+        TransferKind, UnitsSection, build_particles,
     };
 
     // ── Config de simulación ─────────────────────────────────────────────────
@@ -440,9 +440,13 @@ fn phase52_fof_vs_hmf_qualitative() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deberían fallar");

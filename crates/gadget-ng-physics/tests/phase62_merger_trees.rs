@@ -5,10 +5,12 @@
 //! - Fusión binaria de dos halos en un paso.
 //! - Roundtrip JSON de MergerForest.
 
-use gadget_ng_analysis::{build_merger_forest, FofHalo, MergerForest, ParticleSnapshot};
+use gadget_ng_analysis::{FofHalo, MergerForest, ParticleSnapshot, build_merger_forest};
 
 fn skip() -> bool {
-    std::env::var("PHASE62_SKIP").map(|v| v == "1").unwrap_or(false)
+    std::env::var("PHASE62_SKIP")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 fn make_halo(id: usize, n: usize, mass: f64) -> FofHalo {
@@ -53,7 +55,9 @@ fn parts_field(n: usize, id_offset: u64) -> Vec<ParticleSnapshot> {
 /// consecutivos, masas crecientes. El nodo del snapshot 0 debe apuntar al 1.
 #[test]
 fn phase62_trivial_no_mergers() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     // Snapshot 0: halo_0 con partículas 0..9
     let halos_0 = vec![make_halo(0, 10, 1e13)];
@@ -63,14 +67,15 @@ fn phase62_trivial_no_mergers() {
     let halos_1 = vec![make_halo(0, 10, 1.5e13)];
     let parts_1 = parts_in_halo(10, 0, 0);
 
-    let catalogs = vec![
-        (halos_0, parts_0),
-        (halos_1, parts_1),
-    ];
+    let catalogs = vec![(halos_0, parts_0), (halos_1, parts_1)];
 
     let forest = build_merger_forest(&catalogs, 0.3);
 
-    assert_eq!(forest.nodes.len(), 2, "deben existir 2 nodos (1 por snapshot)");
+    assert_eq!(
+        forest.nodes.len(),
+        2,
+        "deben existir 2 nodos (1 por snapshot)"
+    );
     assert_eq!(forest.roots, vec![0], "raíz debe ser halo_0 del snapshot 1");
 
     // El nodo del snapshot 0 debe tener progenitor = halo_0 del snapshot 1.
@@ -89,25 +94,24 @@ fn phase62_trivial_no_mergers() {
 /// Fusión binaria: dos halos en snapshot 0 se fusionan en uno en snapshot 1.
 #[test]
 fn phase62_binary_merger() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     // Snapshot 0: dos halos
     let halos_0 = vec![
-        make_halo(0, 10, 1e13),  // halo_0: partículas 0..9
-        make_halo(1, 8, 8e12),   // halo_1: partículas 10..17
+        make_halo(0, 10, 1e13), // halo_0: partículas 0..9
+        make_halo(1, 8, 8e12),  // halo_1: partículas 10..17
     ];
     let mut parts_0 = parts_in_halo(10, 0, 0);
     parts_0.extend(parts_in_halo(8, 1, 10));
 
     // Snapshot 1: un único halo que contiene TODAS las partículas.
     let halos_1 = vec![make_halo(0, 18, 1.8e13)];
-    let mut parts_1 = parts_in_halo(10, 0, 0);  // partículas del halo_0 original
-    parts_1.extend(parts_in_halo(8, 0, 10));    // partículas del halo_1 original
+    let mut parts_1 = parts_in_halo(10, 0, 0); // partículas del halo_0 original
+    parts_1.extend(parts_in_halo(8, 0, 10)); // partículas del halo_1 original
 
-    let catalogs = vec![
-        (halos_0, parts_0),
-        (halos_1, parts_1),
-    ];
+    let catalogs = vec![(halos_0, parts_0), (halos_1, parts_1)];
 
     let forest = build_merger_forest(&catalogs, 0.1);
 
@@ -128,7 +132,9 @@ fn phase62_binary_merger() {
 /// Roundtrip JSON: serializar y deserializar MergerForest preserva todos los campos.
 #[test]
 fn phase62_roundtrip_json() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     let halos_0 = vec![make_halo(0, 5, 5e12)];
     let parts_0 = parts_in_halo(5, 0, 0);
@@ -139,10 +145,17 @@ fn phase62_roundtrip_json() {
     let forest = build_merger_forest(&catalogs, 0.3);
 
     let json = serde_json::to_string_pretty(&forest).expect("serialización no debe fallar");
-    assert!(json.contains("\"snapshot\""), "JSON debe contener campo 'snapshot'");
-    assert!(json.contains("\"mass_msun_h\""), "JSON debe contener campo 'mass_msun_h'");
+    assert!(
+        json.contains("\"snapshot\""),
+        "JSON debe contener campo 'snapshot'"
+    );
+    assert!(
+        json.contains("\"mass_msun_h\""),
+        "JSON debe contener campo 'mass_msun_h'"
+    );
 
-    let forest2: MergerForest = serde_json::from_str(&json).expect("deserialización no debe fallar");
+    let forest2: MergerForest =
+        serde_json::from_str(&json).expect("deserialización no debe fallar");
     assert_eq!(forest.nodes.len(), forest2.nodes.len());
     assert_eq!(forest.roots, forest2.roots);
 
@@ -156,7 +169,9 @@ fn phase62_roundtrip_json() {
 /// Con una sola entrada (un snapshot) la forest tiene raíces pero sin progenitores.
 #[test]
 fn phase62_single_snapshot_no_progenitors() {
-    if skip() { return; }
+    if skip() {
+        return;
+    }
 
     let halos = vec![make_halo(0, 10, 1e14), make_halo(1, 5, 5e13)];
     let mut parts = parts_in_halo(10, 0, 0);
@@ -166,7 +181,10 @@ fn phase62_single_snapshot_no_progenitors() {
 
     assert_eq!(forest.nodes.len(), 2);
     for node in &forest.nodes {
-        assert!(node.prog_main_id.is_none(), "sin snapshots previos, no hay progenitores");
+        assert!(
+            node.prog_main_id.is_none(),
+            "sin snapshots previos, no hay progenitores"
+        );
     }
     // Las raíces son los 2 halos del único snapshot.
     assert_eq!(forest.roots.len(), 2);

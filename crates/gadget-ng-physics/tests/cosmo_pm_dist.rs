@@ -139,7 +139,7 @@ fn distributed_forces_match_serial_pm() {
     let acc_r1 = pm_dist::interpolate_local(pos_r1, &fx_d, &fy_d, &fz_d, nm, box_size);
 
     // Combinar resultados.
-    let acc_dist: Vec<Vec3> = acc_r0.into_iter().chain(acc_r1.into_iter()).collect();
+    let acc_dist: Vec<Vec3> = acc_r0.into_iter().chain(acc_r1).collect();
 
     // Las fuerzas distribuidas deben coincidir bit a bit con el resultado serial.
     for (i, (s, d)) in acc_serial.iter().zip(acc_dist.iter()).enumerate() {
@@ -147,7 +147,12 @@ fn distributed_forces_match_serial_pm() {
         assert!(
             err < 1e-12,
             "partícula {i}: serial=({:.6e},{:.6e},{:.6e}) dist=({:.6e},{:.6e},{:.6e}) err={err:.2e}",
-            s.x, s.y, s.z, d.x, d.y, d.z
+            s.x,
+            s.y,
+            s.z,
+            d.x,
+            d.y,
+            d.z
         );
     }
 }
@@ -178,7 +183,7 @@ fn distributed_border_particle_deposit() {
 #[test]
 fn distributed_pm_no_explosion_eds() {
     use gadget_ng_core::Particle;
-    use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+    use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 
     let nm = 8usize;
     let box_size = 1.0_f64;

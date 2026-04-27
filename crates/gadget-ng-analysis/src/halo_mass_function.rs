@@ -261,7 +261,7 @@ pub struct HmfBin {
 ///
 /// σ(M, z) = D(z)/D(0) × σ(M, z=0).
 pub fn sigma_m(m_msun_h: f64, params: &HmfParams, z: f64) -> f64 {
-    use gadget_ng_core::{amplitude_for_sigma8, EisensteinHuParams};
+    use gadget_ng_core::{EisensteinHuParams, amplitude_for_sigma8};
 
     let eh = EisensteinHuParams {
         omega_m: params.omega_m,
@@ -334,7 +334,7 @@ pub fn mass_function_table(
     n_bins: usize,
     z: f64,
 ) -> Vec<HmfBin> {
-    use gadget_ng_core::{amplitude_for_sigma8, EisensteinHuParams};
+    use gadget_ng_core::{EisensteinHuParams, amplitude_for_sigma8};
 
     let eh = EisensteinHuParams {
         omega_m: params.omega_m,

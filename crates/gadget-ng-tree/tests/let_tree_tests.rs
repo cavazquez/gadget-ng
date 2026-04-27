@@ -9,7 +9,7 @@
 //!    path plano.
 
 use gadget_ng_core::Vec3;
-use gadget_ng_tree::{accel_from_let, LetTree, RemoteMultipoleNode};
+use gadget_ng_tree::{LetTree, RemoteMultipoleNode, accel_from_let};
 
 // ── Utilidades ─────────────────────────────────────────────────────────────────
 
@@ -258,16 +258,16 @@ fn let_tree_energy_conservation_short() {
         let acc = accel(&pos);
         // Kick half
         for i in 0..n_local {
-            vel[i] = vel[i] + acc[i] * (dt * 0.5);
+            vel[i] += acc[i] * (dt * 0.5);
         }
         // Drift
         for i in 0..n_local {
-            pos[i] = pos[i] + vel[i] * dt;
+            pos[i] += vel[i] * dt;
         }
         // Kick half
         let acc2 = accel(&pos);
         for i in 0..n_local {
-            vel[i] = vel[i] + acc2[i] * (dt * 0.5);
+            vel[i] += acc2[i] * (dt * 0.5);
         }
     }
 

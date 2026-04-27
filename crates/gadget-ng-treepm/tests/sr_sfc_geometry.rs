@@ -11,7 +11,7 @@
 
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::halo3d::{compute_aabb_3d, is_in_periodic_halo};
-use gadget_ng_treepm::distributed::{short_range_accels_sfc, SfcShortRangeParams};
+use gadget_ng_treepm::distributed::{SfcShortRangeParams, short_range_accels_sfc};
 
 fn make_particle(id: usize, x: f64, y: f64, z: f64, mass: f64) -> Particle {
     Particle::new(id, mass, Vec3::new(x, y, z), Vec3::zero())

@@ -63,7 +63,7 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
+    cosmology::{CosmologyParams, growth_factor_d_ratio, growth_rate_f, hubble_param},
     ic_zeldovich::{
         build_spectrum_fn, delta_to_displacement, fft3d, generate_delta_kspace, mode_int,
     },

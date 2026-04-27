@@ -83,9 +83,8 @@ impl HipDirectGravity {
             let eps2 = self.eps * self.eps;
             let g = 1.0_f32;
 
-            let handle: *mut c_void = unsafe {
-                ffi::hip_direct_create(eps2, self.workgroup_size as i32)
-            };
+            let handle: *mut c_void =
+                unsafe { ffi::hip_direct_create(eps2, self.workgroup_size as i32) };
             assert!(!handle.is_null(), "hip_direct_create devolvió NULL");
 
             let mut x: Vec<f32> = Vec::with_capacity(n);
@@ -104,9 +103,13 @@ impl HipDirectGravity {
             let ret = unsafe {
                 ffi::hip_direct_solve(
                     handle,
-                    x.as_ptr(), y.as_ptr(), z.as_ptr(),
+                    x.as_ptr(),
+                    y.as_ptr(),
+                    z.as_ptr(),
                     mass.as_ptr(),
-                    ax.as_mut_ptr(), ay.as_mut_ptr(), az.as_mut_ptr(),
+                    ax.as_mut_ptr(),
+                    ay.as_mut_ptr(),
+                    az.as_mut_ptr(),
                     n as i32,
                     g,
                 )
@@ -151,7 +154,10 @@ mod tests {
 
     #[test]
     fn recommended_max_n_is_positive() {
-        let solver = HipDirectGravity { eps: 0.01, workgroup_size: 256 };
+        let solver = HipDirectGravity {
+            eps: 0.01,
+            workgroup_size: 256,
+        };
         assert!(solver.recommended_max_n() > 0);
     }
 }

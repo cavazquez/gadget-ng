@@ -5,7 +5,7 @@
 //! el cfg `cuda_unavailable` desde build.rs).
 
 #[cfg(not(cuda_unavailable))]
-extern "C" {
+unsafe extern "C" {
     // ── Solver PM (CIC + FFT + Poisson) ──────────────────────────────────────
 
     /// Crea un handle PM CUDA con grilla `grid_size³` y caja periódica `box_size`.

@@ -8,7 +8,7 @@
 //! 5. `subfind_params_defaults`         — valores default de SubfindParams.
 //! 6. `local_density_concentrated`     — cluster concentrado → densidad central mayor.
 
-use gadget_ng_analysis::{find_subhalos, local_density_sph, FofHalo, SubfindParams};
+use gadget_ng_analysis::{FofHalo, SubfindParams, find_subhalos, local_density_sph};
 use gadget_ng_core::Vec3;
 
 // ── Utilidades ────────────────────────────────────────────────────────────────
@@ -44,9 +44,13 @@ fn sphere_cluster(
     let mut mass = Vec::new();
 
     // Usar una semilla determinista para reproducibilidad.
-    let mut seed = (id_offset as u64).wrapping_mul(6364136223846793005).wrapping_add(1);
+    let mut seed = (id_offset as u64)
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1);
     let mut rng = || -> f64 {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let bits = (seed >> 33) as u32;
         bits as f64 / u32::MAX as f64
     };
@@ -194,7 +198,9 @@ fn subfind_binding_energy_negative() {
     for s in &subhalos {
         assert!(
             s.e_total < 0.0,
-            "Subhalo {} tiene E_tot = {} ≥ 0 (no ligado)", s.subhalo_id, s.e_total
+            "Subhalo {} tiene E_tot = {} ≥ 0 (no ligado)",
+            s.subhalo_id,
+            s.e_total
         );
     }
 }

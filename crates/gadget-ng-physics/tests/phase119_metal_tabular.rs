@@ -3,14 +3,17 @@
 /// Tests: MetalTabular genera tasa positiva, mayor a MetalCooling a Z alta,
 ///        tasa = 0 bajo T_floor, enfriamiento tabulado vs analítico consistente,
 ///        serde de MetalTabular, backward compat MetalCooling.
-use gadget_ng_core::{CoolingKind, Particle, ParticleType, SphSection, Vec3};
-use gadget_ng_sph::{apply_cooling, cooling_rate_tabular, temperature_to_u, u_to_temperature};
+use gadget_ng_core::{CoolingKind, Particle, SphSection, Vec3};
+use gadget_ng_sph::{apply_cooling, cooling_rate_tabular, temperature_to_u};
 
 const GAMMA: f64 = 5.0 / 3.0;
 const T_FLOOR: f64 = 1e4;
 
 fn cfg_tabular() -> SphSection {
-    SphSection { cooling: CoolingKind::MetalTabular, ..Default::default() }
+    SphSection {
+        cooling: CoolingKind::MetalTabular,
+        ..Default::default()
+    }
 }
 
 fn gas_at_temp(t_k: f64, z: f64) -> Particle {
@@ -45,7 +48,10 @@ fn tabular_rate_increases_with_metallicity() {
     let u = temperature_to_u(1e6, GAMMA);
     let rate_low = cooling_rate_tabular(u, 1.0, 0.001, GAMMA, T_FLOOR);
     let rate_high = cooling_rate_tabular(u, 1.0, 0.02, GAMMA, T_FLOOR);
-    assert!(rate_high > rate_low, "Tasa tabulada debe aumentar con Z: {rate_high} vs {rate_low}");
+    assert!(
+        rate_high > rate_low,
+        "Tasa tabulada debe aumentar con Z: {rate_high} vs {rate_low}"
+    );
 }
 
 // ── 4. apply_cooling reduce u con MetalTabular ────────────────────────────
@@ -60,7 +66,8 @@ fn apply_cooling_tabular_reduces_u() {
     assert!(
         particles[0].internal_energy < u_before,
         "u debe reducirse con MetalTabular: {} < {}",
-        particles[0].internal_energy, u_before
+        particles[0].internal_energy,
+        u_before
     );
 }
 
@@ -68,12 +75,18 @@ fn apply_cooling_tabular_reduces_u() {
 
 #[test]
 fn backward_compat_metal_cooling_still_works() {
-    let cfg = SphSection { cooling: CoolingKind::MetalCooling, ..Default::default() };
+    let cfg = SphSection {
+        cooling: CoolingKind::MetalCooling,
+        ..Default::default()
+    };
     let t0 = 1e6;
     let mut particles = vec![gas_at_temp(t0, 0.02)];
     let u_before = particles[0].internal_energy;
     apply_cooling(&mut particles, &cfg, 1.0);
-    assert!(particles[0].internal_energy < u_before, "MetalCooling aún debe enfriar");
+    assert!(
+        particles[0].internal_energy < u_before,
+        "MetalCooling aún debe enfriar"
+    );
 }
 
 // ── 6. Serde de CoolingKind::MetalTabular ─────────────────────────────────
@@ -83,5 +96,8 @@ fn cooling_kind_metal_tabular_serde() {
     let kind = CoolingKind::MetalTabular;
     let json = serde_json::to_string(&kind).unwrap();
     let kind2: CoolingKind = serde_json::from_str(&json).unwrap();
-    assert_eq!(kind, kind2, "CoolingKind::MetalTabular debe ser serializable");
+    assert_eq!(
+        kind, kind2,
+        "CoolingKind::MetalTabular debe ser serializable"
+    );
 }

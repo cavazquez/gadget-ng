@@ -9,7 +9,7 @@
 //! 5. `g3_insitu_analysis_no_crash`       — análisis in-situ (P(k), FoF) se ejecuta sin error.
 //! 6. `g3_production_config_valid_params` — parámetros físicos de la config de producción son razonables.
 
-use gadget_ng_core::{build_particles, RunConfig};
+use gadget_ng_core::{RunConfig, build_particles};
 use std::path::Path;
 
 // ── Test 1: parseo de configs ─────────────────────────────────────────────
@@ -133,9 +133,13 @@ fn make_32cube_cfg() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -151,8 +155,7 @@ fn g3_ic_generation_32cube() {
         if p.position.x.is_nan() || p.position.y.is_nan() || p.position.z.is_nan() {
             has_nan = true;
         }
-        if p.velocity.x.is_infinite() || p.velocity.y.is_infinite() || p.velocity.z.is_infinite()
-        {
+        if p.velocity.x.is_infinite() || p.velocity.y.is_infinite() || p.velocity.z.is_infinite() {
             has_inf = true;
         }
     }
@@ -211,12 +214,13 @@ fn g3_production_config_valid_params() {
     );
 
     // G calculado de Friedmann es positivo
-    let g_auto = gadget_ng_core::cosmology::g_code_consistent(
-        cfg.cosmology.omega_m,
-        cfg.cosmology.h0,
-    );
+    let g_auto =
+        gadget_ng_core::cosmology::g_code_consistent(cfg.cosmology.omega_m, cfg.cosmology.h0);
     assert!(g_auto > 0.0, "G Friedmann negativo: {g_auto}");
-    assert!(g_auto < 1.0, "G Friedmann > 1 (unidades inconsistentes): {g_auto}");
+    assert!(
+        g_auto < 1.0,
+        "G Friedmann > 1 (unidades inconsistentes): {g_auto}"
+    );
 }
 
 // ── Test 4: masa total conservada en ICs ──────────────────────────────────
@@ -256,11 +260,15 @@ fn g3_ic_sigma8_reasonable() {
 
     let n = particles.len() as f64;
     let v_mean_x: f64 = particles.iter().map(|p| p.velocity.x).sum::<f64>() / n;
-    let v_rms: f64 =
-        (particles.iter().map(|p| {
+    let v_rms: f64 = (particles
+        .iter()
+        .map(|p| {
             let dv = p.velocity.x - v_mean_x;
             dv * dv
-        }).sum::<f64>() / n).sqrt();
+        })
+        .sum::<f64>()
+        / n)
+        .sqrt();
 
     // Velocidades RMS deben ser > 0 (hay perturbaciones) pero finitas
     assert!(v_rms > 0.0, "v_rms = 0: ICs sin perturbaciones");

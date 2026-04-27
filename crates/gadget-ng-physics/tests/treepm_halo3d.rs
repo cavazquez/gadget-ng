@@ -12,11 +12,11 @@
 
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::{
-    halo3d::{compute_aabb_3d, is_in_periodic_halo, Aabb3},
     ParallelRuntime,
+    halo3d::{Aabb3, compute_aabb_3d, is_in_periodic_halo},
 };
 use gadget_ng_treepm::{
-    distributed::{short_range_accels_slab, SlabShortRangeParams},
+    distributed::{SlabShortRangeParams, short_range_accels_slab},
     short_range::{erfc_approx, minimum_image},
 };
 

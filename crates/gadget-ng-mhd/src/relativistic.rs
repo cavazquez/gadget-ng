@@ -43,9 +43,11 @@ pub const C_LIGHT: f64 = 1.0;
 /// Si `|v| ≥ c`, retorna `f64::INFINITY`.
 #[inline]
 pub fn lorentz_factor(vel: Vec3, c: f64) -> f64 {
-    let v2 = vel.x*vel.x + vel.y*vel.y + vel.z*vel.z;
+    let v2 = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
     let beta2 = v2 / (c * c);
-    if beta2 >= 1.0 { return f64::INFINITY; }
+    if beta2 >= 1.0 {
+        return f64::INFINITY;
+    }
     (1.0 - beta2).sqrt().recip()
 }
 
@@ -61,27 +63,38 @@ pub fn lorentz_factor(vel: Vec3, c: f64) -> f64 {
 ///
 /// Usa gamma adiabático de ley de potencias: `P = (γ_ad − 1) ρ ε`.
 pub fn srmhd_conserved_to_primitive(
-    d: f64, s: [f64; 3], tau: f64, b: [f64; 3], gamma_ad: f64, c: f64,
+    d: f64,
+    s: [f64; 3],
+    tau: f64,
+    b: [f64; 3],
+    gamma_ad: f64,
+    c: f64,
 ) -> Option<(f64, [f64; 3], f64)> {
-    let b2 = b[0]*b[0] + b[1]*b[1] + b[2]*b[2];
-    let s2 = s[0]*s[0] + s[1]*s[1] + s[2]*s[2];
-    let sb = s[0]*b[0] + s[1]*b[1] + s[2]*b[2]; // S·B
+    let b2 = b[0] * b[0] + b[1] * b[1] + b[2] * b[2];
+    let s2 = s[0] * s[0] + s[1] * s[1] + s[2] * s[2];
+    let sb = s[0] * b[0] + s[1] * b[1] + s[2] * b[2]; // S·B
 
     // Variable de Newton-Raphson: ξ = D h γ (aproximación inicial)
     let mut xi = tau + d + 0.5 * b2;
-    if xi <= 0.0 { xi = 1.0; }
+    if xi <= 0.0 {
+        xi = 1.0;
+    }
 
     let c2 = c * c;
 
     // Iteración Newton-Raphson
     for _ in 0..50 {
         let xi_b2 = xi + b2;
-        if xi_b2.abs() < 1e-30 { break; }
+        if xi_b2.abs() < 1e-30 {
+            break;
+        }
 
         let v2 = (s2 + (2.0 * sb * sb / xi_b2) * (1.0 / xi_b2)) / (xi_b2 * xi_b2).max(1e-30);
         let v2 = v2 * c2; // convertir a |v/c|²
 
-        if v2 >= 1.0 { return None; } // velocidad supralumínica
+        if v2 >= 1.0 {
+            return None;
+        } // velocidad supralumínica
 
         let gamma2 = 1.0 / (1.0 - v2 / c2);
         let rho = d / gamma2.sqrt();
@@ -105,9 +118,11 @@ pub fn srmhd_conserved_to_primitive(
             let vy = (s[1] + sb * b[1] / xi_b2) * v_factor;
             let vz = (s[2] + sb * b[2] / xi_b2) * v_factor;
 
-            let v2 = vx*vx + vy*vy + vz*vz;
-            if v2 >= c2 { return None; }
-            let gamma = (1.0 - v2/c2).sqrt().recip();
+            let v2 = vx * vx + vy * vy + vz * vz;
+            if v2 >= c2 {
+                return None;
+            }
+            let gamma = (1.0 - v2 / c2).sqrt().recip();
             let rho = d / gamma;
             let eps_final = ((xi / gamma - rho - d) / d.max(1e-30)).max(0.0);
             let p_final = (gamma_ad - 1.0) * rho * eps_final;
@@ -127,16 +142,22 @@ pub fn srmhd_conserved_to_primitive(
 /// La corrección de momento: `p_i → γ m_i v_i` (en lugar de `m_i v_i`).
 pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
 
         let vel = p.velocity;
-        let v2 = vel.x*vel.x + vel.y*vel.y + vel.z*vel.z;
+        let v2 = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
         let v_over_c = v2.sqrt() / c;
 
-        if v_over_c < v_threshold { continue; } // sub-relativista: MHD estándar
+        if v_over_c < v_threshold {
+            continue;
+        } // sub-relativista: MHD estándar
 
         let gamma = lorentz_factor(vel, c);
-        if !gamma.is_finite() { continue; }
+        if !gamma.is_finite() {
+            continue;
+        }
 
         // Corrección relativista: el "momentum" efectivo incluye factor γ
         // Esto modifica la aceleración neta aplicada al paso de tiempo
@@ -160,7 +181,7 @@ pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f
 /// u_EM = B² / 2
 /// ```
 pub fn em_energy_density(b: Vec3) -> f64 {
-    0.5 * (b.x*b.x + b.y*b.y + b.z*b.z)
+    0.5 * (b.x * b.x + b.y * b.y + b.z * b.z)
 }
 
 /// Inyecta jets AGN relativistas bipolares desde los N halos más masivos (Phase 148).
@@ -195,7 +216,9 @@ pub fn inject_relativistic_jet(
     use gadget_ng_core::ParticleType;
 
     let n_halos = halo_centers.len().min(n_jet_halos);
-    if n_halos == 0 || v_jet_frac <= 0.0 { return; }
+    if n_halos == 0 || v_jet_frac <= 0.0 {
+        return;
+    }
     let v_jet = v_jet_frac * c_light;
 
     for center in halo_centers.iter().take(n_halos) {
@@ -206,11 +229,13 @@ pub fn inject_relativistic_jet(
         let mut d2_minus = f64::INFINITY;
 
         for (i, p) in particles.iter().enumerate() {
-            if p.ptype != ParticleType::Gas { continue; }
+            if p.ptype != ParticleType::Gas {
+                continue;
+            }
             let dx = p.position.x - center.x;
             let dy = p.position.y - center.y;
             let dz = p.position.z - center.z;
-            let d2 = dx*dx + dy*dy + dz*dz;
+            let d2 = dx * dx + dy * dy + dz * dz;
 
             // Jet bipolar: partícula z > center → jet +z, z < center → jet -z
             if p.position.z >= center.z && d2 < d2_plus {
@@ -224,10 +249,7 @@ pub fn inject_relativistic_jet(
 
         // Inyectar jet en las 2 partículas más cercanas (una a cada lado)
         if let Some(i) = best_i_plus {
-            let gamma = lorentz_factor(
-                Vec3::new(0.0, 0.0, v_jet),
-                c_light,
-            );
+            let gamma = lorentz_factor(Vec3::new(0.0, 0.0, v_jet), c_light);
             particles[i].velocity = Vec3::new(0.0, 0.0, v_jet);
             particles[i].b_field = Vec3::new(0.0, 0.0, b_jet);
             // Energía interna: E_jet = (γ − 1) c²
@@ -237,10 +259,7 @@ pub fn inject_relativistic_jet(
             }
         }
         if let Some(i) = best_i_minus {
-            let gamma = lorentz_factor(
-                Vec3::new(0.0, 0.0, -v_jet),
-                c_light,
-            );
+            let gamma = lorentz_factor(Vec3::new(0.0, 0.0, -v_jet), c_light);
             particles[i].velocity = Vec3::new(0.0, 0.0, -v_jet);
             particles[i].b_field = Vec3::new(0.0, 0.0, -b_jet);
             let u_jet = (gamma - 1.0) * c_light * c_light;

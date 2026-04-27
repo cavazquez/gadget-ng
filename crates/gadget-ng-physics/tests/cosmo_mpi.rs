@@ -36,12 +36,12 @@
 //!    comóvil: con `a=0.5` la fuerza efectiva es el doble que con `a=1`.
 
 use gadget_ng_core::{
-    build_particles, cosmology::CosmologyParams, CosmologySection, GravitySection, IcKind,
-    InitialConditionsSection, OutputSection, Particle, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, UnitsSection, Vec3,
+    CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection,
+    PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection, Vec3,
+    build_particles, cosmology::CosmologyParams,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
-use gadget_ng_tree::{accel_from_let, pack_let_nodes, unpack_let_nodes, Octree};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
+use gadget_ng_tree::{Octree, accel_from_let, pack_let_nodes, unpack_let_nodes};
 
 const G: f64 = 1.0;
 const EPS2: f64 = 0.02 * 0.02;
@@ -128,9 +128,13 @@ fn eds_config(n: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

@@ -21,8 +21,11 @@ fn antiparallel_b_releases_heat() {
         gas(1, Vec3::new(0.05, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0), 1.0),
     ];
     let u0 = particles[0].internal_energy;
-    apply_magnetic_reconnection(&mut particles, 0.1, 5.0/3.0, 0.1);
-    assert!(particles[0].internal_energy > u0, "B antiparalelo debe liberar calor");
+    apply_magnetic_reconnection(&mut particles, 0.1, 5.0 / 3.0, 0.1);
+    assert!(
+        particles[0].internal_energy > u0,
+        "B antiparalelo debe liberar calor"
+    );
 }
 
 // ── 2. B paralelo NO libera calor ─────────────────────────────────────────
@@ -34,8 +37,11 @@ fn parallel_b_no_heat_release() {
         gas(1, Vec3::new(0.05, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), 1.0),
     ];
     let u0 = particles[0].internal_energy;
-    apply_magnetic_reconnection(&mut particles, 0.1, 5.0/3.0, 0.1);
-    assert_eq!(particles[0].internal_energy, u0, "B paralelo NO debe liberar calor");
+    apply_magnetic_reconnection(&mut particles, 0.1, 5.0 / 3.0, 0.1);
+    assert_eq!(
+        particles[0].internal_energy, u0,
+        "B paralelo NO debe liberar calor"
+    );
 }
 
 // ── 3. B reduce su magnitud tras reconexión ───────────────────────────────
@@ -44,12 +50,25 @@ fn parallel_b_no_heat_release() {
 fn b_magnitude_decreases_after_reconnection() {
     let b_init = 5.0;
     let mut particles = vec![
-        gas(0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(b_init, 0.0, 0.0), 1.0),
-        gas(1, Vec3::new(0.05, 0.0, 0.0), Vec3::new(-b_init, 0.0, 0.0), 1.0),
+        gas(
+            0,
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(b_init, 0.0, 0.0),
+            1.0,
+        ),
+        gas(
+            1,
+            Vec3::new(0.05, 0.0, 0.0),
+            Vec3::new(-b_init, 0.0, 0.0),
+            1.0,
+        ),
     ];
-    apply_magnetic_reconnection(&mut particles, 0.2, 5.0/3.0, 0.1);
+    apply_magnetic_reconnection(&mut particles, 0.2, 5.0 / 3.0, 0.1);
     let b0_after = particles[0].b_field.x.abs();
-    assert!(b0_after < b_init, "Reconexión debe reducir |B|: {b0_after:.4} < {b_init}");
+    assert!(
+        b0_after < b_init,
+        "Reconexión debe reducir |B|: {b0_after:.4} < {b_init}"
+    );
 }
 
 // ── 4. f_reconnection = 0 → no-op ────────────────────────────────────────
@@ -62,7 +81,7 @@ fn f_rec_zero_no_op() {
     ];
     let u0 = particles[0].internal_energy;
     let b0 = particles[0].b_field.x;
-    apply_magnetic_reconnection(&mut particles, 0.0, 5.0/3.0, 0.1);
+    apply_magnetic_reconnection(&mut particles, 0.0, 5.0 / 3.0, 0.1);
     assert_eq!(particles[0].internal_energy, u0);
     assert_eq!(particles[0].b_field.x, b0);
 }
@@ -77,8 +96,11 @@ fn far_particles_no_reconnection() {
         gas(1, Vec3::new(10.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0), 1.0),
     ];
     let u0 = particles[0].internal_energy;
-    apply_magnetic_reconnection(&mut particles, 0.1, 5.0/3.0, 0.1);
-    assert_eq!(particles[0].internal_energy, u0, "Partículas lejanas no deben reconectar");
+    apply_magnetic_reconnection(&mut particles, 0.1, 5.0 / 3.0, 0.1);
+    assert_eq!(
+        particles[0].internal_energy, u0,
+        "Partículas lejanas no deben reconectar"
+    );
 }
 
 // ── 6. Tasa Sweet-Parker teórica ──────────────────────────────────────────
@@ -91,7 +113,9 @@ fn sweet_parker_rate_formula() {
     let rm = l * v_a / eta; // Rm = 1_000_000
     let v_rec_expected = v_a / rm.sqrt(); // = v_A / sqrt(Rm) = 0.1
     let v_rec = sweet_parker_rate(v_a, l, eta);
-    assert!((v_rec - v_rec_expected).abs() < 1e-10,
-        "Sweet-Parker: {v_rec:.6e} ≠ {v_rec_expected:.6e}");
+    assert!(
+        (v_rec - v_rec_expected).abs() < 1e-10,
+        "Sweet-Parker: {v_rec:.6e} ≠ {v_rec_expected:.6e}"
+    );
     assert!(v_rec < v_a, "Tasa de reconexión < velocidad de Alfvén");
 }

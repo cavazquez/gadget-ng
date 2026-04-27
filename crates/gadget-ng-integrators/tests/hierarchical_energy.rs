@@ -13,7 +13,7 @@
 use gadget_ng_core::TimestepCriterion;
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_integrators::{
-    aarseth_bin, hierarchical_kdk_step, leapfrog_kdk_step, HierarchicalState,
+    HierarchicalState, aarseth_bin, hierarchical_kdk_step, leapfrog_kdk_step,
 };
 
 const G: f64 = 1.0;

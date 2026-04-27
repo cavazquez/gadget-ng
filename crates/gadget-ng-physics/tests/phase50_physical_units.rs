@@ -48,15 +48,16 @@
 //! y se fijan para que la densidad media sea ρ̄_m = Ω_m × ρ_crit_físico.
 //! Los tests aquí operan en unidades de código internas (sin convertir a kpc).
 
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    adaptive_dt_cosmo, build_particles, cosmo_consistency_error,
-    cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    g_code_consistent, wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    NormalizationMode, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3, adaptive_dt_cosmo, build_particles,
+    cosmo_consistency_error,
+    cosmology::{CosmologyParams, gravity_coupling_qksl, growth_factor_d_ratio},
+    g_code_consistent, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use std::f64::consts::PI;
 
@@ -141,9 +142,13 @@ fn build_ic(n: usize, g_override: f64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

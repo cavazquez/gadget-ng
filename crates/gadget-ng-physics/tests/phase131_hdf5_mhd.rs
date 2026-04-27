@@ -47,16 +47,18 @@ fn all_extended_fields_default_zero() {
 // Tests HDF5 (requieren feature "hdf5")
 mod hdf5_mhd_tests {
     use gadget_ng_core::{Particle, Vec3};
-    use gadget_ng_io::{
-        Hdf5Writer, Provenance,
-        SnapshotEnv, SnapshotWriter,
-    };
+    use gadget_ng_io::{Hdf5Writer, Provenance, SnapshotEnv, SnapshotWriter};
 
     fn make_prov() -> Provenance {
         Provenance::new("0-test", None, "debug", vec![], vec![], "hash")
     }
     fn make_env() -> SnapshotEnv {
-        SnapshotEnv { time: 0.5, redshift: 1.0, box_size: 20.0, ..Default::default() }
+        SnapshotEnv {
+            time: 0.5,
+            redshift: 1.0,
+            box_size: 20.0,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -64,7 +66,9 @@ mod hdf5_mhd_tests {
         let dir = tempfile::tempdir().unwrap();
         let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
         p.b_field = Vec3::new(2.0, 1.0, 0.5);
-        Hdf5Writer.write(dir.path(), &[p], &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &[p], &make_prov(), &make_env())
+            .unwrap();
 
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
         let pt0 = file.group("PartType0").unwrap();
@@ -80,7 +84,9 @@ mod hdf5_mhd_tests {
         let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
         p.cr_energy = 3.14;
         p.metallicity = 0.025;
-        Hdf5Writer.write(dir.path(), &[p], &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &[p], &make_prov(), &make_env())
+            .unwrap();
 
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
         let pt0 = file.group("PartType0").unwrap();
@@ -96,7 +102,9 @@ mod hdf5_mhd_tests {
         let mut star = Particle::new_star(0, 1.0, Vec3::new(1.0, 2.0, 3.0), Vec3::zero(), 0.02);
         star.stellar_age = 4.5;
         let gas = Particle::new_gas(1, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
-        Hdf5Writer.write(dir.path(), &[star, gas], &make_prov(), &make_env()).unwrap();
+        Hdf5Writer
+            .write(dir.path(), &[star, gas], &make_prov(), &make_env())
+            .unwrap();
 
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
         let pt4 = file.group("PartType4").unwrap();

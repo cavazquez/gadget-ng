@@ -31,12 +31,14 @@
 //! Goldreich & Sridhar (1995), ApJ 438, 763 — turbulencia MHD anisótropa.
 //! Federrath et al. (2010), A&A 512, A81 — forzado numérico de turbulencia.
 
-use gadget_ng_core::{Particle, ParticleType, TurbulenceSection};
 use crate::MU0;
+use gadget_ng_core::{Particle, ParticleType, TurbulenceSection};
 
 /// Generador de números pseudo-aleatorios simple (LCG para reproducibilidad).
 fn lcg_next(state: &mut u64) -> f64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*state as f64) / (u64::MAX as f64)
 }
 
@@ -66,7 +68,9 @@ pub fn apply_turbulent_forcing(
     dt: f64,
     step: u64,
 ) {
-    if !cfg.enabled || cfg.amplitude <= 0.0 { return; }
+    if !cfg.enabled || cfg.amplitude <= 0.0 {
+        return;
+    }
 
     let tau = cfg.correlation_time.max(1e-10);
     let sigma = (2.0 * cfg.amplitude * cfg.amplitude / tau).sqrt();
@@ -77,7 +81,9 @@ pub fn apply_turbulent_forcing(
 
     // Para cada partícula de gas, generar perturbación de velocidad
     for (idx, p) in particles.iter_mut().enumerate() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
 
         // Estado OU previo (aproximado como amplitud × fase aleatoria)
         let seed_p = rng_state ^ (idx as u64).wrapping_mul(1234567);
@@ -142,13 +148,16 @@ pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
     let mut n = 0usize;
 
     for p in particles.iter() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         let h = p.smoothing_length.max(1e-10);
         let rho = (p.mass / (h * h * h)).max(1e-30);
         let p_th = (gamma - 1.0) * rho * p.internal_energy.max(0.0);
 
-        let v2 = p.velocity.x*p.velocity.x + p.velocity.y*p.velocity.y + p.velocity.z*p.velocity.z;
-        let b2 = p.b_field.x*p.b_field.x + p.b_field.y*p.b_field.y + p.b_field.z*p.b_field.z;
+        let v2 =
+            p.velocity.x * p.velocity.x + p.velocity.y * p.velocity.y + p.velocity.z * p.velocity.z;
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
 
         v2_sum += v2;
         b2_rho_sum += b2 / (MU0 * rho);
@@ -156,7 +165,9 @@ pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
         n += 1;
     }
 
-    if n == 0 { return (0.0, 0.0); }
+    if n == 0 {
+        return (0.0, 0.0);
+    }
     let v_rms = (v2_sum / n as f64).sqrt();
     let v_a = (b2_rho_sum / n as f64).sqrt();
     let c_s = (cs2_sum / n as f64).sqrt();

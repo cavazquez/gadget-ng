@@ -4,7 +4,7 @@
 //! CPL (w₀=-1, wₐ=0) coincide con ΛCDM dentro del 0.1%, y que para
 //! (w₀=-0.9, wₐ=0.1) la diferencia con ΛCDM es < 5% a z=1.
 
-use gadget_ng_core::{dark_energy_eos, hubble_param, CosmologyParams};
+use gadget_ng_core::{CosmologyParams, dark_energy_eos, hubble_param};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,10 @@ fn cpl_w0_m09_differs_from_lcdm_by_less_than_5pct() {
     let dl_cpl = luminosity_distance(&cpl, z);
     let rel = (dl_cpl / dl_lcdm - 1.0).abs();
 
-    println!("CPL (w0=-0.9, wa=0.1) vs ΛCDM a z=1: d_L diff = {:.3}%", rel * 100.0);
+    println!(
+        "CPL (w0=-0.9, wa=0.1) vs ΛCDM a z=1: d_L diff = {:.3}%",
+        rel * 100.0
+    );
     assert!(
         rel < 0.05,
         "Diferencia d_L CPL vs ΛCDM (z=1): {rel:.4} (tolerancia 5%)"
@@ -77,14 +80,19 @@ fn cpl_w0_m09_differs_from_lcdm_by_less_than_5pct() {
 fn luminosity_distance_monotone_with_z() {
     let cosmo = CosmologyParams::new_cpl(0.3, 0.7, 0.1, -0.8, 0.2);
     let z_vals = [0.1, 0.5, 1.0, 2.0, 3.0];
-    let dl: Vec<f64> = z_vals.iter().map(|&z| luminosity_distance(&cosmo, z)).collect();
+    let dl: Vec<f64> = z_vals
+        .iter()
+        .map(|&z| luminosity_distance(&cosmo, z))
+        .collect();
 
     for i in 1..dl.len() {
         assert!(
             dl[i] > dl[i - 1],
             "d_L debe crecer con z: d_L({})={:.4}, d_L({})={:.4}",
-            z_vals[i - 1], dl[i - 1],
-            z_vals[i], dl[i]
+            z_vals[i - 1],
+            dl[i - 1],
+            z_vals[i],
+            dl[i]
         );
     }
 }

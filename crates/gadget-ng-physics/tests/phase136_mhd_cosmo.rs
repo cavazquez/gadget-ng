@@ -17,11 +17,20 @@ fn make_gas_grid(n: usize, b0: Vec3, box_size: f64) -> Vec<Particle> {
         b0_uniform: [b0.x, b0.y, b0.z],
         ..Default::default()
     };
-    let mut particles: Vec<Particle> = (0..n).map(|i| {
-        let x = (i as f64 / n as f64) * box_size;
-        let mut p = Particle::new_gas(i, 1.0, Vec3::new(x, 0.0, 0.0), Vec3::new(0.01, 0.0, 0.0), 1.0, box_size / n as f64 * 2.0);
-        p
-    }).collect();
+    let mut particles: Vec<Particle> = (0..n)
+        .map(|i| {
+            let x = (i as f64 / n as f64) * box_size;
+
+            Particle::new_gas(
+                i,
+                1.0,
+                Vec3::new(x, 0.0, 0.0),
+                Vec3::new(0.01, 0.0, 0.0),
+                1.0,
+                box_size / n as f64 * 2.0,
+            )
+        })
+        .collect();
     init_b_field(&mut particles, &cfg, box_size);
     particles
 }
@@ -46,16 +55,37 @@ fn stats_none_dm_only() {
 #[test]
 fn stats_uniform_b_correct() {
     let b_val = 2.0_f64;
-    let mut particles: Vec<Particle> = (0..10).map(|i| {
-        Particle::new_gas(i, 1.0, Vec3::new(i as f64 * 0.1, 0.0, 0.0), Vec3::zero(), 1.0, 0.2)
-    }).collect();
+    let mut particles: Vec<Particle> = (0..10)
+        .map(|i| {
+            Particle::new_gas(
+                i,
+                1.0,
+                Vec3::new(i as f64 * 0.1, 0.0, 0.0),
+                Vec3::zero(),
+                1.0,
+                0.2,
+            )
+        })
+        .collect();
     for p in &mut particles {
         p.b_field = Vec3::new(b_val, 0.0, 0.0);
     }
     let stats = b_field_stats(&particles).unwrap();
-    assert!((stats.b_mean - b_val).abs() < 1e-10, "b_mean = {}", stats.b_mean);
-    assert!((stats.b_rms - b_val).abs() < 1e-10, "b_rms = {}", stats.b_rms);
-    assert!((stats.b_max - b_val).abs() < 1e-10, "b_max = {}", stats.b_max);
+    assert!(
+        (stats.b_mean - b_val).abs() < 1e-10,
+        "b_mean = {}",
+        stats.b_mean
+    );
+    assert!(
+        (stats.b_rms - b_val).abs() < 1e-10,
+        "b_rms = {}",
+        stats.b_rms
+    );
+    assert!(
+        (stats.b_max - b_val).abs() < 1e-10,
+        "b_max = {}",
+        stats.b_max
+    );
     assert!(stats.e_mag > 0.0, "e_mag debe ser positiva");
     assert_eq!(stats.n_gas, 10);
 }
@@ -94,8 +124,11 @@ fn mag_energy_positive_finite() {
     }
 
     let stats = b_field_stats(&particles).unwrap();
-    assert!(stats.e_mag.is_finite() && stats.e_mag > 0.0,
-        "E_mag debe ser finita y positiva: {}", stats.e_mag);
+    assert!(
+        stats.e_mag.is_finite() && stats.e_mag > 0.0,
+        "E_mag debe ser finita y positiva: {}",
+        stats.e_mag
+    );
 }
 
 // ── 6. stats_interval en MhdSection (configuración) ──────────────────────
@@ -103,8 +136,14 @@ fn mag_energy_positive_finite() {
 #[test]
 fn mhd_section_stats_interval_default() {
     let cfg = MhdSection::default();
-    assert_eq!(cfg.stats_interval, 0, "stats_interval default=0 (desactivado)");
+    assert_eq!(
+        cfg.stats_interval, 0,
+        "stats_interval default=0 (desactivado)"
+    );
 
-    let cfg_on = MhdSection { stats_interval: 10, ..Default::default() };
+    let cfg_on = MhdSection {
+        stats_interval: 10,
+        ..Default::default()
+    };
     assert_eq!(cfg_on.stats_interval, 10);
 }

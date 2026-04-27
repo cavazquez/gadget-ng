@@ -11,7 +11,13 @@ fn gas(id: usize, pos: Vec3) -> Particle {
 }
 
 fn mhd_cfg(kind: BFieldKind, b0: [f64; 3]) -> MhdSection {
-    MhdSection { enabled: true, b0_kind: kind, b0_uniform: b0, cfl_mhd: 0.3, ..Default::default() }
+    MhdSection {
+        enabled: true,
+        b0_kind: kind,
+        b0_uniform: b0,
+        cfl_mhd: 0.3,
+        ..Default::default()
+    }
 }
 
 // ── 1. b0_kind None → B permanece cero ───────────────────────────────────
@@ -48,7 +54,9 @@ fn random_preserves_b_magnitude() {
     let b0 = [2.0, 0.0, 0.0];
     let b_mag = 2.0_f64;
     let cfg = mhd_cfg(BFieldKind::Random, b0);
-    let mut particles: Vec<Particle> = (0..10).map(|i| gas(i, Vec3::new(i as f64 * 0.1, 0.0, 0.0))).collect();
+    let mut particles: Vec<Particle> = (0..10)
+        .map(|i| gas(i, Vec3::new(i as f64 * 0.1, 0.0, 0.0)))
+        .collect();
     init_b_field(&mut particles, &cfg, 10.0);
     for p in &particles {
         let b = (p.b_field.x.powi(2) + p.b_field.y.powi(2) + p.b_field.z.powi(2)).sqrt();
@@ -64,11 +72,19 @@ fn spiral_spatially_varying() {
     let cfg = mhd_cfg(BFieldKind::Spiral, b0);
     let mut p1 = gas(0, Vec3::new(0.0, 0.0, 0.0));
     let mut p2 = gas(1, Vec3::new(0.25, 0.0, 0.0)); // x/L = 0.25
-    init_b_field(&mut std::slice::from_mut(&mut p1), &cfg, 1.0);
-    init_b_field(&mut std::slice::from_mut(&mut p2), &cfg, 1.0);
+    init_b_field(std::slice::from_mut(&mut p1), &cfg, 1.0);
+    init_b_field(std::slice::from_mut(&mut p2), &cfg, 1.0);
     // B.y = cos(2π x/L): para x=0 → cos(0)=1, para x=0.25 → cos(π/2)≈0
-    assert!((p1.b_field.y - 1.0).abs() < 1e-10, "p1.B.y = {}", p1.b_field.y);
-    assert!(p2.b_field.y.abs() < 1e-10, "p2.B.y ≈ 0, obtenido {}", p2.b_field.y);
+    assert!(
+        (p1.b_field.y - 1.0).abs() < 1e-10,
+        "p1.B.y = {}",
+        p1.b_field.y
+    );
+    assert!(
+        p2.b_field.y.abs() < 1e-10,
+        "p2.B.y ≈ 0, obtenido {}",
+        p2.b_field.y
+    );
 }
 
 // ── 5. alfven_dt da valor finito con B≠0 ─────────────────────────────────
@@ -78,7 +94,10 @@ fn alfven_dt_finite_with_nonzero_b() {
     let mut particles = vec![gas(0, Vec3::zero())];
     particles[0].b_field = Vec3::new(1.0, 0.0, 0.0);
     let dt = alfven_dt(&particles, 0.3);
-    assert!(dt.is_finite() && dt > 0.0, "dt_alfven debe ser finito y positivo: {dt}");
+    assert!(
+        dt.is_finite() && dt > 0.0,
+        "dt_alfven debe ser finito y positivo: {dt}"
+    );
 }
 
 // ── 6. alfven_dt = ∞ con B=0 ─────────────────────────────────────────────

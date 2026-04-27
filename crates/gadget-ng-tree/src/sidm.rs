@@ -34,14 +34,19 @@ pub struct SidmParams {
 
 impl Default for SidmParams {
     fn default() -> Self {
-        Self { sigma_m: 1.0e-5, v_max: 1.0e6 }
+        Self {
+            sigma_m: 1.0e-5,
+            v_max: 1.0e6,
+        }
     }
 }
 
 /// LCG simple para reproducibilidad sin dependencias externas (rng_seed por par).
 #[inline]
 fn lcg_rand(seed: u64) -> f64 {
-    let x = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+    let x = seed
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1_442_695_040_888_963_407);
     (x >> 33) as f64 / (u64::MAX >> 33) as f64
 }
 
@@ -70,60 +75,78 @@ pub fn scatter_probability(v_rel: f64, rho_local: f64, sigma_m: f64, dt: f64) ->
 /// - `dt`: paso de tiempo
 /// - `rng_seed`: semilla para el generador de números aleatorios
 pub fn apply_sidm_scattering(
-    particles: &mut Vec<Particle>,
+    particles: &mut [Particle],
     params: &SidmParams,
     dt: f64,
     rng_seed: u64,
 ) {
-    if params.sigma_m <= 0.0 { return; }
+    if params.sigma_m <= 0.0 {
+        return;
+    }
     let n = particles.len();
-    if n < 2 { return; }
+    if n < 2 {
+        return;
+    }
 
     // Precalcular densidades locales (estimación simple: suma de masas en 2h)
-    let positions: Vec<[f64; 3]> = particles.iter().map(|p| {
-        [p.position.x, p.position.y, p.position.z]
-    }).collect();
+    let positions: Vec<[f64; 3]> = particles
+        .iter()
+        .map(|p| [p.position.x, p.position.y, p.position.z])
+        .collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
-    let h_vals: Vec<f64> = particles.iter().map(|p| p.smoothing_length.max(0.01)).collect();
+    let h_vals: Vec<f64> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(0.01))
+        .collect();
 
-    let rho_local: Vec<f64> = (0..n).map(|i| {
-        let h2 = 2.0 * h_vals[i];
-        let mut rho = 0.0_f64;
-        for j in 0..n {
-            let dx = positions[j][0] - positions[i][0];
-            let dy = positions[j][1] - positions[i][1];
-            let dz = positions[j][2] - positions[i][2];
-            let r2 = dx * dx + dy * dy + dz * dz;
-            if r2 < h2 * h2 {
-                rho += masses[j];
+    let rho_local: Vec<f64> = (0..n)
+        .map(|i| {
+            let h2 = 2.0 * h_vals[i];
+            let mut rho = 0.0_f64;
+            for j in 0..n {
+                let dx = positions[j][0] - positions[i][0];
+                let dy = positions[j][1] - positions[i][1];
+                let dz = positions[j][2] - positions[i][2];
+                let r2 = dx * dx + dy * dy + dz * dz;
+                if r2 < h2 * h2 {
+                    rho += masses[j];
+                }
             }
-        }
-        let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
-        if vol > 0.0 { rho / vol } else { 0.0 }
-    }).collect();
+            let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
+            if vol > 0.0 { rho / vol } else { 0.0 }
+        })
+        .collect();
 
     // Aplicar scattering por pares (i < j)
     let mut delta_v: Vec<[f64; 3]> = vec![[0.0; 3]; n];
 
     for i in 0..n {
-        if particles[i].is_gas() || particles[i].is_star() { continue; }
+        if particles[i].is_gas() || particles[i].is_star() {
+            continue;
+        }
         let h2_i = 2.0 * h_vals[i];
 
         for j in (i + 1)..n {
-            if particles[j].is_gas() || particles[j].is_star() { continue; }
+            if particles[j].is_gas() || particles[j].is_star() {
+                continue;
+            }
 
             let dx = positions[j][0] - positions[i][0];
             let dy = positions[j][1] - positions[i][1];
             let dz = positions[j][2] - positions[i][2];
             let r2 = dx * dx + dy * dy + dz * dz;
-            if r2 >= h2_i * h2_i { continue; }
+            if r2 >= h2_i * h2_i {
+                continue;
+            }
 
             let dvx = particles[j].velocity.x - particles[i].velocity.x;
             let dvy = particles[j].velocity.y - particles[i].velocity.y;
             let dvz = particles[j].velocity.z - particles[i].velocity.z;
             let v_rel = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
 
-            if v_rel > params.v_max || v_rel <= 0.0 { continue; }
+            if v_rel > params.v_max || v_rel <= 0.0 {
+                continue;
+            }
 
             let rho_ij = 0.5 * (rho_local[i] + rho_local[j]);
             let prob = scatter_probability(v_rel, rho_ij, params.sigma_m, dt);
@@ -132,7 +155,9 @@ pub fn apply_sidm_scattering(
             let pair_seed = rng_seed
                 .wrapping_add(i as u64 * 1_000_003)
                 .wrapping_add(j as u64 * 7_919);
-            if lcg_rand(pair_seed) > prob { continue; }
+            if lcg_rand(pair_seed) > prob {
+                continue;
+            }
 
             // Scattering elástico isótropo en sistema CM:
             // velocidades CM del par
@@ -157,7 +182,8 @@ pub fn apply_sidm_scattering(
             let vrel_in_x = particles[j].velocity.x - particles[i].velocity.x;
             let vrel_in_y = particles[j].velocity.y - particles[i].velocity.y;
             let vrel_in_z = particles[j].velocity.z - particles[i].velocity.z;
-            let v_rel_mag = (vrel_in_x*vrel_in_x + vrel_in_y*vrel_in_y + vrel_in_z*vrel_in_z).sqrt();
+            let v_rel_mag =
+                (vrel_in_x * vrel_in_x + vrel_in_y * vrel_in_y + vrel_in_z * vrel_in_z).sqrt();
 
             // Velocidad relativa saliente (misma magnitud, nueva dirección)
             let vrel_out_x = v_rel_mag * nx;

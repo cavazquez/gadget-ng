@@ -49,7 +49,7 @@
 //! cuando la dinámica está congelada (ICs homogéneos); `dt_min` evita
 //! deadlocks numéricos si un par de partículas se acerca patológicamente.
 
-use gadget_ng_core::{cosmology::CosmologyParams, Vec3};
+use gadget_ng_core::{Vec3, cosmology::CosmologyParams};
 
 /// Selección del criterio de `dt` global.
 #[derive(Debug, Clone, Copy)]

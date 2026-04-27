@@ -13,14 +13,14 @@
 //! garantizando histograma no degenerado con ETA=0.01, EPS=0.5, DT_BASE=0.025.
 
 use gadget_ng_core::{
-    build_particles, IcKind, InitialConditionsSection, Particle, RunConfig, SimulationSection,
-    TimestepCriterion, Vec3,
-};
-use gadget_ng_core::{
     CosmologySection, GravitySection, OutputSection, PerformanceSection, TimestepSection,
     UnitsSection,
 };
-use gadget_ng_integrators::{hierarchical_kdk_step, HierarchicalState};
+use gadget_ng_core::{
+    IcKind, InitialConditionsSection, Particle, RunConfig, SimulationSection, TimestepCriterion,
+    Vec3, build_particles,
+};
+use gadget_ng_integrators::{HierarchicalState, hierarchical_kdk_step};
 
 // Parámetros de la distribución Plummer con a/ε = 1 (similar a Fase 5 plummer_aeps1).
 const N: usize = 200;
@@ -62,9 +62,13 @@ fn make_config() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

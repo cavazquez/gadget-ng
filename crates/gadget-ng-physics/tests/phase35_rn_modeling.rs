@@ -12,12 +12,12 @@
 //! Todos los tests vuelcan JSONs a `target/phase35/` que los scripts de
 //! `experiments/nbody/phase35_rn_modeling/` consumen para fit + figuras.
 
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, ic_zeldovich_internals as internals, transfer_eh_nowiggle,
-    EisensteinHuParams, TransferKind, Vec3,
+    EisensteinHuParams, TransferKind, Vec3, amplitude_for_sigma8,
+    ic_zeldovich_internals as internals, transfer_eh_nowiggle,
 };
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use serde_json::json;
 use std::f64::consts::PI;
 use std::fs;
@@ -355,7 +355,7 @@ fn pk_particles_tsc_deconv(
         .iter()
         .zip(n_modes.iter())
         .enumerate()
-        .filter(|(_, (_, &nm))| nm > 0)
+        .filter(|&(_, (_, &nm))| nm > 0)
         .map(|(bin, (&ps, &nm))| PkBin {
             k: (bin as f64 + 1.0) * k_fund,
             pk: ps / nm as f64,

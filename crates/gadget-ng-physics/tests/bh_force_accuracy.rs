@@ -28,11 +28,11 @@
 //! - `bh_multipole_ablation.csv`: ablación de orden multipolar (order=1,2,3) a θ fijo.
 
 use gadget_ng_core::{
-    build_particles, CosmologySection, DirectGravity, GravitySection, GravitySolver, IcKind,
+    CosmologySection, DirectGravity, GravitySection, GravitySolver, IcKind,
     InitialConditionsSection, MacSoftening, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, UnitsSection, Vec3,
+    SimulationSection, TimestepSection, UnitsSection, Vec3, build_particles,
 };
-use gadget_ng_tree::{walk_stats_begin, walk_stats_end, BarnesHutGravity, Octree, WalkStats};
+use gadget_ng_tree::{BarnesHutGravity, Octree, WalkStats, walk_stats_begin, walk_stats_end};
 use std::time::Instant;
 
 const G: f64 = 1.0;
@@ -67,9 +67,13 @@ fn make_config_uniform_sphere() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -98,9 +102,13 @@ fn make_config_plummer() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -248,8 +256,8 @@ fn compute_force_error(ref_acc: &[Vec3], bh_acc: &[Vec3]) -> ForceError {
         }
         let err = (*b - *r).norm() / ref_mag;
         errors.push(err);
-        ref_total = ref_total + *r;
-        bh_total = bh_total + *b;
+        ref_total += *r;
+        bh_total += *b;
     }
 
     let n = errors.len() as f64;
@@ -890,9 +898,13 @@ fn make_config_plummer_a(a: f64, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -1043,7 +1055,8 @@ fn bh_softened_multipoles_ablation() {
 
     println!(
         "\nH1 check Plummer a=0.1: bare order2 mean={:.3}%  softened order2 mean={:.3}%  ratio={:.2}x",
-        err_bare2.mean_err * 100.0, err_soft2.mean_err * 100.0,
+        err_bare2.mean_err * 100.0,
+        err_soft2.mean_err * 100.0,
         err_bare2.mean_err / err_soft2.mean_err.max(1e-15)
     );
 

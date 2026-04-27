@@ -2,7 +2,7 @@
 ///
 /// Tests: desactivado no-op, gas denso forma H2, gas diluido fotodisociación,
 ///        h2_fraction bounded [0,1], DM no afectado, SFR boost con H2.
-use gadget_ng_core::{FeedbackSection, MolecularSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{FeedbackSection, MolecularSection, Particle, Vec3};
 use gadget_ng_sph::{compute_sfr_with_h2, update_h2_fraction};
 
 fn gas_dense(id: usize) -> Particle {
@@ -25,8 +25,11 @@ const CFG: MolecularSection = MolecularSection {
 
 #[test]
 fn disabled_no_op() {
-    let cfg_off = MolecularSection { enabled: false, ..Default::default() };
-    let mut p = gas_dense(0);
+    let cfg_off = MolecularSection {
+        enabled: false,
+        ..Default::default()
+    };
+    let p = gas_dense(0);
     update_h2_fraction(&mut [p.clone()], &cfg_off, 0.1);
     assert_eq!(p.h2_fraction, 0.0);
 }
@@ -48,7 +51,10 @@ fn diffuse_gas_loses_h2() {
     let mut particles = vec![gas_diffuse(0)];
     particles[0].h2_fraction = 0.8;
     update_h2_fraction(&mut particles, &CFG, 0.1);
-    assert!(particles[0].h2_fraction < 0.8, "Gas diluido debe perder H2 por fotodisociación");
+    assert!(
+        particles[0].h2_fraction < 0.8,
+        "Gas diluido debe perder H2 por fotodisociación"
+    );
 }
 
 // ── 4. h2_fraction siempre en [0, 1] ─────────────────────────────────────
@@ -60,8 +66,11 @@ fn h2_fraction_bounded() {
     particles[1].h2_fraction = 0.01;
     update_h2_fraction(&mut particles, &CFG, 1.0);
     for p in &particles {
-        assert!(p.h2_fraction >= 0.0 && p.h2_fraction <= 1.0,
-            "h2_fraction fuera de [0,1]: {}", p.h2_fraction);
+        assert!(
+            p.h2_fraction >= 0.0 && p.h2_fraction <= 1.0,
+            "h2_fraction fuera de [0,1]: {}",
+            p.h2_fraction
+        );
     }
 }
 
@@ -73,7 +82,10 @@ fn dm_not_affected() {
     dm.h2_fraction = 0.5;
     let mut particles = vec![dm];
     update_h2_fraction(&mut particles, &CFG, 0.1);
-    assert_eq!(particles[0].h2_fraction, 0.5, "DM no debe cambiar h2_fraction");
+    assert_eq!(
+        particles[0].h2_fraction, 0.5,
+        "DM no debe cambiar h2_fraction"
+    );
 }
 
 // ── 6. SFR boost mayor con más H2 ────────────────────────────────────────
@@ -93,9 +105,17 @@ fn sfr_boosted_by_h2() {
     let sfr_no_h2 = compute_sfr_with_h2(&[p_no_h2], &fb_cfg, 2.0);
     let sfr_with_h2 = compute_sfr_with_h2(&[p_with_h2], &fb_cfg, 2.0);
 
-    assert!(sfr_with_h2[0] > sfr_no_h2[0],
-        "SFR con H2 debe ser mayor: {} vs {}", sfr_with_h2[0], sfr_no_h2[0]);
+    assert!(
+        sfr_with_h2[0] > sfr_no_h2[0],
+        "SFR con H2 debe ser mayor: {} vs {}",
+        sfr_with_h2[0],
+        sfr_no_h2[0]
+    );
     // Con h2_fraction=1 y boost=2: sfr_h2 = sfr_base * (1 + 2*1) = 3 * sfr_base
     let ratio = sfr_with_h2[0] / sfr_no_h2[0];
-    assert!((ratio - 3.0).abs() < 1e-10, "Ratio esperado 3.0, obtenido {}", ratio);
+    assert!(
+        (ratio - 3.0).abs() < 1e-10,
+        "Ratio esperado 3.0, obtenido {}",
+        ratio
+    );
 }

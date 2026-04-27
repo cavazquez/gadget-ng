@@ -313,8 +313,7 @@ mod hdf5_impl {
         Ok(Gadget4Header {
             num_part_this_file: read_i64_arr6(header_group, "NumPart_ThisFile")?,
             num_part_total: read_i64_arr6(header_group, "NumPart_Total")?,
-            num_part_total_hw: read_i64_arr6(header_group, "NumPart_Total_HW")
-                .unwrap_or([0; 6]),
+            num_part_total_hw: read_i64_arr6(header_group, "NumPart_Total_HW").unwrap_or([0; 6]),
             mass_table: read_f64_arr6(header_group, "MassTable")?,
             time: read_f64(header_group, "Time")?,
             redshift: read_f64(header_group, "Redshift")?,

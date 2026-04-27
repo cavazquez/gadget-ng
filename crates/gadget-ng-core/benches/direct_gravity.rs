@@ -1,10 +1,10 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gadget_ng_core::config::{
     CosmologySection, OutputSection, PerformanceSection, TimestepSection, UnitsSection,
 };
 use gadget_ng_core::{
-    build_particles, DirectGravity, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    DirectGravity, GravitySection, GravitySolver, IcKind, InitialConditionsSection, RunConfig,
+    SimulationSection, Vec3, build_particles,
 };
 
 fn lattice_cfg(n: usize) -> RunConfig {

@@ -38,8 +38,8 @@
 //! Rosdahl et al. (2013), MNRAS 436, 2188;
 //! Gnedin & Abel (2001), New Astron. 6, 437.
 
+use crate::m1::{C_KMS, M1Params, RadiationField};
 use gadget_ng_core::{Particle, ParticleType};
-use crate::m1::{M1Params, RadiationField, C_KMS};
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 
@@ -100,7 +100,11 @@ pub fn apply_photoheating(
         let iz = ((p.position.z / box_size * nz as f64).floor() as usize).min(nz - 1);
         let cell = rad.idx(ix, iy, iz);
 
-        let gamma = if cell < gamma_hi.len() { gamma_hi[cell] } else { 0.0 };
+        let gamma = if cell < gamma_hi.len() {
+            gamma_hi[cell]
+        } else {
+            0.0
+        };
 
         if gamma < 1e-30 {
             continue;
@@ -198,7 +202,9 @@ pub fn radiation_gas_coupling_step_with_dust(
     // Paso 3: fotocalentamiento con atenuación τ_dust
     // Aplicamos exp(-τ_dust) al fotocalentamiento de cada partícula individualmente
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas { continue; }
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
         let h = p.smoothing_length.max(1e-10);
         let rho = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
         let tau_dust = kappa_dust_uv * p.dust_to_gas * rho * h;
@@ -223,8 +229,8 @@ pub fn radiation_gas_coupling_step_with_dust(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gadget_ng_core::{Particle, ParticleType, Vec3};
     use crate::m1::{M1Params, RadiationField};
+    use gadget_ng_core::{Particle, ParticleType, Vec3};
 
     fn gas_particle(x: f64, u: f64) -> Particle {
         let mut p = Particle::new(0, 1.0, Vec3::new(x, 0.5, 0.5), Vec3::zero());
@@ -239,21 +245,33 @@ mod tests {
         let rad = RadiationField::uniform(4, 4, 4, 1.0, 0.0);
         let params = M1Params::default();
         let gamma = photoionization_rate(&rad, &params);
-        assert!(gamma.iter().all(|&g| g == 0.0), "Γ debe ser 0 para campo vacío");
+        assert!(
+            gamma.iter().all(|&g| g == 0.0),
+            "Γ debe ser 0 para campo vacío"
+        );
     }
 
     #[test]
     fn photoionization_rate_positive_for_uv_field() {
         let rad = RadiationField::uniform(4, 4, 4, 1.0, 1.0);
-        let params = M1Params { c_red_factor: 100.0, ..Default::default() };
+        let params = M1Params {
+            c_red_factor: 100.0,
+            ..Default::default()
+        };
         let gamma = photoionization_rate(&rad, &params);
-        assert!(gamma.iter().all(|&g| g > 0.0), "Γ debe ser positivo con campo UV");
+        assert!(
+            gamma.iter().all(|&g| g > 0.0),
+            "Γ debe ser positivo con campo UV"
+        );
     }
 
     #[test]
     fn photoheating_increases_internal_energy() {
-        let mut rad = RadiationField::uniform(4, 4, 4, 0.25, 1e15);
-        let params = M1Params { c_red_factor: 100.0, ..Default::default() };
+        let rad = RadiationField::uniform(4, 4, 4, 0.25, 1e15);
+        let params = M1Params {
+            c_red_factor: 100.0,
+            ..Default::default()
+        };
         let gamma = photoionization_rate(&rad, &params);
 
         let u0 = 1.0;
@@ -262,7 +280,8 @@ mod tests {
 
         assert!(
             particles[0].internal_energy >= u0,
-            "Energía interna debe crecer con fotocalentamiento: u={}", particles[0].internal_energy
+            "Energía interna debe crecer con fotocalentamiento: u={}",
+            particles[0].internal_energy
         );
     }
 
@@ -276,7 +295,10 @@ mod tests {
         let u_before = dm.internal_energy;
         let mut particles = vec![dm];
         apply_photoheating(&mut particles, &rad, &gamma, 1.0, 1.0);
-        assert_eq!(particles[0].internal_energy, u_before, "DM no debe calentarse");
+        assert_eq!(
+            particles[0].internal_energy, u_before,
+            "DM no debe calentarse"
+        );
     }
 
     #[test]
@@ -292,11 +314,17 @@ mod tests {
     #[test]
     fn coupling_step_no_crash() {
         let mut rad = RadiationField::uniform(4, 4, 4, 0.25, 1e10);
-        let params = M1Params { kappa_abs: 0.1, ..Default::default() };
+        let params = M1Params {
+            kappa_abs: 0.1,
+            ..Default::default()
+        };
         let mut particles = vec![gas_particle(0.125, 1.0), gas_particle(0.5, 0.5)];
         radiation_gas_coupling_step(&mut particles, &mut rad, &params, 0.01, 1.0);
         for p in &particles {
-            assert!(p.internal_energy.is_finite(), "energía no finita tras coupling");
+            assert!(
+                p.internal_energy.is_finite(),
+                "energía no finita tras coupling"
+            );
         }
     }
 }

@@ -37,7 +37,9 @@ const COULOMB_LOG: f64 = 37.0;
 /// Kernel SPH suavizado (Wendland C2 simplificado) para conducción.
 #[inline]
 fn kernel_cond(r: f64, h: f64) -> f64 {
-    if h <= 0.0 || r >= 2.0 * h { return 0.0; }
+    if h <= 0.0 || r >= 2.0 * h {
+        return 0.0;
+    }
     let q = r / h;
     let t = 1.0 - 0.5 * q;
     (21.0 / (2.0 * std::f64::consts::PI)) / (h * h * h) * t.powi(4) * (1.0 + 2.0 * q)
@@ -59,7 +61,9 @@ pub fn apply_thermal_conduction(
     t_floor_k: f64,
     dt: f64,
 ) {
-    if !cfg.enabled { return; }
+    if !cfg.enabled {
+        return;
+    }
 
     let n = particles.len();
     let mut delta_u = vec![0.0_f64; n];
@@ -67,12 +71,16 @@ pub fn apply_thermal_conduction(
     // Loop sobre pares únicos (i < j) para garantizar conservación de energía exacta.
     // Calor que gana i proviene de j y viceversa: Δu_i = −Δu_j.
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
         let h_i = particles[i].smoothing_length.max(1e-10);
         let t_i = u_to_temperature(particles[i].internal_energy.max(0.0), gamma);
 
         for j in (i + 1)..n {
-            if particles[j].ptype != ParticleType::Gas { continue; }
+            if particles[j].ptype != ParticleType::Gas {
+                continue;
+            }
             let t_j = u_to_temperature(particles[j].internal_energy.max(0.0), gamma);
 
             let dx = particles[j].position.x - particles[i].position.x;
@@ -83,17 +91,19 @@ pub fn apply_thermal_conduction(
             // Usa el máximo de los dos radios de suavizado
             let h_ij = h_i.max(particles[j].smoothing_length.max(1e-10));
             let w = kernel_cond(r, h_ij);
-            if w <= 0.0 { continue; }
+            if w <= 0.0 {
+                continue;
+            }
 
             // Conductividad efectiva con dependencia T_mean^{5/2}
             let t_mean = 0.5 * (t_i + t_j);
-            let kappa_eff = cfg.kappa_spitzer * cfg.psi_suppression
-                * t_mean.powf(2.5) / COULOMB_LOG;
+            let kappa_eff =
+                cfg.kappa_spitzer * cfg.psi_suppression * t_mean.powf(2.5) / COULOMB_LOG;
 
             // Flujo neto: q > 0 significa que i gana calor de j (j > i en temperatura)
             let q_ij = kappa_eff * (t_j - t_i) * w * dt;
-            delta_u[i] += q_ij;   // i recibe
-            delta_u[j] -= q_ij;   // j cede (conservación exacta)
+            delta_u[i] += q_ij; // i recibe
+            delta_u[j] -= q_ij; // j cede (conservación exacta)
         }
     }
 

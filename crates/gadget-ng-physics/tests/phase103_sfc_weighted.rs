@@ -7,10 +7,9 @@
 //! 3. `DecompositionConfig` con `cost_weighted = true` se parsea correctamente.
 //! 4. Las partículas migradas tienen sus costes correctamente inicializados a 1.0.
 
-use gadget_ng_parallel::SfcDecomposition;
-use gadget_ng_core::{SfcKind, Vec3};
 use gadget_ng_core::config::RunConfig;
-
+use gadget_ng_core::{SfcKind, Vec3};
+use gadget_ng_parallel::SfcDecomposition;
 
 #[test]
 fn build_weighted_respects_weight_sum() {
@@ -26,15 +25,30 @@ fn build_weighted_respects_weight_sum() {
     let weights = vec![10.0, 10.0, 1.0, 1.0];
 
     let decomp = SfcDecomposition::build_weighted(
-        &positions, &weights,
-        0.0, 10.0, 0.0, 10.0, 0.0, 10.0,
-        2, SfcKind::Morton,
+        &positions,
+        &weights,
+        0.0,
+        10.0,
+        0.0,
+        10.0,
+        0.0,
+        10.0,
+        2,
+        SfcKind::Morton,
     );
 
     // Los rangos deben sumar exactamente n partículas
-    let rank0_n = (0..n).filter(|&i| decomp.rank_for_pos(positions[i]) == 0).count();
-    let rank1_n = (0..n).filter(|&i| decomp.rank_for_pos(positions[i]) == 1).count();
-    assert_eq!(rank0_n + rank1_n, n, "todos los puntos deben estar en algún rank");
+    let rank0_n = (0..n)
+        .filter(|&i| decomp.rank_for_pos(positions[i]) == 0)
+        .count();
+    let rank1_n = (0..n)
+        .filter(|&i| decomp.rank_for_pos(positions[i]) == 1)
+        .count();
+    assert_eq!(
+        rank0_n + rank1_n,
+        n,
+        "todos los puntos deben estar en algún rank"
+    );
 }
 
 #[test]
@@ -56,20 +70,36 @@ fn build_weighted_vs_uniform_differ_for_skewed_weights() {
     }
 
     let decomp_weighted = SfcDecomposition::build_weighted(
-        &positions, &weights,
-        0.0, 10.0, 0.0, 10.0, 0.0, 10.0,
-        2, SfcKind::Morton,
+        &positions,
+        &weights,
+        0.0,
+        10.0,
+        0.0,
+        10.0,
+        0.0,
+        10.0,
+        2,
+        SfcKind::Morton,
     );
     let uniform_weights = vec![1.0; n];
     let decomp_uniform = SfcDecomposition::build_weighted(
-        &positions, &uniform_weights,
-        0.0, 10.0, 0.0, 10.0, 0.0, 10.0,
-        2, SfcKind::Morton,
+        &positions,
+        &uniform_weights,
+        0.0,
+        10.0,
+        0.0,
+        10.0,
+        0.0,
+        10.0,
+        2,
+        SfcKind::Morton,
     );
 
     // La suma de pesos en rank0 debe ser ~50% del total en weighted
     let total_weight: f64 = weights.iter().sum();
-    let rank0_weight_weighted: f64 = positions.iter().zip(weights.iter())
+    let rank0_weight_weighted: f64 = positions
+        .iter()
+        .zip(weights.iter())
         .filter(|(pos, _)| decomp_weighted.rank_for_pos(**pos) == 0)
         .map(|(_, w)| w)
         .sum();
@@ -80,12 +110,18 @@ fn build_weighted_vs_uniform_differ_for_skewed_weights() {
     assert!(
         ratio > 0.5 && ratio < 2.0,
         "build_weighted debe balancear el coste total: ratio={:.2}, rank0_weight={:.1}, total={:.1}",
-        ratio, rank0_weight_weighted, total_weight
+        ratio,
+        rank0_weight_weighted,
+        total_weight
     );
 
     // Verificar que uniform no hace lo mismo (partición diferente)
-    let rank0_count_weighted = (0..n).filter(|&i| decomp_weighted.rank_for_pos(positions[i]) == 0).count();
-    let rank0_count_uniform = (0..n).filter(|&i| decomp_uniform.rank_for_pos(positions[i]) == 0).count();
+    let rank0_count_weighted = (0..n)
+        .filter(|&i| decomp_weighted.rank_for_pos(positions[i]) == 0)
+        .count();
+    let rank0_count_uniform = (0..n)
+        .filter(|&i| decomp_uniform.rank_for_pos(positions[i]) == 0)
+        .count();
     // Con pesos muy sesgados, las particiones deben diferir
     // (no es garantía estricta pero es esperable con este dataset)
     let _ = (rank0_count_weighted, rank0_count_uniform); // verificamos solo el balance de costes
@@ -109,10 +145,18 @@ fn ema_converges_after_iterations() {
 
     // Después de 20 iteraciones, el EMA debe haberse estabilizado
     for i in 0..5 {
-        assert!(costs[i] > 50.0, "partícula costosa debe tener EMA alto: {:.1}", costs[i]);
+        assert!(
+            costs[i] > 50.0,
+            "partícula costosa debe tener EMA alto: {:.1}",
+            costs[i]
+        );
     }
     for i in 5..n {
-        assert!(costs[i] < 20.0, "partícula barata debe tener EMA bajo: {:.1}", costs[i]);
+        assert!(
+            costs[i] < 20.0,
+            "partícula barata debe tener EMA bajo: {:.1}",
+            costs[i]
+        );
     }
 }
 
@@ -138,8 +182,14 @@ ema_alpha = 0.3
 output_dir = "/tmp/test_decomp"
 "#;
     let cfg: RunConfig = toml::from_str(toml).expect("config válida");
-    assert!(cfg.decomposition.cost_weighted, "cost_weighted debe ser true");
-    assert!((cfg.decomposition.ema_alpha - 0.3).abs() < 1e-12, "ema_alpha = 0.3");
+    assert!(
+        cfg.decomposition.cost_weighted,
+        "cost_weighted debe ser true"
+    );
+    assert!(
+        (cfg.decomposition.ema_alpha - 0.3).abs() < 1e-12,
+        "ema_alpha = 0.3"
+    );
 }
 
 #[test]
@@ -156,8 +206,14 @@ fn new_particles_get_uniform_cost_after_resize() {
 
     assert_eq!(particle_costs.len(), 5);
     // Las 2 nuevas partículas deben tener coste 1.0 (uniforme)
-    assert!((particle_costs[3] - 1.0).abs() < 1e-12, "nueva partícula: coste=1.0");
-    assert!((particle_costs[4] - 1.0).abs() < 1e-12, "nueva partícula: coste=1.0");
+    assert!(
+        (particle_costs[3] - 1.0).abs() < 1e-12,
+        "nueva partícula: coste=1.0"
+    );
+    assert!(
+        (particle_costs[4] - 1.0).abs() < 1e-12,
+        "nueva partícula: coste=1.0"
+    );
     // Las existentes deben conservar sus costes EMA
     assert!((particle_costs[0] - 5.0).abs() < 1e-12);
     assert!((particle_costs[1] - 10.0).abs() < 1e-12);

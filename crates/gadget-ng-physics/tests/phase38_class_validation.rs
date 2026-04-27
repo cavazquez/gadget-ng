@@ -24,12 +24,12 @@
 //! ~3–5 % residual at `k ∈ [0.05, 0.3] h/Mpc` is therefore inevitable and
 //! is masked out when evaluating absolute amplitude closure.
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    build_particles, CosmologySection, EisensteinHuParams, GravitySection, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, IcKind, InitialConditionsSection,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3, build_particles,
 };
 use serde_json::json;
 use std::f64::consts::PI;
@@ -128,9 +128,13 @@ fn build_run_config(n: usize, seed: u64, rescale: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -434,7 +438,7 @@ fn run_one(n: usize, seed: u64, mode: &'static str, class: &(ClassRef, ClassRef)
             pm.push(bin_m.pk);
             pc.push(bin_c.pk);
             pr.push(pref);
-            in_bao.push(k_h >= BAO_K_MIN && k_h <= BAO_K_MAX);
+            in_bao.push((BAO_K_MIN..=BAO_K_MAX).contains(&k_h));
         }
     }
 

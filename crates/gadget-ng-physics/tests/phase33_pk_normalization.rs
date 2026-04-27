@@ -36,12 +36,11 @@
 //! son de *caracterización*: documentan el valor observado, su estabilidad entre
 //! seeds y su comportamiento en k, NO imponen igualdad absoluta.
 
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles, transfer_eh_nowiggle, CosmologySection,
-    EisensteinHuParams, GravitySection, IcKind, InitialConditionsSection, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
-    Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, IcKind, InitialConditionsSection,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
+    UnitsSection, Vec3, amplitude_for_sigma8, build_particles, transfer_eh_nowiggle,
 };
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -129,9 +128,13 @@ fn make_config(seed: u64, grid: usize, nm: usize) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -474,11 +477,7 @@ fn cic_deconvolution_reduces_k_dependence() {
             num += (x - mx) * (y - my);
             den += (x - mx).powi(2);
         }
-        if den.abs() < 1e-30 {
-            0.0
-        } else {
-            num / den
-        }
+        if den.abs() < 1e-30 { 0.0 } else { num / den }
     };
 
     let slope_dec = slope(&log_k, &log_r_dec);
@@ -604,7 +603,7 @@ fn normalization_regression_value_documented() {
     );
 
     assert!(
-        log_a >= -16.0 && log_a <= -13.0,
+        (-16.0..=-13.0).contains(&log_a),
         "A_obs = {:.4e} fuera de la ventana documentada [1e-16, 1e-13]:\n\
          log₁₀(A_obs) = {:.4}\n\
          Esto indica un cambio en convenciones FFT/CIC/unidades. Actualizar el\n\

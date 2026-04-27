@@ -23,7 +23,7 @@
 //!    activo-solo vs cierre completo — deben coincidir tras un paso.
 
 use gadget_ng_core::{Particle, TimestepCriterion, Vec3};
-use gadget_ng_integrators::{hierarchical_kdk_step, HierarchicalState};
+use gadget_ng_integrators::{HierarchicalState, hierarchical_kdk_step};
 use gadget_ng_tree::Octree;
 
 // ── Constantes ──────────────────────────────────────────────────────────────

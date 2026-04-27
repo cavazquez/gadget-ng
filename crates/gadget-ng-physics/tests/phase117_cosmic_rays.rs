@@ -2,7 +2,7 @@
 ///
 /// Tests: inyección CR desde SN, DM no recibe CR, difusión iguala energía,
 ///        cr_pressure formula, cr_energy >= 0, serde de CrSection.
-use gadget_ng_core::{CrSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{CrSection, Particle, Vec3};
 use gadget_ng_sph::{cr_pressure, diffuse_cr, inject_cr_from_sn};
 
 fn gas(id: usize, x: f64) -> Particle {
@@ -17,7 +17,10 @@ fn injection_increases_cr_energy() {
     let sfr = vec![1.0];
     let cr_before = particles[0].cr_energy;
     inject_cr_from_sn(&mut particles, &sfr, 0.1, 0.01);
-    assert!(particles[0].cr_energy > cr_before, "cr_energy debe aumentar tras inyección");
+    assert!(
+        particles[0].cr_energy > cr_before,
+        "cr_energy debe aumentar tras inyección"
+    );
 }
 
 // ── 2. SFR = 0 → sin inyección ────────────────────────────────────────────
@@ -27,7 +30,10 @@ fn zero_sfr_no_cr_injection() {
     let mut particles = vec![gas(0, 0.0)];
     let sfr = vec![0.0];
     inject_cr_from_sn(&mut particles, &sfr, 0.1, 1.0);
-    assert_eq!(particles[0].cr_energy, 0.0, "Sin SFR, no debe inyectarse CR");
+    assert_eq!(
+        particles[0].cr_energy, 0.0,
+        "Sin SFR, no debe inyectarse CR"
+    );
 }
 
 // ── 3. DM no recibe inyección CR ──────────────────────────────────────────
@@ -56,8 +62,14 @@ fn diffusion_equalizes_cr_energy() {
     diffuse_cr(&mut particles, 0.1, 0.0, 1.0);
 
     // La partícula con más CR debe perder algo; la otra debe ganar
-    assert!(particles[1].cr_energy > 0.0, "p1 debe recibir CR por difusión");
-    assert!(particles[0].cr_energy < 2.0, "p0 debe perder CR por difusión");
+    assert!(
+        particles[1].cr_energy > 0.0,
+        "p1 debe recibir CR por difusión"
+    );
+    assert!(
+        particles[0].cr_energy < 2.0,
+        "p0 debe perder CR por difusión"
+    );
 }
 
 // ── 5. cr_pressure formula correcta ──────────────────────────────────────
@@ -68,14 +80,22 @@ fn cr_pressure_formula() {
     let rho = 2.0;
     let expected = (4.0 / 3.0 - 1.0) * rho * e_cr; // = 2/3
     let p_cr = cr_pressure(e_cr, rho);
-    assert!((p_cr - expected).abs() < 1e-12, "P_cr incorrecto: {p_cr} vs {expected}");
+    assert!(
+        (p_cr - expected).abs() < 1e-12,
+        "P_cr incorrecto: {p_cr} vs {expected}"
+    );
 }
 
 // ── 6. serde de CrSection ────────────────────────────────────────────────
 
 #[test]
 fn cr_section_serde() {
-    let cfg = CrSection { enabled: true, cr_fraction: 0.15, kappa_cr: 5e-3, b_cr_suppress: 0.0 };
+    let cfg = CrSection {
+        enabled: true,
+        cr_fraction: 0.15,
+        kappa_cr: 5e-3,
+        b_cr_suppress: 0.0,
+    };
     let json = serde_json::to_string(&cfg).unwrap();
     let cfg2: CrSection = serde_json::from_str(&json).unwrap();
     assert!(cfg2.enabled);

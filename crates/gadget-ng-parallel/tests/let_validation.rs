@@ -8,8 +8,8 @@
 //! - `export_let_prunes_subtrees`: verifica que nodos muy lejanos se exportan
 //!   completos sin abrir sus subárboles (poda).
 
-use gadget_ng_core::{pairwise_accel_plummer, Vec3};
-use gadget_ng_tree::{accel_from_let, pack_let_nodes, unpack_let_nodes, Octree, RMN_FLOATS};
+use gadget_ng_core::{Vec3, pairwise_accel_plummer};
+use gadget_ng_tree::{Octree, RMN_FLOATS, accel_from_let, pack_let_nodes, unpack_let_nodes};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

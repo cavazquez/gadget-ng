@@ -29,17 +29,17 @@
 //! Este test valida esta relación — el estándar de códigos como GADGET,
 //! PKDGRAV y CLASS.
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
-    Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8,
+    build_particles,
+    cosmology::{CosmologyParams, gravity_coupling_qksl, growth_factor_d_ratio},
+    transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use serde_json::json;
 use std::f64::consts::PI;
@@ -170,9 +170,13 @@ fn build_run_config(n: usize, seed: u64, mode: Mode) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -532,24 +536,22 @@ fn matrix() -> &'static [SnapshotResult] {
         {
             let mut path = phase41_dir();
             path.push("per_snapshot_metrics.json");
-            if path.exists() {
-                if let Ok(txt) = fs::read_to_string(&path) {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt) {
-                        if let Some(arr) = val.get("snapshots").and_then(|v| v.as_array()) {
-                            eprintln!(
-                                "[phase41] cargando matriz cacheada ({} snapshots) de {}",
-                                arr.len(),
-                                path.display()
-                            );
-                            let out: Vec<SnapshotResult> = arr
-                                .iter()
-                                .filter_map(SnapshotResult::from_json_value)
-                                .collect();
-                            if !out.is_empty() {
-                                return out;
-                            }
-                        }
-                    }
+            if path.exists()
+                && let Ok(txt) = fs::read_to_string(&path)
+                && let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt)
+                && let Some(arr) = val.get("snapshots").and_then(|v| v.as_array())
+            {
+                eprintln!(
+                    "[phase41] cargando matriz cacheada ({} snapshots) de {}",
+                    arr.len(),
+                    path.display()
+                );
+                let out: Vec<SnapshotResult> = arr
+                    .iter()
+                    .filter_map(SnapshotResult::from_json_value)
+                    .collect();
+                if !out.is_empty() {
+                    return out;
                 }
             }
         }

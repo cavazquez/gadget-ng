@@ -46,7 +46,7 @@
 //! Total por rank: 2 × nm³/P f64 (idéntico a un solo alltoall de slab 1D).
 
 use gadget_ng_parallel::ParallelRuntime;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Arc;
 
 // ── Layout pencil 2D ──────────────────────────────────────────────────────────

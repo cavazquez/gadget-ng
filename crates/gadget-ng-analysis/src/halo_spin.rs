@@ -105,7 +105,11 @@ pub fn halo_spin(
     let mut lz = 0.0f64;
 
     for (i, (&pos, &vel)) in positions.iter().zip(velocities.iter()).enumerate() {
-        let m = if i < masses.len() { masses[i] } else { masses[0] };
+        let m = if i < masses.len() {
+            masses[i]
+        } else {
+            masses[0]
+        };
         let rx = pos.x - pos_com[0];
         let ry = pos.y - pos_com[1];
         let rz = pos.z - pos_com[2];
@@ -180,7 +184,11 @@ fn center_of_mass(positions: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 
     let mut cy = 0.0f64;
     let mut cz = 0.0f64;
     for (i, &pos) in positions.iter().enumerate() {
-        let m = if i < masses.len() { masses[i] } else { masses[0] };
+        let m = if i < masses.len() {
+            masses[i]
+        } else {
+            masses[0]
+        };
         cx += m * pos.x;
         cy += m * pos.y;
         cz += m * pos.z;
@@ -193,7 +201,11 @@ fn velocity_center(velocities: &[Vec3], masses: &[f64], total_mass: f64) -> [f64
     let mut vy = 0.0f64;
     let mut vz = 0.0f64;
     for (i, &vel) in velocities.iter().enumerate() {
-        let m = if i < masses.len() { masses[i] } else { masses[0] };
+        let m = if i < masses.len() {
+            masses[i]
+        } else {
+            masses[0]
+        };
         vx += m * vel.x;
         vy += m * vel.y;
         vz += m * vel.z;
@@ -233,7 +245,11 @@ mod tests {
         let (pos, vel, mass) = make_ring(16, 10.0, 5.0, 1e10);
         let params = SpinParams::default();
         let spin = halo_spin(&pos, &vel, &mass, &params).unwrap();
-        assert!(spin.lambda_peebles > 0.0, "λ debe ser positivo: {}", spin.lambda_peebles);
+        assert!(
+            spin.lambda_peebles > 0.0,
+            "λ debe ser positivo: {}",
+            spin.lambda_peebles
+        );
         assert!(spin.lambda_bullock > 0.0, "λ' debe ser positivo");
         assert!(spin.l_mag > 0.0, "|L| debe ser positivo");
     }
@@ -250,8 +266,16 @@ mod tests {
         let masses = vec![1e10; 3];
         let params = SpinParams::default();
         let spin = halo_spin(&pos, &vel, &masses, &params).unwrap();
-        assert!(spin.l_mag < 1e-10, "L debe ser 0 para halo estático: {}", spin.l_mag);
-        assert!(spin.lambda_peebles < 1e-10, "λ debe ser 0: {}", spin.lambda_peebles);
+        assert!(
+            spin.l_mag < 1e-10,
+            "L debe ser 0 para halo estático: {}",
+            spin.l_mag
+        );
+        assert!(
+            spin.lambda_peebles < 1e-10,
+            "λ debe ser 0: {}",
+            spin.lambda_peebles
+        );
     }
 
     #[test]
@@ -267,20 +291,23 @@ mod tests {
         let (pos, vel, mass) = make_ring(8, 5.0, 3.0, 1e10);
         let params = SpinParams::default();
         let spin = halo_spin(&pos, &vel, &mass, &params).unwrap();
-        assert!(spin.lambda_bullock < spin.lambda_peebles,
-            "λ' debe ser menor que λ: {} vs {}", spin.lambda_bullock, spin.lambda_peebles);
+        assert!(
+            spin.lambda_bullock < spin.lambda_peebles,
+            "λ' debe ser menor que λ: {} vs {}",
+            spin.lambda_bullock,
+            spin.lambda_peebles
+        );
         let ratio = spin.lambda_peebles / spin.lambda_bullock;
-        assert!((ratio - std::f64::consts::SQRT_2).abs() < 1e-10,
-            "ratio λ/λ' debe ser sqrt(2): {ratio}");
+        assert!(
+            (ratio - std::f64::consts::SQRT_2).abs() < 1e-10,
+            "ratio λ/λ' debe ser sqrt(2): {ratio}"
+        );
     }
 
     #[test]
     fn center_of_mass_symmetric() {
         // Distribución simétrica → COM en origen
-        let pos = vec![
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::new(-1.0, 0.0, 0.0),
-        ];
+        let pos = vec![Vec3::new(1.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)];
         let masses = vec![1.0, 1.0];
         let com = center_of_mass(&pos, &masses, 2.0);
         assert!(com[0].abs() < 1e-15, "COM.x debe ser 0: {}", com[0]);
@@ -293,8 +320,11 @@ mod tests {
         let params = SpinParams::default();
         let spin = halo_spin(&pos, &vel, &mass, &params).unwrap();
         // Lz debe dominar
-        assert!(spin.angular_momentum[2] > 0.0,
-            "Lz debe ser positivo para rotación antihoraria: {}", spin.angular_momentum[2]);
+        assert!(
+            spin.angular_momentum[2] > 0.0,
+            "Lz debe ser positivo para rotación antihoraria: {}",
+            spin.angular_momentum[2]
+        );
         let lz_frac = spin.angular_momentum[2].abs() / spin.l_mag;
         assert!(lz_frac > 0.99, "L debe apuntar casi en Z: {lz_frac}");
     }

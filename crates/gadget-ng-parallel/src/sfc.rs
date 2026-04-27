@@ -638,8 +638,8 @@ mod tests {
         let a = morton3(0.1, 0.1, 0.1);
         let b = morton3(0.15, 0.12, 0.11); // cerca de a
         let c = morton3(0.9, 0.9, 0.9); // lejos de a
-                                        // Ambos a y b están en el octante inferior; c está en el superior.
-                                        // Sus códigos morton deben estar en rangos distintos.
+        // Ambos a y b están en el octante inferior; c está en el superior.
+        // Sus códigos morton deben estar en rangos distintos.
         assert!(a < c, "morton(0.1,0.1,0.1) debe ser < morton(0.9,0.9,0.9)");
         assert!(
             b < c,
@@ -671,7 +671,7 @@ mod tests {
         let decomp = SfcDecomposition::build(&positions, 1.0, 4);
         for pos in &positions {
             let r = decomp.rank_for_pos(*pos);
-            assert!(r >= 0 && r < 4, "rango {r} fuera de rango [0,4)");
+            assert!((0..4).contains(&r), "rango {r} fuera de rango [0,4)");
         }
     }
 
@@ -700,7 +700,7 @@ mod tests {
         // Cada rango debe tener entre 150 y 350 partículas (±40%).
         for (r, &c) in counts.iter().enumerate() {
             assert!(
-                c >= 150 && c <= 350,
+                (150..=350).contains(&c),
                 "rango {r} tiene {c} partículas (desequilibrado)"
             );
         }
@@ -809,7 +809,7 @@ mod tests {
         assert_eq!(total, 1000);
         for (r, &c) in counts.iter().enumerate() {
             assert!(
-                c >= 150 && c <= 350,
+                (150..=350).contains(&c),
                 "Hilbert rango {r} tiene {c} partículas (desequilibrado)"
             );
         }

@@ -67,7 +67,9 @@ pub fn update_ism_phases(
     cfg: &IsmSection,
     dt: f64,
 ) {
-    if !cfg.enabled { return; }
+    if !cfg.enabled {
+        return;
+    }
 
     let n = particles.len();
     assert_eq!(sfr.len(), n, "sfr.len() debe ser igual a particles.len()");
@@ -75,7 +77,9 @@ pub fn update_ism_phases(
     const T_RELAX_FACTOR: f64 = 0.1; // t_relax = T_RELAX_FACTOR × dt_típico
 
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas { continue; }
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
 
         let h = particles[i].smoothing_length.max(1e-10);
         let rho_local = particles[i].mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);

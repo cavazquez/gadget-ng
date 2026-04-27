@@ -3,10 +3,10 @@
 /// Tests: TwoFluidSection default, turbulencia activa modifica velocidades,
 ///        flux-freeze en maybe_mhd no crashea, SRMHD con v<threshold no cambia,
 ///        reconexión en engine modifica B, Braginskii en engine modifica v.
-use gadget_ng_core::{MhdSection, TurbulenceSection, TwoFluidSection, Vec3, Particle};
+use gadget_ng_core::{Particle, TurbulenceSection, TwoFluidSection, Vec3};
 use gadget_ng_mhd::{
-    apply_braginskii_viscosity, apply_electron_ion_coupling, apply_flux_freeze,
-    apply_magnetic_reconnection, apply_turbulent_forcing, advance_srmhd, C_LIGHT,
+    C_LIGHT, advance_srmhd, apply_braginskii_viscosity, apply_flux_freeze,
+    apply_magnetic_reconnection, apply_turbulent_forcing,
 };
 
 fn gas(id: usize, pos: Vec3, vel: Vec3, b: Vec3, u: f64) -> Particle {
@@ -37,11 +37,22 @@ fn turbulent_forcing_modifies_velocities() {
         k_max: 4.0,
         spectral_index: 5.0 / 3.0,
     };
-    let mut particles: Vec<Particle> = (0..8).map(|i| {
-        gas(i, Vec3::new(i as f64 * 0.1, 0.0, 0.0), Vec3::zero(), Vec3::new(1.0, 0.0, 0.0), 1e8)
-    }).collect();
+    let mut particles: Vec<Particle> = (0..8)
+        .map(|i| {
+            gas(
+                i,
+                Vec3::new(i as f64 * 0.1, 0.0, 0.0),
+                Vec3::zero(),
+                Vec3::new(1.0, 0.0, 0.0),
+                1e8,
+            )
+        })
+        .collect();
     apply_turbulent_forcing(&mut particles, &cfg, 0.01, 42);
-    let v_sum: f64 = particles.iter().map(|p| p.velocity.x.abs() + p.velocity.y.abs()).sum();
+    let v_sum: f64 = particles
+        .iter()
+        .map(|p| p.velocity.x.abs() + p.velocity.y.abs())
+        .sum();
     assert!(v_sum > 0.0, "turbulencia debe perturbar v: {v_sum:.2e}");
 }
 
@@ -49,12 +60,19 @@ fn turbulent_forcing_modifies_velocities() {
 
 #[test]
 fn flux_freeze_in_engine_no_crash() {
-    let mut particles: Vec<Particle> = (0..5).map(|i| {
-        gas(i, Vec3::new(i as f64 * 0.1, 0.0, 0.0),
-            Vec3::zero(), Vec3::new(1e-9, 0.0, 0.0), 1e12)
-    }).collect();
+    let mut particles: Vec<Particle> = (0..5)
+        .map(|i| {
+            gas(
+                i,
+                Vec3::new(i as f64 * 0.1, 0.0, 0.0),
+                Vec3::zero(),
+                Vec3::new(1e-9, 0.0, 0.0),
+                1e12,
+            )
+        })
+        .collect();
     let rho_ref = gadget_ng_mhd::mean_gas_density(&particles);
-    apply_flux_freeze(&mut particles, 5.0/3.0, 100.0, rho_ref);
+    apply_flux_freeze(&mut particles, 5.0 / 3.0, 100.0, rho_ref);
     // Debe ejecutar sin panic
     assert!(particles.iter().all(|p| p.b_field.x.is_finite()));
 }
@@ -67,7 +85,10 @@ fn srmhd_sub_threshold_no_position_change() {
     let mut particles = vec![gas(0, Vec3::zero(), v_sub, Vec3::new(1.0, 0.0, 0.0), 1.0)];
     let pos_before = particles[0].position.x;
     advance_srmhd(&mut particles, 0.01, C_LIGHT, 0.1);
-    assert_eq!(particles[0].position.x, pos_before, "v < threshold → no corrección relativista");
+    assert_eq!(
+        particles[0].position.x, pos_before,
+        "v < threshold → no corrección relativista"
+    );
 }
 
 // ── 5. apply_magnetic_reconnection libera calor y reduce B ───────────────
@@ -82,9 +103,15 @@ fn reconnection_releases_heat_reduces_b() {
         gas(1, Vec3::new(0.1, 0.0, 0.0), Vec3::zero(), b_neg, 1.0),
     ];
     let u0_before = particles[0].internal_energy;
-    apply_magnetic_reconnection(&mut particles, 0.1, 5.0/3.0, 0.1);
-    assert!(particles[0].internal_energy > u0_before, "Reconexión debe calentar gas");
-    assert!(particles[0].b_field.x.abs() < b_pos.x.abs(), "Reconexión debe reducir |B|");
+    apply_magnetic_reconnection(&mut particles, 0.1, 5.0 / 3.0, 0.1);
+    assert!(
+        particles[0].internal_energy > u0_before,
+        "Reconexión debe calentar gas"
+    );
+    assert!(
+        particles[0].b_field.x.abs() < b_pos.x.abs(),
+        "Reconexión debe reducir |B|"
+    );
 }
 
 // ── 6. apply_braginskii_viscosity transfiere momento ∥B ──────────────────
@@ -93,11 +120,26 @@ fn reconnection_releases_heat_reduces_b() {
 fn braginskii_transfers_momentum_parallel_b() {
     let b = Vec3::new(1.0, 0.0, 0.0);
     let mut particles = vec![
-        gas(0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(2.0, 0.0, 0.0), b, 1.0),
-        gas(1, Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.0, 0.0, 0.0), b, 1.0),
+        gas(
+            0,
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+            b,
+            1.0,
+        ),
+        gas(
+            1,
+            Vec3::new(0.1, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            b,
+            1.0,
+        ),
     ];
     let v0_before = particles[0].velocity.x;
     apply_braginskii_viscosity(&mut particles, 0.5, 0.01);
     let v0_after = particles[0].velocity.x;
-    assert!(v0_after < v0_before, "Viscosidad Braginskii debe frenar la partícula más rápida");
+    assert!(
+        v0_after < v0_before,
+        "Viscosidad Braginskii debe frenar la partícula más rápida"
+    );
 }

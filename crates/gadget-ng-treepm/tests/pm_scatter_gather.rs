@@ -12,7 +12,7 @@
 
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::SerialRuntime;
-use gadget_ng_pm::{slab_pm, SlabLayout};
+use gadget_ng_pm::{SlabLayout, slab_pm};
 use gadget_ng_treepm::distributed::pm_scatter_gather_accels;
 
 fn make_particle(id: usize, x: f64, y: f64, z: f64, mass: f64) -> Particle {

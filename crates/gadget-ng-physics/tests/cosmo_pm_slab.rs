@@ -14,7 +14,7 @@ use gadget_ng_core::Vec3;
 use gadget_ng_parallel::SerialRuntime;
 use gadget_ng_pm::{
     cic, fft_poisson,
-    slab_fft::{solve_forces_slab, SlabLayout},
+    slab_fft::{SlabLayout, solve_forces_slab},
     slab_pm,
 };
 use std::f64::consts::PI;

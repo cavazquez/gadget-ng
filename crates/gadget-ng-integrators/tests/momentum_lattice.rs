@@ -1,7 +1,7 @@
 //! Conservación aproximada del momento lineal total con gravedad pareada y leapfrog KDK.
 use gadget_ng_core::{
-    accelerations_all_particles, build_particles, DirectGravity, IcKind, InitialConditionsSection,
-    RunConfig, SimulationSection, Vec3,
+    DirectGravity, IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    accelerations_all_particles, build_particles,
 };
 use gadget_ng_integrators::leapfrog_kdk_step;
 
@@ -30,9 +30,13 @@ fn lattice_config() -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

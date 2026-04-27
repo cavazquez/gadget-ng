@@ -232,7 +232,9 @@ mod tests {
         let mass = vec![1.0; n];
         let mut seed = 42u64;
         let lcg = |s: &mut u64| {
-            *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((*s >> 33) as f64) / (u32::MAX as f64)
         };
         for _ in 0..n {
@@ -354,7 +356,9 @@ mod tests {
         let mass = vec![1.0; n];
         let mut seed = 77u64;
         let lcg = |s: &mut u64| -> f64 {
-            *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((*s >> 33) as f64) / (u32::MAX as f64)
         };
         for _ in 0..n {
@@ -365,7 +369,7 @@ mod tests {
             pos.push(Vec3::new(x, y, z));
             // Velocidad: componente radial grande + ruido tangencial pequeño
             let vr = (lcg(&mut seed) - 0.5) * 2.0 * 3.0; // σ_r ≈ 3
-            let vt_scale = 0.3;                             // σ_t ≈ 0.3
+            let vt_scale = 0.3; // σ_t ≈ 0.3
             let tx = lcg(&mut seed) - 0.5;
             let ty = lcg(&mut seed) - 0.5;
             let tz = lcg(&mut seed) - 0.5;

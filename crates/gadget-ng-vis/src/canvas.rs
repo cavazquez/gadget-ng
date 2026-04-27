@@ -3,7 +3,7 @@
 //! El `CpuCanvas` acumula partículas como puntos de 1 píxel sobre un buffer RGBA.
 //! Este backend es portable (sin requerir GPU) y se usa como fallback y para export PNG.
 
-use crate::color::{particle_color, ColorMode};
+use crate::color::{ColorMode, particle_color};
 use crate::projection::Projection;
 use gadget_ng_core::Vec3;
 

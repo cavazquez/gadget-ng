@@ -1,7 +1,7 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gadget_ng_core::{
-    build_particles, GravitySolver, IcKind, InitialConditionsSection, RunConfig, SimulationSection,
-    Vec3,
+    GravitySolver, IcKind, InitialConditionsSection, RunConfig, SimulationSection, Vec3,
+    build_particles,
 };
 use gadget_ng_tree::{BarnesHutGravity, Octree};
 

@@ -25,7 +25,7 @@
 //! Scoccimarro (2004), PRD 70, 083007.
 
 use gadget_ng_core::Vec3;
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 // ── Structs públicos ──────────────────────────────────────────────────────
 
@@ -140,21 +140,9 @@ pub fn pk_redshift_space(
             };
             let delta = if a_h > 0.0 { v_los / a_h } else { 0.0 };
             match params.los {
-                LosAxis::X => Vec3::new(
-                    (pos.x + delta).rem_euclid(box_size),
-                    pos.y,
-                    pos.z,
-                ),
-                LosAxis::Y => Vec3::new(
-                    pos.x,
-                    (pos.y + delta).rem_euclid(box_size),
-                    pos.z,
-                ),
-                LosAxis::Z => Vec3::new(
-                    pos.x,
-                    pos.y,
-                    (pos.z + delta).rem_euclid(box_size),
-                ),
+                LosAxis::X => Vec3::new((pos.x + delta).rem_euclid(box_size), pos.y, pos.z),
+                LosAxis::Y => Vec3::new(pos.x, (pos.y + delta).rem_euclid(box_size), pos.z),
+                LosAxis::Z => Vec3::new(pos.x, pos.y, (pos.z + delta).rem_euclid(box_size)),
             }
         })
         .collect();
@@ -182,7 +170,11 @@ pub fn pk_redshift_space(
     fft_axis_x(&mut buf, n, &fft);
 
     // ── 3. Binar en (k, μ) ───────────────────────────────────────────────
-    let n_k = if params.n_k_bins == 0 { n / 2 } else { params.n_k_bins };
+    let n_k = if params.n_k_bins == 0 {
+        n / 2
+    } else {
+        params.n_k_bins
+    };
     let n_mu = params.n_mu_bins.max(1);
     let vol = box_size.powi(3);
     let norm = (vol / n3 as f64).powi(2);
@@ -448,7 +440,11 @@ mod tests {
     #[test]
     fn pk_rsd_bins_have_increasing_k() {
         let (pos, vel, mass) = uniform_grid(4, 1.0);
-        let params = PkRsdParams { n_k_bins: 2, n_mu_bins: 2, ..Default::default() };
+        let params = PkRsdParams {
+            n_k_bins: 2,
+            n_mu_bins: 2,
+            ..Default::default()
+        };
         let bins = pk_redshift_space(&pos, &vel, &mass, 1.0, 8, &params);
         // Dentro del mismo μ, k debe ser creciente
         let ks: Vec<f64> = bins.iter().filter(|b| b.mu < 0.5).map(|b| b.k).collect();
@@ -468,8 +464,11 @@ mod tests {
             v.z = ((seed >> 33) as f64) / (u32::MAX as f64) * 10.0 - 5.0;
         }
         let params = PkRsdParams {
-            n_k_bins: 4, n_mu_bins: 8,
-            los: LosAxis::Z, scale_factor: 0.5, hubble_a: 70.0,
+            n_k_bins: 4,
+            n_mu_bins: 8,
+            los: LosAxis::Z,
+            scale_factor: 0.5,
+            hubble_a: 70.0,
         };
         let multipoles = compute_pk_multipoles(&pos, &vel2, &mass, 1.0, 8, &params);
         for m in &multipoles {
@@ -504,8 +503,18 @@ mod tests {
         for v in &mut vel {
             v.z = 50.0;
         }
-        let params_z = PkRsdParams { n_k_bins: 2, n_mu_bins: 2, los: LosAxis::Z, ..Default::default() };
-        let params_x = PkRsdParams { n_k_bins: 2, n_mu_bins: 2, los: LosAxis::X, ..Default::default() };
+        let params_z = PkRsdParams {
+            n_k_bins: 2,
+            n_mu_bins: 2,
+            los: LosAxis::Z,
+            ..Default::default()
+        };
+        let params_x = PkRsdParams {
+            n_k_bins: 2,
+            n_mu_bins: 2,
+            los: LosAxis::X,
+            ..Default::default()
+        };
         let bz = pk_redshift_space(&pos, &vel, &mass, 1.0, 8, &params_z);
         let bx = pk_redshift_space(&pos, &vel, &mass, 1.0, 8, &params_x);
         // Con velocidad solo en Z, el espectro para LOS=Z y LOS=X debe diferir
@@ -514,7 +523,13 @@ mod tests {
 
     #[test]
     fn pk_multipole_bin_serializes() {
-        let b = PkMultipoleBin { k: 1.0, p0: 2.0, p2: 0.5, p4: 0.1, n_modes: 100 };
+        let b = PkMultipoleBin {
+            k: 1.0,
+            p0: 2.0,
+            p2: 0.5,
+            p4: 0.1,
+            n_modes: 100,
+        };
         let s = serde_json::to_string(&b).unwrap();
         let b2: PkMultipoleBin = serde_json::from_str(&s).unwrap();
         assert!((b2.p0 - 2.0).abs() < 1e-12);

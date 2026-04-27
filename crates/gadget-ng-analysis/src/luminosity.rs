@@ -28,8 +28,8 @@
 //! Bruzual & Charlot (2003) MNRAS 344, 1000 — modelos de población estelar.
 //! Worthey (1994) ApJS 95, 107 — índices espectrales.
 
+use crate::sps_tables::{Spsband, sps_luminosity};
 use gadget_ng_core::{Particle, ParticleType};
-use crate::sps_tables::{sps_luminosity, Spsband};
 
 /// Resultado del cálculo de luminosidad para una galaxia o cúmulo (Phase 118).
 #[derive(Debug, Clone, PartialEq)]
@@ -59,7 +59,9 @@ pub struct LuminosityResult {
 ///
 /// Luminosidad en unidades de L_sun.
 pub fn stellar_luminosity_solar(mass: f64, age_gyr: f64, metallicity: f64) -> f64 {
-    if mass <= 0.0 { return 0.0; }
+    if mass <= 0.0 {
+        return 0.0;
+    }
     let age_safe = age_gyr.max(1e-3); // evitar singularidad en age = 0
     let z_safe = metallicity.max(4e-4); // mínimo sub-solar
 
@@ -149,7 +151,9 @@ pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
     let mut n_stars = 0_usize;
 
     for p in particles {
-        if p.ptype != ParticleType::Star { continue; }
+        if p.ptype != ParticleType::Star {
+            continue;
+        }
         let age = p.stellar_age.max(1e-3);
         let z = p.metallicity;
         let m = p.mass;
@@ -166,13 +170,31 @@ pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
 
     let bv = if l_b > 0.0 && l_v > 0.0 {
         -2.5 * (l_b / l_v).log10()
-    } else { 0.0 };
+    } else {
+        0.0
+    };
     let vr = if l_v > 0.0 && l_r > 0.0 {
         -2.5 * (l_v / l_r).log10()
-    } else { 0.0 };
-    let mass_weighted_age = if mass_tot > 0.0 { mass_age / mass_tot } else { 0.0 };
+    } else {
+        0.0
+    };
+    let mass_weighted_age = if mass_tot > 0.0 {
+        mass_age / mass_tot
+    } else {
+        0.0
+    };
 
-    SedResult { l_u, l_b, l_v, l_r, l_i, bv, vr, mass_weighted_age, n_stars }
+    SedResult {
+        l_u,
+        l_b,
+        l_v,
+        l_r,
+        l_i,
+        bv,
+        vr,
+        mass_weighted_age,
+        n_stars,
+    }
 }
 
 /// Calcula la luminosidad total y colores de una galaxia desde sus partículas (Phase 118).
@@ -194,7 +216,9 @@ pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
     let mut n_stars = 0_usize;
 
     for p in particles {
-        if p.ptype != ParticleType::Star { continue; }
+        if p.ptype != ParticleType::Star {
+            continue;
+        }
         let age = p.stellar_age.max(1e-4);
         let z = p.metallicity;
         let l_i = stellar_luminosity_solar(p.mass, age, z);
@@ -211,5 +235,10 @@ pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
         (0.0, 0.0)
     };
 
-    LuminosityResult { l_total, bv, gr, n_stars }
+    LuminosityResult {
+        l_total,
+        bv,
+        gr,
+        n_stars,
+    }
 }

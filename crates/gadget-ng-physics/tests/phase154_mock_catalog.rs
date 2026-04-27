@@ -1,9 +1,9 @@
 //! Tests de integración — Phase 154: Mock catalogues con efectos de selección.
 
+use gadget_ng_analysis::fof::FofHalo;
 use gadget_ng_analysis::mock_catalog::{
     angular_power_spectrum_cl, apparent_magnitude, build_mock_catalog, selection_flux_limit,
 };
-use gadget_ng_analysis::fof::FofHalo;
 use gadget_ng_core::{Particle, Vec3};
 
 fn dm_particle(x: f64, y: f64, z: f64) -> Particle {
@@ -12,12 +12,45 @@ fn dm_particle(x: f64, y: f64, z: f64) -> Particle {
 
 fn make_halos() -> Vec<FofHalo> {
     vec![
-        FofHalo { halo_id: 0, n_particles: 100, mass: 1e2, x_com: 25.0, y_com: 25.0, z_com: 25.0,
-            vx_com: 0.0, vy_com: 0.0, vz_com: 0.0, velocity_dispersion: 100.0, r_vir: 1.0 },
-        FofHalo { halo_id: 1, n_particles: 50, mass: 5e1, x_com: 75.0, y_com: 75.0, z_com: 75.0,
-            vx_com: 0.0, vy_com: 0.0, vz_com: 0.0, velocity_dispersion: 50.0, r_vir: 0.7 },
-        FofHalo { halo_id: 2, n_particles: 200, mass: 5e2, x_com: 50.0, y_com: 10.0, z_com: 30.0,
-            vx_com: 0.0, vy_com: 0.0, vz_com: 0.0, velocity_dispersion: 200.0, r_vir: 2.0 },
+        FofHalo {
+            halo_id: 0,
+            n_particles: 100,
+            mass: 1e2,
+            x_com: 25.0,
+            y_com: 25.0,
+            z_com: 25.0,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 100.0,
+            r_vir: 1.0,
+        },
+        FofHalo {
+            halo_id: 1,
+            n_particles: 50,
+            mass: 5e1,
+            x_com: 75.0,
+            y_com: 75.0,
+            z_com: 75.0,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 50.0,
+            r_vir: 0.7,
+        },
+        FofHalo {
+            halo_id: 2,
+            n_particles: 200,
+            mass: 5e2,
+            x_com: 50.0,
+            y_com: 10.0,
+            z_com: 30.0,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 200.0,
+            r_vir: 2.0,
+        },
     ]
 }
 

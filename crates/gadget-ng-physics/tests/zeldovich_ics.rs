@@ -29,12 +29,12 @@
 
 use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
-    build_particles, build_particles_for_gid_range, cosmology::CosmologyParams, growth_rate_f,
-    wrap_position, CosmologySection, GravitySection, GravitySolver, IcKind,
-    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
-    TimestepSection, UnitsSection, Vec3,
+    CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
+    OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection,
+    Vec3, build_particles, build_particles_for_gid_range, cosmology::CosmologyParams,
+    growth_rate_f, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use gadget_ng_treepm::TreePmSolver;
 
@@ -101,9 +101,13 @@ fn zel_config(seed: u64, spectral_index: f64, amplitude: f64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -358,9 +362,13 @@ fn zel_pk_follows_power_law() {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     };
 
     let parts = build_particles(&cfg).expect("IC build N16");
@@ -539,7 +547,8 @@ fn zel_gid_range_consistent() {
             .iter()
             .chain(hi.iter())
             .find(|q| q.global_id == p_all.global_id);
-        let p_range = found.expect(&format!("gid {} no encontrado en rangos", p_all.global_id));
+        let p_range =
+            found.unwrap_or_else(|| panic!("gid {} no encontrado en rangos", p_all.global_id));
         assert_eq!(
             p_all.position.x.to_bits(),
             p_range.position.x.to_bits(),

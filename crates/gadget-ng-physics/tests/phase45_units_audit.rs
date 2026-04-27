@@ -27,18 +27,18 @@
 //!    medida antes/después; espera `P(k,a)/P(k,a_init) ≈ [D/D₀]²` y
 //!    `v_rms` moderado.
 
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
+    CosmologySection, GravitySection, GravitySolver, IcKind, IcMomentumConvention,
+    InitialConditionsSection, NormalizationMode, OutputSection, Particle, PerformanceSection,
+    RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
     build_particles,
     cosmology::{
-        gravity_coupling_qksl, growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams,
+        CosmologyParams, gravity_coupling_qksl, growth_factor_d_ratio, growth_rate_f, hubble_param,
     },
-    wrap_position, zeldovich_ics_with_convention, CosmologySection, GravitySection, GravitySolver,
-    IcKind, IcMomentumConvention, InitialConditionsSection, NormalizationMode, OutputSection,
-    Particle, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
-    UnitsSection, Vec3,
+    wrap_position, zeldovich_ics_with_convention,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_treepm::TreePmSolver;
 
 // ── Constantes físicas (coherentes con Phase 43/44) ──────────────────────────
@@ -61,12 +61,12 @@ const EPS_PHYS_MPC_H: f64 = 0.01;
 const N_DEFAULT: usize = 16; // pequeño: los tests son rápidos
 
 fn n_grid() -> usize {
-    if let Ok(v) = std::env::var("PHASE45_N") {
-        if let Ok(n) = v.parse::<usize>() {
-            if n.is_power_of_two() && (8..=64).contains(&n) {
-                return n;
-            }
-        }
+    if let Ok(v) = std::env::var("PHASE45_N")
+        && let Ok(n) = v.parse::<usize>()
+        && n.is_power_of_two()
+        && (8..=64).contains(&n)
+    {
+        return n;
     }
     N_DEFAULT
 }
@@ -127,9 +127,13 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

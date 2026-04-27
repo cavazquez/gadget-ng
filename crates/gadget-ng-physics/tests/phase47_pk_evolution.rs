@@ -20,16 +20,16 @@
 //! R(N) fue calibrado con P_cont en (Mpc/h)³ (Phase 35), por lo que
 //! `correct_pk(..., box_mpc_h=None, ...)` ya devuelve P en (Mpc/h)³.
 
-use gadget_ng_analysis::pk_correction::{correct_pk, correct_pk_with_shot_noise, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk, correct_pk_with_shot_noise};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, OutputSection, PerformanceSection, RunConfig,
-    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, OutputSection, PerformanceSection, RunConfig, SimulationSection,
+    TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8, build_particles,
+    cosmology::{CosmologyParams, gravity_coupling_qksl, growth_factor_d_ratio},
+    transfer_eh_nowiggle, wrap_position,
 };
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
 use serde_json::json;
 use std::f64::consts::PI;
@@ -122,9 +122,13 @@ fn build_config(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 

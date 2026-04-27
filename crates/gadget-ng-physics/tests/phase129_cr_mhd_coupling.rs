@@ -24,8 +24,10 @@ fn zero_suppress_equals_classic() {
     // b_suppress=0 → kappa_eff = kappa_cr siempre
     diffuse_cr(&mut p_classic, 0.1, 0.0, 0.01);
     diffuse_cr(&mut p_new, 0.1, 0.0, 0.01);
-    assert!((p_classic[0].cr_energy - p_new[0].cr_energy).abs() < 1e-15,
-        "b_suppress=0 debe ser idéntico al resultado previo");
+    assert!(
+        (p_classic[0].cr_energy - p_new[0].cr_energy).abs() < 1e-15,
+        "b_suppress=0 debe ser idéntico al resultado previo"
+    );
 }
 
 // ── 2. b_suppress>0 reduce la difusión ────────────────────────────────────
@@ -51,8 +53,10 @@ fn nonzero_suppress_reduces_diffusion() {
     let de_no = (p_no_suppress[0].cr_energy - e0_no).abs();
     let de_sup = (p_suppress[0].cr_energy - e0_sup).abs();
 
-    assert!(de_sup < de_no,
-        "Con B fuerte, difusión debe ser menor: Δe_sup={de_sup:.4e} vs Δe_no={de_no:.4e}");
+    assert!(
+        de_sup < de_no,
+        "Con B fuerte, difusión debe ser menor: Δe_sup={de_sup:.4e} vs Δe_no={de_no:.4e}"
+    );
 }
 
 // ── 3. B muy fuerte → difusión casi nula ─────────────────────────────────

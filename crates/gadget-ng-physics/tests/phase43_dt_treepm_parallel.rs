@@ -37,18 +37,18 @@
 //! 6. `no_nan_inf_under_phase43_matrix`                   — hard
 //! 7. `results_consistent_across_thread_counts`           — hard
 
-use gadget_ng_analysis::pk_correction::{correct_pk, RnModel};
-use gadget_ng_analysis::power_spectrum::{power_spectrum, PkBin};
+use gadget_ng_analysis::pk_correction::{RnModel, correct_pk};
+use gadget_ng_analysis::power_spectrum::{PkBin, power_spectrum};
 use gadget_ng_core::{
-    amplitude_for_sigma8, build_particles,
-    cosmology::{gravity_coupling_qksl, growth_factor_d_ratio, CosmologyParams},
-    transfer_eh_nowiggle, wrap_position, CosmologySection, EisensteinHuParams, GravitySection,
-    GravitySolver, IcKind, InitialConditionsSection, NormalizationMode, OutputSection,
-    PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind, UnitsSection,
-    Vec3,
+    CosmologySection, EisensteinHuParams, GravitySection, GravitySolver, IcKind,
+    InitialConditionsSection, NormalizationMode, OutputSection, PerformanceSection, RunConfig,
+    SimulationSection, TimestepSection, TransferKind, UnitsSection, Vec3, amplitude_for_sigma8,
+    build_particles,
+    cosmology::{CosmologyParams, gravity_coupling_qksl, growth_factor_d_ratio},
+    transfer_eh_nowiggle, wrap_position,
 };
 use gadget_ng_integrators::{
-    compute_global_adaptive_dt, leapfrog_cosmo_kdk_step, AdaptiveDtCriterion, CosmoFactors,
+    AdaptiveDtCriterion, CosmoFactors, compute_global_adaptive_dt, leapfrog_cosmo_kdk_step,
 };
 use gadget_ng_treepm::TreePmSolver;
 use serde_json::json;
@@ -151,12 +151,12 @@ fn env_flag(name: &str) -> bool {
 }
 
 fn n_grid() -> usize {
-    if let Ok(v) = std::env::var("PHASE43_N") {
-        if let Ok(n) = v.parse::<usize>() {
-            if n.is_power_of_two() && (16..=256).contains(&n) {
-                return n;
-            }
-        }
+    if let Ok(v) = std::env::var("PHASE43_N")
+        && let Ok(n) = v.parse::<usize>()
+        && n.is_power_of_two()
+        && (16..=256).contains(&n)
+    {
+        return n;
     }
     if env_flag("PHASE43_QUICK") {
         N_QUICK
@@ -170,7 +170,7 @@ fn thread_counts() -> Vec<usize> {
     let mut out: Vec<usize> = raw
         .split(',')
         .filter_map(|s| s.trim().parse::<usize>().ok())
-        .filter(|&n| n >= 1 && n <= 128)
+        .filter(|&n| (1..=128).contains(&n))
         .collect();
     if out.is_empty() {
         out = vec![1, 4];
@@ -245,9 +245,13 @@ fn build_run_config(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
@@ -519,7 +523,7 @@ impl SnapshotResult {
                 arr.iter()
                     .filter_map(|row| {
                         let r = row.as_array()?;
-                        Some((r.get(0)?.as_f64()?, r.get(1)?.as_f64()?))
+                        Some((r.first()?.as_f64()?, r.get(1)?.as_f64()?))
                     })
                     .collect()
             })
@@ -717,24 +721,22 @@ fn matrix() -> &'static [SnapshotResult] {
         if env_flag("PHASE43_USE_CACHE") {
             let mut path = phase43_dir();
             path.push("per_snapshot_metrics.json");
-            if path.exists() {
-                if let Ok(txt) = fs::read_to_string(&path) {
-                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt) {
-                        if let Some(arr) = val.get("snapshots").and_then(|v| v.as_array()) {
-                            eprintln!(
-                                "[phase43] cargando matriz cacheada ({} snapshots) de {}",
-                                arr.len(),
-                                path.display()
-                            );
-                            let out: Vec<SnapshotResult> = arr
-                                .iter()
-                                .filter_map(SnapshotResult::from_json_value)
-                                .collect();
-                            if !out.is_empty() {
-                                return out;
-                            }
-                        }
-                    }
+            if path.exists()
+                && let Ok(txt) = fs::read_to_string(&path)
+                && let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt)
+                && let Some(arr) = val.get("snapshots").and_then(|v| v.as_array())
+            {
+                eprintln!(
+                    "[phase43] cargando matriz cacheada ({} snapshots) de {}",
+                    arr.len(),
+                    path.display()
+                );
+                let out: Vec<SnapshotResult> = arr
+                    .iter()
+                    .filter_map(SnapshotResult::from_json_value)
+                    .collect();
+                if !out.is_empty() {
+                    return out;
                 }
             }
         }
@@ -927,14 +929,13 @@ fn adaptive_dt_matches_or_beats_best_fixed_dt() {
     for mode in dt_variants() {
         let DtMode::Fixed(dt) = mode else { continue };
         let label = mode.label();
-        if let Some((_, _, err)) = growth_ratio_low_k(m, &label, a_t, k_max) {
-            if best_fixed
+        if let Some((_, _, err)) = growth_ratio_low_k(m, &label, a_t, k_max)
+            && best_fixed
                 .as_ref()
                 .map(|(_, _, e)| err < *e)
                 .unwrap_or(true)
-            {
-                best_fixed = Some((label, dt, err));
-            }
+        {
+            best_fixed = Some((label, dt, err));
         }
     }
 

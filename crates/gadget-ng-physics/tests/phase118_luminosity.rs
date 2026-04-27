@@ -2,7 +2,9 @@
 ///
 /// Tests: L escala con masa, L decrece con edad, DM no contribuye, galaxy_luminosity
 ///        suma estrellas, colores BV y GR dentro de rango, sin estrellas L=0, serde.
-use gadget_ng_analysis::{bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar, LuminosityResult};
+use gadget_ng_analysis::{
+    LuminosityResult, bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar,
+};
 use gadget_ng_core::{Particle, Vec3};
 
 fn star(id: usize, mass: f64, age: f64, z: f64) -> Particle {
@@ -17,7 +19,10 @@ fn star(id: usize, mass: f64, age: f64, z: f64) -> Particle {
 fn luminosity_scales_with_mass() {
     let l1 = stellar_luminosity_solar(1.0, 1.0, 0.02);
     let l2 = stellar_luminosity_solar(2.0, 1.0, 0.02);
-    assert!((l2 / l1 - 2.0).abs() < 1e-10, "L debe escalar linealmente con masa");
+    assert!(
+        (l2 / l1 - 2.0).abs() < 1e-10,
+        "L debe escalar linealmente con masa"
+    );
 }
 
 // ── 2. Luminosidad decrece con edad ───────────────────────────────────────
@@ -26,7 +31,10 @@ fn luminosity_scales_with_mass() {
 fn luminosity_decreases_with_age() {
     let l_young = stellar_luminosity_solar(1.0, 0.01, 0.02);
     let l_old = stellar_luminosity_solar(1.0, 10.0, 0.02);
-    assert!(l_young > l_old, "Estrella joven debe ser más luminosa que vieja");
+    assert!(
+        l_young > l_old,
+        "Estrella joven debe ser más luminosa que vieja"
+    );
 }
 
 // ── 3. DM no contribuye a luminosidad galácticca ──────────────────────────
@@ -91,5 +99,13 @@ fn gr_color_in_physical_range() {
 fn no_stars_returns_zero_luminosity() {
     let particles: Vec<Particle> = vec![];
     let result = galaxy_luminosity(&particles);
-    assert_eq!(result, LuminosityResult { l_total: 0.0, bv: 0.0, gr: 0.0, n_stars: 0 });
+    assert_eq!(
+        result,
+        LuminosityResult {
+            l_total: 0.0,
+            bv: 0.0,
+            gr: 0.0,
+            n_stars: 0
+        }
+    );
 }

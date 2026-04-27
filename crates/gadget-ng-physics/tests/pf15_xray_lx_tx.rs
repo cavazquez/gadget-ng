@@ -77,10 +77,7 @@ fn mass_weighted_temperature_consistent() {
     let t = 1e4_f64;
     let particles = hot_gas_cluster(8, t, 1.0, 1.0);
     let t_mw = mass_weighted_temperature(&particles, GAMMA);
-    assert!(
-        t_mw > 0.0,
-        "T_mw debe ser positiva: {t_mw:.4e}"
-    );
+    assert!(t_mw > 0.0, "T_mw debe ser positiva: {t_mw:.4e}");
     assert!(t_mw.is_finite(), "T_mw debe ser finita: {t_mw:.4e}");
     println!("T_mw para u={t:.2e}: {t_mw:.4e}");
 }
@@ -134,7 +131,9 @@ fn lx_tx_slope_matches_bremsstrahlung() {
     let n = log_tx.len() as f64;
     let mean_x: f64 = log_tx.iter().sum::<f64>() / n;
     let mean_y: f64 = log_lx.iter().sum::<f64>() / n;
-    let num: f64 = log_tx.iter().zip(log_lx.iter())
+    let num: f64 = log_tx
+        .iter()
+        .zip(log_lx.iter())
         .map(|(x, y)| (x - mean_x) * (y - mean_y))
         .sum();
     let den: f64 = log_tx.iter().map(|x| (x - mean_x).powi(2)).sum();

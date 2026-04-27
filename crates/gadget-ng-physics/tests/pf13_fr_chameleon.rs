@@ -9,7 +9,7 @@
 //!
 //! y que se recupera en baja densidad (sin screening).
 
-use gadget_ng_core::{fifth_force_factor, CosmologyParams, FRParams};
+use gadget_ng_core::{CosmologyParams, FRParams, fifth_force_factor};
 
 /// En alta densidad (screening activo), la quinta fuerza es suprimida.
 #[test]
@@ -50,7 +50,7 @@ fn fifth_force_factor_bounded() {
     ] {
         let f = fifth_force_factor(frl, fr0);
         assert!(
-            f >= 0.0 && f <= 1.0,
+            (0.0..=1.0).contains(&f),
             "Factor fuera de [0,1]: f_r_local={frl:.1e}, f_r0={fr0:.1e}, factor={f:.4}"
         );
     }
@@ -70,7 +70,10 @@ fn chameleon_screening_increases_with_density() {
         assert!(
             factors[i] <= factors[i - 1] + 1e-10,
             "Screening debe aumentar con ratio menor: f[{}]={:.4e} > f[{}]={:.4e}",
-            i, factors[i], i - 1, factors[i - 1]
+            i,
+            factors[i],
+            i - 1,
+            factors[i - 1]
         );
     }
 }
@@ -80,11 +83,11 @@ fn chameleon_screening_increases_with_density() {
 fn fifth_force_zero_for_gr() {
     let factor = fifth_force_factor(0.0, 0.0);
     assert!(
-        factor < 1e-10 || factor.is_nan() == false,
+        factor < 1e-10 || !factor.is_nan(),
         "Con f_r0=0 (GR), la quinta fuerza debe ser nula o bien definida: {factor:.4e}"
     );
     // En GR no hay quinta fuerza: apply_modified_gravity con f_r0=0 es noop
-    use gadget_ng_core::{apply_modified_gravity, Particle, Vec3};
+    use gadget_ng_core::{Particle, Vec3, apply_modified_gravity};
     let params = FRParams { f_r0: 0.0, n: 1.0 };
     let cosmo = CosmologyParams::new(0.3, 0.7, 0.1);
     let mut p = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());

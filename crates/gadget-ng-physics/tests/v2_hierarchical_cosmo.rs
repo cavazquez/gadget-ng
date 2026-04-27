@@ -16,7 +16,7 @@
 //! usando directamente `hierarchical_kdk_step` con `cosmo = Some(...)`.
 
 use gadget_ng_core::{CosmologyParams, Particle, TimestepCriterion, Vec3};
-use gadget_ng_integrators::{hierarchical_kdk_step, HierarchicalState};
+use gadget_ng_integrators::{HierarchicalState, hierarchical_kdk_step};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parámetros comunes
@@ -122,7 +122,14 @@ fn init_hierarchical(parts: &mut Vec<Particle>, dt: f64) -> HierarchicalState {
         p.acceleration = a;
     }
     let mut h_state = HierarchicalState::new(n);
-    h_state.init_from_accels(parts, EPS2, dt, ETA, MAX_LEVEL, TimestepCriterion::Acceleration);
+    h_state.init_from_accels(
+        parts,
+        EPS2,
+        dt,
+        ETA,
+        MAX_LEVEL,
+        TimestepCriterion::Acceleration,
+    );
     h_state
 }
 
@@ -228,7 +235,14 @@ fn v2_energy_drift_cosmo_hierarchical_50steps() {
 #[test]
 fn v2_reproducible_serial_vs_hierarchical_cosmo() {
     // Partícula única en reposo — sin fuerzas, la posición no cambia.
-    let make_parts = || vec![Particle::new(0, 1.0, Vec3::new(0.5, 0.5, 0.5), Vec3::zero())];
+    let make_parts = || {
+        vec![Particle::new(
+            0,
+            1.0,
+            Vec3::new(0.5, 0.5, 0.5),
+            Vec3::zero(),
+        )]
+    };
 
     let cp = lcdm_params();
     let dt = 0.01_f64;
@@ -301,7 +315,12 @@ fn v2_scale_factor_agreement_hierarchical_vs_friedmann() {
     let a_ref = friedmann_rk4(a0, dt, n_steps, &cp);
 
     // Factor de escala por el integrador jerárquico.
-    let mut parts = vec![Particle::new(0, 1.0, Vec3::new(0.5, 0.5, 0.5), Vec3::zero())];
+    let mut parts = vec![Particle::new(
+        0,
+        1.0,
+        Vec3::new(0.5, 0.5, 0.5),
+        Vec3::zero(),
+    )];
     parts[0].acceleration = Vec3::zero();
     let mut h_state = HierarchicalState::new(1);
     h_state.init_from_accels(
@@ -510,7 +529,7 @@ fn v2_strong_scaling_benchmark() {
     // Con gravedad directa O(N²): t ∝ N² → t_1024 / t_512 ≈ 4
     // Con árbol O(N log N): t ∝ N log N → t_1024 / t_512 ≈ 2.1
     let ratio = t_1024 / t_512.max(1e-9);
-    let throughput_512  = 512.0  * n_steps as f64 / t_512.max(1e-9);
+    let throughput_512 = 512.0 * n_steps as f64 / t_512.max(1e-9);
     let throughput_1024 = 1024.0 * n_steps as f64 / t_1024.max(1e-9);
 
     println!("=== V2 Strong Scaling Benchmark ===");
@@ -519,8 +538,12 @@ fn v2_strong_scaling_benchmark() {
     println!("Ratio t(1024)/t(512) = {ratio:.2}  (O(N²) esperaría 4.0, O(N log N) ≈ 2.1)");
     println!();
     println!("Para strong scaling real con MPI:");
-    println!("  mpirun -n 2 cargo test --test v2_hierarchical_cosmo -- --ignored v2_strong_scaling_benchmark --nocapture");
-    println!("  mpirun -n 4 cargo test --test v2_hierarchical_cosmo -- --ignored v2_strong_scaling_benchmark --nocapture");
+    println!(
+        "  mpirun -n 2 cargo test --test v2_hierarchical_cosmo -- --ignored v2_strong_scaling_benchmark --nocapture"
+    );
+    println!(
+        "  mpirun -n 4 cargo test --test v2_hierarchical_cosmo -- --ignored v2_strong_scaling_benchmark --nocapture"
+    );
 
     // El integrador no debe ser infinitamente lento: mínimo 100 part·paso/s
     assert!(

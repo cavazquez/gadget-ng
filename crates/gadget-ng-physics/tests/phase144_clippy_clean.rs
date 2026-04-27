@@ -5,8 +5,7 @@
 /// Los benchmarks Criterion también deben compilar correctamente.
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_mhd::{
-    apply_braginskii_viscosity, apply_magnetic_reconnection, apply_flux_freeze,
-    mean_gas_density,
+    apply_braginskii_viscosity, apply_flux_freeze, apply_magnetic_reconnection, mean_gas_density,
 };
 
 fn gas(id: usize, pos: Vec3, vel: Vec3, b: Vec3, u: f64) -> Particle {
@@ -31,7 +30,13 @@ fn braginskii_eta_zero_is_noop() {
     let b = Vec3::new(1.0, 0.0, 0.0);
     let mut particles = vec![
         gas(0, Vec3::zero(), Vec3::new(1.0, 0.0, 0.0), b, 1.0),
-        gas(1, Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.5, 0.0, 0.0), b, 1.0),
+        gas(
+            1,
+            Vec3::new(0.1, 0.0, 0.0),
+            Vec3::new(0.5, 0.0, 0.0),
+            b,
+            1.0,
+        ),
     ];
     let v0_before = particles[0].velocity.x;
     apply_braginskii_viscosity(&mut particles, 0.0, 0.01);
@@ -49,7 +54,7 @@ fn reconnection_f_zero_is_noop() {
         gas(1, Vec3::new(0.05, 0.0, 0.0), Vec3::zero(), b_neg, 1.0),
     ];
     let u_before = particles[0].internal_energy;
-    apply_magnetic_reconnection(&mut particles, 0.0, 5.0/3.0, 0.01);
+    apply_magnetic_reconnection(&mut particles, 0.0, 5.0 / 3.0, 0.01);
     assert_eq!(particles[0].internal_energy, u_before);
 }
 
@@ -58,8 +63,15 @@ fn reconnection_f_zero_is_noop() {
 #[test]
 fn mean_gas_density_positive() {
     let particles: Vec<Particle> = (0..10)
-        .map(|i| gas(i, Vec3::new(i as f64 * 0.1, 0.0, 0.0), Vec3::zero(),
-                     Vec3::new(1e-9, 0.0, 0.0), 1e10))
+        .map(|i| {
+            gas(
+                i,
+                Vec3::new(i as f64 * 0.1, 0.0, 0.0),
+                Vec3::zero(),
+                Vec3::new(1e-9, 0.0, 0.0),
+                1e10,
+            )
+        })
         .collect();
     let rho = mean_gas_density(&particles);
     assert!(rho > 0.0 && rho.is_finite());
@@ -71,12 +83,19 @@ fn mean_gas_density_positive() {
 fn flux_freeze_high_beta_freeze_no_change() {
     // Con beta_freeze muy alto, ninguna partícula cae en régimen de freeze
     let mut particles: Vec<Particle> = (0..5)
-        .map(|i| gas(i, Vec3::new(i as f64 * 0.1, 0.0, 0.0),
-                     Vec3::zero(), Vec3::new(1e-9, 0.0, 0.0), 1e10))
+        .map(|i| {
+            gas(
+                i,
+                Vec3::new(i as f64 * 0.1, 0.0, 0.0),
+                Vec3::zero(),
+                Vec3::new(1e-9, 0.0, 0.0),
+                1e10,
+            )
+        })
         .collect();
     let b_before: Vec<f64> = particles.iter().map(|p| p.b_field.x).collect();
     let rho_ref = mean_gas_density(&particles);
-    apply_flux_freeze(&mut particles, 5.0/3.0, 1e30, rho_ref);
+    apply_flux_freeze(&mut particles, 5.0 / 3.0, 1e30, rho_ref);
     let b_after: Vec<f64> = particles.iter().map(|p| p.b_field.x).collect();
     for (b0, b1) in b_before.iter().zip(b_after.iter()) {
         assert!((b0 - b1).abs() < 1e-12 || b1.is_finite());

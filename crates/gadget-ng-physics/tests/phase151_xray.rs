@@ -9,8 +9,7 @@ use gadget_ng_core::{Particle, Vec3};
 const GAMMA: f64 = 5.0 / 3.0;
 
 fn gas_particle(u: f64, h: f64, mass: f64, x: f64) -> Particle {
-    let mut p = Particle::new_gas(0, mass, Vec3 { x, y: 0.0, z: 0.0 }, Vec3::zero(), u, h);
-    p
+    Particle::new_gas(0, mass, Vec3 { x, y: 0.0, z: 0.0 }, Vec3::zero(), u, h)
 }
 
 // T1: L_X positiva para gas caliente
@@ -19,7 +18,11 @@ fn lx_positive_hot_gas() {
     let u_hot = 1e4;
     let particles = vec![gas_particle(u_hot, 0.5, 1.0, 0.0)];
     let lx = total_xray_luminosity(&particles, GAMMA);
-    assert!(lx > 0.0, "L_X debe ser positiva para gas caliente, got {}", lx);
+    assert!(
+        lx > 0.0,
+        "L_X debe ser positiva para gas caliente, got {}",
+        lx
+    );
 }
 
 // T2: T_X > 0 para gas caliente
@@ -28,7 +31,11 @@ fn tx_positive_hot_gas() {
     let u_hot = 1e4;
     let particles = vec![gas_particle(u_hot, 0.5, 1.0, 0.0)];
     let tx = spectroscopic_temperature(&particles, GAMMA);
-    assert!(tx > 0.0, "T_X debe ser positiva para gas caliente, got {}", tx);
+    assert!(
+        tx > 0.0,
+        "T_X debe ser positiva para gas caliente, got {}",
+        tx
+    );
 }
 
 // T3: L_X = 0 sin gas caliente
@@ -54,7 +61,10 @@ fn xray_profile_has_luminosity() {
     let profile = compute_xray_profile(&particles, [0.0, 0.0, 0.0], &r_edges, GAMMA);
     assert!(!profile.is_empty(), "El perfil no debe estar vacío");
     let lx_total: f64 = profile.iter().map(|b| b.luminosity_x).sum();
-    assert!(lx_total > 0.0, "Luminosidad total del perfil debe ser positiva");
+    assert!(
+        lx_total > 0.0,
+        "Luminosidad total del perfil debe ser positiva"
+    );
 }
 
 // T5: T_X espectroscópica difiere de T_media

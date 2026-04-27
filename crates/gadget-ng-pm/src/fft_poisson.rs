@@ -16,7 +16,7 @@
 //! En rustfft (convención DFT estándar), el índice `j` corresponde a
 //! `n = j` para `j ≤ NM/2` y `n = j - NM` para `j > NM/2`.
 
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;

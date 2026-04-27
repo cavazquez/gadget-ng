@@ -47,7 +47,10 @@ pub struct FRParams {
 
 impl Default for FRParams {
     fn default() -> Self {
-        Self { f_r0: 1.0e-4, n: 1.0 }
+        Self {
+            f_r0: 1.0e-4,
+            n: 1.0,
+        }
     }
 }
 
@@ -70,7 +73,9 @@ impl Default for FRParams {
 /// - `f_r0`: valor del campo en z=0
 /// - `n`: índice del modelo
 pub fn chameleon_field(delta_rho: f64, f_r0: f64, n: f64) -> f64 {
-    if delta_rho <= -1.0 { return f_r0.abs(); }
+    if delta_rho <= -1.0 {
+        return f_r0.abs();
+    }
     let rho_ratio = 1.0 + delta_rho;
     f_r0.abs() * rho_ratio.powf(-(n + 1.0))
 }
@@ -88,7 +93,9 @@ pub fn chameleon_field(delta_rho: f64, f_r0: f64, n: f64) -> f64 {
 /// - `f_r_local`: campo escalar f_R local
 /// - `f_r0`: valor de referencia en z=0
 pub fn fifth_force_factor(f_r_local: f64, f_r0: f64) -> f64 {
-    if f_r0.abs() <= 0.0 { return 0.0; }
+    if f_r0.abs() <= 0.0 {
+        return 0.0;
+    }
     (f_r_local.abs() / f_r0.abs()).min(1.0)
 }
 
@@ -106,12 +113,14 @@ pub fn fifth_force_factor(f_r_local: f64, f_r0: f64) -> f64 {
 /// - `cosmo`: parámetros cosmológicos
 /// - `a`: factor de escala actual
 pub fn apply_modified_gravity(
-    particles: &mut Vec<Particle>,
+    particles: &mut [Particle],
     params: &FRParams,
     cosmo: &CosmologyParams,
     a: f64,
 ) {
-    if params.f_r0.abs() <= 0.0 { return; }
+    if params.f_r0.abs() <= 0.0 {
+        return;
+    }
 
     // Calcular densidad media para la sobredensidad
     let rho_bar = if !particles.is_empty() {

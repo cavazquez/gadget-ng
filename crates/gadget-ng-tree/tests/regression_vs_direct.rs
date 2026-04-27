@@ -1,8 +1,8 @@
 //! Regresión Barnes-Hut vs gravedad directa; precisión con theta > 0.
 use approx::assert_relative_eq;
 use gadget_ng_core::{
-    build_particles, DirectGravity, GravitySolver, IcKind, InitialConditionsSection, RunConfig,
-    SimulationSection, Vec3,
+    DirectGravity, GravitySolver, IcKind, InitialConditionsSection, RunConfig, SimulationSection,
+    Vec3, build_particles,
 };
 use gadget_ng_tree::BarnesHutGravity;
 
@@ -53,9 +53,13 @@ fn lattice_cfg(n: usize, seed: u64) -> RunConfig {
         decomposition: Default::default(),
         insitu_analysis: Default::default(),
         sph: Default::default(),
-        rt: Default::default(), reionization: Default::default(), mhd: Default::default(),
-        turbulence: Default::default(), two_fluid: Default::default(),
-        sidm: Default::default(), modified_gravity: Default::default(),
+        rt: Default::default(),
+        reionization: Default::default(),
+        mhd: Default::default(),
+        turbulence: Default::default(),
+        two_fluid: Default::default(),
+        sidm: Default::default(),
+        modified_gravity: Default::default(),
     }
 }
 
