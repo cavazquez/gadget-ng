@@ -1,0 +1,35 @@
+# ─── Smoke test: Barnes–Hut + árbol distribuido slab (P=1) + Rayon intra-nodo ─
+#
+# Con build `--features simd` y `[performance] deterministic = false`, el motor usa
+# `compute_forces_local_tree` en paralelo (mismo criterio que `RayonBarnesHutGravity`).
+#
+#   cargo run --release -p gadget-ng-cli --features simd -- stepping \
+#     --config examples/nbody_bh_dtree_rayon_smoke.toml \
+#     --out runs/bh_rayon_smoke
+#
+# Tests: `cargo test -p gadget-ng-cli --features simd rayon`
+
+[simulation]
+particle_count = 27
+box_size       = 3.0
+dt             = 0.02
+num_steps      = 3
+softening      = 0.08
+seed           = 42
+
+[initial_conditions]
+kind = "lattice"
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.45
+
+[performance]
+deterministic          = false
+use_distributed_tree   = true
+use_sfc                = false
+
+[output]
+snapshot_format     = "jsonl"
+snapshot_interval   = 0
+checkpoint_interval = 0

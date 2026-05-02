@@ -774,8 +774,13 @@ fn bh_force_accuracy_relative_full_sweep() {
     let cfg_sphere = make_config_uniform_sphere();
     let cfg_plummer = make_config_plummer();
 
-    let mut all_results =
-        run_benchmark_with_mac("uniform_sphere", &cfg_sphere, THETAS, true, ERR_TOL_RELATIVE_DEFAULT);
+    let mut all_results = run_benchmark_with_mac(
+        "uniform_sphere",
+        &cfg_sphere,
+        THETAS,
+        true,
+        ERR_TOL_RELATIVE_DEFAULT,
+    );
     all_results.extend(run_benchmark_with_mac(
         "plummer",
         &cfg_plummer,

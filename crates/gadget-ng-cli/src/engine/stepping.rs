@@ -17,7 +17,7 @@ use gadget_ng_pm::distributed as pm_dist;
 use gadget_ng_pm::slab_fft::SlabLayout;
 use gadget_ng_pm::slab_pm;
 use gadget_ng_pm::{PencilLayout2D, solve_forces_pencil2d};
-use gadget_ng_tree::{Octree, accel_from_let, pack_let_nodes, unpack_let_nodes};
+use gadget_ng_tree::{Octree, pack_let_nodes, unpack_let_nodes};
 use gadget_ng_treepm::distributed as treepm_dist;
 use std::fs;
 use std::path::Path;
@@ -27,7 +27,8 @@ use super::checkpoint::{load_checkpoint, save_checkpoint};
 use super::diagnostics::{should_rebalance, write_diagnostic_line};
 use super::gravity::{
     compute_forces_hierarchical_let, compute_forces_local_tree,
-    compute_forces_local_tree_with_costs, compute_forces_sfc_let, make_solver,
+    compute_forces_local_tree_with_costs, compute_forces_sfc_let, local_bh_use_rayon,
+    local_bh_walk_params, make_solver,
 };
 use super::provenance::{provenance_for_run, snapshot_env_for};
 use super::timings::{
@@ -84,6 +85,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     let eps2 = eps2_base;
     let theta = cfg.gravity.theta;
     let solver = make_solver(cfg);
+    let bh_walk = local_bh_walk_params(cfg);
+    let bh_parallel = local_bh_use_rayon(cfg);
     let dt = cfg.simulation.dt;
     let checkpoint_interval = cfg.output.checkpoint_interval;
     let snapshot_interval = cfg.output.snapshot_interval;
@@ -898,10 +901,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     &local,
                     &halos_init,
                     &all_idx,
-                    theta,
                     g_hier_init,
                     eps2,
                     &mut scratch,
+                    bh_walk,
+                    bh_parallel,
                 );
             } else {
                 rt.allgatherv_state(&local, total, &mut global_pos, &mut global_mass);
@@ -1000,10 +1004,11 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             parts,
                             &halos,
                             active_local,
-                            theta,
                             g_step,
                             eps2,
                             acc,
+                            bh_walk,
+                            bh_parallel,
                         );
                         this_grav += t1.elapsed().as_nanos() as u64;
                     } else {
@@ -1237,7 +1242,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 //    `compute_forces_sfc_let` acepta `g` como parámetro explícito,
                 //    así que pasamos `g_cosmo` sin modificar la función auxiliar.
                 let t_grav = Instant::now();
-                compute_forces_sfc_let(parts, &received, theta, g_cosmo, eps2, acc);
+                compute_forces_sfc_let(parts, &received, g_cosmo, eps2, acc, bh_walk, bh_parallel);
                 this_grav += t_grav.elapsed().as_nanos() as u64;
             };
 
@@ -2367,8 +2372,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             #[cfg(not(feature = "simd"))]
                             {
                                 for (li, a_out) in acc.iter_mut().enumerate() {
-                                    let a_remote =
-                                        accel_from_let(parts[li].position, &remote_nodes, g, eps2);
+                                    let a_remote = gadget_ng_tree::accel_from_let(
+                                        parts[li].position,
+                                        &remote_nodes,
+                                        g,
+                                        eps2,
+                                    );
                                     *a_out = local_accels[li] + a_remote;
                                 }
                             }
@@ -2385,7 +2394,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         this_comm += comm2_ns;
 
                         let t_grav = Instant::now();
-                        compute_forces_sfc_let(parts, &received, theta, g, eps2, acc);
+                        compute_forces_sfc_let(
+                            parts,
+                            &received,
+                            g,
+                            eps2,
+                            acc,
+                            bh_walk,
+                            bh_parallel,
+                        );
                         let grav_ns = t_grav.elapsed().as_nanos() as u64;
                         hpc.walk_local_ns += grav_ns;
                         this_grav += grav_ns;
@@ -2670,14 +2687,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     compute_forces_local_tree_with_costs(
                         parts,
                         &halos,
-                        theta,
                         g,
                         eps2,
                         acc,
                         &mut raw_costs,
+                        bh_walk,
+                        bh_parallel,
                     );
                 } else {
-                    compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
+                    compute_forces_local_tree(parts, &halos, g, eps2, acc, bh_walk, bh_parallel);
                 }
                 this_grav += t1.elapsed().as_nanos() as u64;
             };
@@ -2755,7 +2773,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let halos = rt.exchange_halos_by_x(parts, my_x_lo, my_x_hi, hw);
                 this_comm += t0.elapsed().as_nanos() as u64;
                 let t1 = Instant::now();
-                compute_forces_local_tree(parts, &halos, theta, g, eps2, acc);
+                compute_forces_local_tree(parts, &halos, g, eps2, acc, bh_walk, bh_parallel);
                 this_grav += t1.elapsed().as_nanos() as u64;
             };
             match integrator_kind {

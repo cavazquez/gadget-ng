@@ -5,6 +5,11 @@
 //!
 //! **No determinista** respecto al orden de suma: no garantiza paridad bit-a-bit con
 //! el solver serial ni con `MpiRuntime`.
+//!
+//! En `gadget-ng-cli`, con `feature = simd` y `[performance] deterministic = false` y
+//! `solver = "Tree"`, además de este trait se paralelizan los walks del árbol en los
+//! kernels MPI (slab/SFC, LET, block-timestep jerárquico) vía `par_iter` en
+//! `engine/gravity.rs`, con la misma convención de no-determinismo.
 use rayon::prelude::*;
 
 use crate::octree::Octree;

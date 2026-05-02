@@ -620,8 +620,9 @@ impl Default for OutputSection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceSection {
     /// `true` (default) → bucles seriales, paridad serial/MPI garantizada.
-    /// `false` → Rayon activo (requiere build con `--features simd`); el orden de suma
-    /// puede diferir → no se garantiza paridad bit-a-bit con el modo serial.
+    /// `false` → Rayon activo (requiere build con `--features simd`): solver global
+    /// Allgather y recorridos locales del árbol (slab/SFC, LET, jerárquico). El orden
+    /// de suma puede diferir → no se garantiza paridad bit-a-bit con el modo serial.
     #[serde(default = "default_deterministic")]
     pub deterministic: bool,
     /// Número de hilos Rayon. `None` → detecta automáticamente (número de CPUs lógicas).

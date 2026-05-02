@@ -2,183 +2,344 @@
 #![allow(unused_variables)] // firma uniforme (rx, ry, rz); cada patrón usa un subconjunto
 #[inline(always)]
 pub(crate) fn dt_x_0(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rx*(15.0*r2.powi(2) - 70.0*r2*rx.powi(2) + 63.0*rx.powi(4))/r2.powf(11.0 / 2.0)
+    -15.0 * rx * (15.0 * r2.powi(2) - 70.0 * r2 * rx.powi(2) + 63.0 * rx.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_1(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    45.0*ry*(4.0*r2*rx.powi(2) - r2*ry.powi(2) - r2*rz.powi(2) - 12.0*rx.powi(4) + 9.0*rx.powi(2)*ry.powi(2) + 9.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    45.0 * ry
+        * (4.0 * r2 * rx.powi(2) - r2 * ry.powi(2) - r2 * rz.powi(2) - 12.0 * rx.powi(4)
+            + 9.0 * rx.powi(2) * ry.powi(2)
+            + 9.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_2(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    45.0*rz*(4.0*r2*rx.powi(2) - r2*ry.powi(2) - r2*rz.powi(2) - 12.0*rx.powi(4) + 9.0*rx.powi(2)*ry.powi(2) + 9.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    45.0 * rz
+        * (4.0 * r2 * rx.powi(2) - r2 * ry.powi(2) - r2 * rz.powi(2) - 12.0 * rx.powi(4)
+            + 9.0 * rx.powi(2) * ry.powi(2)
+            + 9.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_3(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rx*(3.0*r2.powi(2) - 7.0*r2*rx.powi(2) - 21.0*r2*ry.powi(2) + 63.0*rx.powi(2)*ry.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rx
+        * (3.0 * r2.powi(2) - 7.0 * r2 * rx.powi(2) - 21.0 * r2 * ry.powi(2)
+            + 63.0 * rx.powi(2) * ry.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_4(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    45.0*rx*ry*rz*(4.0*r2 - 18.0*rx.powi(2) + 3.0*ry.powi(2) + 3.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    45.0 * rx * ry * rz * (4.0 * r2 - 18.0 * rx.powi(2) + 3.0 * ry.powi(2) + 3.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_5(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rx*(3.0*r2.powi(2) - 7.0*r2*rx.powi(2) - 21.0*r2*rz.powi(2) + 63.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rx
+        * (3.0 * r2.powi(2) - 7.0 * r2 * rx.powi(2) - 21.0 * r2 * rz.powi(2)
+            + 63.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_6(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(9.0*r2*rx.powi(2) - 4.0*r2*ry.powi(2) + 3.0*r2*rz.powi(2) - 27.0*rx.powi(4) + 36.0*rx.powi(2)*ry.powi(2) - 27.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * ry
+        * (9.0 * r2 * rx.powi(2) - 4.0 * r2 * ry.powi(2) + 3.0 * r2 * rz.powi(2)
+            - 27.0 * rx.powi(4)
+            + 36.0 * rx.powi(2) * ry.powi(2)
+            - 27.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_7(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(3.0*r2*rx.powi(2) - 6.0*r2*ry.powi(2) + r2*rz.powi(2) - 9.0*rx.powi(4) + 54.0*rx.powi(2)*ry.powi(2) - 9.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rz
+        * (3.0 * r2 * rx.powi(2) - 6.0 * r2 * ry.powi(2) + r2 * rz.powi(2) - 9.0 * rx.powi(4)
+            + 54.0 * rx.powi(2) * ry.powi(2)
+            - 9.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_8(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(3.0*r2*rx.powi(2) + r2*ry.powi(2) - 6.0*r2*rz.powi(2) - 9.0*rx.powi(4) - 9.0*rx.powi(2)*ry.powi(2) + 54.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * ry
+        * (3.0 * r2 * rx.powi(2) + r2 * ry.powi(2)
+            - 6.0 * r2 * rz.powi(2)
+            - 9.0 * rx.powi(4)
+            - 9.0 * rx.powi(2) * ry.powi(2)
+            + 54.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_9(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(9.0*r2*rx.powi(2) + 3.0*r2*ry.powi(2) - 4.0*r2*rz.powi(2) - 27.0*rx.powi(4) - 27.0*rx.powi(2)*ry.powi(2) + 36.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rz
+        * (9.0 * r2 * rx.powi(2) + 3.0 * r2 * ry.powi(2)
+            - 4.0 * r2 * rz.powi(2)
+            - 27.0 * rx.powi(4)
+            - 27.0 * rx.powi(2) * ry.powi(2)
+            + 36.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_10(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*(r2.powi(2) - 14.0*r2*ry.powi(2) + 21.0*ry.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * (r2.powi(2) - 14.0 * r2 * ry.powi(2) + 21.0 * ry.powi(4)) / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_11(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*ry*rz*(2.0*r2 - 9.0*rx.powi(2) + 12.0*ry.powi(2) - 9.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * ry * rz * (2.0 * r2 - 9.0 * rx.powi(2) + 12.0 * ry.powi(2) - 9.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_12(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rx*(r2.powi(2) - 7.0*r2*ry.powi(2) - 7.0*r2*rz.powi(2) + 63.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rx
+        * (r2.powi(2) - 7.0 * r2 * ry.powi(2) - 7.0 * r2 * rz.powi(2)
+            + 63.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_13(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*ry*rz*(2.0*r2 - 9.0*rx.powi(2) - 9.0*ry.powi(2) + 12.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * ry * rz * (2.0 * r2 - 9.0 * rx.powi(2) - 9.0 * ry.powi(2) + 12.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_x_14(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*(r2.powi(2) - 14.0*r2*rz.powi(2) + 21.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * (r2.powi(2) - 14.0 * r2 * rz.powi(2) + 21.0 * rz.powi(4)) / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_0(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*ry*(r2.powi(2) - 14.0*r2*rx.powi(2) + 21.0*rx.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0 * ry * (r2.powi(2) - 14.0 * r2 * rx.powi(2) + 21.0 * rx.powi(4)) / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_1(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    15.0*rx*(4.0*r2*rx.powi(2) - 9.0*r2*ry.powi(2) - 3.0*r2*rz.powi(2) - 36.0*rx.powi(2)*ry.powi(2) + 27.0*ry.powi(4) + 27.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    15.0 * rx
+        * (4.0 * r2 * rx.powi(2)
+            - 9.0 * r2 * ry.powi(2)
+            - 3.0 * r2 * rz.powi(2)
+            - 36.0 * rx.powi(2) * ry.powi(2)
+            + 27.0 * ry.powi(4)
+            + 27.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_2(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*ry*rz*(2.0*r2 + 12.0*rx.powi(2) - 9.0*ry.powi(2) - 9.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * ry * rz * (2.0 * r2 + 12.0 * rx.powi(2) - 9.0 * ry.powi(2) - 9.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_3(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(3.0*r2.powi(2) - 21.0*r2*rx.powi(2) - 7.0*r2*ry.powi(2) + 63.0*rx.powi(2)*ry.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * ry
+        * (3.0 * r2.powi(2) - 21.0 * r2 * rx.powi(2) - 7.0 * r2 * ry.powi(2)
+            + 63.0 * rx.powi(2) * ry.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_4(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    15.0*rz*(6.0*r2*rx.powi(2) - 3.0*r2*ry.powi(2) - r2*rz.powi(2) - 54.0*rx.powi(2)*ry.powi(2) + 9.0*ry.powi(4) + 9.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    15.0 * rz
+        * (6.0 * r2 * rx.powi(2)
+            - 3.0 * r2 * ry.powi(2)
+            - r2 * rz.powi(2)
+            - 54.0 * rx.powi(2) * ry.powi(2)
+            + 9.0 * ry.powi(4)
+            + 9.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_5(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(r2.powi(2) - 7.0*r2*rx.powi(2) - 7.0*r2*rz.powi(2) + 63.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * ry
+        * (r2.powi(2) - 7.0 * r2 * rx.powi(2) - 7.0 * r2 * rz.powi(2)
+            + 63.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_6(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*(r2*rx.powi(2) - 4.0*r2*ry.powi(2) + r2*rz.powi(2) - 9.0*rx.powi(2)*ry.powi(2) + 12.0*ry.powi(4) - 9.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0
+        * rx
+        * (r2 * rx.powi(2) - 4.0 * r2 * ry.powi(2) + r2 * rz.powi(2)
+            - 9.0 * rx.powi(2) * ry.powi(2)
+            + 12.0 * ry.powi(4)
+            - 9.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_7(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    45.0*rx*ry*rz*(4.0*r2 + 3.0*rx.powi(2) - 18.0*ry.powi(2) + 3.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    45.0 * rx * ry * rz * (4.0 * r2 + 3.0 * rx.powi(2) - 18.0 * ry.powi(2) + 3.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_8(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rx*(r2*rx.powi(2) + 3.0*r2*ry.powi(2) - 6.0*r2*rz.powi(2) - 9.0*rx.powi(2)*ry.powi(2) - 9.0*ry.powi(4) + 54.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rx
+        * (r2 * rx.powi(2) + 3.0 * r2 * ry.powi(2)
+            - 6.0 * r2 * rz.powi(2)
+            - 9.0 * rx.powi(2) * ry.powi(2)
+            - 9.0 * ry.powi(4)
+            + 54.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_9(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*ry*rz*(2.0*r2 - 9.0*rx.powi(2) - 9.0*ry.powi(2) + 12.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * ry * rz * (2.0 * r2 - 9.0 * rx.powi(2) - 9.0 * ry.powi(2) + 12.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_10(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(15.0*r2.powi(2) - 70.0*r2*ry.powi(2) + 63.0*ry.powi(4))/r2.powf(11.0 / 2.0)
+    -15.0 * ry * (15.0 * r2.powi(2) - 70.0 * r2 * ry.powi(2) + 63.0 * ry.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_11(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rz*(r2*rx.powi(2) - 4.0*r2*ry.powi(2) + r2*rz.powi(2) - 9.0*rx.powi(2)*ry.powi(2) + 12.0*ry.powi(4) - 9.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0
+        * rz
+        * (r2 * rx.powi(2) - 4.0 * r2 * ry.powi(2) + r2 * rz.powi(2)
+            - 9.0 * rx.powi(2) * ry.powi(2)
+            + 12.0 * ry.powi(4)
+            - 9.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_12(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(3.0*r2.powi(2) - 7.0*r2*ry.powi(2) - 21.0*r2*rz.powi(2) + 63.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * ry
+        * (3.0 * r2.powi(2) - 7.0 * r2 * ry.powi(2) - 21.0 * r2 * rz.powi(2)
+            + 63.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_13(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(3.0*r2*rx.powi(2) + 9.0*r2*ry.powi(2) - 4.0*r2*rz.powi(2) - 27.0*rx.powi(2)*ry.powi(2) - 27.0*ry.powi(4) + 36.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rz
+        * (3.0 * r2 * rx.powi(2) + 9.0 * r2 * ry.powi(2)
+            - 4.0 * r2 * rz.powi(2)
+            - 27.0 * rx.powi(2) * ry.powi(2)
+            - 27.0 * ry.powi(4)
+            + 36.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_y_14(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*ry*(r2.powi(2) - 14.0*r2*rz.powi(2) + 21.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0 * ry * (r2.powi(2) - 14.0 * r2 * rz.powi(2) + 21.0 * rz.powi(4)) / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_0(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rz*(r2.powi(2) - 14.0*r2*rx.powi(2) + 21.0*rx.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0 * rz * (r2.powi(2) - 14.0 * r2 * rx.powi(2) + 21.0 * rx.powi(4)) / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_1(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*ry*rz*(2.0*r2 + 12.0*rx.powi(2) - 9.0*ry.powi(2) - 9.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * ry * rz * (2.0 * r2 + 12.0 * rx.powi(2) - 9.0 * ry.powi(2) - 9.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_2(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    15.0*rx*(4.0*r2*rx.powi(2) - 3.0*r2*ry.powi(2) - 9.0*r2*rz.powi(2) - 36.0*rx.powi(2)*rz.powi(2) + 27.0*ry.powi(2)*rz.powi(2) + 27.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    15.0 * rx
+        * (4.0 * r2 * rx.powi(2)
+            - 3.0 * r2 * ry.powi(2)
+            - 9.0 * r2 * rz.powi(2)
+            - 36.0 * rx.powi(2) * rz.powi(2)
+            + 27.0 * ry.powi(2) * rz.powi(2)
+            + 27.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_3(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(r2.powi(2) - 7.0*r2*rx.powi(2) - 7.0*r2*ry.powi(2) + 63.0*rx.powi(2)*ry.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rz
+        * (r2.powi(2) - 7.0 * r2 * rx.powi(2) - 7.0 * r2 * ry.powi(2)
+            + 63.0 * rx.powi(2) * ry.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_4(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    15.0*ry*(6.0*r2*rx.powi(2) - r2*ry.powi(2) - 3.0*r2*rz.powi(2) - 54.0*rx.powi(2)*rz.powi(2) + 9.0*ry.powi(2)*rz.powi(2) + 9.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    15.0 * ry
+        * (6.0 * r2 * rx.powi(2)
+            - r2 * ry.powi(2)
+            - 3.0 * r2 * rz.powi(2)
+            - 54.0 * rx.powi(2) * rz.powi(2)
+            + 9.0 * ry.powi(2) * rz.powi(2)
+            + 9.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_5(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(3.0*r2.powi(2) - 21.0*r2*rx.powi(2) - 7.0*r2*rz.powi(2) + 63.0*rx.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rz
+        * (3.0 * r2.powi(2) - 21.0 * r2 * rx.powi(2) - 7.0 * r2 * rz.powi(2)
+            + 63.0 * rx.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_6(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*ry*rz*(2.0*r2 - 9.0*rx.powi(2) + 12.0*ry.powi(2) - 9.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -45.0 * rx * ry * rz * (2.0 * r2 - 9.0 * rx.powi(2) + 12.0 * ry.powi(2) - 9.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_7(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rx*(r2*rx.powi(2) - 6.0*r2*ry.powi(2) + 3.0*r2*rz.powi(2) - 9.0*rx.powi(2)*rz.powi(2) + 54.0*ry.powi(2)*rz.powi(2) - 9.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rx
+        * (r2 * rx.powi(2) - 6.0 * r2 * ry.powi(2) + 3.0 * r2 * rz.powi(2)
+            - 9.0 * rx.powi(2) * rz.powi(2)
+            + 54.0 * ry.powi(2) * rz.powi(2)
+            - 9.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_8(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    45.0*rx*ry*rz*(4.0*r2 + 3.0*rx.powi(2) + 3.0*ry.powi(2) - 18.0*rz.powi(2))/r2.powf(11.0 / 2.0)
+    45.0 * rx * ry * rz * (4.0 * r2 + 3.0 * rx.powi(2) + 3.0 * ry.powi(2) - 18.0 * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_9(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rx*(r2*rx.powi(2) + r2*ry.powi(2) - 4.0*r2*rz.powi(2) - 9.0*rx.powi(2)*rz.powi(2) - 9.0*ry.powi(2)*rz.powi(2) + 12.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0
+        * rx
+        * (r2 * rx.powi(2) + r2 * ry.powi(2)
+            - 4.0 * r2 * rz.powi(2)
+            - 9.0 * rx.powi(2) * rz.powi(2)
+            - 9.0 * ry.powi(2) * rz.powi(2)
+            + 12.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_10(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*rz*(r2.powi(2) - 14.0*r2*ry.powi(2) + 21.0*ry.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0 * rz * (r2.powi(2) - 14.0 * r2 * ry.powi(2) + 21.0 * ry.powi(4)) / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_11(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*ry*(3.0*r2*rx.powi(2) - 4.0*r2*ry.powi(2) + 9.0*r2*rz.powi(2) - 27.0*rx.powi(2)*rz.powi(2) + 36.0*ry.powi(2)*rz.powi(2) - 27.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -15.0
+        * ry
+        * (3.0 * r2 * rx.powi(2) - 4.0 * r2 * ry.powi(2) + 9.0 * r2 * rz.powi(2)
+            - 27.0 * rx.powi(2) * rz.powi(2)
+            + 36.0 * ry.powi(2) * rz.powi(2)
+            - 27.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_12(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(3.0*r2.powi(2) - 21.0*r2*ry.powi(2) - 7.0*r2*rz.powi(2) + 63.0*ry.powi(2)*rz.powi(2))/r2.powf(11.0 / 2.0)
+    -15.0
+        * rz
+        * (3.0 * r2.powi(2) - 21.0 * r2 * ry.powi(2) - 7.0 * r2 * rz.powi(2)
+            + 63.0 * ry.powi(2) * rz.powi(2))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_13(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -45.0*ry*(r2*rx.powi(2) + r2*ry.powi(2) - 4.0*r2*rz.powi(2) - 9.0*rx.powi(2)*rz.powi(2) - 9.0*ry.powi(2)*rz.powi(2) + 12.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -45.0
+        * ry
+        * (r2 * rx.powi(2) + r2 * ry.powi(2)
+            - 4.0 * r2 * rz.powi(2)
+            - 9.0 * rx.powi(2) * rz.powi(2)
+            - 9.0 * ry.powi(2) * rz.powi(2)
+            + 12.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 #[inline(always)]
 pub(crate) fn dt_z_14(rx: f64, ry: f64, rz: f64, r2: f64) -> f64 {
-    -15.0*rz*(15.0*r2.powi(2) - 70.0*r2*rz.powi(2) + 63.0*rz.powi(4))/r2.powf(11.0 / 2.0)
+    -15.0 * rz * (15.0 * r2.powi(2) - 70.0 * r2 * rz.powi(2) + 63.0 * rz.powi(4))
+        / r2.powf(11.0 / 2.0)
 }
 
 /// ∂_x T_{ijkl} con T = ∂_i∂_j∂_k∂_l (1/r); pat ∈ [0,14].
