@@ -62,7 +62,7 @@
 //! de la partícula evaluada. La propagación jerárquica de este efecto (L2L)
 //! es la recursión del árbol hacia las hojas.
 use crate::hexadecapole::{hex_accel, hex_accel_softened, outer4_tf};
-use gadget_ng_core::{MacSoftening, Vec3};
+use gadget_ng_core::{BH_GPU_NO_PARTICLE, BhFmmGpuNode, BhMonopoleGpuNode, MacSoftening, Vec3};
 use std::cell::Cell;
 
 // ── Instrumentación opcional del tree walk ───────────────────────────────────
@@ -942,6 +942,57 @@ impl Octree {
     #[inline]
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Exporta el árbol para el kernel Barnes–Hut **monopolo** en GPU (wgpu/CUDA).
+    ///
+    /// Conserva el orden `0..nodes.len()` como índices de hijos (`children[k]`).
+    pub fn export_bh_monopole_gpu_nodes(&self) -> Vec<BhMonopoleGpuNode> {
+        self.nodes
+            .iter()
+            .map(|node| BhMonopoleGpuNode {
+                com: [node.com.x as f32, node.com.y as f32, node.com.z as f32],
+                mass: node.mass as f32,
+                center: [
+                    node.center.x as f32,
+                    node.center.y as f32,
+                    node.center.z as f32,
+                ],
+                half: node.half_size as f32,
+                children: node.children,
+                particle_idx: node
+                    .particle_idx
+                    .map(|j| j as u32)
+                    .unwrap_or(BH_GPU_NO_PARTICLE),
+                _reserved: [0u32; 7],
+            })
+            .collect()
+    }
+
+    /// Exportación FMM completa (monopolo + quad + oct + hex) para kernels Barnes–Hut en GPU.
+    pub fn export_bh_fmm_gpu_nodes(&self) -> Vec<BhFmmGpuNode> {
+        self.nodes
+            .iter()
+            .map(|node| BhFmmGpuNode {
+                com: [node.com.x as f32, node.com.y as f32, node.com.z as f32],
+                mass: node.mass as f32,
+                center: [
+                    node.center.x as f32,
+                    node.center.y as f32,
+                    node.center.z as f32,
+                ],
+                half: node.half_size as f32,
+                children: node.children,
+                particle_idx: node
+                    .particle_idx
+                    .map(|j| j as u32)
+                    .unwrap_or(BH_GPU_NO_PARTICLE),
+                _reserved: [0u32; 7],
+                quad: node.quad.map(|x| x as f32),
+                oct: node.oct.map(|x| x as f32),
+                hex: node.hex.map(|x| x as f32),
+            })
+            .collect()
     }
 
     /// Exporta nodos LET para un rango receptor cuyas partículas viven en `target_aabb`.

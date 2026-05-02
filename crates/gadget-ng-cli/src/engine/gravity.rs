@@ -9,6 +9,8 @@ use gadget_ng_core::{
 use gadget_ng_pm::PmSolver;
 #[cfg(feature = "simd")]
 use gadget_ng_tree::RayonBarnesHutGravity;
+#[cfg(feature = "gpu")]
+use gadget_ng_tree::WgpuBarnesHutGpu;
 use gadget_ng_tree::{
     BarnesHutGravity, Octree, accel_from_let, unpack_let_nodes, walk_stats_begin, walk_stats_end,
 };
@@ -339,11 +341,38 @@ pub(crate) fn compute_forces_sfc_let(
 }
 
 pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
-    // Solver GPU wgpu — activado con `[performance] use_gpu = true` en el TOML.
-    // Requiere compilar con `--features gpu`. Si no hay GPU disponible en el host
-    // (headless, CI), `try_new()` devuelve None y se continúa con el solver CPU.
+    // Barnes–Hut FMM wgpu — `[performance] use_gpu_barnes_hut = true`, solver BH,
+    // `multipole_order` 1–3 (hexadecapolo solo CPU). Requiere `--features gpu`.
     #[cfg(feature = "gpu")]
-    if cfg.performance.use_gpu {
+    if cfg.performance.use_gpu_barnes_hut && cfg.gravity.solver == SolverKind::BarnesHut {
+        if cfg.gravity.multipole_order > 3 {
+            eprintln!(
+                "[gadget-ng] GPU BH: multipole_order > 3 no está en el kernel wgpu; usando CPU BH."
+            );
+        } else if let Some(bh) = WgpuBarnesHutGpu::try_new(
+            cfg.gravity.theta,
+            cfg.gravity.multipole_order,
+            cfg.gravity.opening_criterion == OpeningCriterion::Relative,
+            cfg.gravity.err_tol_force_acc,
+            cfg.gravity.softened_multipoles,
+            cfg.gravity.mac_softening,
+        ) {
+            eprintln!(
+                "[gadget-ng] GPU wgpu: Barnes–Hut FMM (order={}, θ={:.4}, f32).",
+                cfg.gravity.multipole_order, cfg.gravity.theta
+            );
+            return Box::new(bh);
+        } else {
+            eprintln!(
+                "[gadget-ng] ADVERTENCIA: use_gpu_barnes_hut=true pero wgpu no disponible o orden inválido; CPU BH."
+            );
+        }
+    }
+
+    // Gravedad directa wgpu — `[performance] use_gpu = true` (compatibilidad: solo `Direct`).
+    // Requiere compilar con `--features gpu`. Si no hay adaptador, fallback CPU.
+    #[cfg(feature = "gpu")]
+    if cfg.performance.use_gpu && cfg.gravity.solver == SolverKind::Direct {
         if let Some(gpu) = gadget_ng_core::GpuDirectGravity::try_new() {
             eprintln!("[gadget-ng] GPU wgpu activado (gravedad directa f32).");
             return Box::new(gpu);

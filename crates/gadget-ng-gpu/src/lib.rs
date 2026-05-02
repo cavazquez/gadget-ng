@@ -1,4 +1,10 @@
-//! `gadget-ng-gpu` — placeholder para futuros kernels GPU.
+//! `gadget-ng-gpu` — kernels gravitatorios en **wgpu** (WGSL).
+//!
+//! - [`GpuDirectGravity`] — gravedad directa O(N²).
+//! - [`GpuBarnesHutMonopole`] — Barnes–Hut monopolo (camino compacto).
+//! - [`GpuBarnesHutFmm`] — Barnes–Hut FMM órdenes 1–3 (quad/oct en WGSL).
+//!
+//! PM y direct en CUDA/HIP: `gadget-ng-cuda` / `gadget-ng-hip`.
 //!
 //! ## Diseño sin dependencias circulares
 //!
@@ -23,13 +29,19 @@
 //! ids:    [id0, id1, id2, ...]
 //! ```
 //!
-//! ## Punto de extensión
+//! ## Integración
 //!
-//! [`GpuDirectGravity`] es hoy un tipo marcador. La impl `GravitySolver` está en
-//! `gadget_ng_core::gpu_bridge` y llama a `unimplemented!`. Para los kernels
-//! reales, añadir las dependencias GPU en `Cargo.toml` y reemplazar esa impl.
+//! [`GpuDirectGravity`] compila y ejecuta el shader anterior; la impl del trait
+//! `GravitySolver` para el motor está en `gadget_ng_core::gpu_bridge` con
+//! `feature = "gpu"`.
+pub mod bh_fmm;
+pub mod bh_monopole;
 pub mod soa;
 pub mod solver;
+pub mod treepm_short_wgsl;
 
+pub use bh_fmm::{BhFmmKernelParams, GpuBarnesHutFmm};
+pub use bh_monopole::GpuBarnesHutMonopole;
 pub use soa::GpuParticlesSoA;
 pub use solver::GpuDirectGravity;
+pub use treepm_short_wgsl::GpuTreePmShortRange;

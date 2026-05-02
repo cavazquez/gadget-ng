@@ -9,6 +9,9 @@ pub mod rayon_bh;
 pub mod rmn_soa;
 pub mod sidm;
 
+#[cfg(feature = "gpu")]
+pub mod wgpu_monopole_bh;
+
 pub use barnes_hut::BarnesHutGravity;
 pub use let_tree::{
     DEFAULT_LEAF_MAX, LetTree, let_tree_prof_begin, let_tree_prof_end, let_tree_tile_prof_read,
@@ -23,3 +26,5 @@ pub use octree::{
 pub use rayon_bh::RayonBarnesHutGravity;
 pub use rmn_soa::RmnSoa;
 pub use sidm::{SidmParams, apply_sidm_scattering, scatter_probability};
+#[cfg(feature = "gpu")]
+pub use wgpu_monopole_bh::{WgpuBarnesHutGpu, WgpuMonopoleBarnesHut};

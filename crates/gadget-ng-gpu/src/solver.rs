@@ -344,7 +344,7 @@ impl GpuDirectGravity {
 
 // ── Utilidades internas ───────────────────────────────────────────────────────
 
-fn bgl_entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
+pub(crate) fn bgl_entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::COMPUTE,

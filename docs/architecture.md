@@ -15,7 +15,7 @@ Implementación en Rust inspirada **conceptualmente** en GADGET-4 ([sitio oficia
 - **Gravedad**: directa \(O(N^2)\), Barnes–Hut, PM periódico 3D, TreePM; rutas **MPI** con descomposición **SFC (Hilbert 3D)** y **LET** para el corto alcance, alternativa legacy `MPI_Allgatherv` cuando se fuerza explícitamente; PM distribuido con patrones allreduce / slab / lápiz / scatter–gather según configuración y fase.
 - **Cosmología**: \(\Omega_m\), \(\Omega_\Lambda\), CPL \(w_0,w_a\), masas de neutrinos (entrada en eV); **ICs** 1LPT/2LPT, transferencias Eisenstein–Hu, convenciones de normalización (`Legacy` / `Z0Sigma8`).
 - **Bariones y campos**: crates **SPH**, **MHD**, **RT** integrados en el workspace (gas, estrellas, radiación, etc., según features y TOML).
-- **GPU**: **wgpu** (gravedad directa y otros usos portátiles); **CUDA / HIP** para solver PM en GPU (cuando el toolchain está disponible); rutas CPU siempre disponibles.
+- **GPU**: **wgpu** — gravedad directa (`GpuDirectGravity`), Barnes–Hut FMM hasta orden 3 (`GpuBarnesHutFmm` / `[performance] use_gpu_barnes_hut`), corto alcance TreePM (`GpuTreePmShortRange`, kernel listo; el solver compuesto sigue en CPU); **CUDA / HIP** — PM puro en GPU (`use_gpu_cuda` / `use_gpu_hip`). Ver [gpu-first-roadmap.md](gpu-first-roadmap.md).
 - **Paralelismo intra-rango**: Rayon, SIMD/AVX2 en directos y BH, opciones `pm-rayon` donde aplique.
 - **I/O**: JSONL, bincode, HDF5 estilo GADGET-4, MessagePack, NetCDF; siempre `meta.json` y `provenance.json`.
 - **Análisis**: crate `gadget-ng-analysis` e integración CLI (`analyze`, insitu P(k), FoF, etc.).
@@ -45,7 +45,7 @@ La sección [Flujo de `stepping` (MPI)](#flujo-de-stepping-mpi) resume el camino
 | `gadget-ng-integrators` | KDK global, jerárquico, Yoshida |
 | `gadget-ng-parallel` | `ParallelRuntime`, MPI, descomposición SFC/slab, LET |
 | `gadget-ng-io` | Lectura/escritura de snapshots (JSONL, bincode, HDF5, msgpack, netcdf) |
-| `gadget-ng-gpu` | SoA GPU, puentes a kernels |
+| `gadget-ng-gpu` | SoA GPU, direct/BH-FMM/TreePM-SR wgpu; puentes CUDA en otros crates |
 | `gadget-ng-cuda` / `gadget-ng-hip` | PM en GPU (NVIDIA / AMD) |
 | `gadget-ng-analysis` | P(k), utilidades de análisis |
 | `gadget-ng-sph` | Hidrodinámica SPH |

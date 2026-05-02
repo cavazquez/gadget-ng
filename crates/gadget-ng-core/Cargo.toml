@@ -11,6 +11,7 @@ simd = ["dep:rayon"]
 gpu = ["dep:gadget-ng-gpu"]
 
 [dependencies]
+gadget-ng-gpu-layout = { path = "../gadget-ng-gpu-layout" }
 serde.workspace = true
 thiserror.workspace = true
 rustfft = "6.4.1"

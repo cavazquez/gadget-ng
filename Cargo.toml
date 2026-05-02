@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/gadget-ng-gpu-layout",
     "crates/gadget-ng-core",
     "crates/gadget-ng-integrators",
     "crates/gadget-ng-parallel",

@@ -634,6 +634,13 @@ pub struct PerformanceSection {
     #[serde(default)]
     pub use_gpu: bool,
 
+    /// `true` → intentar Barnes–Hut monopolar en **wgpu** (árbol en CPU, walk en GPU).
+    /// Requiere `--features gpu` y `[gravity] multipole_order = 1` con criterio
+    /// geométrico. No reemplaza SFC+LET (fuerzas locales+remotas siguen en CPU).
+    /// Con `false` (default) se usa el walk CPU.
+    #[serde(default)]
+    pub use_gpu_barnes_hut: bool,
+
     /// `true` → árbol de Barnes-Hut distribuido: cada rango construye un árbol local
     /// a partir de sus partículas más los halos de los rangos vecinos (izquierdo y derecho
     /// en el eje x). La comunicación es punto-a-punto (`exchange_halos_by_x`), no
@@ -824,6 +831,7 @@ impl Default for PerformanceSection {
             let_tree_leaf_max: default_let_tree_leaf_max(),
             let_theta_export_factor: 0.0,
             sfc_kind: SfcKind::Morton,
+            use_gpu_barnes_hut: false,
             use_gpu_cuda: false,
             use_gpu_hip: false,
             rebalance_imbalance_threshold: 0.0,

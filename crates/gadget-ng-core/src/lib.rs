@@ -35,6 +35,7 @@ pub use cosmology::{
     growth_factor_d_ratio, growth_rate_f, hubble_param, minimum_image, neutrino_suppression,
     omega_nu_from_mass, peculiar_vrms, wrap_coord, wrap_position,
 };
+pub use gadget_ng_gpu_layout::{BH_GPU_NO_PARTICLE, BhFmmGpuNode, BhMonopoleGpuNode};
 #[cfg(feature = "simd")]
 pub use gravity::RayonDirectGravity;
 pub use gravity::{

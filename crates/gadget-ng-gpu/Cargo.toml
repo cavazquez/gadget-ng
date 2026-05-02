@@ -9,10 +9,14 @@ description = "GPU gravity kernels (placeholder) — SoA data layout"
 default = []
 
 [dependencies]
+gadget-ng-gpu-layout = { path = "../gadget-ng-gpu-layout" }
 pollster = "0.4.0"
 wgpu = "29.0.1"
 
 [dev-dependencies]
+gadget-ng-core = { path = "../gadget-ng-core", default-features = false }
+gadget-ng-tree = { path = "../gadget-ng-tree" }
+gadget-ng-treepm = { path = "../gadget-ng-treepm" }
 tempfile = "3"
 criterion.workspace = true
 gadget-ng-cuda = { path = "../gadget-ng-cuda" }

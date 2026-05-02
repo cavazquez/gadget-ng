@@ -21,6 +21,8 @@ pub(crate) fn try_git_commit() -> Option<String> {
 }
 pub(crate) fn provenance_for_run(cfg: &RunConfig) -> Result<Provenance, CliError> {
     let cfg_hash = config_load::config_canonical_hash(cfg)?;
+    let mut feats = enabled_features_list();
+    feats.extend(gravity_kernel_tags(cfg));
     Ok(Provenance::new(
         env!("CARGO_PKG_VERSION"),
         try_git_commit(),
@@ -30,10 +32,44 @@ pub(crate) fn provenance_for_run(cfg: &RunConfig) -> Result<Provenance, CliError
             "release"
         }
         .to_string(),
-        enabled_features_list(),
+        feats,
         std::env::args().collect(),
         cfg_hash,
     ))
+}
+
+/// Etiquetas sintéticas para snapshots: intención de backend gravitatorio (no garantiza que wgpu haya inicializado).
+#[cfg(any(feature = "gpu", feature = "cuda", feature = "hip"))]
+fn gravity_kernel_tags(cfg: &RunConfig) -> Vec<String> {
+    use gadget_ng_core::SolverKind;
+    let mut v = Vec::new();
+    #[cfg(feature = "gpu")]
+    {
+        if cfg.performance.use_gpu && cfg.gravity.solver == SolverKind::Direct {
+            v.push("gravity:intent_wgpu_direct".into());
+        }
+        if cfg.performance.use_gpu_barnes_hut && cfg.gravity.solver == SolverKind::BarnesHut {
+            v.push("gravity:intent_wgpu_bh_fmm".into());
+        }
+    }
+    #[cfg(feature = "cuda")]
+    {
+        if cfg.performance.use_gpu_cuda && cfg.gravity.solver == SolverKind::Pm {
+            v.push("gravity:intent_cuda_pm".into());
+        }
+    }
+    #[cfg(feature = "hip")]
+    {
+        if cfg.performance.use_gpu_hip && cfg.gravity.solver == SolverKind::Pm {
+            v.push("gravity:intent_hip_pm".into());
+        }
+    }
+    v
+}
+
+#[cfg(not(any(feature = "gpu", feature = "cuda", feature = "hip")))]
+fn gravity_kernel_tags(_cfg: &RunConfig) -> Vec<String> {
+    Vec::new()
 }
 
 /// Construye el bloque de unidades para `SnapshotEnv`, si el config usa unidades físicas.

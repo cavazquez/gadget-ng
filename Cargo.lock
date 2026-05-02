@@ -723,6 +723,7 @@ dependencies = [
  "approx",
  "criterion",
  "gadget-ng-gpu",
+ "gadget-ng-gpu-layout",
  "rayon",
  "rustfft",
  "serde",
@@ -741,12 +742,20 @@ name = "gadget-ng-gpu"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "gadget-ng-core",
  "gadget-ng-cuda",
+ "gadget-ng-gpu-layout",
  "gadget-ng-hip",
+ "gadget-ng-tree",
+ "gadget-ng-treepm",
  "pollster",
  "tempfile",
  "wgpu",
 ]
+
+[[package]]
+name = "gadget-ng-gpu-layout"
+version = "0.1.0"
 
 [[package]]
 name = "gadget-ng-hip"
@@ -872,6 +881,7 @@ dependencies = [
  "approx",
  "criterion",
  "gadget-ng-core",
+ "gadget-ng-gpu",
  "gadget-ng-integrators",
  "rayon",
 ]

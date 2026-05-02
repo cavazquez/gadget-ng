@@ -65,16 +65,17 @@ ver `experiments/nbody/mvp_smoke/docs/validation.md`).
 |---|---|---|---|
 | **Integrador base** | Leapfrog KDK | `leapfrog_kdk_step` | Equivalente |
 | **Block timesteps** | Bins Aarseth `dt = η√(ε/\|a\|)`, power-of-2 | `hierarchical_kdk_step` + `aarseth_bin` | Equivalente (mismo criterio) |
-| **Árbol gravitacional** | Barnes-Hut monopolo + octree | `BarnesHutGravity` + `Octree` | Equivalente |
-| **Multipolo árbol** | Monopolo + cuadrupolo + octupolo | Monopolo puro | **Limitación: gadget-ng usa solo monopolo** |
+| **Árbol gravitacional** | Barnes-Hut + octree | `BarnesHutGravity` + `Octree` | Equivalente |
+| **Multipolo árbol** | Hasta ~hexadecapolo (prod.) | Mono+cuad+oct (y orden configurable); MAC relativo opcional | **Equiparable en orden típico** (véase Fase 4/5) |
 | **Particle-Mesh** | TreePM con splitting Gaussiano erf/erfc | `TreePmSolver` (erf/erfc, rustfft) | Equivalente conceptualmente |
 | **Descomposición de dominio** | Curva Peano-Hilbert (SFC) | Morton Z-order SFC (`sfc.rs`) | Equivalente (distinta curva SFC) |
-| **Paralelismo** | MPI + OpenMP híbrido | MPI puro (1 hilo/rango) | **Limitación: sin OpenMP** |
+| **Paralelismo** | MPI + OpenMP híbrido | MPI; intra-nodo opcional **Rayon** (`simd` + no determinista), no OpenMP | Distinto modelo de hilos |
 | **Softening** | Plummer-equivalent kernel | `pairwise_accel_plummer` | Idéntico |
 | **ICs** | MUSIC/N-GenIC, archivos HDF5 | TOML + generadores analíticos (Lattice, TwoBody, Plummer, UniformSphere) | Más limitado |
 | **I/O de snapshots** | HDF5 estilo GADGET | HDF5, JSONL, bincode, msgpack, NetCDF-4 | Equiparable |
 | **Cosmología** | Completa (factores a(t), Ewald) | `leapfrog_cosmo_kdk_step` básico | **Simplificado** |
 | **SPH** | SPH clásico + AREPO (malla móvil) | SPH básico en `gadget-ng-sph` | Simplificado |
+| **GPU** | Kernels nativos (CUDA en prod.) | wgpu (WGSL) gravedad **directa**; CUDA/HIP PM + direct opcional (`--features cuda` / `hip`) | **Parcial:** sin BH/árbol ni TreePM completo en GPU en el camino CLI habitual |
 | **Idioma** | C++ (19M LoC aprox.) | Rust (~5K LoC) | Memory safety, API más limpia |
 
 ### Similitudes clave
@@ -83,16 +84,17 @@ ver `experiments/nbody/mvp_smoke/docs/validation.md`).
 2. Mismo criterio de block timesteps (Aarseth).
 3. Mismo patrón de splitting gravitacional erf/erfc para TreePM.
 4. Mismo suavizado Plummer.
-5. MPI con descomposición SFC + Allgather de estado global.
+5. MPI con descomposición SFC; rutas con halos/LET o, en configuraciones benchmark antiguas, Allgather global (véase informes Fase 3 §1.1).
 
 ### Diferencias y limitaciones actuales de gadget-ng
 
-1. **Multipolo**: gadget-ng usa solo monopolo en el árbol; GADGET-4 usa hasta octupolo,
-   lo que mejora la precisión por un factor ~3 con el mismo θ.
-2. **Paralelismo**: sin MPI+OpenMP híbrido; un hilo por rango MPI.
-3. **Cosmología**: factores de expansión básicos sin integración completa de Friedmann.
-4. **GPU**: crate `gadget-ng-gpu` es un placeholder (sin kernels reales).
-5. **ICs sintéticas**: sin interfaz con generadores cosmológicos como MUSIC.
+> **Actualización 2026:** Este bloque corrige afirmaciones obsoletas del borrador original (multipolos y GPU).
+
+1. **Multipolo / MAC:** el árbol incluye términos multipolares y criterio relativo configurable (no limitado a monopolo); precisión vs GADGET-4 depende de `theta` / `err_tol_force_acc` y de la física del problema (Fase 4–5).
+2. **Paralelismo inter-nodo:** sin modelo OpenMP de GADGET-4; MPI + Rayon intra-nodo opcional en CPU.
+3. **Cosmología:** factores de expansión básicos sin integración completa de Friedmann como en GADGET-4 producción.
+4. **GPU:** **hay kernels reales** — `gadget-ng-gpu` (`GpuDirectGravity`, WGSL f32) y `gadget-ng-cuda` / `gadget-ng-hip` (direct + PM con FFT cuando el toolchain existe). **No implementado** como objetivo masivo: **Barnes–Hut en GPU**, **TreePM corto alcance en GPU**, integración end-to-end comparable a un código cosmológico GPU-first, ni **OpenCL** (el stack elegido es Vulkan/wgpu + CUDA/HIP). Esa brecha sigue siendo **muy alta** en esfuerzo.
+5. **ICs sintéticas**: sin interfaz con generadores cosmológicos tipo MUSIC en el árbol principal.
 
 ---
 
