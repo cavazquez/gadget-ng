@@ -24,7 +24,8 @@
 //!
 //! ## Salidas CSV
 //!
-//! - `bh_accuracy.csv`: barrido de θ con orden multipolar completo (order=3).
+//! - `bh_accuracy.csv`: barrido de θ con MAC **geométrico**, orden multipolar completo (order=3).
+//! - `bh_accuracy_relative.csv`: mismo barrido con MAC **relativo** (`err_tol_force_acc = 0.0025`).
 //! - `bh_multipole_ablation.csv`: ablación de orden multipolar (order=1,2,3) a θ fijo.
 
 use gadget_ng_core::{
@@ -39,6 +40,8 @@ const G: f64 = 1.0;
 const EPS: f64 = 0.05;
 const EPS2: f64 = EPS * EPS;
 const N: usize = 500;
+/// ErrTolForceAcc por defecto (GADGET-4 / `configs/production_256.toml`) para MAC **relativo**.
+const ERR_TOL_RELATIVE_DEFAULT: f64 = 0.0025;
 
 // ── Configuraciones de partículas ─────────────────────────────────────────────
 
@@ -398,6 +401,20 @@ struct BenchResult {
 }
 
 fn run_benchmark(distribution: &'static str, cfg: &RunConfig, thetas: &[f64]) -> Vec<BenchResult> {
+    run_benchmark_with_mac(distribution, cfg, thetas, false, 0.005)
+}
+
+/// Barnes–Hut vs Direct con MAC geométrico (`θ`) o **relativo** (ErrTolForceAcc).
+///
+/// - Geométrico: mismo camino histórico que `compute_bh` (`use_relative_criterion = false`).
+/// - Relativo: `use_relative_criterion = true`, `err_tol_force_acc = err_tol` (típ. 0.0025).
+fn run_benchmark_with_mac(
+    distribution: &'static str,
+    cfg: &RunConfig,
+    thetas: &[f64],
+    use_relative: bool,
+    err_tol: f64,
+) -> Vec<BenchResult> {
     let particles = build_particles(cfg).expect("build_particles failed");
     let positions: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
@@ -406,7 +423,11 @@ fn run_benchmark(distribution: &'static str, cfg: &RunConfig, thetas: &[f64]) ->
 
     let mut results = Vec::new();
     for &theta in thetas {
-        let (bh_acc, time_bh_ms) = compute_bh(&positions, &masses, theta);
+        let (bh_acc, time_bh_ms) = if use_relative {
+            compute_bh_full(&positions, &masses, theta, 3, false, true, err_tol)
+        } else {
+            compute_bh(&positions, &masses, theta)
+        };
         let err = compute_force_error(&ref_acc, &bh_acc);
         results.push(BenchResult {
             distribution,
@@ -462,6 +483,46 @@ fn write_csv(results: &[BenchResult]) {
         eprintln!("[bh_force_accuracy] Error escribiendo CSV: {e}");
     } else {
         println!("[bh_force_accuracy] Resultados escritos en {csv_path:?}");
+    }
+}
+
+fn write_csv_relative(results: &[BenchResult]) {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+    let repo_root = std::path::PathBuf::from(&manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let out_dir =
+        repo_root.join("experiments/nbody/phase3_gadget4_benchmark/bh_force_error/results");
+
+    let Ok(()) = std::fs::create_dir_all(&out_dir) else {
+        eprintln!("[bh_force_accuracy_relative] No se pudo crear {out_dir:?}; omitiendo CSV.");
+        return;
+    };
+
+    let csv_path = out_dir.join("bh_accuracy_relative.csv");
+    let mut out = String::from(
+        "distribution,theta,N,mean_err,max_err,rms_err,energy_err,time_direct_ms,time_bh_ms\n",
+    );
+    for r in results {
+        out.push_str(&format!(
+            "{},{:.2},{},{:.6e},{:.6e},{:.6e},{:.6e},{:.3},{:.3}\n",
+            r.distribution,
+            r.theta,
+            N,
+            r.mean_err,
+            r.max_err,
+            r.rms_err,
+            r.energy_err,
+            r.time_direct_ms,
+            r.time_bh_ms,
+        ));
+    }
+    if let Err(e) = std::fs::write(&csv_path, &out) {
+        eprintln!("[bh_force_accuracy_relative] Error escribiendo CSV: {e}");
+    } else {
+        println!("[bh_force_accuracy_relative] Resultados escritos en {csv_path:?}");
     }
 }
 
@@ -701,6 +762,49 @@ fn bh_force_accuracy_full_sweep() {
         );
     }
     write_csv(&all_results);
+}
+
+/// Barrido completo con **criterio de apertura relativo** (ErrTolForceAcc), mismo θ y N que
+/// `bh_force_accuracy_full_sweep`. Escribe `bh_accuracy_relative.csv` junto al CSV geométrico.
+///
+/// Regenerar:
+/// `cargo test -p gadget-ng-physics --test bh_force_accuracy bh_force_accuracy_relative_full_sweep --release -- --nocapture`
+#[test]
+fn bh_force_accuracy_relative_full_sweep() {
+    let cfg_sphere = make_config_uniform_sphere();
+    let cfg_plummer = make_config_plummer();
+
+    let mut all_results =
+        run_benchmark_with_mac("uniform_sphere", &cfg_sphere, THETAS, true, ERR_TOL_RELATIVE_DEFAULT);
+    all_results.extend(run_benchmark_with_mac(
+        "plummer",
+        &cfg_plummer,
+        THETAS,
+        true,
+        ERR_TOL_RELATIVE_DEFAULT,
+    ));
+
+    println!(
+        "\n=== BH Force Accuracy (MAC relativo, err_tol={}) ===",
+        ERR_TOL_RELATIVE_DEFAULT
+    );
+    println!(
+        "{:<16} {:<8} {:>10} {:>10} {:>10} {:>12} {:>10}",
+        "distribution", "theta", "mean_err%", "max_err%", "rms_err%", "t_bh_ms", "speedup"
+    );
+    for r in &all_results {
+        println!(
+            "{:<16} {:<8.2} {:>10.3} {:>10.3} {:>10.3} {:>12.1} {:>9.2}x",
+            r.distribution,
+            r.theta,
+            r.mean_err * 100.0,
+            r.max_err * 100.0,
+            r.rms_err * 100.0,
+            r.time_bh_ms,
+            r.time_direct_ms / r.time_bh_ms.max(1e-6),
+        );
+    }
+    write_csv_relative(&all_results);
 }
 
 /// Ablación de orden multipolar: cuantifica la contribución real de cada término.

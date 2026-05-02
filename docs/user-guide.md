@@ -122,6 +122,44 @@ deterministic = false  # activar Rayon
 num_threads   = 8
 ```
 
+### Barnes–Hut: precisión (MAC relativo y multipolos suavizados)
+
+Para **sistemas concentrados** (núcleos denso, esferas de Plummer, etc.), el MAC
+**geométrico** fijo en θ puede ser mucho peor que un directo de referencia. Eso
+**no** implica que falte implementación: el motor ya incluye criterio de
+apertura **relativo** (estilo GADGET-4, `ErrTolForceAcc`) y suavizado coherente
+en multipolos. Configuración recomendada “paper-grade” (véase
+[Phase 5 — energía y MAC](reports/2026-04-phase5-energy-mac-consistency.md#7-configuración-recomendada-paper-grade)):
+
+```toml
+[gravity]
+solver                = "barnes_hut"
+theta                 = 0.5            # usado con opening_criterion = "geometric"; con "relative" el walk usa err_tol
+multipole_order       = 3              # monopolo + cuadrupolo + octupolo
+opening_criterion   = "relative"      # MAC adaptativo tipo GADGET-4
+err_tol_force_acc     = 0.005         # tolerancia de error de fuerza (típ. 0.0025–0.005)
+softened_multipoles   = true         # suavizado Plummer también en términos Q/O
+mac_softening         = "consistent"  # estimador MAC coherente con ε; ~menos aperturas en núcleo
+```
+
+- **Validación reproducible** (errores de fuerza vs `DirectGravity` y comparación
+  geométrico vs relativo en CSV):
+  `bash experiments/nbody/phase3_gadget4_benchmark/bh_force_error/scripts/run_bh_accuracy.sh`  
+  Resultados: `experiments/.../results/bh_accuracy.csv` y `bh_accuracy_relative.csv`.  
+  Resumen: [bh_opening_geometric_vs_relative.md](reports/bh_opening_geometric_vs_relative.md).
+
+- **Tests de integración** (mismo binario de test, distintos enfoques):
+
+  ```bash
+  cargo test -p gadget-ng-physics --test bh_force_accuracy --release -- --nocapture bh_relative_criterion_sweep
+  cargo test -p gadget-ng-physics --test bh_force_accuracy --release -- --nocapture bh_radial_error_analysis
+  ```
+
+**Coste:** un MAC relativo estricto puede abrir muchos nodos; en N pequeño el
+Barnes–Hut puede ser **más lento** que el directo. En N grande el árbol sigue
+siendo el régimen asintótico adecuado; ajusta `err_tol_force_acc` si necesitas
+equilibrar precisión y tiempo.
+
 ### Ejemplo PM
 
 ```toml
