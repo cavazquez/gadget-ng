@@ -5,6 +5,8 @@
 //! - [`min_dist2_to_aabb_3d_periodic`] — distancia mínima al cuadrado periódica a AABB rectangular
 //! - [`compute_aabb_3d`] — AABB real de un slice de partículas
 //! - [`aabb_to_f64`] / [`f64_to_aabb`] — serialización para allgather
+//! - [`flat_aabb_is_valid`], [`flat_aabb_expand_components`], [`flat_aabb_intersects`],
+//!   [`halos_sfc_pair_may_exchange`] — poda / vecindario MPI AABB
 //!
 //! ## Por qué se necesita este módulo
 //!
@@ -99,6 +101,71 @@ pub fn f64_to_aabb(v: &[f64]) -> Option<Aabb3> {
         lo: [v[0], v[2], v[4]],
         hi: [v[1], v[3], v[5]],
     })
+}
+
+/// Comprueba si `v` tiene al menos 6 elementos y `lo ≤ hi` en cada par de ejes
+/// (`xlo,xhi`, `ylo,yhi`, `zlo,zhi`).
+///
+/// El formato vacío de `compute_aabb` en MPI (`∞`, `-∞` por eje) **no** es válido
+/// aquí (correcto: no hay solape con cajas finitas).
+#[inline]
+pub fn flat_aabb_is_valid(v: &[f64]) -> bool {
+    v.len() >= 6 && v[0] <= v[1] && v[2] <= v[3] && v[4] <= v[5]
+}
+
+/// Expande una AABB plana `[xlo,xhi,ylo,yhi,zlo,zhi]` por `hw` en cada dirección.
+#[inline]
+pub fn flat_aabb_expand_components(a: &[f64], hw: f64) -> Option<[f64; 6]> {
+    if a.len() < 6 {
+        return None;
+    }
+    Some([
+        a[0] - hw,
+        a[1] + hw,
+        a[2] - hw,
+        a[3] + hw,
+        a[4] - hw,
+        a[5] + hw,
+    ])
+}
+
+/// Intersección de dos AABB en formato plano, sin condiciones de contorno periódicas.
+///
+/// Devuelve `false` si algún slice tiene menos de 6 elementos.
+#[inline]
+pub fn flat_aabb_intersects(a: &[f64], b: &[f64]) -> bool {
+    if a.len() < 6 || b.len() < 6 {
+        return false;
+    }
+    a[1] >= b[0] && b[1] >= a[0] && a[3] >= b[2] && b[3] >= a[2] && a[5] >= b[4] && b[5] >= a[4]
+}
+
+/// Indica si entre los rangos `i` y `j` podría haber halos SFC en **al menos un sentido**
+/// (criterio AABB conservador, sin período).
+///
+/// Equivale a comprobar si `intersect(AABB_i, expand(AABB_j))` o la simétrica.
+/// Si falta AABB o no es válida, devuelve `true` (no omitir comunicación).
+pub fn halos_sfc_pair_may_exchange(
+    i: usize,
+    j: usize,
+    all_aabbs: &[Vec<f64>],
+    halo_width: f64,
+) -> bool {
+    if i == j {
+        return false;
+    }
+    let ai = all_aabbs.get(i).map(|v| v.as_slice()).unwrap_or(&[]);
+    let aj = all_aabbs.get(j).map(|v| v.as_slice()).unwrap_or(&[]);
+    let Some(exp_i) = flat_aabb_expand_components(ai, halo_width) else {
+        return true;
+    };
+    let Some(exp_j) = flat_aabb_expand_components(aj, halo_width) else {
+        return true;
+    };
+    if !flat_aabb_is_valid(ai) || !flat_aabb_is_valid(aj) {
+        return true;
+    }
+    flat_aabb_intersects(ai, &exp_j) || flat_aabb_intersects(aj, &exp_i)
 }
 
 // ── AABB real de partículas ───────────────────────────────────────────────────
@@ -236,6 +303,44 @@ mod tests {
             assert!((deserialized.lo[k] - aabb.lo[k]).abs() < 1e-14);
             assert!((deserialized.hi[k] - aabb.hi[k]).abs() < 1e-14);
         }
+    }
+
+    #[test]
+    fn flat_aabb_expand_and_intersect() {
+        let a = [0.0_f64, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let e = flat_aabb_expand_components(&a, 0.1).unwrap();
+        assert!((e[0] + 0.1).abs() < 1e-14 && (e[1] - 1.1).abs() < 1e-14);
+        let b = [2.0_f64, 3.0, 2.0, 3.0, 2.0, 3.0];
+        assert!(!flat_aabb_intersects(&a, &b));
+        assert!(!flat_aabb_intersects(&e, &b));
+        let c = [0.9_f64, 1.2, 0.0, 0.5, 0.0, 0.5];
+        assert!(flat_aabb_intersects(&e, &c));
+    }
+
+    #[test]
+    fn flat_aabb_empty_mpi_pattern_no_intersect_finite() {
+        let empty = [
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        assert!(!flat_aabb_is_valid(&empty));
+        let finite = [0.0_f64, 1.0, 0.0, 1.0, 0.0, 1.0];
+        assert!(!flat_aabb_intersects(&empty, &finite));
+    }
+
+    #[test]
+    fn halos_sfc_pair_may_exchange_symmetric_and_gap() {
+        let a0 = vec![0.0_f64, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let a1 = vec![0.0_f64, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let far = vec![10.0_f64, 11.0, 10.0, 11.0, 10.0, 11.0];
+        let all = vec![a0.clone(), a1.clone(), far];
+        assert!(halos_sfc_pair_may_exchange(0, 1, &all, 0.01));
+        assert!(!halos_sfc_pair_may_exchange(0, 2, &all, 0.01));
+        assert!(!halos_sfc_pair_may_exchange(2, 0, &all, 0.01));
     }
 
     #[test]

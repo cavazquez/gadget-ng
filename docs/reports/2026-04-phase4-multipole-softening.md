@@ -5,6 +5,12 @@
 **Autores:** Validación automatizada, fase 4  
 **Pregunta guía:** ¿Cuándo y por qué los términos multipolares (cuadrupolo/octupolo) degradan la precisión en sistemas densos, y cómo corregirlo?
 
+### Vigencia (lectura 2026)
+
+Las **tablas y experimentos de las §§3–5** son el registro cuantitativo de la **Fase 4**. Siguen siendo válidas como evidencia del problema bare vs softened y del barrido MAC geométrico/relativo en ese momento.
+
+Los apartados **§9.3 y §10 (backlog)** se actualizaron después: el estimador MAC softened-consistente y parte de la conservación multi-step se cerraron en **[Fase 5](2026-04-phase5-energy-mac-consistency.md)**. La comunicación SFC/halos y el intra-nodo Rayon quedan alineados con [Fase 3 — benchmark GADGET-4](2026-04-phase3-gadget4-benchmark.md) (§1.1 y Apéndice B).
+
 ---
 
 ## 1. Diagnóstico matemático: la inconsistencia de softening
@@ -180,17 +186,17 @@ El análisis radial revela que el error global elevado del cuadrupolo bare está
 
 ## 6. Relación con GADGET-4
 
-| Feature | gadget-ng (actual) | gadget-ng (con softened) | GADGET-4 |
-|---------|-------------------|--------------------------|---------|
+| Feature | gadget-ng (default / legacy) | Con `softened_multipoles = true` | GADGET-4 |
+|---------|-------------------------------|----------------------------------|---------|
 | Monopolo suavizado | Sí (ε² en denom.) | Sí | Sí |
-| Cuadrupolo suavizado | **No** (bare) | **Sí** | Sí (§2.3 Springel 2005) |
-| Octupolo suavizado | **No** (bare) | **Sí** | Sí |
-| Criterio apertura relativo | Sí (implementado) | Sí | Sí (`ErrTolForceAcc`) |
-| multipole_order configurable | Sí | Sí | Sí (`MULTIPOLE_ORDER`) |
+| Cuadrupolo suavizado | Bare (r⁻⁵) si `softened_multipoles = false` | **Sí**, mismos exponentes que monopolo en (r²+ε²) | Sí (§2.3 Springel 2005) |
+| Octupolo suavizado | Bare si no se activa el flag | **Sí** | Sí |
+| Criterio apertura relativo (`opening_criterion`) | Configurable | Igual | Sí (`ErrTolForceAcc`) |
+| Estimador MAC relativo (cuadrupolo) | Bare d⁻⁵ por defecto | `mac_softening = "consistent"` (Fase 5) | Bare en prod.; salvaguardas en núcleo |
 
-GADGET-4 aplica el mismo kernel de softening a todos los términos de la expansión multipolar (Springel 2005, §2.3: "the forces are computed using the softened kernel at all multipole orders"). La implementación en gadget-ng con `softened_multipoles = true` reproduce este comportamiento.
+GADGET-4 aplica el mismo kernel de softening a todos los términos de la fuerza multipolar en evaluación (Springel 2005 / GADGET-4 manual). En gadget-ng, `softened_multipoles = true` alinea cuadrupolo/octupolo con el monopolo Plummer en **`quad_accel` / `oct_accel`**.
 
-**Nota sobre el criterio relativo en GADGET-4:** El criterio `TypeOfOpeningCriterion=1` de GADGET-4 también estima el error multipolar antes de aceptar el MAC, usando la magnitud del tensor cuadrupolar relativa a la fuerza monopolar. La implementación de gadget-ng sigue la misma lógica.
+**MAC relativo:** la lógica tipo `ErrTolForceAcc` está en el walk; el refinamiento **`MacSoftening::Consistent`** en el *estimador* del error (no en la fuerza) es **Fase 5** — ver [informe Fase 5](2026-04-phase5-energy-mac-consistency.md).
 
 ---
 
@@ -201,20 +207,25 @@ GADGET-4 aplica el mismo kernel de softening a todos los términos de la expansi
 | Campo lejano, esfera uniforme | > 10 | geo θ=0.5, bare — suficiente para papers |
 | Núcleo moderado | 2–10 | geo θ=0.5, **softened** — mejora 3–4× sin costo |
 | Núcleo compacto (Plummer concentrado) | 1–5 | **relativo tol=0.01, softened** — sub-0.01% de error |
-| Simulaciones de publicación (cualquier régimen) | — | **relativo tol=0.005, softened** — mejor Pareto |
+| Simulaciones de publicación (cualquier régimen) | — | **relativo + softened + `mac_softening = "consistent"`** — mejor Pareto fuerza/nodos (Fase 5) |
+
+*(La fila anterior incorpora el refinamiento del estimador MAC de la Fase 5; las tablas §4 de este informe son anteriores a ese flag.)*
 
 ---
 
 ## 8. Configuración TOML recomendada
 
+Configuración **paper-grade** coherente con Fase 4 + Fase 5 (estimador MAC). Ajustar `err_tol_force_acc` al caso (0.0025 es el valor de referencia GADGET-4 frecuente en producción).
+
 ```toml
 [gravity]
 solver = "barnes_hut"
-theta  = 0.5                      # usado solo con opening_criterion = "geometric"
-multipole_order = 3               # mono + cuadrupolo + octupolo (default)
-opening_criterion = "relative"    # MAC adaptativo tipo GADGET-4
-err_tol_force_acc = 0.005         # tolerancia de error (0.0025 = valor GADGET-4)
-softened_multipoles = true        # corrección física de inconsistencia de softening
+theta  = 0.5                      # solo afecta con opening_criterion = "geometric"
+multipole_order = 3
+opening_criterion = "relative"
+err_tol_force_acc = 0.005
+softened_multipoles = true
+mac_softening = "consistent"      # Fase 5: estimador |Q| coherente con monopolo softened
 ```
 
 ---
@@ -227,30 +238,26 @@ softened_multipoles = true        # corrección física de inconsistencia de sof
 - Para otros kernels de softening (spline, Hernquist) la corrección tendría forma diferente.
 - El costo computacional de `quad_accel_softened` es idéntico a `quad_accel` (mismas operaciones, diferentes denominadores).
 
-### 9.2 Pendiente: energía de cohesión multipolar
+### 9.2 Conservación energética multi-step
 
-Los experimentos actuales miden error de fuerza en un paso. Una prueba adicional de interés es:
-- Medir drift de energía `|ΔE/E₀|` en 100 pasos con cada configuración
-- Comparar bare vs softened en energía acumulada
-- Esta prueba confirmaría el impacto sobre la conservación a largo plazo
+Los experimentos de la Fase 4 en este informe miden sobre todo **error de fuerza local**. La correlación entre ese error y el **drift** `|ΔE/E₀|` en muchos pasos, y el papel del integrador vs del solver, se analizó sistemáticamente en **[Fase 5](2026-04-phase5-energy-mac-consistency.md)** (incluye barridos multi-step y variantes V1–V5).
 
-### 9.3 Softening en el criterio relativo
+### 9.3 Softening en el estimador del criterio relativo — **cerrado en Fase 5**
 
-El criterio relativo ya usa `a_mono_mag = g*M/(d²+ε²)` con eps2, pero la estimación de `quad_mag` usa `|Q|_F / d⁵` (bare). Una corrección consistente sería usar `|Q|_F / (d²+ε²)^(5/2)`. Esto haría el criterio relativo más agresivo en la región de núcleo (abriría más nodos donde d~ε), potencialmente mejorando aún más la precisión.
+Lo que aquí se planteaba como mejora pendiente (`quad_mag` coherente con `(d²+ε²)^{5/2}`) está implementado como **`mac_softening = "consistent"`** frente a **`"bare"`** (default retrocompatible). Detalle cuantitativo y decisión de diseño: [Fase 5, §0–1](2026-04-phase5-energy-mac-consistency.md).
 
 ---
 
-## 10. Backlog técnico actualizado (post-Fase 4)
+## 10. Backlog técnico (estado tras Fases 4–5 y paralelismo)
 
 | Prioridad | Item | Estado |
 |----------|------|--------|
-| 1 | `softened_multipoles` implementado y validado | **COMPLETADO** (Fase 4) |
-| 2 | Criterio de apertura relativo implementado | COMPLETADO (Fase 3) |
-| 3 | `multipole_order` configurable | COMPLETADO (Fase 3) |
-| 4 | Softening consistente en el estimador del criterio relativo | Pendiente (3 días) |
-| 5 | Test de conservación multi-step bare vs softened | Pendiente (1 semana) |
-| 6 | Comunicación punto-a-punto (Allgatherv → SFC real) | Pendiente (3–4 semanas) |
-| 7 | OpenMP intra-nodo | Pendiente (1 semana) |
+| 1 | `softened_multipoles` en fuerzas (`quad`/`oct` softened) | **COMPLETADO** (Fase 4) |
+| 2 | Criterio de apertura relativo + `multipole_order` | **COMPLETADO** (config; uso documentado Fase 4) |
+| 3 | `mac_softening` consistente en estimador MAC relativo | **COMPLETADO** (Fase 5) |
+| 4 | Estudios multi-step energía / momento (bare vs relativo vs consistent) | **COMPLETADO** (Fase 5; ver su informe) |
+| 5 | Comunicación MPI selectiva (SFC, halos, poda AABB, P2P) | **Parcial:** implementado en `gadget-ng-parallel`; falta campaña de scaling publicada (véase [Fase 3 §1.1](2026-04-phase3-gadget4-benchmark.md)) |
+| 6 | Paralelismo intra-nodo masivo tipo OpenMP | **Parcial:** Rayon BH con build `--features simd` y modo no determinista; ver Prioridad 3 en informe Fase 3 |
 
 ---
 

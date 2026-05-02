@@ -1,16 +1,19 @@
-use crate::ParallelRuntime;
 use crate::pack;
+use crate::ParallelRuntime;
 use gadget_ng_core::{Particle, Vec3};
-use mpi::Count;
 use mpi::collective::SystemOperation;
 use mpi::datatype::{Partition, PartitionMut};
 use mpi::environment::Universe;
 use mpi::request::WaitGuard;
 use mpi::traits::*;
+use mpi::Count;
 
 pub struct MpiRuntime {
     _universe: Universe,
 }
+
+/// Tag MPI dedicado a la fase de conteos del intercambio halos SFC (evita mezclar con `f64`).
+const TAG_SFC_HALO_COUNT: mpi::Tag = 9001;
 
 impl MpiRuntime {
     /// Debe llamarse una sola vez al inicio del proceso MPI.
@@ -24,6 +27,143 @@ impl MpiRuntime {
 
     fn world(&self) -> mpi::topology::SimpleCommunicator {
         self._universe.world()
+    }
+
+    /// Fase de datos P2P (Isend/Irecv) una vez conocidos `recv_counts` por rango.
+    fn alltoallv_f64_p2p_from_recv_counts(
+        &self,
+        sends: Vec<Vec<f64>>,
+        recv_counts: Vec<Count>,
+        overlap_work: &mut dyn FnMut(),
+    ) -> Vec<Vec<f64>> {
+        let world = self.world();
+        let size = world.size() as usize;
+        let rank = world.rank() as usize;
+
+        let mut recv_offsets = vec![0usize; size];
+        let mut roff = 0usize;
+        for r in 0..size {
+            recv_offsets[r] = roff;
+            roff += recv_counts[r] as usize;
+        }
+
+        let mut flat_recv = vec![0.0f64; roff];
+
+        mpi::request::scope(|scope| {
+            let mut guards: Vec<WaitGuard<[f64], _>> = Vec::new();
+
+            for r in 0..size {
+                if r == rank {
+                    continue;
+                }
+                let rlen = recv_counts[r] as usize;
+                if rlen > 0 {
+                    let slice: &mut [f64] = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            flat_recv.as_mut_ptr().add(recv_offsets[r]),
+                            rlen,
+                        )
+                    };
+                    let req = world
+                        .process_at_rank(r as i32)
+                        .immediate_receive_into(scope, slice);
+                    guards.push(WaitGuard::from(req));
+                }
+
+                if !sends[r].is_empty() {
+                    let req = world
+                        .process_at_rank(r as i32)
+                        .immediate_send(scope, sends[r].as_slice());
+                    guards.push(WaitGuard::from(req));
+                }
+            }
+
+            overlap_work();
+            drop(guards);
+        });
+
+        let mut result = Vec::with_capacity(size);
+        for r in 0..size {
+            let n = recv_counts[r] as usize;
+            let off = recv_offsets[r];
+            result.push(flat_recv[off..off + n].to_vec());
+        }
+        result
+    }
+
+    /// `Alltoallv` lógico con conteos por pareja geométrica dispersa cuando hay rangos
+    /// que no pueden intercambiar halos SFC (sin `MPI_Alltoall` de enteros en ese caso).
+    fn alltoallv_f64_halos_sfc(
+        &self,
+        sends: Vec<Vec<f64>>,
+        all_aabbs: &[Vec<f64>],
+        halo_width: f64,
+        overlap_work: &mut dyn FnMut(),
+    ) -> Vec<Vec<f64>> {
+        let world = self.world();
+        let size = world.size() as usize;
+        let rank = world.rank() as usize;
+
+        let send_counts: Vec<Count> = sends.iter().map(|v| v.len() as Count).collect();
+
+        let mut pair_active = vec![false; size];
+        for j in 0..size {
+            if j != rank {
+                pair_active[j] =
+                    crate::halo3d::halos_sfc_pair_may_exchange(rank, j, all_aabbs, halo_width);
+            }
+        }
+        let inactive_pairs = (0..size).filter(|&j| j != rank && !pair_active[j]).count();
+
+        let recv_counts = if size <= 8 || inactive_pairs == 0 {
+            let mut r = vec![0 as Count; size];
+            world.all_to_all_into(&send_counts[..], &mut r[..]);
+            r
+        } else {
+            for j in 0..size {
+                if j != rank && !pair_active[j] {
+                    debug_assert_eq!(
+                        send_counts[j], 0,
+                        "halos SFC: par geométrico inactivo no debe tener envío pendiente"
+                    );
+                }
+            }
+            let mut count_recv = vec![0 as Count; size];
+            mpi::request::scope(|scope| {
+                let mut guards: Vec<WaitGuard<[Count], _>> = Vec::new();
+                let ptr = count_recv.as_mut_ptr();
+                for j in 0..size {
+                    if j == rank || !pair_active[j] {
+                        continue;
+                    }
+                    // SAFETY: una celda por `j`; índices distintos → slices disjuntos hasta WaitGuard.
+                    let buf: &mut [Count] =
+                        unsafe { std::slice::from_raw_parts_mut(ptr.add(j), 1) };
+                    let req = world
+                        .process_at_rank(j as i32)
+                        .immediate_receive_into_with_tag(scope, buf, TAG_SFC_HALO_COUNT);
+                    guards.push(WaitGuard::from(req));
+                }
+                let sptr = send_counts.as_ptr();
+                for j in 0..size {
+                    if j == rank || !pair_active[j] {
+                        continue;
+                    }
+                    // SAFETY: `send_counts` no se muta hasta completar las requests.
+                    let buf: &[Count] = unsafe { std::slice::from_raw_parts(sptr.add(j), 1) };
+                    let req = world.process_at_rank(j as i32).immediate_send_with_tag(
+                        scope,
+                        buf,
+                        TAG_SFC_HALO_COUNT,
+                    );
+                    guards.push(WaitGuard::from(req));
+                }
+                drop(guards);
+            });
+            count_recv
+        };
+
+        self.alltoallv_f64_p2p_from_recv_counts(sends, recv_counts, overlap_work)
     }
 }
 
@@ -308,7 +448,7 @@ impl ParallelRuntime for MpiRuntime {
     fn exchange_halos_sfc(
         &self,
         local: &[Particle],
-        decomp: &crate::sfc::SfcDecomposition,
+        _decomp: &crate::sfc::SfcDecomposition,
         halo_width: f64,
     ) -> Vec<Particle> {
         let rank = self.world().rank();
@@ -328,12 +468,17 @@ impl ParallelRuntime for MpiRuntime {
                 continue;
             }
             let a = &all_aabbs[r];
-            if a.len() < 6 {
+            let Some(expanded_r) = crate::halo3d::flat_aabb_expand_components(a, halo_width) else {
+                continue;
+            };
+            // Poda conservadora: solo si la AABB remota es válida y no corta la nuestra
+            // tras expandir por halo, podemos omitir el filtrado (no hay partículas que enviar).
+            if crate::halo3d::flat_aabb_is_valid(a)
+                && !crate::halo3d::flat_aabb_intersects(&my_aabb, &expanded_r)
+            {
                 continue;
             }
-            let (rxlo, rxhi) = (a[0] - halo_width, a[1] + halo_width);
-            let (rylo, ryhi) = (a[2] - halo_width, a[3] + halo_width);
-            let (rzlo, rzhi) = (a[4] - halo_width, a[5] + halo_width);
+            let [rxlo, rxhi, rylo, ryhi, rzlo, rzhi] = expanded_r;
             let in_halo: Vec<Particle> = local
                 .iter()
                 .filter(|p| {
@@ -351,8 +496,8 @@ impl ParallelRuntime for MpiRuntime {
             }
         }
 
-        // Paso 4: intercambio Alltoallv.
-        let received = self.alltoallv_f64(&sends);
+        // Paso 4: conteos + datos (P2P disperso para enteros si hay pares geométricos inactivos).
+        let received = self.alltoallv_f64_halos_sfc(sends, &all_aabbs, halo_width, &mut || {});
 
         let mut halos = Vec::new();
         for (r, data) in received.iter().enumerate() {
@@ -450,84 +595,17 @@ impl ParallelRuntime for MpiRuntime {
     ) -> Vec<Vec<f64>> {
         let world = self.world();
         let size = world.size() as usize;
-        let rank = world.rank() as usize;
         assert_eq!(
             sends.len(),
             size,
             "alltoallv_f64_overlap: sends.len() debe ser igual a world.size()"
         );
 
-        // Fase 1: intercambiar conteos (bloqueante, O(P) enteros, coste despreciable).
         let send_counts: Vec<Count> = sends.iter().map(|v| v.len() as Count).collect();
         let mut recv_counts = vec![0 as Count; size];
         world.all_to_all_into(&send_counts[..], &mut recv_counts[..]);
 
-        // Fase 2: calcular offsets del buffer plano de recepción.
-        let mut recv_offsets = vec![0usize; size];
-        let mut roff = 0usize;
-        for r in 0..size {
-            recv_offsets[r] = roff;
-            roff += recv_counts[r] as usize;
-        }
-
-        // Buffer plano de recepción; debe vivir hasta después de que todas las
-        // requests terminen (antes de retornar).
-        let mut flat_recv = vec![0.0f64; roff];
-
-        // Fase 3: P2P no-bloqueante + overlap de cómputo.
-        //
-        // Usamos mpi::request::scope para gestión segura del lifetime de requests.
-        // Los slices de flat_recv se crean con raw pointers (SAFETY: offsets no
-        // solapados garantizados por la construcción del array recv_offsets).
-        mpi::request::scope(|scope| {
-            let mut guards: Vec<WaitGuard<[f64], _>> = Vec::new();
-
-            for r in 0..size {
-                if r == rank {
-                    continue;
-                }
-                // Irecv: porción del buffer plano de recepción para el rango r.
-                let rlen = recv_counts[r] as usize;
-                if rlen > 0 {
-                    // SAFETY: recv_offsets garantiza que cada rango ocupa una
-                    // región no solapada de flat_recv, que vive hasta el final
-                    // de la función.
-                    let slice: &mut [f64] = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            flat_recv.as_mut_ptr().add(recv_offsets[r]),
-                            rlen,
-                        )
-                    };
-                    let req = world
-                        .process_at_rank(r as i32)
-                        .immediate_receive_into(scope, slice);
-                    guards.push(WaitGuard::from(req));
-                }
-
-                // Isend: slice del buffer de envío para el rango r.
-                if !sends[r].is_empty() {
-                    let req = world
-                        .process_at_rank(r as i32)
-                        .immediate_send(scope, sends[r].as_slice());
-                    guards.push(WaitGuard::from(req));
-                }
-            }
-
-            // Ejecutar trabajo local mientras los mensajes están en vuelo.
-            overlap_work();
-
-            // Los WaitGuards se destruyen al final del scope → wait de todas las requests.
-            drop(guards);
-        });
-
-        // Reconstruir resultado por rango desde el buffer plano.
-        let mut result = Vec::with_capacity(size);
-        for r in 0..size {
-            let n = recv_counts[r] as usize;
-            let off = recv_offsets[r];
-            result.push(flat_recv[off..off + n].to_vec());
-        }
-        result
+        self.alltoallv_f64_p2p_from_recv_counts(sends, recv_counts, overlap_work)
     }
 
     fn alltoallv_f64_subgroup(&self, sends: &[Vec<f64>], color: i32) -> Vec<Vec<f64>> {

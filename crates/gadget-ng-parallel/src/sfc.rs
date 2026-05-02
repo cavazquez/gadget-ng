@@ -638,8 +638,8 @@ mod tests {
         let a = morton3(0.1, 0.1, 0.1);
         let b = morton3(0.15, 0.12, 0.11); // cerca de a
         let c = morton3(0.9, 0.9, 0.9); // lejos de a
-        // Ambos a y b están en el octante inferior; c está en el superior.
-        // Sus códigos morton deben estar en rangos distintos.
+                                        // Ambos a y b están en el octante inferior; c está en el superior.
+                                        // Sus códigos morton deben estar en rangos distintos.
         assert!(a < c, "morton(0.1,0.1,0.1) debe ser < morton(0.9,0.9,0.9)");
         assert!(
             b < c,

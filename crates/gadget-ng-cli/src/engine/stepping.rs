@@ -2810,7 +2810,56 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             maybe_reionization!(a_current);
         }
     } else {
-        // ── Leapfrog clásico: Allgather global ────────────────────────────────
+        // ── Leapfrog Newtoniano: Allgather global de partículas ────────────────
+        //
+        // Cada kick llama a `allgatherv_state`: volumen de comunicación típico O(N·P).
+        // Esta rama solo aplica cuando **no** entraron cosmológico, SFC+LET, árbol
+        // distribuido ni block-timestep jerárquico (ver ramas anteriores).
+        //
+        // Casos esperados:
+        // - Serial (P = 1): gather trivial sobre un solo rank.
+        // - MPI + `solver = direct`: el par directo requiere posiciones/masas globales.
+        // - MPI + Barnes–Hut con `[performance] force_allgather_fallback = true`
+        //   (baseline legacy / depuración explícita).
+        //
+        // Barnes–Hut Newtoniano con P > 1 y fallback **desactivado** debe cumplir
+        // `use_sfc_let` y usar la rama «SFC+LET» (Alltoallv de dominio + LET), no esta.
+        #[cfg(debug_assertions)]
+        {
+            let inconsistent_bh = matches!(cfg.gravity.solver, SolverKind::BarnesHut)
+                && rt.size() > 1
+                && !cfg.performance.force_allgather_fallback
+                && !cfg.timestep.hierarchical
+                && !cfg.cosmology.enabled;
+            debug_assert!(
+                !inconsistent_bh,
+                "BH Newtoniano multirank sin fallback: la selección de rama debería haber activado use_sfc_let"
+            );
+        }
+
+        if rt.size() > 1 {
+            match cfg.gravity.solver {
+                SolverKind::Direct => {
+                    rt.root_eprintln(
+                        "[gadget-ng] MPI gravity path: Allgather global por paso (solver direct). \
+                         Para N-body grande con BH usar solver barnes_hut sin force_allgather_fallback.",
+                    );
+                }
+                SolverKind::BarnesHut => {
+                    rt.root_eprintln(
+                        "[gadget-ng] MPI gravity path: Allgather global legacy (BH + \
+                         force_allgather_fallback). Sin ese flag se usa SFC+LET (Alltoallv + halos).",
+                    );
+                }
+                SolverKind::Pm | SolverKind::TreePm => {
+                    rt.root_eprintln(
+                        "[gadget-ng] MPI gravity path: Allgather global en rama Newtoniana \
+                         (solver PM/TreePM). Lo habitual es cosmología periódica en rama dedicada.",
+                    );
+                }
+            }
+        }
+
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
             let mut this_comm: u64 = 0;

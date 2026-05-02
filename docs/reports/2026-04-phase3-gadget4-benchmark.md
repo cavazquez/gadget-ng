@@ -18,6 +18,12 @@ Esta fase cuantifica cuatro dimensiones de calidad del código:
 
 El objetivo no es afirmar que gadget-ng compite con GADGET-4 hoy, sino medir cuantitativamente la brecha y priorizar el backlog técnico.
 
+### 1.1 Alcance y vigencia (coherencia con el código en 2026)
+
+Las tablas y conclusiones de las **secciones 4–9** provienen de la **campaña de medición de la Fase 3** (abril 2026). En los experimentos MPI, corresponden en la práctica a la ruta en que el stepping usa **`allgatherv_state`** para reunir el estado global en cada paso relevante (BH distribuido “clásico”). Eso **no se re-ejecutó** tras añadir descomposición SFC, `exchange_halos_sfc`, optimizaciones MPI ni el criterio de apertura relativo en configuración.
+
+Por tanto: los números de weak/strong scaling y la narrativa del “cuello de botella Allgatherv” siguen siendo **válidos como diagnóstico de esa configuración benchmark**. El **backlog** (§12) y los **Cambios 1–3** (§10.2) describen el código y lo pendiente **hoy**; donde hay solapamiento, se distingue *medido aquí* vs *implementado en repo*.
+
 ---
 
 ## 2. Hardware y versiones
@@ -42,7 +48,7 @@ El objetivo no es afirmar que gadget-ng compite con GADGET-4 hoy, sino medir cua
 | Block timestep compare   | Evalúa si el integrador jerárquico mejora eficiencia vs global dt      |
 | Serial vs MPI parity     | Verifica reproducibilidad y "verdadera" no-determinismo del runtime    |
 | Strong scaling (N=1000)  | Mide eficiencia MPI y fracción de comunicación por rank                |
-| Weak scaling (N ∝ ranks) | Expone la limitación fundamental del diseño Allgatherv                 |
+| Weak scaling (N ∝ ranks) | Expone la limitación del diseño Allgatherv **en la ruta benchmark Fase 3** |
 
 ---
 
@@ -115,7 +121,7 @@ Fitting log-log sobre los datos:
 
 ### 5.3 Implicación
 
-Para N<2000 en modo serial, usar DirectGravity. Para N>5000, BH empieza a compensar. Con criterio de apertura relativo (GADGET-4), se podría usar un θ efectivo mayor con la misma precisión, reduciendo el trabajo de recorrido del árbol y desplazando el crossover a N menor. La ausencia de paralelismo interno (sin OpenMP/Rayon activo por defecto) limita el rendimiento para N grande en serial.
+Para N<2000 en modo serial, usar DirectGravity. Para N>5000, BH empieza a compensar. Con criterio de apertura relativo (disponible en config como en GADGET-4), se podría usar un θ efectivo mayor con la misma precisión en **nuevas** mediciones, reduciendo el trabajo de recorrido. El intra-nodo Rayon solo entra con build `simd` y modo no determinista (§12 Prioridad 3); sin eso, el walk BH local sigue siendo esencialmente serial.
 
 ---
 
@@ -161,14 +167,14 @@ Para el colapso frío con N=200 y ε=0.05, las aceleraciones varían solo ~100x 
 
 ### 7.2 Análisis del resultado
 
-**Paridad bit-exacta en todos los modos, incluyendo el "no-determinístico".** Esto es una consecuencia del diseño Allgatherv de gadget-ng:
+**Paridad bit-exacta en todos los modos, incluyendo el "no-determinístico".** En esta configuración benchmark (`parity.toml`, BH, MPI clásico), es una consecuencia del diseño **Allgatherv** de gadget-ng:
 
 1. Cada rank recoge el estado global de **todas** las partículas vía `allgatherv_state`
 2. El estado global se ordena por `global_id` de forma determinista
 3. Cada rank calcula las fuerzas para su subconjunto de partículas, pero usando el mismo estado global ordenado
 4. Las operaciones de punto flotante ocurren exactamente en el mismo orden independientemente del número de ranks
 
-El flag `deterministic=false` en gadget-ng **no introduce no-determinismo real** en el modo Allgatherv clásico. Solo tiene efecto en modos de árbol distribuido donde cada rank trabaja con subconjuntos locales.
+El flag `deterministic=false` en gadget-ng **no introduce no-determinismo real** en este modo Allgatherv clásico. En **otras** rutas (árbol/P2P distribuido, LET/SFC), el efecto del flag y la paridad entre rangos pueden diferir; no están cubiertos por la tabla §7.1.
 
 **Diferencia con GADGET-4:** En GADGET-4, el modo no-determinístico usa recorridos de árbol en distintos órdenes por rank, con reducciones de punto flotante no-asociativas (`MPI_Allreduce` con orden variable). Esto produce divergencias de ~10⁻¹⁵ a 10⁻¹² entre ejecuciones con distinto número de ranks. Gadget-ng evita esta divergencia por diseño (Allgatherv), pero lo hace a costo de escalabilidad.
 
@@ -177,7 +183,8 @@ El flag `deterministic=false` en gadget-ng **no introduce no-determinismo real**
 ## 8. Experimento 5: Strong Scaling
 
 **Configuración:** Plummer N=1000, 50 pasos, BH θ=0.5  
-**Ranks probados:** 1, 2, 4 (8 ranks no disponibles por límite de slots del nodo)
+**Ranks probados:** 1, 2, 4 (8 ranks no disponibles por límite de slots del nodo)  
+**Contexto:** mismo régimen MPI que la Fase 3 (véase §1.1); no es un bench del modo SFC/LET actual.
 
 ### 8.1 Resultados
 
@@ -195,13 +202,14 @@ El flag `deterministic=false` en gadget-ng **no introduce no-determinismo real**
 
 **Análisis de Amdahl:** La fracción serial implícita estimada (de los datos 1→4 ranks) es ~f≈0.035 (3.5%). A 8 ranks, el speedup máximo teórico sería ~1/f ≈ 28x, pero la comunicación creciente lo limitará mucho antes.
 
-**Por qué gadget-ng no puede escalar como GADGET-4:** GADGET-4 usa comunicación punto-a-punto selectiva — cada rank solo envía/recibe partículas de los ranks vecinos en la descomposición SFC. La complejidad de comunicación es O(N_halo) por rank, no O(N_total). Para N=10⁶ y 1000 ranks, GADGET-4 sigue escalando porque cada rank solo comunica su fracción de halo. En gadget-ng, allgatherv distribuye **todo** el estado global a **todos** los ranks en cada paso.
+**Contraste con GADGET-4 (escala cósmica):** GADGET-4 usa comunicación punto-a-punto selectiva en descomposición SFC: O(N_halo) por rank. En la **ruta que este experimento ejercita**, gadget-ng usa `allgatherv_state` y distribuye **todo** el estado global a **todos** los ranks en cada paso relevante — de ahí el coste O(N×ranks). El binario actual **también** puede ejecutar rutas SFC/halos (§10.2); ese modo **no** está reflejado en estas curvas.
 
 ---
 
 ## 9. Experimento 6: Weak Scaling
 
-**Configuración:** N = 1000 × ranks, BH θ=0.5, 50 pasos
+**Configuración:** N = 1000 × ranks, BH θ=0.5, 50 pasos  
+**Contexto:** Campaña Fase 3, ruta dominada por `allgatherv_state` (§1.1). Una rerun explícita con LET/SFC quedaría fuera del alcance de este PDF de resultados.
 
 ### 9.1 Resultados
 
@@ -229,7 +237,7 @@ A 4 ranks con N=4000, la eficiencia ya ha caído al 47.6%. Extrapolando:
 - 16 ranks + N=16000: eficiencia estimada ~15–20%
 - 64 ranks + N=64000: eficiencia estimada <5%
 
-Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de Allgatherv**. Para superar las ~4–8 ranks con eficiencia razonable, se requiere comunicación punto-a-punto con descomposición de dominio real.
+Esto confirma que **con la ruta MPI medida aquí (Allgatherv dominante), gadget-ng no escala como un código HPC masivo**. El repositorio **ya incluye** descomposición SFC e intercambio de halos selectivo (§10.2 Cambio 2); falta **cuantificar** weak/strong scaling en esa ruta para sustituir o complementar este diagnóstico.
 
 ---
 
@@ -242,12 +250,12 @@ Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de
 | Integrador                   | Leapfrog KDK                | Leapfrog KDK (mismo)                 |
 | Block timesteps              | Sí (Aarseth, implementado)  | Sí (Aarseth, idéntico criterio)      |
 | Solver gravitatorio          | Direct O(N²), BH multipolar (mono+quad+oct) | TreePM (BH + cuadrupolo + PM grid) |
-| Orden multipolar             | Mono+quad+oct (orden 3, activo) | Hasta hexadecapolo (orden 5)    |
-| Criterio apertura árbol      | Geométrico (θ fijo)         | Geométrico + relativo (ErrTolForceAcc) |
-| Comunicación MPI             | Allgatherv (O(N × ranks))   | Punto-a-punto SFC (O(N_halo/rank))   |
-| Descomposición dominio       | Allgather total             | Peano-Hilbert SFC con balance carga  |
-| Paralelismo híbrido          | MPI puro                    | MPI + shared-memory OpenMP           |
-| Paralelismo intra-nodo       | Sin OpenMP activo           | OpenMP (hilos por rank)              |
+| Orden multipolar             | Hasta mono+quad+oct (`multipole_order` configurable) | Hasta hexadecapolo (orden 5)    |
+| Criterio apertura árbol      | Geométrico y **relativo** configurables (`opening_criterion`, `err_tol_force_acc`) | Geométrico + relativo (ErrTolForceAcc) |
+| Comunicación MPI             | Mixto: rutas LET/SFC con P2P; rutas clásicas aún `allgatherv_state` O(N×P) | Punto-a-punto SFC (O(N_halo/rank))   |
+| Descomposición dominio       | SFC (p. ej. Hilbert) donde el stepping lo usa; fallbacks posibles | Peano-Hilbert SFC con balance carga  |
+| Paralelismo híbrido          | MPI; opcional Rayon intra-nodo (`simd` + no determinista) | MPI + shared-memory OpenMP           |
+| Paralelismo intra-nodo       | Rayon BH opcional (no equivale a “siempre activo”) | OpenMP (hilos por rank)              |
 | Fast Multipole Method (FMM)  | No                          | Sí (alternativa al árbol BH)         |
 | PM gravitacional             | Sí (PmSolver)               | Sí (TreePM con splitting erf/erfc)   |
 | Cosmología                   | Sí (básica, a(t))           | Sí (completa, ΛCDM)                  |
@@ -259,22 +267,19 @@ Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de
 
 > **Corrección post-Fase 3:** El diagnóstico inicial priorizaba "implementar cuadrupolo" como Cambio 1. Esto era incorrecto: gadget-ng ya implementa cuadrupolo y octupolo completamente en `octree.rs` (`quad:[f64;6]`, `oct:[f64;7]`, aplicados en `walk_inner()`). El ranking se actualiza a continuación.
 
-**Cambio 1 — Criterio de apertura relativo** (impacto: ALTO, esfuerzo: BAJO)
-- Implementar `TypeOfOpeningCriterion=1` de GADGET-4: abrir el nodo si el error de truncamiento estimado supera `ErrTolForceAcc`
-- Adapta automáticamente el MAC por interacción en lugar de usar θ global fijo
-- Es la causa raíz del error 3.76% en Plummer a θ=0.5 — el criterio geométrico es demasiado permisivo en el núcleo denso incluso con cuadrupolo+octupolo
-- Implementable sobre el octree existente sin cambios de estructura de datos
-- Añadir además `multipole_order: u8` configurable (1=mono, 2=mono+quad, 3=mono+quad+oct) para habilitar benchmarks de ablación
+**Cambio 1 — Criterio de apertura relativo + multipolos ablables** (impacto: ALTO; **Fases 4–5: implementado en código**)
+- En configuración: `opening_criterion` (geométrico vs relativo, análogo a `TypeOfOpeningCriterion=1` / `ErrTolForceAcc` de GADGET-4), `err_tol_force_acc`, `multipole_order`, `mac_softening` — ver [Fase 5](2026-04-phase5-energy-mac-consistency.md)
+- **Estas tablas de error (§4) siguen siendo con criterio geométrico fijo θ** en el experimento original; no se re-simularon automáticamente con `opening_criterion = "relative"`.
+- El error 3.76% en Plummer a θ=0.5 en **ese** setup sigue explicando por qué el criterio geométrico puro es demasiado permisivo en el núcleo denso; el criterio relativo en el repo es la palanca para mejorar presión en sistemas inhomogéneos en **nuevas** corridas
 
-**Cambio 2 — Comunicación punto-a-punto con SFC real** (impacto: CRÍTICO para HPC, esfuerzo: ALTO)
-- Reemplazar `allgatherv_state` por descomposición Peano-Hilbert real con intercambio de halos
-- Transforma la complejidad de comunicación de O(N × ranks) a O(N_halo/rank)
-- Prerequisito para escalar más allá de ~8 ranks
-- Este cambio es arquitectónico y requiere rediseñar el módulo gadget-ng-parallel
+**Cambio 2 — Comunicación con SFC y halos selectivos** (impacto: CRÍTICO para HPC; esfuerzo histórico ALTO — **parcialmente cerrado en 2026**)
+- **Implementado:** descomposición SFC real (`gadget-ng-parallel`: `exchange_domain_sfc`, `exchange_halos_sfc`), halos por AABB con poda geométrica conservadora, fase de datos por P2P (`Isend`/`Irecv`) y, cuando `P>8` y hay pares sin solape en ningún sentido, intercambio de **conteos** disperso en lugar de `MPI_Alltoall` de enteros sobre todos los rangos
+- **Objetivo seguido:** sustituir el coste dominante de `allgatherv_state` O(N×ranks) en rutas LET/SFC por trabajo proporcional a halos/migración en lugar de reunir todo el estado global cada vez
+- **Sigue abierto:** rutas que aún llaman `allgatherv_state` (p. ej. BH multi-rank sin LET/SFC o fallback); weak scaling formal a >>8 ranks por medir/documentar con esta base
 
-**Cambio 3 — OpenMP intra-nodo** (impacto: MEDIO, esfuerzo: MEDIO)
-- `rayon_bh.rs` existe pero no está activo por defecto
-- Activar paralelismo intra-nodo para reducir wall time serial para N>5000
+**Cambio 3 — Paralelismo intra-nodo (Rayon)** (impacto: MEDIO, esfuerzo: MEDIO)
+- `rayon_bh.rs` + wiring en CLI; activación condicionada (véase Prioridad 3 abajo)
+- Objetivo: reducir wall time serial del walk BH para N>5000 cuando SIMD no-determinista está activo
 - Especialmente útil para el recorrido del árbol con términos cuadrupolar/octupolar
 
 ---
@@ -285,9 +290,9 @@ Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de
 |-----------------------------|-----------------------------------------------------|----------------------------------|
 | Criterio apertura geométrico fijo θ | mean\_err=3.76% Plummer θ=0.5 (con quad+oct activos) | <0.5% para publicaciones  |
 | Max\_err = 190% (Plummer, θ=0.8) | Partículas del núcleo con MAC demasiado permisivo incluso con multipolos | Inaceptable para núcleos densos |
-| Allgatherv weak scaling     | 47.6% efficiency a 4 ranks                          | >80% para HPC serio              |
+| Allgatherv weak scaling (Fase 3, ruta medida) | 47.6% efficiency a 4 ranks            | >80% para HPC serio; medir de nuevo con SFC/LET |
 | Block timesteps para N pequeño | 3.3x más lento sin mejora de precisión           | Solo útil para N>10⁴ con alto rango dinámico |
-| Sin OpenMP intra-nodo       | 1 hilo por rank, subutiliza cores modernos          | Multi-core necesario para >N=5000 |
+| Intra-nodo (sin `simd` / Rayon) | 1 hilo útil para BH local salvo build `simd` + no determinista | Multi-core ayuda para >N≈5000 |
 | Crossover BH > Direct       | Ocurre en N≈4000–5000, no en N≈1000                | Con criterio relativo podría bajar a N≈2000–3000 |
 
 ---
@@ -298,24 +303,22 @@ Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de
 >
 > **Actualización post-Fase 5:** Prioridad 1 (criterio relativo + `multipole_order` + softening consistente entre monopolo y multipolos) está **completada** por las Fases 4 y 5. La Fase 5 añadió además `mac_softening=consistent`, que hace el estimador del MAC relativo coherente con el kernel Plummer, validó multi-step y confirmó que el drift energético está dominado por el integrador, no por el solver. Ver [Fase 5 — Consistencia MAC-softening](2026-04-phase5-energy-mac-consistency.md).
 
-### Prioridad 1 — Criterio de apertura relativo + `multipole_order` configurable (retorno: ALTO)
-- Ficheros: `crates/gadget-ng-tree/src/octree.rs`, `crates/gadget-ng-core/src/config.rs`, `crates/gadget-ng-tree/src/barnes_hut.rs`
-- Impacto: el criterio geométrico fijo θ es la causa raíz del error 3.76% en Plummer; el criterio relativo adapta el MAC por interacción estimando el error de truncamiento multipolar
-- Añadir además `multipole_order: u8` (1=mono, 2=mono+quad, 3=mono+quad+oct) para benchmarks de ablación cuantitativos
-- Implementable sin cambios de estructura de datos del octree
-- Estimación: 3–5 días
+### Prioridad 1 — Criterio de apertura relativo + `multipole_order` + MAC-softening (retorno: ALTO) — **completada (Fases 4–5)**
+- Implementado en `RunConfig` / gravedad: `opening_criterion`, `err_tol_force_acc`, `multipole_order`, `mac_softening`, etc.; uso en `octree.rs` / `barnes_hut.rs`
+- Documentación y validación energética: [Fase 5 — Consistencia MAC-softening](2026-04-phase5-energy-mac-consistency.md)
+- **Trabajo residual (no “implementar el criterio”):** campañas de benchmark que repitan §4 con `opening_criterion = "relative"` y ablación de `multipole_order` para tablas nuevas
 
-### Prioridad 2 — Comunicación punto-a-punto (retorno: CRÍTICO para HPC)
-- Ficheros: `crates/gadget-ng-parallel/src/`
-- Impacto: weak scaling de 47% a >80% a 4 ranks; habilita >16 ranks
-- Requisito: descomposición Peano-Hilbert real, intercambio de halos selectivo
-- Estimación: 3–4 semanas
+### Prioridad 2 — Comunicación punto-a-punto / SFC (retorno: CRÍTICO para HPC)
+- Ficheros: `crates/gadget-ng-parallel/src/` (`exchange_domain_sfc`, `exchange_halos_sfc`, `mpi_rt`, `halo3d`), uso en `gadget-ng-cli/src/engine/stepping.rs`
+- Impacto: objetivo sigue siendo subir weak scaling (referencia histórica ~47% @ 4 ranks) y habilitar rangos altos; la base SFC + halos + poda + MPI disperso ya está **implementada**
+- **Restante:** eliminar o reducir llamadas a `allgatherv_state` en rutas que aún las usan; benchmarks weak scaling con MPI real (≫8 ranks) y afinado por caso de uso
+- Estimación: ya no 3–4 semanas “desde cero”; orden semanas según alcance de rutas y mediciones
 
-### Prioridad 3 — OpenMP intra-nodo (retorno: MEDIO)
-- Ficheros: `crates/gadget-ng-tree/src/rayon_bh.rs` (parcialmente implementado)
-- Impacto: paralelismo intra-nodo, reduce wall time serial para N>5000
-- Nota: `rayon_bh.rs` existe pero no está activo por defecto
-- Estimación: 1 semana
+### Prioridad 3 — Paralelismo intra-nodo (Rayon; análogo práctico a OpenMP) (retorno: MEDIO)
+- Ficheros: `crates/gadget-ng-tree/src/rayon_bh.rs`; activación vía `gadget-ng-cli` (`local_bh_use_rayon`, `compute_forces_*`)
+- Impacto: paralelismo intra-nodo sobre el walk BH cuando está habilitado; reduce wall time serial para N grandes
+- **Estado 2026:** habilitado solo con **feature `simd`**, solver BH y `performance.deterministic = false`; ejemplo `examples/nbody_bh_dtree_rayon_smoke.toml`. Sin `simd`, intra-nodo BH sigue serial
+- Estimación: ampliar cobertura/defaults/documentación, ~días a 1 semana (no “implementar Rayon desde cero”)
 
 ### Prioridad 4 — Diagnósticos de timing por fase (completado en Fase 3)
 - Implementado: `timings.json` con desglose comm/gravity/integration
@@ -343,18 +346,17 @@ Esto confirma que **gadget-ng no es un código HPC real con el diseño actual de
 - Requiere criterio de apertura relativo (Prioridad 1) para sistemas tipo cúmulo estelar
 
 **¿Cuánto escala MPI realmente?**
-- Strong scaling: 89% efficiency a 4 ranks — aceptable para grupos de trabajo pequeños
-- Weak scaling: 47.6% a 4 ranks — inaceptable para HPC serio
-- La limitación es arquitectónica (Allgatherv O(N×ranks))
-- La "paridad no-determinística" es ilusoria: el Allgatherv garantiza bit-exactitud siempre
+- En la **campaña Fase 3** (§8–9): strong ~89% eff. a 4 ranks; weak 47.6% — diagnóstico válido para la ruta **Allgatherv medida**
+- La limitación **cuantificada** ahí es esa ruta (coste global O(N×ranks)); el código actual **también** ofrece SFC/halos (§10.2), pero **sin nuevas mediciones** no sustituye las tablas de este informe
+- La “paridad no-determinística” ilusoria de §7 aplica al experimento Allgatherv descrito; no generalizar a todos los modos MPI
 
-**¿Qué falta implementar para acercarse técnicamente a GADGET-4?**
-1. Criterio de apertura relativo (`ErrTolForceAcc`) — impacto inmediato en precisión para sistemas densos
-2. `multipole_order` configurable — permite benchmarks de ablación para cuantificar contribución de cada término
-3. Comunicación punto-a-punto SFC — impacto fundamental en escalabilidad
+**¿Qué falta para acercarse técnicamente a GADGET-4 (estado repo vs benchmark histórico)?**
+1. **Precisión / MAC:** criterio relativo y `multipole_order` **ya están en el código**; falta **actualizar benchmarks públicos** (repitiendo §4 con `opening_criterion = "relative"`) y comparar con GADGET-4 en igualdad de condiciones
+2. **Escalabilidad MPI:** base SFC + halos **implementada**; falta **weak/strong scaling medido** con esa ruta y reducir usos residuales de `allgatherv_state` donde aún aplique
+3. **Intra-nodo masivo:** GADGET-4 usa OpenMP; gadget-ng tiene **Rayon** condicionado (`simd`); cerrar brecha de modelo de hilos si se persigue paridad operativa
 
-**Próximo paso con mayor retorno:**
-Implementar el criterio de apertura relativo y `multipole_order` configurable. El cuadrupolo y octupolo ya están presentes; lo que falta es un MAC adaptativo que los aproveche correctamente en distribuciones inhomogéneas, y la posibilidad de desactivarlos individualmente para benchmarks cuantitativos de ablación.
+**Próximo paso con mayor retorno (después de Fase 5):**
+Campanas cuantitativas nuevas: (a) errores de fuerza y energía con MAC relativo vs tabla §4; (b) MPI scaling con configuración LET/SFC explícita frente a §8–9. Fragmentos TOML de partida: **Apéndice B**. El backlog detallado está en §12.
 
 ---
 
@@ -392,3 +394,52 @@ python3 experiments/nbody/phase3_gadget4_benchmark/mpi_weak_scaling/scripts/anal
 ```
 
 Todos los resultados numéricos son reproducibles desde el mismo commit con los comandos anteriores.
+
+---
+
+## Apéndice B: Fragmentos TOML de referencia (campañas nuevas vs §4 y §8–9)
+
+Los siguientes bloques **no** sustituyen automáticamente las tablas históricas de este informe: sirven como punto de partida para reruns con MAC relativo y para mediciones MPI en la ruta **SFC + LET** descrita en §10.2 / §12. Validar siempre contra `[RunConfig]` actual (`crates/gadget-ng-core/src/config.rs`).
+
+### B.1 Barnes–Hut con criterio de apertura relativo (contraste cuantitativo con §4)
+
+Alineado con `ErrTolForceAcc` típico de GADGET-4 y con la Fase 5 (MAC + softening consistente). El test `cargo test -p gadget-ng-physics --test bh_force_accuracy` ya genera CSV separados para MAC geométrico (`bh_accuracy.csv`) y **relativo** (`bh_accuracy_relative.csv`) con `err_tol_force_acc = 0.0025`.
+
+Para integrar el mismo criterio en un `.toml` de **stepping**:
+
+```toml
+[gravity]
+solver              = "barnes_hut"
+theta               = 0.5
+opening_criterion   = "relative"
+err_tol_force_acc   = 0.0025
+multipole_order     = 3
+softened_multipoles = true
+mac_softening       = "consistent"
+```
+
+Valores de `[simulation]` / `[initial_conditions]` pueden coincidir con el §4 (p. ej. N=500, ε=0.05, esfera uniforme o Plummer) para comparación directa con la tabla 4.1.
+
+### B.2 MPI con descomposición SFC y LET (contraste de escalado con §8–9)
+
+Compilar con MPI: `cargo build --release -p gadget-ng-cli --features mpi`. En multirank con solver Barnes–Hut y sin forzar el fallback Allgather, el stepping puede usar migración/halo vía SFC + `exchange_halos_sfc` (véase documentación en `gadget-ng-parallel`).
+
+```toml
+[performance]
+deterministic              = true   # false si se usa build --features simd y se desea Rayon intra-nodo
+use_distributed_tree       = true
+use_sfc                    = true
+sfc_kind                   = "hilbert"   # o "morton"
+force_allgather_fallback   = false       # true reproduce el baseline O(N·P) deliberadamente
+halo_factor                = 0.5
+# opcionales con defaults razonables: let_nonblocking, use_let_tree, sfc_rebalance_interval
+```
+
+Ejemplo de lanzamiento (ajustar rutas y número de rangos):
+
+```bash
+cargo build --release -p gadget-ng-cli --features mpi
+mpirun -n 4 ./target/release/gadget-ng stepping --config mi_escala_sfc.toml --out runs/sfc_weak --snapshot
+```
+
+**Nota:** Los scripts bajo `experiments/nbody/phase3_gadget4_benchmark/mpi_strong_scaling/` y `mpi_weak_scaling/` reproducen la **campaña Fase 3**; para curvas comparables con §8–9 pero en la ruta SFC hay que **sustituir o derivar** el TOML del experimento a partir del bloque B.2 (u homologar `particle_count` / pasos con esos scripts).

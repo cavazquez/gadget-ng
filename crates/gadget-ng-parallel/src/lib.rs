@@ -11,11 +11,11 @@ mod mpi_rt;
 pub use decompose::gid_block_range;
 pub use domain::SlabDecomposition;
 pub use halo3d::{
-    Aabb3, aabb_to_f64, compute_aabb_3d, f64_to_aabb, is_in_periodic_halo,
-    min_dist2_to_aabb_3d_periodic, minimum_image_scalar,
+    aabb_to_f64, compute_aabb_3d, f64_to_aabb, is_in_periodic_halo, min_dist2_to_aabb_3d_periodic,
+    minimum_image_scalar, Aabb3,
 };
 pub use serial::SerialRuntime;
-pub use sfc::{SfcDecomposition, hilbert3, morton3};
+pub use sfc::{hilbert3, morton3, SfcDecomposition};
 
 #[cfg(feature = "mpi")]
 pub use mpi_rt::MpiRuntime;
@@ -32,6 +32,15 @@ pub trait ParallelRuntime {
     fn root_eprintln(&self, msg: &str);
 
     /// Reconstruye `positions[global_id]` y `masses[global_id]` para el cálculo de fuerzas.
+    ///
+    /// **Coste MPI:** cada rank envía su trozo y **recibe el estado completo** (`MPI_Allgatherv`).
+    /// El volumen escala como **O(N × P)** en datos movidos — adecuado para solver **directo**
+    /// o benchmarks con `[performance] force_allgather_fallback = true`.
+    ///
+    /// Para **Barnes–Hut** multirank en modo Newtoniano, el motor CLI usa por defecto la rama
+    /// **SFC + Locally Essential Trees** (`exchange_domain_sfc`, `exchange_halos_sfc`,
+    /// `alltoallv_f64`), no esta primitiva. Ver `gadget-ng-cli` `run_stepping` y el informe de
+    /// Fase 3 (comunicación punto a punto).
     fn allgatherv_state(
         &self,
         local: &[Particle],
@@ -167,6 +176,16 @@ pub trait ParallelRuntime {
     ///
     /// Para cada rank r, expande su AABB local por `halo_width` en las tres
     /// dimensiones y envía partículas propias dentro de esa región expandida.
+    /// Antes del filtrado por partícula se aplica **poda AABB**: si la caja remota es
+    /// válida y no interseca la nuestra con la remota expandida, no se consideran
+    /// destinos hacia ese rango (conservador para AABB inválidas o degeneradas).
+    ///
+    /// La comunicación: **`allgather_f64`** de 6 valores por rank (AABB), luego
+    /// intercambio de conteos —`MPI_Alltoall` de enteros si P es pequeño o todos los
+    /// pares son candidatos; si no, **P2P** con tag fijo entre pares geométricamente
+    /// activos— y fase de datos equivalente a **`MPI_Alltoallv`** vía `Isend`/`Irecv`
+    /// solo donde el conteo es no nulo.
+    ///
     /// En modo serial devuelve Vec vacío.
     fn exchange_halos_sfc(
         &self,
