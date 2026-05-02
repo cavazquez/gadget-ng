@@ -1,12 +1,10 @@
-//! Barnes–Hut en **wgpu**: árbol en CPU, walk FMM en GPU ([`GpuBarnesHutFmm`]: órdenes 1–3).
-//!
-//! El binario solo activa esta ruta con `multipole_order ≤ 3`; orden 4 requiere CPU.
+//! Barnes–Hut en **wgpu**: árbol en CPU, walk FMM en GPU ([`GpuBarnesHutFmm`], órdenes 1–4).
 
 use crate::octree::Octree;
 use gadget_ng_core::{GravitySolver, MacSoftening, Vec3};
 use gadget_ng_gpu::{BhFmmKernelParams, GpuBarnesHutFmm};
 
-/// Solver N-body con kernel FMM en GPU (hasta orden multipolar 3).
+/// Solver N-body con kernel FMM en GPU (hasta orden multipolar 4).
 #[derive(Clone)]
 pub struct WgpuBarnesHutGpu {
     gpu: GpuBarnesHutFmm,
@@ -22,7 +20,7 @@ pub struct WgpuBarnesHutGpu {
 pub type WgpuMonopoleBarnesHut = WgpuBarnesHutGpu;
 
 impl WgpuBarnesHutGpu {
-    /// `multipole_order` debe ser ≤ 3 para GPU; si no, devuelve `None`.
+    /// `multipole_order` debe ser ≤ 4 para GPU; si no, devuelve `None`.
     pub fn try_new(
         theta: f64,
         multipole_order: u8,
@@ -31,7 +29,7 @@ impl WgpuBarnesHutGpu {
         softened_multipoles: bool,
         mac_softening: MacSoftening,
     ) -> Option<Self> {
-        if multipole_order == 0 || multipole_order > 3 {
+        if multipole_order == 0 || multipole_order > 4 {
             return None;
         }
         Some(Self {

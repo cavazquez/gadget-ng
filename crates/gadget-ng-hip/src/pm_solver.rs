@@ -19,6 +19,8 @@ pub struct HipPmSolver {
     #[cfg(hip_unavailable)]
     _phantom: (),
     grid_size: usize,
+    #[cfg_attr(hip_unavailable, allow(dead_code))]
+    r_split: f32,
 }
 
 // SAFETY: el handle HIP es propiedad exclusiva de este struct; no se comparte.
@@ -50,9 +52,14 @@ impl HipPmSolver {
     ///
     /// Devuelve `None` si HIP no está disponible o si la inicialización falla.
     pub fn try_new(grid_size: usize, box_size: f64) -> Option<Self> {
+        Self::try_new_with_r_split(grid_size, box_size, 0.0)
+    }
+
+    /// Igual que [`Self::try_new`] con filtro Gaussiano TreePM opcional.
+    pub fn try_new_with_r_split(grid_size: usize, box_size: f64, r_split: f64) -> Option<Self> {
         #[cfg(hip_unavailable)]
         {
-            let _ = (grid_size, box_size);
+            let _ = (grid_size, box_size, r_split);
             return None;
         }
 
@@ -62,7 +69,22 @@ impl HipPmSolver {
             if handle.is_null() {
                 return None;
             }
-            Some(Self { handle, grid_size })
+            Some(Self {
+                handle,
+                grid_size,
+                r_split: r_split as f32,
+            })
+        }
+    }
+
+    pub fn r_split(&self) -> f32 {
+        #[cfg(hip_unavailable)]
+        {
+            return 0.0;
+        }
+        #[cfg(not(hip_unavailable))]
+        {
+            self.r_split
         }
     }
 
@@ -143,6 +165,7 @@ impl GravitySolver for HipPmSolver {
                     n as i32,
                     eps2 as f32,
                     g as f32,
+                    self.r_split,
                 )
             };
             if ret != 0 {

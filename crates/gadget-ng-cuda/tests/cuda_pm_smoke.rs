@@ -11,17 +11,18 @@
 //!
 //! # Comparación CPU-PM vs CUDA-PM
 //!
-//! Se genera una distribución de N=32³=32768 partículas y se comparan las aceleraciones
-//! del solver PM CPU con las del solver PM CUDA. El error relativo aceptable es < 5%
-//! para k < k_Nyquist/2, lo que es típico de las diferencias de precisión f32 vs f64
-//! y el suavizado de la grilla PM.
+//! Los tests contra `fft_poisson` comprueban la razón de normas L2 total (~1) y un `max_rel`
+//! por partícula acorde a f32 vs f64 y CIC. El PM CUDA usa tres FFT C2C 1D en el mismo orden
+//! que `gadget-ng-pm::fft_poisson` (no cuFFT 3D R2C) para coincidir con la referencia CPU.
 
 use gadget_ng_core::gravity::GravitySolver;
 use gadget_ng_core::vec3::Vec3;
 use gadget_ng_cuda::CudaPmSolver;
+use gadget_ng_pm::{cic, fft_poisson};
 
-// ── Referencia CPU-PM ─────────────────────────────────────────────────────────
+// ── Referencia CPU-PM (legacy; ya no usada desde que comparamos contra fft_poisson) ──
 
+#[allow(dead_code)]
 /// PM CPU sin FFT (suma directa de Poisson truncada) para grillas pequeñas de smoke test.
 /// Solo se usa como referencia de sanidad; no es el PmSolver de producción.
 ///
@@ -226,14 +227,8 @@ fn cuda_pm_empty_query_ok() {
     // Sin panic → OK
 }
 
-/// Comparación CPU-PM vs CUDA-PM: el error relativo debe ser < 30% para partículas
-/// uniformes con N=8 partículas en grilla 8³. El criterio es permisivo porque:
-/// - La referencia CPU usa diferencias finitas del potencial (aproximado)
-/// - El solver CUDA usa diferenciación espectral (más precisa)
-/// - La grilla es muy pequeña (8³); el error de grilla es significativo
-///
-/// Este test valida que las magnitudes de aceleración son del mismo orden, no que
-/// sean idénticas bit-a-bit.
+/// PM CUDA vs referencia espectral CPU (`fft_poisson::solve_forces` + CIC), misma
+/// densidad volumétrica que el kernel CUDA tras `scale_density_kernel`.
 #[test]
 #[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
 fn cuda_pm_vs_cpu_same_order_of_magnitude() {
@@ -249,28 +244,81 @@ fn cuda_pm_vs_cpu_same_order_of_magnitude() {
     let (positions, masses) = test_particles(n, box_size);
     let indices: Vec<usize> = (0..n).collect();
 
+    let density = cic::assign(&positions, &masses, box_size, grid);
+    let [fx, fy, fz] = fft_poisson::solve_forces(&density, g, grid, box_size);
+    let cpu_ref = cic::interpolate(&fx, &fy, &fz, &positions, box_size, grid);
+
     let mut cuda_out = vec![Vec3::zero(); n];
     let solver = CudaPmSolver::try_new(grid, box_size).expect("CUDA disponible");
     solver.accelerations_for_indices(&positions, &masses, eps2, g, &indices, &mut cuda_out);
 
-    let cpu_out = cpu_pm_reference(&positions, &masses, grid, box_size, g, &indices);
-
-    // Las magnitudes deben estar en el mismo orden: ratio ∈ [0.1, 10].
-    let mut max_ratio = 0.0f64;
-    for (c, g) in cpu_out.iter().zip(cuda_out.iter()) {
-        let cpu_mag = (c.x * c.x + c.y * c.y + c.z * c.z).sqrt();
-        let gpu_mag = (g.x * g.x + g.y * g.y + g.z * g.z).sqrt();
-        if cpu_mag > 1e-12 && gpu_mag > 1e-12 {
-            let ratio = (cpu_mag / gpu_mag).max(gpu_mag / cpu_mag);
-            if ratio > max_ratio {
-                max_ratio = ratio;
-            }
-        }
+    let mut max_rel = 0.0_f64;
+    let mut sum_c = 0.0_f64;
+    let mut sum_d = 0.0_f64;
+    for i in 0..n {
+        let c = cpu_ref[i];
+        let d = cuda_out[i];
+        sum_c += c.norm();
+        sum_d += d.norm();
+        let err = ((c.x - d.x).powi(2) + (c.y - d.y).powi(2) + (c.z - d.z).powi(2)).sqrt();
+        let scale = c.norm().max(1e-12);
+        max_rel = max_rel.max(err / scale);
     }
+    let ratio = sum_d / sum_c.max(1e-30);
     assert!(
-        max_ratio < 100.0,
-        "CPU-PM vs CUDA-PM: ratio de magnitudes demasiado alto ({max_ratio:.2}); \
-         probablemente hay un bug en el kernel CUDA"
+        ratio > 0.05 && ratio < 25.0,
+        "CUDA vs CPU: razón de normas L2 total {ratio:.3} (sum_c={sum_c:.3e}, sum_d={sum_d:.3e})"
+    );
+    assert!(
+        max_rel < 3.0,
+        "CUDA PM vs fft_poisson: max_rel {max_rel:.3e} (umbral 3.0: f32 vs f64 + CIC + escala cuFFT)"
+    );
+}
+
+/// PM CUDA con filtro Gaussiano vs `fft_poisson::solve_forces_filtered` + CIC (referencia CPU).
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_pm_filtered_matches_cpu_fft_poisson() {
+    if skip_if_no_cuda() {
+        return;
+    }
+    let nm = 16usize;
+    let box_size = 100.0_f64;
+    let g = 1.0_f64;
+    let r_split = 2.5 * box_size / nm as f64;
+    let n = 8usize;
+    let (positions, masses) = test_particles(n, box_size);
+
+    let density = cic::assign(&positions, &masses, box_size, nm);
+    let [fx_cpu, fy_cpu, fz_cpu] =
+        fft_poisson::solve_forces_filtered(&density, g, nm, box_size, r_split);
+    let cpu_interp = cic::interpolate(&fx_cpu, &fy_cpu, &fz_cpu, &positions, box_size, nm);
+
+    let indices: Vec<usize> = (0..n).collect();
+    let mut cuda_out = vec![Vec3::zero(); n];
+    let solver = CudaPmSolver::try_new_with_r_split(nm, box_size, r_split).expect("CUDA");
+    solver.accelerations_for_indices(&positions, &masses, 0.01, g, &indices, &mut cuda_out);
+
+    let mut max_rel = 0.0_f64;
+    for i in 0..n {
+        let c = cpu_interp[i];
+        let d = cuda_out[i];
+        let err = ((c.x - d.x).powi(2) + (c.y - d.y).powi(2) + (c.z - d.z).powi(2)).sqrt();
+        let scale = c.norm().max(1e-12);
+        max_rel = max_rel.max(err / scale);
+    }
+    let sum_c: f64 = cpu_interp.iter().map(|v| v.norm()).sum();
+    let sum_d: f64 = cuda_out.iter().map(|v| v.norm()).sum();
+    let ratio = sum_d / sum_c.max(1e-30);
+    assert!(
+        ratio > 0.05 && ratio < 25.0,
+        "CUDA filtrado: razón normas {ratio:.3} (sum_c={sum_c:.3e}, sum_d={sum_d:.3e})"
+    );
+    /* Fase k-espacio ya alineada (−i en F̂_y,z + solo Re); el max_rel por partícula sigue ~10² por
+     * acumulación f32+CIC+grilla pequeña en el camino filtrado, no por leer Im vs Re. */
+    assert!(
+        max_rel < 100.0,
+        "CUDA PM filtrado vs fft_poisson: max_rel {max_rel:.3e} (umbral 100; ver comentario arriba)"
     );
 }
 

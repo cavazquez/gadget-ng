@@ -38,6 +38,7 @@ void hip_pm_destroy(hip_pm_handle_t h);
  * @param n       Número de partículas.
  * @param eps2    Suavizado² (reservado).
  * @param g       Constante gravitatoria.
+ * @param r_split Radio Gaussiano TreePM (>0 filtra en k-space); ≤0 sin filtro.
  *
  * @return 0 si OK; código de error HIP en caso contrario.
  */
@@ -46,7 +47,7 @@ int hip_pm_solve(
     const float* x, const float* y, const float* z,
     const float* mass,
     float* ax, float* ay, float* az,
-    int n, float eps2, float g
+    int n, float eps2, float g, float r_split
 );
 
 #ifdef __cplusplus

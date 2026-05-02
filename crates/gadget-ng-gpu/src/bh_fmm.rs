@@ -1,13 +1,13 @@
-//! Barnes–Hut FMM en GPU (WGSL): órdenes multipolares **1–3** alineados con
-//! [`gadget_ng_tree::Octree::walk_accel_multipole`]. Orden 4 (hexadecapolo) no está en el shader:
-//! usar solver CPU.
+//! Barnes–Hut FMM en GPU (WGSL): órdenes multipolares **1–4** alineados con
+//! [`gadget_ng_tree::Octree::walk_accel_multipole`] (hexadecapolo vía `hex_dt_patterns` + pesos STF).
 //!
 //! MAC geométrico y **MAC relativo** (estimación quad / mono) cuando `use_relative != 0`.
 
 use gadget_ng_gpu_layout::BhFmmGpuNode;
 use std::sync::Arc;
 
-const BH_FMM_SHADER: &str = r#"
+const BH_FMM_SHADER: &str = concat!(
+    r#"
 const MAX_STACK: u32 = 64u;
 const EMPTY: u32 = 0xffffffffu;
 
@@ -153,6 +153,24 @@ fn oct_accel_soft(r: vec3<f32>, o: array<f32, 7>, g: f32, eps2: f32) -> vec3<f32
     let c2 = g * (7.0 / 6.0) * orrr * r9_inv;
     return vec3<f32>(c1 * orr_x + c2 * rx, c1 * orr_y + c2 * ry, c1 * orr_z + c2 * rz);
 }
+"#,
+    include_str!("hex_dt_generated.inc.wgsl"),
+    r#"
+@group(0) @binding(6) var<storage, read> hex_w_flat: array<f32>;
+const L4_FACT: f32 = 0.041666667;
+fn hex_accel_flat(ni: u32, r: vec3<f32>, g: f32, eps2: f32) -> vec3<f32> {
+    let r2 = r.x * r.x + r.y * r.y + r.z * r.z + eps2;
+    if (r2 < 1e-30) { return vec3<f32>(0.0, 0.0, 0.0); }
+    let rx = r.x; let ry = r.y; let rz = r.z;
+    var ax = 0.0; var ay = 0.0; var az = 0.0;
+    for (var p = 0u; p < 15u; p = p + 1u) {
+        let w = hex_w_flat[ni * 15u + p];
+        ax = ax + eval_dt_x(p, rx, ry, rz, r2) * w;
+        ay = ay + eval_dt_y(p, rx, ry, rz, r2) * w;
+        az = az + eval_dt_z(p, rx, ry, rz, r2) * w;
+    }
+    return vec3<f32>(-g * L4_FACT * ax, -g * L4_FACT * ay, -g * L4_FACT * az);
+}
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -253,6 +271,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 }
                 a_total = a_total + ao;
             }
+            if params_u.multipole_order >= 4u {
+                let ah = hex_accel_flat(ni, r_com, params_u.g, params_u.eps2);
+                a_total = a_total + ah;
+            }
             ax += a_total.x;
             ay += a_total.y;
             az += a_total.z;
@@ -272,7 +294,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     out_accs[3u * qi + 1u] = ay;
     out_accs[3u * qi + 2u] = az;
 }
-"#;
+"#
+);
 
 struct GpuBhFmmCtx {
     device: wgpu::Device,
@@ -284,14 +307,14 @@ struct GpuBhFmmCtx {
 unsafe impl Send for GpuBhFmmCtx {}
 unsafe impl Sync for GpuBhFmmCtx {}
 
-/// Parámetros del kernel FMM (órdenes 1–3 en GPU).
+/// Parámetros del kernel FMM (órdenes 1–4 en GPU; hex vía buffer auxiliar de pesos STF).
 #[derive(Clone, Copy, Debug)]
 pub struct BhFmmKernelParams {
     pub eps2: f32,
     pub g: f32,
     pub theta: f32,
     pub err_tol: f32,
-    /// 1 = monopolo, 2 = +cuadrupolo, 3 = +octupolo.
+    /// 1 = monopolo, 2 = +cuadrupolo, 3 = +octupolo, 4 = +hexadecapolo.
     pub multipole_order: u32,
     pub use_relative_criterion: bool,
     pub softened_multipoles: bool,
@@ -299,7 +322,7 @@ pub struct BhFmmKernelParams {
     pub mac_softening: u32,
 }
 
-/// Walk Barnes–Hut multipolar en GPU (hasta orden 3).
+/// Walk Barnes–Hut multipolar en GPU (hasta orden 4).
 #[derive(Clone)]
 pub struct GpuBarnesHutFmm {
     ctx: Arc<GpuBhFmmCtx>,
@@ -388,6 +411,14 @@ impl GpuBarnesHutFmm {
                         min_binding_size: None,
                     },
                 ),
+                super::solver::bgl_entry(
+                    6,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
             ],
         });
 
@@ -429,10 +460,21 @@ impl GpuBarnesHutFmm {
         if n_query == 0 {
             return Vec::new();
         }
-        assert!(kp.multipole_order >= 1 && kp.multipole_order <= 3);
+        assert!(kp.multipole_order >= 1 && kp.multipole_order <= 4);
         let n_all = masses_f32.len() as u32;
         let n_nodes = nodes.len() as u32;
         assert_eq!(positions_f32.len(), 3 * n_all as usize);
+
+        let mut hex_w_flat: Vec<f32> = vec![0.0; (nodes.len() * 15).max(1)];
+        if kp.multipole_order >= 4 {
+            for (ni, node) in nodes.iter().enumerate() {
+                let h64: [f64; 15] = node.hex.map(|x| x as f64);
+                let w = gadget_ng_gpu_layout::hex_pattern_weights(&h64);
+                for p in 0..15 {
+                    hex_w_flat[ni * 15 + p] = w[p] as f32;
+                }
+            }
+        }
 
         #[repr(C)]
         struct Params {
@@ -518,6 +560,14 @@ impl GpuBarnesHutFmm {
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
+        let buf_hex_w = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("bh_fmm_hex_w"),
+                contents: &f32s_to_bytes(&hex_w_flat),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+
         let out_bytes = 3 * n_query as u64 * 4;
         let buf_out = ctx.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bh_fmm_out"),
@@ -559,6 +609,10 @@ impl GpuBarnesHutFmm {
                 wgpu::BindGroupEntry {
                     binding: 5,
                     resource: buf_out.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: buf_hex_w.as_entire_binding(),
                 },
             ],
         });

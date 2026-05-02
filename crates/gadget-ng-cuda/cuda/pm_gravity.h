@@ -48,6 +48,8 @@ void cuda_pm_destroy(cuda_pm_handle_t h);
  * @param n      Número de partículas.
  * @param eps2   Suavizado Plummer² (reservado; no usado en PM puro).
  * @param g      Constante gravitatoria.
+ * @param r_split Radio de splitting Gaussiano (>0 aplica W(k)=exp(−k²r_s²/2) en Φ(k), igual que
+ *                gadget_ng_pm fft_poisson filtered). ≤0 → PM estándar sin filtro.
  *
  * @return 0 si OK; código de error CUDA (cudaError_t) en caso contrario.
  */
@@ -56,7 +58,7 @@ int cuda_pm_solve(
     const float* x, const float* y, const float* z,
     const float* mass,
     float* ax, float* ay, float* az,
-    int n, float eps2, float g
+    int n, float eps2, float g, float r_split
 );
 
 #ifdef __cplusplus

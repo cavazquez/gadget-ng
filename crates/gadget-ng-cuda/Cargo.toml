@@ -13,4 +13,7 @@ description = "Solver PM GPU con CUDA (nvcc + cuFFT). Requiere CUDA Toolkit inst
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
 
+[dev-dependencies]
+gadget-ng-pm = { path = "../gadget-ng-pm" }
+
 [build-dependencies]

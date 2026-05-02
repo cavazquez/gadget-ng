@@ -58,6 +58,12 @@ fn gravity_kernel_tags(cfg: &RunConfig) -> Vec<String> {
             v.push("gravity:intent_cuda_pm".into());
         }
     }
+    #[cfg(all(feature = "gpu", feature = "cuda"))]
+    {
+        if cfg.performance.use_gpu_treepm && cfg.gravity.solver == SolverKind::TreePm {
+            v.push("gravity:intent_gpu_treepm_hybrid".into());
+        }
+    }
     #[cfg(feature = "hip")]
     {
         if cfg.performance.use_gpu_hip && cfg.gravity.solver == SolverKind::Pm {

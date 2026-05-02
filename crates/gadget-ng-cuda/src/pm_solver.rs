@@ -19,6 +19,10 @@ pub struct CudaPmSolver {
     #[cfg(cuda_unavailable)]
     _phantom: (),
     grid_size: usize,
+    /// Si es > 0, aplica el mismo filtro Gaussiano en *k* que `fft_poisson::solve_forces_filtered`.
+    /// Si es ≤ 0, PM sin filtro (compatible con el comportamiento anterior).
+    #[cfg_attr(cuda_unavailable, allow(dead_code))]
+    r_split: f32,
 }
 
 // SAFETY: el handle CUDA es propiedad exclusiva de este struct; no se comparte.
@@ -54,9 +58,14 @@ impl CudaPmSolver {
     ///
     /// Devuelve `None` si CUDA no está disponible o si la inicialización falla.
     pub fn try_new(grid_size: usize, box_size: f64) -> Option<Self> {
+        Self::try_new_with_r_split(grid_size, box_size, 0.0)
+    }
+
+    /// Como [`Self::try_new`], pero con filtro Gaussiano TreePM (`r_split` > 0).
+    pub fn try_new_with_r_split(grid_size: usize, box_size: f64, r_split: f64) -> Option<Self> {
         #[cfg(cuda_unavailable)]
         {
-            let _ = (grid_size, box_size);
+            let _ = (grid_size, box_size, r_split);
             return None;
         }
 
@@ -66,7 +75,23 @@ impl CudaPmSolver {
             if handle.is_null() {
                 return None;
             }
-            Some(Self { handle, grid_size })
+            Some(Self {
+                handle,
+                grid_size,
+                r_split: r_split as f32,
+            })
+        }
+    }
+
+    /// Radio de splitting Gaussiano configurado (0 = sin filtro).
+    pub fn r_split(&self) -> f32 {
+        #[cfg(cuda_unavailable)]
+        {
+            return 0.0;
+        }
+        #[cfg(not(cuda_unavailable))]
+        {
+            self.r_split
         }
     }
 
@@ -154,6 +179,7 @@ impl GravitySolver for CudaPmSolver {
                     n as i32,
                     eps2 as f32,
                     g as f32,
+                    self.r_split,
                 )
             };
             if ret != 0 {

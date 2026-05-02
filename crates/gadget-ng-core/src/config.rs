@@ -698,6 +698,11 @@ pub struct PerformanceSection {
     #[serde(default)]
     pub use_gpu_hip: bool,
 
+    /// `true` → con `solver = "tree_pm"`, intentar TreePM híbrido (PM CUDA filtrado + SR wgpu).
+    /// Requiere `--features gpu,cuda`. Si falla, TreePM en CPU.
+    #[serde(default)]
+    pub use_gpu_treepm: bool,
+
     /// `true` (default) → usar alltoallv no-bloqueante (Isend/Irecv) para solapar
     /// la evaluación de fuerzas locales con la comunicación LET.
     /// `false` → alltoallv bloqueante (Fase 8 original); útil para comparación.
@@ -834,6 +839,7 @@ impl Default for PerformanceSection {
             use_gpu_barnes_hut: false,
             use_gpu_cuda: false,
             use_gpu_hip: false,
+            use_gpu_treepm: false,
             rebalance_imbalance_threshold: 0.0,
         }
     }

@@ -16,6 +16,9 @@ use gadget_ng_tree::{
 };
 use gadget_ng_treepm::TreePmSolver;
 
+#[cfg(all(feature = "gpu", feature = "cuda"))]
+use super::treepm_gpu_hybrid::TreePmGpuHybridSolver;
+
 /// Parámetros del walk multipolar local (mismos que [`BarnesHutGravity`] / `[gravity]` en TOML).
 #[derive(Clone, Copy)]
 pub(crate) struct LocalBhWalkParams {
@@ -345,9 +348,9 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     // `multipole_order` 1–3 (hexadecapolo solo CPU). Requiere `--features gpu`.
     #[cfg(feature = "gpu")]
     if cfg.performance.use_gpu_barnes_hut && cfg.gravity.solver == SolverKind::BarnesHut {
-        if cfg.gravity.multipole_order > 3 {
+        if cfg.gravity.multipole_order > 4 {
             eprintln!(
-                "[gadget-ng] GPU BH: multipole_order > 3 no está en el kernel wgpu; usando CPU BH."
+                "[gadget-ng] GPU BH: multipole_order > 4 no está soportado en wgpu; usando CPU BH."
             );
         } else if let Some(bh) = WgpuBarnesHutGpu::try_new(
             cfg.gravity.theta,
@@ -416,6 +419,23 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
         }
         eprintln!(
             "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP/ROCm no disponible; usando CPU PM."
+        );
+    }
+
+    #[cfg(all(feature = "gpu", feature = "cuda"))]
+    if cfg.performance.use_gpu_treepm && cfg.gravity.solver == SolverKind::TreePm {
+        if let Some(hybrid) = TreePmGpuHybridSolver::try_from_config(
+            cfg.gravity.pm_grid_size,
+            cfg.simulation.box_size,
+            cfg.gravity.r_split,
+        ) {
+            eprintln!(
+                "[gadget-ng] TreePM híbrido GPU: PM CUDA (filtro Gaussiano) + corto alcance wgpu."
+            );
+            return Box::new(hybrid);
+        }
+        eprintln!(
+            "[gadget-ng] ADVERTENCIA: use_gpu_treepm=true pero CUDA/wgpu no disponible; TreePM CPU."
         );
     }
 

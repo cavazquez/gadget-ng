@@ -29,6 +29,7 @@ extern "C" {
         n: i32,
         eps2: f32,
         g: f32,
+        r_split: f32,
     ) -> i32;
 
     // ── Solver directo N² (LDS tiling) ───────────────────────────────────────

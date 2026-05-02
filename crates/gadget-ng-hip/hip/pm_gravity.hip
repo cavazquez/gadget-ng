@@ -125,6 +125,13 @@ __global__ void cic_assign_kernel(
 #undef CELL
 }
 
+__global__ void scale_density_kernel(float* rho, long long n3, float rho_vol_scale)
+{
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n3) return;
+    rho[i] *= rho_vol_scale;
+}
+
 // ── Kernel 2: Poisson en k-space ─────────────────────────────────────────────
 
 __global__ void poisson_kernel(
@@ -132,25 +139,21 @@ __global__ void poisson_kernel(
     HipComplex* __restrict__ fx_k,
     HipComplex* __restrict__ fy_k,
     HipComplex* __restrict__ fz_k,
-    int N, float two_pi_over_box, float four_pi_G, float norm)
+    int N, float two_pi_over_box, float four_pi_G, float norm, float r_split)
 {
     int nc    = N / 2 + 1;
     int total = N * N * nc;
     int idx   = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= total) return;
 
-    int iz  = idx % nc;
-    int tmp = idx / nc;
-    int iy  = tmp % N;
-    int ix  = tmp / N;
+    /* Mismo layout que cuFFT R2C: idx = ix + N*iy + N*N*ikz */
+    int ix  = idx % N;
+    int iy  = (idx / N) % N;
+    int ikz = idx / (N * N);
 
-    float kx = (ix <= N/2) ? (float)ix : (float)(ix - N);
-    float ky = (iy <= N/2) ? (float)iy : (float)(iy - N);
-    float kz = (float)iz;
-
-    kx *= two_pi_over_box;
-    ky *= two_pi_over_box;
-    kz *= two_pi_over_box;
+    float kx = (float)((ix <= N / 2) ? ix : (ix - N)) * two_pi_over_box;
+    float ky = (float)((iy <= N / 2) ? iy : (iy - N)) * two_pi_over_box;
+    float kz = (float)ikz * two_pi_over_box;
 
     float k2 = kx*kx + ky*ky + kz*kz;
 
@@ -158,14 +161,18 @@ __global__ void poisson_kernel(
     rho.x = rho_k[idx].x * norm;
     rho.y = rho_k[idx].y * norm;
 
-    if (k2 == 0.0f) {
+    if (k2 < 1e-16f) {
         fx_k[idx] = {0.0f, 0.0f};
         fy_k[idx] = {0.0f, 0.0f};
         fz_k[idx] = {0.0f, 0.0f};
         return;
     }
 
-    float factor = -four_pi_G / k2;
+    float W = 1.0f;
+    if (r_split > 0.0f) {
+        W = expf(-0.5f * k2 * r_split * r_split);
+    }
+    float factor = (-four_pi_G / k2) * W;
     HipComplex phi;
     phi.x = factor * rho.x;
     phi.y = factor * rho.y;
@@ -352,7 +359,7 @@ int hip_pm_solve(
     const float* x, const float* y, const float* z,
     const float* mass,
     float* ax, float* ay, float* az,
-    int n, float /*eps2*/, float g)
+    int n, float /*eps2*/, float g, float r_split)
 {
     if (!h || n <= 0) return 0;
     HipPmState* s = (HipPmState*)h;
@@ -398,6 +405,18 @@ int hip_pm_solve(
         HIP_CHECK(hipGetLastError());
     }
 
+    {
+        float rho_vol_scale =
+            (float)N * (float)N * (float)N
+            / (s->box_size * s->box_size * s->box_size);
+        int threads = 256;
+        long long n3ll = N3;
+        int blocks = (int)((n3ll + threads - 1) / threads);
+        hipLaunchKernelGGL(scale_density_kernel, blocks, threads, 0, 0,
+            s->d_rho, n3ll, rho_vol_scale);
+        HIP_CHECK(hipGetLastError());
+    }
+
     /* Paso 3: rocFFT R→C */
     {
         void* in_ptr  = (void*)s->d_rho;
@@ -417,7 +436,7 @@ int hip_pm_solve(
         hipLaunchKernelGGL(poisson_kernel, blocks, threads, 0, 0,
             s->d_rho_k,
             s->d_fx_k, s->d_fy_k, s->d_fz_k,
-            N, two_pi_over_box, four_pi_G, norm);
+            N, two_pi_over_box, four_pi_G, norm, r_split);
         HIP_CHECK(hipGetLastError());
     }
 

@@ -3,25 +3,24 @@
  *
  * Pipeline:
  *   1. cic_assign_kernel   — masas → grilla de densidad (CIC, periódico, atomicAdd)
- *   2. cuFFT 3D R→C        — ρ(x) → ρ(k)
- *   3. poisson_kernel      — Φ(k) = −4πG·ρ(k)/k²; F_α(k) = −ik_α·Φ(k)
- *   4. cuFFT 3D C→R × 3   — F_x(k),F_y(k),F_z(k) → F_x(x),F_y(x),F_z(x)
- *   5. cic_interp_kernel   — grilla de fuerza → aceleraciones en posición de partículas
+ *   2. FFT 3D Z2Z (f64)    — tres pasadas 1D en el mismo orden que `fft_poisson::fft3d_inplace`
+ *   3. poisson_kernel      — Φ(k) = −4πG·ρ(k)/k²; F_α(k) = −ik_α·Φ(k)  (grilla N³ compleja)
+ *   4. IFFT 3D Z2Z × 3     — con filtro: F̂_y,F̂_z×(−i) en k; luego Re·(1/N⁴) (paridad con `fft_poisson`)
+ *   5. cic_interp_kernel   — grilla de fuerza → aceleraciones en partículas
  *
- * Precisión: f32 en device; las posiciones deben estar en [0, box_size).
- * Condiciones de contorno: periódicas (mediante la FFT y kernel de Poisson espectral).
+ * Precisión: ρ y grids de fuerza en f32; FFT/Poisson espectral en Z2Z f64. Posiciones en [0, box_size).
  */
 
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <cstddef>
 #include <new>
 #include <cuda_runtime.h>
 #include <cufft.h>
+#include <cuComplex.h>
 
 #include "pm_gravity.h"
-
-// ── Macro de comprobación de errores ─────────────────────────────────────────
 
 #define CUDA_CHECK(call)                                                        \
     do {                                                                        \
@@ -43,24 +42,19 @@
         }                                                                       \
     } while (0)
 
-// ── Estado interno ────────────────────────────────────────────────────────────
-
 struct CudaPmState {
-    int   N;           /* lado de la grilla */
-    float box_size;    /* tamaño de la caja física */
-    int   nc;          /* N/2 + 1 (tamaño en frecuencias para FFT R2C) */
+    int   N;
+    float box_size;
 
-    /* Buffers device */
-    float*        d_rho;       /* grilla de densidad real [N³] */
-    cufftComplex* d_rho_k;    /* densidad compleja [N² × nc] */
-    cufftComplex* d_fx_k;     /* campo de fuerza x en k-space */
-    cufftComplex* d_fy_k;
-    cufftComplex* d_fz_k;
-    float*        d_fx;       /* campo de fuerza x en espacio real [N³] */
+    float*            d_rho;
+    cuDoubleComplex*  d_rho_k;
+    cuDoubleComplex*  d_fx_k;
+    cuDoubleComplex*  d_fy_k;
+    cuDoubleComplex*  d_fz_k;
+    float*        d_fx;
     float*        d_fy;
     float*        d_fz;
 
-    /* Buffers device para partículas (realloc dinámico) */
     float* d_x;
     float* d_y;
     float* d_z;
@@ -68,22 +62,13 @@ struct CudaPmState {
     float* d_ax;
     float* d_ay;
     float* d_az;
-    int    d_cap;  /* capacidad actual (número de partículas) */
+    int    d_cap;
 
-    /* Planes cuFFT */
-    cufftHandle plan_r2c;  /* N×N×N real→complex */
-    cufftHandle plan_c2r;  /* N×N×N complex→real (reutilizado 3 veces) */
+    cufftHandle plan_x; /* batch N², eje x (stride 1, idist N) */
+    cufftHandle plan_y; /* batch N  por subbloque, eje y (stride N, idist 1) */
+    cufftHandle plan_z; /* batch N  por subbloque, eje z (stride N², idist 1) */
 };
 
-// ── Kernel 1: CIC assign ──────────────────────────────────────────────────────
-
-/**
- * Asigna las masas de n partículas a la grilla de densidad rho[] de tamaño N³
- * usando Cloud-In-Cell (interpolación trilineal a las 8 celdas vecinas).
- * Usa atomicAdd para thread-safety (las partículas pueden caer en celdas solapadas).
- *
- * Índice del array: i + j*N + k*N*N  (orden C, x rápido)
- */
 __global__ void cic_assign_kernel(
     const float* __restrict__ x,
     const float* __restrict__ y,
@@ -100,12 +85,10 @@ __global__ void cic_assign_kernel(
     float pz = z[pid] * inv_box * (float)N;
     float m  = mass[pid];
 
-    /* Celda base (esquina inferior izquierda del cubo CIC) */
     int ix = (int)floorf(px);
     int iy = (int)floorf(py);
     int iz = (int)floorf(pz);
 
-    /* Distancia fraccionaria dentro de la celda */
     float dx = px - (float)ix;
     float dy = py - (float)iy;
     float dz = pz - (float)iz;
@@ -113,7 +96,6 @@ __global__ void cic_assign_kernel(
     float ty = 1.0f - dy;
     float tz = 1.0f - dz;
 
-    /* Contribuir a las 8 celdas con peso trilineal */
 #define CELL(di,dj,dk) (((ix+(di)+N)%N) + ((iy+(dj)+N)%N)*N + ((iz+(dk)+N)%N)*N*N)
     atomicAdd(&rho[CELL(0,0,0)], m * tx * ty * tz);
     atomicAdd(&rho[CELL(1,0,0)], m * dx * ty * tz);
@@ -126,82 +108,109 @@ __global__ void cic_assign_kernel(
 #undef CELL
 }
 
-// ── Kernel 2: Poisson en k-space + diferenciación espectral ──────────────────
+__global__ void scale_density_kernel(float* rho, long long n3, float rho_vol_scale)
+{
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n3) return;
+    rho[i] *= rho_vol_scale;
+}
 
-/**
- * Para cada modo (kx,ky,kz) de la grilla de Fourier N×N×nc:
- *   Φ(k) = −4πG · ρ(k) / k²       (k² = kx²+ky²+kz², k=0 → Φ=0)
- *   F_x(k) = −i·kx·Φ(k)
- *   F_y(k) = −i·ky·Φ(k)
- *   F_z(k) = −i·kz·Φ(k)
- *
- * Las frecuencias siguen la convención FFT estándar:
- *   kx ∈ [0..N/2, -(N/2-1)..-1]  (para kx >= N/2, kx_phys = kx - N)
- *   Similar para ky. kz ∈ [0..nc-1] siempre positivo (output R2C).
- *
- * El factor de normalización de cuFFT (1/N³) se aplica aquí.
+/** ρ real → complejo (parte imaginaria 0), mismo orden que `fft_poisson`. */
+__global__ void float_to_complex_kernel(
+    const float* __restrict__ rho,
+    cuDoubleComplex* __restrict__ c,
+    long long n3)
+{
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n3) return;
+    double r = (double)rho[i];
+    c[i].x = r;
+    c[i].y = 0.0;
+}
+
+/** Convención DFT `freq_index` alineada con `fft_poisson::freq_index` (doble precisión k). */
+__device__ __forceinline__ static double pm_wavenum_d(int j, int N, double dk)
+{
+    double n = (double)((j <= N / 2) ? j : (j - N));
+    return n * dk;
+}
+
+/** Igual que `fft_poisson`: flat = ix + N*iy + N²*iz → freq_index en cada eje.
+ *  FFT Z2Z en doble precisión + Poisson en f64 para paridad con rustfft + TreePM filtrado.
  */
 __global__ void poisson_kernel(
-    const cufftComplex* __restrict__ rho_k,
-    cufftComplex* __restrict__ fx_k,
-    cufftComplex* __restrict__ fy_k,
-    cufftComplex* __restrict__ fz_k,
-    int N, float two_pi_over_box, float four_pi_G, float norm)
+    const cuDoubleComplex* __restrict__ rho_k,
+    cuDoubleComplex* __restrict__ fx_k,
+    cuDoubleComplex* __restrict__ fy_k,
+    cuDoubleComplex* __restrict__ fz_k,
+    float two_pi_over_box,
+    float four_pi_G,
+    float r_split,
+    int N)
 {
-    /* Índice plano en el array R2C [N × N × nc] */
-    int nc = N / 2 + 1;
-    int total = N * N * nc;
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= total) return;
+    long long N3 = (long long)N * N * N;
+    long long idx = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= N3) return;
 
-    /* Recuperar (ix, iy, iz) */
-    int iz = idx % nc;
-    int tmp = idx / nc;
-    int iy  = tmp % N;
-    int ix  = tmp / N;
+    int nm2 = N * N;
+    int iz = (int)(idx / nm2);
+    int iy = (int)((idx / N) % N);
+    int ix = (int)(idx % N);
 
-    /* Frecuencias físicas */
-    float kx = (ix <= N/2) ? (float)ix : (float)(ix - N);
-    float ky = (iy <= N/2) ? (float)iy : (float)(iy - N);
-    float kz = (float)iz;
+    double dk = (double)two_pi_over_box;
+    double kx = pm_wavenum_d(ix, N, dk);
+    double ky = pm_wavenum_d(iy, N, dk);
+    double kz = pm_wavenum_d(iz, N, dk);
 
-    kx *= two_pi_over_box;
-    ky *= two_pi_over_box;
-    kz *= two_pi_over_box;
+    double k2 = kx * kx + ky * ky + kz * kz;
 
-    float k2 = kx*kx + ky*ky + kz*kz;
+    cuDoubleComplex rho = rho_k[idx];
 
-    cufftComplex rho = rho_k[idx];
-    /* Normalización inversa cuFFT */
-    rho.x *= norm;
-    rho.y *= norm;
-
-    if (k2 == 0.0f) {
-        /* Modo DC: fuerza neta cero (universo periódico) */
-        fx_k[idx] = {0.0f, 0.0f};
-        fy_k[idx] = {0.0f, 0.0f};
-        fz_k[idx] = {0.0f, 0.0f};
+    /* Coherente con fft_poisson (f64): k² < 1e-30 */
+    if (k2 < 1e-30) {
+        fx_k[idx] = {0.0, 0.0};
+        fy_k[idx] = {0.0, 0.0};
+        fz_k[idx] = {0.0, 0.0};
         return;
     }
 
-    /* Φ(k) = −4πG·ρ(k) / k² */
-    float factor = -four_pi_G / k2;
-    cufftComplex phi;
+    double W = 1.0;
+    if (r_split > 0.0f) {
+        double rs = (double)r_split;
+        W = exp(-0.5 * k2 * rs * rs);
+    }
+    double factor = (-(double)four_pi_G / k2) * W;
+    cuDoubleComplex phi;
     phi.x = factor * rho.x;
     phi.y = factor * rho.y;
 
-    /* F_α(k) = −i·k_α·Φ(k)  →  Re[F] = k_α·Im[Φ],  Im[F] = −k_α·Re[Φ] */
-    fx_k[idx] = { kx * phi.y,  -kx * phi.x };
-    fy_k[idx] = { ky * phi.y,  -ky * phi.x };
-    fz_k[idx] = { kz * phi.y,  -kz * phi.x };
+    fx_k[idx] = {kx * phi.y, -kx * phi.x};
+    fy_k[idx] = {ky * phi.y, -ky * phi.x};
+    fz_k[idx] = {kz * phi.y, -kz * phi.x};
 }
 
-// ── Kernel 3: CIC interpolation ───────────────────────────────────────────────
+/** (a+ib) ↦ (b−ia) = −i·(a+ib). Alinea Re(IFFT(·)) con la referencia que solo toma .re tras IFFT. */
+__global__ void kspace_mul_minus_i_kernel(cuDoubleComplex* d, long long n3)
+{
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n3) return;
+    double a = d[i].x;
+    double b = d[i].y;
+    d[i].x = b;
+    d[i].y = -a;
+}
 
-/**
- * Para cada partícula, interpola trilinealmente los campos de fuerza fx/fy/fz
- * en la posición de la partícula → aceleración.
- */
+__global__ void real_part_scale_kernel(
+    float* __restrict__ dst,
+    const cuDoubleComplex* __restrict__ src,
+    long long n3,
+    float scale)
+{
+    long long i = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n3) return;
+    dst[i] = (float)(src[i].x * (double)scale);
+}
+
 __global__ void cic_interp_kernel(
     const float* __restrict__ x,
     const float* __restrict__ y,
@@ -250,7 +259,43 @@ __global__ void cic_interp_kernel(
 #undef CELL
 }
 
-// ── API C ─────────────────────────────────────────────────────────────────────
+/** Adelante: X, luego Y por planos iz, luego Z por “filas” iy — como `fft3d_inplace`. */
+static int pm_fft3d_forward(CudaPmState* s, cuDoubleComplex* d)
+{
+    int N = s->N;
+
+    CUFFT_CHECK(cufftExecZ2Z(s->plan_x, d, d, CUFFT_FORWARD));
+
+    for (int iz = 0; iz < N; ++iz) {
+        cuDoubleComplex* base = d + (ptrdiff_t)iz * N * N;
+        CUFFT_CHECK(cufftExecZ2Z(s->plan_y, base, base, CUFFT_FORWARD));
+    }
+
+    for (int iy = 0; iy < N; ++iy) {
+        cuDoubleComplex* base = d + (ptrdiff_t)iy * N;
+        CUFFT_CHECK(cufftExecZ2Z(s->plan_z, base, base, CUFFT_FORWARD));
+    }
+    return 0;
+}
+
+/** Inversa: Z, Y, X — mismo orden que `ifft3d_inplace`. cuFFT Z2Z inverso no divide por N. */
+static int pm_fft3d_inverse(CudaPmState* s, cuDoubleComplex* d)
+{
+    int N = s->N;
+
+    for (int iy = 0; iy < N; ++iy) {
+        cuDoubleComplex* base = d + (ptrdiff_t)iy * N;
+        CUFFT_CHECK(cufftExecZ2Z(s->plan_z, base, base, CUFFT_INVERSE));
+    }
+
+    for (int iz = 0; iz < N; ++iz) {
+        cuDoubleComplex* base = d + (ptrdiff_t)iz * N * N;
+        CUFFT_CHECK(cufftExecZ2Z(s->plan_y, base, base, CUFFT_INVERSE));
+    }
+
+    CUFFT_CHECK(cufftExecZ2Z(s->plan_x, d, d, CUFFT_INVERSE));
+    return 0;
+}
 
 extern "C" {
 
@@ -259,36 +304,47 @@ cuda_pm_handle_t cuda_pm_create(int grid_size, float box_size)
     CudaPmState* s = new (std::nothrow) CudaPmState();
     if (!s) return nullptr;
 
-    s->N        = grid_size;
+    s->N = grid_size;
     s->box_size = box_size;
-    s->nc       = grid_size / 2 + 1;
-    s->d_cap    = 0;
+    s->d_cap = 0;
     s->d_x = s->d_y = s->d_z = s->d_mass = nullptr;
     s->d_ax = s->d_ay = s->d_az = nullptr;
+    s->plan_x = s->plan_y = s->plan_z = 0;
 
-    long long N3  = (long long)grid_size * grid_size * grid_size;
-    long long Nnc = (long long)grid_size * grid_size * s->nc;
+    int N = grid_size;
+    long long N3 = (long long)N * N * N;
 
-    /* Allocar grillas device */
-    if (cudaMalloc(&s->d_rho,   N3  * sizeof(float))         != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_rho_k, Nnc * sizeof(cufftComplex))  != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_fx_k,  Nnc * sizeof(cufftComplex))  != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_fy_k,  Nnc * sizeof(cufftComplex))  != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_fz_k,  Nnc * sizeof(cufftComplex))  != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_fx,    N3  * sizeof(float))         != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_fy,    N3  * sizeof(float))         != cudaSuccess) goto fail;
-    if (cudaMalloc(&s->d_fz,    N3  * sizeof(float))         != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_rho,   N3 * sizeof(float))            != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_rho_k, N3 * sizeof(cuDoubleComplex)) != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_fx_k,  N3 * sizeof(cuDoubleComplex)) != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_fy_k,  N3 * sizeof(cuDoubleComplex)) != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_fz_k,  N3 * sizeof(cuDoubleComplex)) != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_fx,    N3 * sizeof(float))        != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_fy,    N3 * sizeof(float))        != cudaSuccess) goto fail;
+    if (cudaMalloc(&s->d_fz,    N3 * sizeof(float))        != cudaSuccess) goto fail;
 
-    /* Crear planes cuFFT */
-    if (cufftPlan3d(&s->plan_r2c, grid_size, grid_size, grid_size,
-                    CUFFT_R2C) != CUFFT_SUCCESS) goto fail;
-    if (cufftPlan3d(&s->plan_c2r, grid_size, grid_size, grid_size,
-                    CUFFT_C2R) != CUFFT_SUCCESS) goto fail;
+    {
+        int n[1] = { N };
+        if (cufftPlanMany(&s->plan_x, 1, n,
+                          NULL, 1, N,
+                          NULL, 1, N,
+                          CUFFT_Z2Z, N * N) != CUFFT_SUCCESS)
+            goto fail;
+        if (cufftPlanMany(&s->plan_y, 1, n,
+                          NULL, N, 1,
+                          NULL, N, 1,
+                          CUFFT_Z2Z, N) != CUFFT_SUCCESS)
+            goto fail;
+        if (cufftPlanMany(&s->plan_z, 1, n,
+                          NULL, N * N, 1,
+                          NULL, N * N, 1,
+                          CUFFT_Z2Z, N) != CUFFT_SUCCESS)
+            goto fail;
+    }
 
     return (cuda_pm_handle_t)s;
 
 fail:
-    /* Limpiar lo que se haya allocado */
     cuda_pm_destroy((cuda_pm_handle_t)s);
     return nullptr;
 }
@@ -312,8 +368,9 @@ void cuda_pm_destroy(cuda_pm_handle_t h)
     if (s->d_ax)    cudaFree(s->d_ax);
     if (s->d_ay)    cudaFree(s->d_ay);
     if (s->d_az)    cudaFree(s->d_az);
-    cufftDestroy(s->plan_r2c);
-    cufftDestroy(s->plan_c2r);
+    if (s->plan_x) cufftDestroy(s->plan_x);
+    if (s->plan_y) cufftDestroy(s->plan_y);
+    if (s->plan_z) cufftDestroy(s->plan_z);
     delete s;
 }
 
@@ -322,14 +379,13 @@ int cuda_pm_solve(
     const float* x, const float* y, const float* z,
     const float* mass,
     float* ax, float* ay, float* az,
-    int n, float /*eps2*/, float g)
+    int n, float /*eps2*/, float g, float r_split)
 {
     if (!h || n <= 0) return 0;
     CudaPmState* s = (CudaPmState*)h;
     int N   = s->N;
-    long long N3  = (long long)N * N * N;
+    long long N3 = (long long)N * N * N;
 
-    /* ── Reasignar buffers de partículas si es necesario ─────────────────── */
     if (n > s->d_cap) {
         if (s->d_x) cudaFree(s->d_x);
         if (s->d_y) cudaFree(s->d_y);
@@ -348,16 +404,13 @@ int cuda_pm_solve(
         s->d_cap = n;
     }
 
-    /* ── Copiar partículas host → device ─────────────────────────────────── */
     CUDA_CHECK(cudaMemcpy(s->d_x,    x,    n*sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(s->d_y,    y,    n*sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(s->d_z,    z,    n*sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(s->d_mass, mass, n*sizeof(float), cudaMemcpyHostToDevice));
 
-    /* ── Paso 1: limpiar grilla de densidad ──────────────────────────────── */
     CUDA_CHECK(cudaMemset(s->d_rho, 0, N3 * sizeof(float)));
 
-    /* ── Paso 2: CIC assign ──────────────────────────────────────────────── */
     {
         int threads = 256;
         int blocks  = (n + threads - 1) / threads;
@@ -368,30 +421,66 @@ int cuda_pm_solve(
         CUDA_CHECK(cudaGetLastError());
     }
 
-    /* ── Paso 3: FFT R→C ─────────────────────────────────────────────────── */
-    CUFFT_CHECK(cufftExecR2C(s->plan_r2c, s->d_rho, s->d_rho_k));
-
-    /* ── Paso 4: Poisson kernel ──────────────────────────────────────────── */
     {
-        int total   = N * N * s->nc;
+        float rho_vol_scale =
+            (float)N * (float)N * (float)N
+            / (s->box_size * s->box_size * s->box_size);
         int threads = 256;
-        int blocks  = (total + threads - 1) / threads;
-        float two_pi_over_box = 2.0f * (float)M_PI / s->box_size;
-        float four_pi_G = 4.0f * (float)M_PI * g;
-        float norm = 1.0f / (float)N3;   /* factor de normalización cuFFT */
-        poisson_kernel<<<blocks, threads>>>(
-            s->d_rho_k,
-            s->d_fx_k, s->d_fy_k, s->d_fz_k,
-            N, two_pi_over_box, four_pi_G, norm);
+        int blocks = (int)(((N3 + threads - 1) / threads));
+        scale_density_kernel<<<blocks, threads>>>(s->d_rho, N3, rho_vol_scale);
         CUDA_CHECK(cudaGetLastError());
     }
 
-    /* ── Paso 5: FFT inversa C→R para cada componente de fuerza ─────────── */
-    CUFFT_CHECK(cufftExecC2R(s->plan_c2r, s->d_fx_k, s->d_fx));
-    CUFFT_CHECK(cufftExecC2R(s->plan_c2r, s->d_fy_k, s->d_fy));
-    CUFFT_CHECK(cufftExecC2R(s->plan_c2r, s->d_fz_k, s->d_fz));
+    {
+        int threads = 256;
+        int blocks = (int)(((N3 + threads - 1) / threads));
+        float_to_complex_kernel<<<blocks, threads>>>(s->d_rho, s->d_rho_k, N3);
+        CUDA_CHECK(cudaGetLastError());
+    }
 
-    /* ── Paso 6: CIC interpolation ───────────────────────────────────────── */
+    if (pm_fft3d_forward(s, s->d_rho_k) != 0) return -1;
+
+    {
+        int threads = 256;
+        int blocks = (int)(((N3 + threads - 1) / threads));
+        float two_pi_over_box = 2.0f * (float)M_PI / s->box_size;
+        float four_pi_G = 4.0f * (float)M_PI * g;
+        poisson_kernel<<<blocks, threads>>>(
+            s->d_rho_k,
+            s->d_fx_k, s->d_fy_k, s->d_fz_k,
+            two_pi_over_box, four_pi_G, r_split, N);
+        CUDA_CHECK(cudaGetLastError());
+        if (r_split > 0.0f) {
+            kspace_mul_minus_i_kernel<<<blocks, threads>>>(s->d_fy_k, N3);
+            CUDA_CHECK(cudaGetLastError());
+            kspace_mul_minus_i_kernel<<<blocks, threads>>>(s->d_fz_k, N3);
+            CUDA_CHECK(cudaGetLastError());
+        }
+    }
+
+    int threads = 256;
+    int blocks  = (int)((N3 + (long long)threads - 1) / (long long)threads);
+    /* cuFFT Z2Z inverso no divide por eje. Factor 1/N⁴ alinea con `fft_poisson` en smoke. */
+    float norm_real =
+        1.0f / ((float)N * (float)N * (float)N * (float)N);
+
+    if (pm_fft3d_inverse(s, s->d_fx_k) != 0) return -1;
+    real_part_scale_kernel<<<blocks, threads>>>(
+        s->d_fx, s->d_fx_k, N3, norm_real);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    if (pm_fft3d_inverse(s, s->d_fy_k) != 0) return -1;
+    real_part_scale_kernel<<<blocks, threads>>>(
+        s->d_fy, s->d_fy_k, N3, norm_real);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    if (pm_fft3d_inverse(s, s->d_fz_k) != 0) return -1;
+    real_part_scale_kernel<<<blocks, threads>>>(
+        s->d_fz, s->d_fz_k, N3, norm_real);
+    CUDA_CHECK(cudaGetLastError());
+
     {
         int threads = 256;
         int blocks  = (n + threads - 1) / threads;
@@ -404,7 +493,6 @@ int cuda_pm_solve(
         CUDA_CHECK(cudaGetLastError());
     }
 
-    /* ── Copiar resultados device → host ─────────────────────────────────── */
     CUDA_CHECK(cudaMemcpy(ax, s->d_ax, n*sizeof(float), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(ay, s->d_ay, n*sizeof(float), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(az, s->d_az, n*sizeof(float), cudaMemcpyDeviceToHost));

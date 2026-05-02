@@ -3,6 +3,10 @@
 //! Crate mínimo independiente de `gadget-ng-core` y `gadget-ng-gpu` para evitar
 //! ciclos de paquetes (core ↔ gpu con feature opcional).
 
+mod hex_stf;
+
+pub use hex_stf::hex_pattern_weights;
+
 /// Índice de partícula inválido / hoja sin un solo cuerpo indexado (equivale a `Option::None`).
 pub const BH_GPU_NO_PARTICLE: u32 = u32::MAX;
 

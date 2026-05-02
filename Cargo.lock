@@ -735,6 +735,7 @@ name = "gadget-ng-cuda"
 version = "0.1.0"
 dependencies = [
  "gadget-ng-core",
+ "gadget-ng-pm",
 ]
 
 [[package]]

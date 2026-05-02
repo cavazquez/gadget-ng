@@ -1,4 +1,12 @@
 //! Leapfrog / Yoshida integration loop (`run_stepping`).
+//!
+//! ## MPI y GPU (LET)
+//!
+//! En multirank con SFC+LET, el intercambio de multipolos remotos y el acoplamiento LET siguen
+//! resolviéndose en **host**. Solo los subproblemas de árbol **local** (más halos, sin nodos
+//! LET importados en GPU) son candidatos naturales a aceleración GPU incremental; el kernel
+//! que evalúa nodos LET remotos permanece en CPU. Documentación de límites y staging SoA:
+//! `docs/gpu-first-roadmap.md`.
 
 use crate::config_load;
 use crate::error::CliError;
