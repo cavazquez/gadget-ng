@@ -82,6 +82,7 @@ fn let_wire_roundtrip() {
         assert!((orig.mass - rec.mass).abs() < 1e-14, "mass no coincide");
         assert_eq!(orig.quad, rec.quad, "quad no coincide");
         assert_eq!(orig.oct, rec.oct, "oct no coincide");
+        assert_eq!(orig.hex, rec.hex, "hex no coincide");
         assert!(
             (orig.half_size - rec.half_size).abs() < 1e-14,
             "half_size no coincide"

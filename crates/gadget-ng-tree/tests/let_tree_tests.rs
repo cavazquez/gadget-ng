@@ -20,6 +20,7 @@ fn rmn_monopole(com: Vec3, mass: f64, half_size: f64) -> RemoteMultipoleNode {
         mass,
         quad: [0.0; 6],
         oct: [0.0; 7],
+        hex: [0.0; 15],
         half_size,
     }
 }

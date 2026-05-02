@@ -18,6 +18,7 @@ fn make_rmn(cx: f64, cy: f64, cz: f64, mass: f64) -> RemoteMultipoleNode {
         mass,
         quad: [0.0; 6],
         oct: [0.0; 7],
+        hex: [0.0; 15],
         half_size: 0.5,
     }
 }
@@ -35,6 +36,7 @@ fn make_rmn_full(
         mass,
         quad,
         oct,
+        hex: [0.0; 15],
         half_size: 0.5,
     }
 }

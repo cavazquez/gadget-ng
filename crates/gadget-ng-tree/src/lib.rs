@@ -1,4 +1,6 @@
 //! Octree y Barnes-Hut para simulaciones N-body en **gadget-ng**.
+mod hex_dt_patterns;
+mod hexadecapole;
 pub mod barnes_hut;
 pub mod let_tree;
 pub mod octree;

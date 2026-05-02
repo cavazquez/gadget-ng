@@ -4,7 +4,7 @@
 //!
 //! ## Motivación
 //!
-//! En el layout AoS original cada `RemoteMultipoleNode` ocupa 18 `f64` contiguos.
+//! En el layout AoS original cada `RemoteMultipoleNode` ocupa [`crate::RMN_FLOATS`] `f64` contiguos.
 //! Con SoA todas las coordenadas `cx[]`, masas `mass[]`, etc. forman columnas
 //! contiguas, mejorando cache locality y habilitando SIMD real.
 //!
@@ -40,6 +40,7 @@
 //! - AVX2 + FMA detectados en runtime → `accel_range_p15` (two-pass)
 //! - Fallback → `accel_soa_scalar` (fused, Phase 14)
 
+use crate::hexadecapole::{hex_accel_from_r2s, hex_accel_softened};
 use crate::octree::RemoteMultipoleNode;
 use gadget_ng_core::Vec3;
 
@@ -57,6 +58,7 @@ const RINV_CHUNK: usize = 256;
 ///   `[qxx, qxy, qxz, qyy, qyz, qzz]`.
 /// - `oct[k]`: columnas del tensor octupolar en orden
 ///   `[o_xxx, o_xxy, o_xxz, o_xyy, o_xyz, o_yyy, o_yzz]`.
+/// - `hex[k]`: 15 columnas del hexadecapolo STF (multigrados nx,ny,nz).
 #[derive(Default, Clone)]
 pub struct RmnSoa {
     pub cx: Vec<f64>,
@@ -67,6 +69,8 @@ pub struct RmnSoa {
     pub quad: [Vec<f64>; 6],
     /// 7 columnas del tensor octupolar.
     pub oct: [Vec<f64>; 7],
+    /// 15 columnas del hexadecapolo STF.
+    pub hex: [Vec<f64>; 15],
     pub len: usize,
 }
 
@@ -80,6 +84,7 @@ impl RmnSoa {
             mass: Vec::with_capacity(cap),
             quad: std::array::from_fn(|_| Vec::with_capacity(cap)),
             oct: std::array::from_fn(|_| Vec::with_capacity(cap)),
+            hex: std::array::from_fn(|_| Vec::with_capacity(cap)),
             len: 0,
         }
     }
@@ -105,6 +110,9 @@ impl RmnSoa {
             for k in 0..7 {
                 self.oct[k].push(rmn.oct[k]);
             }
+            for k in 0..15 {
+                self.hex[k].push(rmn.hex[k]);
+            }
             self.len += 1;
         }
     }
@@ -120,6 +128,9 @@ impl RmnSoa {
         }
         for k in 0..7 {
             self.oct[k].clear();
+        }
+        for k in 0..15 {
+            self.hex[k].clear();
         }
         self.len = 0;
     }
@@ -166,6 +177,7 @@ pub(crate) fn accel_soa_scalar(
         &soa.oct[5][start..start + len],
         &soa.oct[6][start..start + len],
     ];
+    let h: [&[f64]; 15] = std::array::from_fn(|k| &soa.hex[k][start..start + len]);
 
     for j in 0..len {
         let mj = mass[j];
@@ -252,6 +264,16 @@ pub(crate) fn accel_soa_scalar(
         ax += co1 * orr_x + co2 * rx;
         ay += co1 * orr_y + co2 * ry;
         az += co1 * orr_z + co2 * rz;
+
+        // Hexadecapolo
+        let mut harr = [0.0_f64; 15];
+        for t in 0..15 {
+            harr[t] = h[t][j];
+        }
+        let a_hex = hex_accel_softened(Vec3::new(rx, ry, rz), &harr, g, eps2);
+        ax += a_hex.x;
+        ay += a_hex.y;
+        az += a_hex.z;
     }
 
     Vec3::new(ax, ay, az)
@@ -452,6 +474,7 @@ fn quad_oct_pass_scalar(
         &soa.oct[5][start..start + len],
         &soa.oct[6][start..start + len],
     ];
+    let h: [&[f64]; 15] = std::array::from_fn(|k| &soa.hex[k][start..start + len]);
 
     for j in 0..len {
         // r_inv pre-computado en Pass1; si ≈0 el nodo tenía r²≈0 → skip
@@ -535,6 +558,16 @@ fn quad_oct_pass_scalar(
         ax += co1 * orr_x + co2 * rx;
         ay += co1 * orr_y + co2 * ry;
         az += co1 * orr_z + co2 * rz;
+
+        let r2_eff = 1.0 / (r_inv * r_inv);
+        let mut harr = [0.0_f64; 15];
+        for t in 0..15 {
+            harr[t] = h[t][j];
+        }
+        let a_hex = hex_accel_from_r2s(Vec3::new(rx, ry, rz), r2_eff, &harr, g);
+        ax += a_hex.x;
+        ay += a_hex.y;
+        az += a_hex.z;
     }
 
     (ax, ay, az)
@@ -813,6 +846,7 @@ fn quad_oct_pass_scalar_4xi(
         &soa.oct[5][start..start + len],
         &soa.oct[6][start..start + len],
     ];
+    let h: [&[f64]; 15] = std::array::from_fn(|t| &soa.hex[t][start..start + len]);
 
     for j in 0..len {
         let rinv4 = &r_inv_buf[j]; // [r_inv para particula 0,1,2,3]
@@ -890,6 +924,16 @@ fn quad_oct_pass_scalar_4xi(
             ax[k] += co1 * orr_x + co2 * rx;
             ay[k] += co1 * orr_y + co2 * ry;
             az[k] += co1 * orr_z + co2 * rz;
+
+            let r2_eff = 1.0 / (r_inv * r_inv);
+            let mut harr = [0.0_f64; 15];
+            for t in 0..15 {
+                harr[t] = h[t][j];
+            }
+            let a_hex = hex_accel_from_r2s(Vec3::new(rx, ry, rz), r2_eff, &harr, g);
+            ax[k] += a_hex.x;
+            ay[k] += a_hex.y;
+            az[k] += a_hex.z;
         }
     }
 
@@ -1033,6 +1077,7 @@ mod tests {
             mass,
             quad: [0.0; 6],
             oct: [0.0; 7],
+            hex: [0.0; 15],
             half_size: 0.5,
         }
     }
@@ -1050,6 +1095,7 @@ mod tests {
             mass,
             quad,
             oct,
+            hex: [0.0; 15],
             half_size: 0.5,
         }
     }

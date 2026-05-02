@@ -26,7 +26,7 @@
 //!
 //! - `bh_accuracy.csv`: barrido de θ con MAC **geométrico**, orden multipolar completo (order=3).
 //! - `bh_accuracy_relative.csv`: mismo barrido con MAC **relativo** (`err_tol_force_acc = 0.0025`).
-//! - `bh_multipole_ablation.csv`: ablación de orden multipolar (order=1,2,3) a θ fijo.
+//! - `bh_multipole_ablation.csv`: ablación de orden multipolar (order=1,2,3,4) a θ fijo.
 
 use gadget_ng_core::{
     CosmologySection, DirectGravity, GravitySection, GravitySolver, IcKind,
@@ -809,8 +809,8 @@ fn bh_force_accuracy_relative_full_sweep() {
 
 /// Ablación de orden multipolar: cuantifica la contribución real de cada término.
 ///
-/// Compara monopolo puro (order=1), mono+quad (order=2) y mono+quad+oct (order=3)
-/// para las dos distribuciones de referencia, a θ=0.5 (criterio estándar).
+/// Compara monopolo (order=1), mono+quad (2), mono+quad+oct (3) y +hexadecapolo (4)
+/// para las dos distribuciones de referencia, a θ=0.5 y θ=0.8.
 ///
 /// Esta prueba confirma cuánto error se reduce al añadir cada término y demuestra
 /// que los errores observados en Fase 3 son los errores **con multipolar completo**.
@@ -820,7 +820,7 @@ fn bh_multipole_ablation() {
     let cfg_plummer = make_config_plummer();
 
     const ABLATION_THETAS: &[f64] = &[0.5, 0.8];
-    const ORDERS: &[u8] = &[1, 2, 3];
+    const ORDERS: &[u8] = &[1, 2, 3, 4];
 
     let mut all = run_ablation("uniform_sphere", &cfg_sphere, ABLATION_THETAS, ORDERS);
     all.extend(run_ablation(
@@ -840,6 +840,7 @@ fn bh_multipole_ablation() {
             1 => "mono    ",
             2 => "mono+Q  ",
             3 => "mono+Q+O",
+            4 => "mono..+H",
             _ => "?       ",
         };
         println!(
@@ -878,11 +879,17 @@ fn bh_multipole_ablation() {
             .find(|r| r.distribution == dist && (r.theta - 0.5).abs() < 0.01 && r.order == 3)
             .map(|r| r.mean_err)
             .unwrap_or(f64::MAX);
+        let err_order4 = all
+            .iter()
+            .find(|r| r.distribution == dist && (r.theta - 0.5).abs() < 0.01 && r.order == 4)
+            .map(|r| r.mean_err)
+            .unwrap_or(f64::MAX);
         println!(
-            "[{dist}] θ=0.5: mono={:.3}%  mono+Q={:.3}%  mono+Q+O={:.3}%",
+            "[{dist}] θ=0.5: mono={:.3}%  mono+Q={:.3}%  mono+Q+O={:.3}%  +hex={:.3}%",
             err_order1 * 100.0,
             err_order2 * 100.0,
             err_order3 * 100.0,
+            err_order4 * 100.0,
         );
         // Para esfera uniforme (distribución extendida), el orden 3 debería ser ≤ orden 1.
         // Para Plummer concentrado no se garantiza debido al softening faltante en quad/oct.
@@ -891,6 +898,12 @@ fn bh_multipole_ablation() {
                 err_order3 <= err_order1 * 1.1,
                 "uniform_sphere θ=0.5: mono+Q+O ({:.4}%) debería ser ≤ mono ({:.4}%)",
                 err_order3 * 100.0,
+                err_order1 * 100.0
+            );
+            assert!(
+                err_order4 <= err_order1 * 1.15,
+                "uniform_sphere θ=0.5: +hex ({:.4}%) debería ser acotado vs mono ({:.4}%)",
+                err_order4 * 100.0,
                 err_order1 * 100.0
             );
         }
@@ -906,6 +919,10 @@ fn bh_multipole_ablation() {
         assert!(
             err_order3.is_finite() && err_order3 > 0.0,
             "{dist}: orden3 inválido"
+        );
+        assert!(
+            err_order4.is_finite() && err_order4 > 0.0,
+            "{dist}: orden4 inválido"
         );
     }
 

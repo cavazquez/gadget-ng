@@ -1,13 +1,13 @@
-//! Octree en arena para Barnes-Hut con expansión multipolar FMM orden 3
-//! (monopolo + cuadrupolo + octupolo).
+//! Octree en arena para Barnes-Hut con expansión multipolar FMM hasta orden 4
+//! (monopolo + cuadrupolo + octupolo + hexadecapolo opcional).
 //!
 //! ## Expansión multipolar
 //!
 //! Cuando el MAC (`s/d < θ`) se cumple, la aceleración sobre la partícula
-//! evaluada incluye monopolo (Plummer suavizado), cuadrupolo y octupolo:
+//! evaluada incluye monopolo (Plummer suavizado), cuadrupolo, octupolo y opcionalmente hexadecapolo:
 //!
 //! ```text
-//! a = a_mono + a_quad + a_oct
+//! a = a_mono + a_quad + a_oct (+ a_hex si `multipole_order ≥ 4`)
 //! ```
 //!
 //! ### Cuadrupolo (orden 2)
@@ -44,13 +44,24 @@
 //!
 //! donde `s_k = COM_k − r₀` y `TF3(s)_{ijk} = 5 s_i s_j s_k − s² (δ_{ij}s_k + δ_{ik}s_j + δ_{jk}s_i)`.
 //!
+//! ### Hexadecapolo (orden 4) — 15 componentes STF compactas
+//!
+//! Tensor cartesiano totalmente simétrico y sin traza almacenado en la convención de
+//! multigrados `(nx, ny, nz)` con `nx + ny + nz = 4` (`xxxx`, `xxxy`, …, `zzzz`).
+//! Construcción de punto masivo y traslación `Φ_parent += Φ_child + m · Φ_TF4(s)` con
+//! `Φ_TF4` tipo Stone (momentos primitivos → STF; función `outer4_tf`).
+//!
+//! La corrección de aceleración es `a_α = −G Σ Φ_{ijkl} ∂_α ∂_i∂_j∂_k∂_l |r|⁻¹`
+//! (implementación factorizada en los módulos internos `hexadecapole` y `hex_dt_patterns`).
+//!
 //! ## M2L implícito
 //!
-//! La aplicación del multipolo (mono+quad+oct) durante el recorrido del árbol
+//! La aplicación del multipolo (mono+quad+oct(+hex)) durante el recorrido del árbol
 //! cuando el MAC se satisface constituye la operación "Multipole-to-Local" (M2L):
 //! la contribución del multipolo remoto se acumula directamente en la fuerza
 //! de la partícula evaluada. La propagación jerárquica de este efecto (L2L)
 //! es la recursión del árbol hacia las hojas.
+use crate::hexadecapole::{hex_accel, hex_accel_softened, outer4_tf};
 use gadget_ng_core::{MacSoftening, Vec3};
 use std::cell::Cell;
 
@@ -159,6 +170,8 @@ pub struct OctNode {
     /// Componentes derivados: `O_xzz = -(O_xxx + O_xyy)`,
     /// `O_yyz = -(O_xxy + O_yyy)`, `O_zzz = -(O_xxz - O_xxy - O_yyy)`.
     pub oct: [f64; 7],
+    /// Hexadecapolo STF en 15 componentes compactas (grados nx,ny,nz en x,y,z).
+    pub hex: [f64; 15],
 }
 
 impl OctNode {
@@ -172,6 +185,7 @@ impl OctNode {
             particle_idx: None,
             quad: [0.0; 6],
             oct: [0.0; 7],
+            hex: [0.0; 15],
         }
     }
 }
@@ -543,12 +557,14 @@ impl Octree {
                 self.nodes[idx as usize].com = c;
                 self.nodes[idx as usize].quad = [0.0; 6];
                 self.nodes[idx as usize].oct = [0.0; 7];
+                self.nodes[idx as usize].hex = [0.0; 15];
                 return (m, c);
             }
             self.nodes[idx as usize].mass = 0.0;
             self.nodes[idx as usize].com = Vec3::zero();
             self.nodes[idx as usize].quad = [0.0; 6];
             self.nodes[idx as usize].oct = [0.0; 7];
+            self.nodes[idx as usize].hex = [0.0; 15];
             return (0.0, Vec3::zero());
         }
         let children = self.nodes[idx as usize].children;
@@ -575,6 +591,7 @@ impl Octree {
         // ── Pasada 2: cuadrupolo y octupolo (teorema del eje paralelo) ────────────
         let mut quad = [0.0_f64; 6];
         let mut oct = [0.0_f64; 7];
+        let mut hex = [0.0_f64; 15];
         for &ch in &children {
             if ch == NO_CHILD {
                 continue;
@@ -586,6 +603,7 @@ impl Octree {
             let child_com = self.nodes[ch as usize].com;
             let child_quad = self.nodes[ch as usize].quad;
             let child_oct = self.nodes[ch as usize].oct;
+            let child_hex = self.nodes[ch as usize].hex;
             let s = child_com - com;
             // Cuadrupolo: Q_parent += Q_child + m * outer_TF2(s)
             let outer_q = outer_traceless(s, child_mass);
@@ -597,16 +615,22 @@ impl Octree {
             for i in 0..7 {
                 oct[i] += child_oct[i] + outer_o[i];
             }
+            // Hexadecapolo: Φ_parent += Φ_child + m · Φ_TF4(s)
+            let outer_h = outer4_tf(s, child_mass);
+            for i in 0..15 {
+                hex[i] += child_hex[i] + outer_h[i];
+            }
         }
         self.nodes[idx as usize].quad = quad;
         self.nodes[idx as usize].oct = oct;
+        self.nodes[idx as usize].hex = hex;
 
         (mtot, com)
     }
 
     /// Aceleración gravitatoria sobre la partícula `gi` en `pos_i`.
     ///
-    /// - `multipole_order`: 1=monopolo, 2=mono+quad, 3=mono+quad+oct (default)
+    /// - `multipole_order`: 1=monopolo, 2=mono+quad, 3=mono+quad+oct, 4=+hexadecapolo
     /// - `opening_criterion`: `false`=geométrico (θ), `true`=relativo (ErrTolForceAcc)
     /// - `err_tol`: tolerancia de error para criterio relativo (ignorado si `opening_criterion=false`)
     #[allow(clippy::too_many_arguments)]
@@ -779,7 +803,16 @@ impl Octree {
             } else {
                 Vec3::zero()
             };
-            return a_mono + a_quad + a_oct;
+            let a_hex = if multipole_order >= 4 {
+                if softened_multipoles {
+                    hex_accel_softened(r_com, &node.hex, g, eps2)
+                } else {
+                    hex_accel(r_com, &node.hex, g)
+                }
+            } else {
+                Vec3::zero()
+            };
+            return a_mono + a_quad + a_oct + a_hex;
         }
         if walk_instrumented() {
             record_opened(depth);
@@ -828,22 +861,23 @@ fn aabb_min_dist(p: Vec3, aabb: [f64; 6]) -> f64 {
 /// Nodo multipolar remoto para el protocolo LET (Locally Essential Tree).
 ///
 /// Contiene los datos necesarios para aplicar la contribución gravitacional
-/// de un subárbol remoto (monopolo + cuadrupolo + octupolo softened, coherente V5).
+/// de un subárbol remoto (monopolo + cuadrupolo + octupolo + hexadecapolo softened, coherente V5).
 ///
-/// ## Layout wire (`RMN_FLOATS = 17` f64 por nodo)
+/// ## Layout wire (`RMN_FLOATS` f64 por nodo)
 ///
-/// `[com.x, com.y, com.z, mass, quad×6, oct×7, half_size]`
+/// `[com.x, com.y, com.z, mass, quad×6, oct×7, hex×15, half_size]`
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RemoteMultipoleNode {
     pub com: Vec3,
     pub mass: f64,
     pub quad: [f64; 6],
     pub oct: [f64; 7],
+    pub hex: [f64; 15],
     pub half_size: f64,
 }
 
 /// Número de `f64` por nodo en la representación wire.
-pub const RMN_FLOATS: usize = 3 + 1 + 6 + 7 + 1; // = 18
+pub const RMN_FLOATS: usize = 3 + 1 + 6 + 7 + 15 + 1; // = 33
 
 impl RemoteMultipoleNode {
     /// Serializa este nodo al final de `buf`.
@@ -855,6 +889,7 @@ impl RemoteMultipoleNode {
         buf.push(self.mass);
         buf.extend_from_slice(&self.quad);
         buf.extend_from_slice(&self.oct);
+        buf.extend_from_slice(&self.hex);
         buf.push(self.half_size);
     }
 
@@ -867,7 +902,11 @@ impl RemoteMultipoleNode {
             mass: s[3],
             quad: [s[4], s[5], s[6], s[7], s[8], s[9]],
             oct: [s[10], s[11], s[12], s[13], s[14], s[15], s[16]],
-            half_size: s[17],
+            hex: [
+                s[17], s[18], s[19], s[20], s[21], s[22], s[23], s[24], s[25], s[26], s[27], s[28],
+                s[29], s[30], s[31],
+            ],
+            half_size: s[32],
         }
     }
 }
@@ -946,6 +985,7 @@ impl Octree {
                 mass: node.mass,
                 quad: node.quad,
                 oct: node.oct,
+                hex: node.hex,
                 half_size: node.half_size,
             });
             return;
@@ -961,7 +1001,7 @@ impl Octree {
 
 /// Contribución gravitacional de un slice de nodos multipolares remotos sobre `pos_i`.
 ///
-/// Aplica monopolo Plummer softened + cuadrupolo softened + octupolo softened
+/// Aplica monopolo Plummer softened + cuadrupolo + octupolo + hexadecapolo softened
 /// (consistente con el solver V5). `eps2 = softening²` de la simulación.
 pub fn accel_from_let(pos_i: Vec3, let_nodes: &[RemoteMultipoleNode], g: f64, eps2: f64) -> Vec3 {
     use gadget_ng_core::pairwise_accel_plummer;
@@ -977,6 +1017,8 @@ pub fn accel_from_let(pos_i: Vec3, let_nodes: &[RemoteMultipoleNode], g: f64, ep
         acc += quad_accel_softened(r, node.quad, g, eps2);
         // Octupolo softened.
         acc += oct_accel_softened(r, node.oct, g, eps2);
+        // Hexadecapolo softened.
+        acc += hex_accel_softened(r, &node.hex, g, eps2);
     }
     acc
 }
@@ -1056,6 +1098,22 @@ mod tests {
         // Tensor sin traza: Qxx + Qyy + Qzz = 0
         let trace = root_quad[0] + root_quad[3] + root_quad[5];
         assert!(trace.abs() < 1e-10, "traza = {trace:.2e} (esperado ≈ 0)");
+    }
+
+    /// El tensor hexadecapolar agregado no es idénticamente cero para dos masas en ±x.
+    #[test]
+    fn hexadecapole_two_masses_has_nonzero_norm() {
+        let d = 2.0_f64;
+        let m = 1.0_f64;
+        let pos = vec![Vec3::new(d, 0.0, 0.0), Vec3::new(-d, 0.0, 0.0)];
+        let masses = vec![m, m];
+        let tree = Octree::build(&pos, &masses);
+        let h = tree.nodes[tree.root as usize].hex;
+        let norm: f64 = h.iter().map(|x| x * x).sum::<f64>().sqrt();
+        assert!(
+            norm > 1e-12,
+            "‖hex‖ = {norm:.2e} (se espera > 0 para esta distribución)"
+        );
     }
 
     /// La corrección cuadrupolar mejora la aceleración vs. monopolo puro

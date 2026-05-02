@@ -13,7 +13,11 @@
 //! 2. **Walk** (`LetTree::walk_accel`): para cada partícula local, recorre el
 //!    árbol con el MAC geométrico `2·half_size / d < θ`. Si MAC pasa: aplica el
 //!    multipolo agregado. Si no: desciende a hijos. Las hojas siempre aplican
-//!    cada RMN individualmente con mono+quad+oct exacto.
+//!    cada RMN individualmente con mono+quad+oct+hex exacto según el RMN.
+//!
+//!    Los nodos internos agregan mono+cuadrupolo+octupolo (M2M); el **hexadecapolo**
+//!    solo se aplica en **hojas** (RMN completos), para coincidir con la suma plana
+//!    `accel_from_let` cuando los RMNs tienen `hex = 0`.
 //!
 //! ## Precisión
 //!
@@ -23,6 +27,7 @@
 //!   relativo al monopolo, menor que la truncación del cuadrupolo).
 //! - Hojas: aplicación exacta (mono+quad+oct del RMN original sin modificación).
 
+use crate::hexadecapole::hex_accel_softened;
 use crate::octree::{
     RemoteMultipoleNode, oct_accel_softened, outer_traceless, outer3_tf, quad_accel_softened,
 };
@@ -202,7 +207,8 @@ impl LetTree {
         let r = pos_i - node.com;
         let d = r.norm();
         if d > 1e-300 && 2.0 * node.half_size / d < theta {
-            // Usar multipolo agregado (mono + quad + oct).
+            // Usar multipolo agregado (mono + quad + oct). El hexadecapolo no se agrega en
+            // nodos internos del LET (solo en hojas por RMN) para alinear el MAC con `accel_from_let`.
             let a_mono = accel_mono_softened(pos_i, node.mass, node.com, g, eps2);
             let a_quad = quad_accel_softened(r, node.quad, g, eps2);
             let a_oct = oct_accel_softened(r, node.oct, g, eps2);
@@ -239,6 +245,7 @@ impl LetTree {
             acc += accel_mono_softened(pos_i, rmn.mass, rmn.com, g, eps2);
             acc += quad_accel_softened(r, rmn.quad, g, eps2);
             acc += oct_accel_softened(r, rmn.oct, g, eps2);
+            acc += hex_accel_softened(r, &rmn.hex, g, eps2);
         }
         acc
     }
@@ -627,6 +634,7 @@ mod tests {
             mass,
             quad: [0.0; 6],
             oct: [0.0; 7],
+            hex: [0.0; 15],
             half_size: 0.1,
         }
     }

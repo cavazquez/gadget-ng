@@ -100,9 +100,9 @@ fn overlap_wall_time_bounds_are_consistent() {
 #[test]
 fn bytes_counters_are_multiple_of_f64_size() {
     // Simula la lógica de conteo de bytes del engine: bytes = count * size_of::<f64>()
-    let floats_sent = 18usize; // por ejemplo, 1 nodo LET de RMN_FLOATS = 18
+    let floats_sent = 33usize; // 1 nodo LET de RMN_FLOATS (mono+quad+oct+hex+meta)
     let bytes_sent = floats_sent * std::mem::size_of::<f64>();
-    assert_eq!(bytes_sent, 144, "18 f64 = 144 bytes");
+    assert_eq!(bytes_sent, 264, "33 f64 = 264 bytes");
     assert_eq!(bytes_sent % std::mem::size_of::<f64>(), 0);
 }
 

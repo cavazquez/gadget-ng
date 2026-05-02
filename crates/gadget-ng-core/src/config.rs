@@ -347,7 +347,8 @@ pub struct GravitySection {
     /// Orden de la expansión multipolar para Barnes–Hut (solo `barnes_hut`):
     /// - `1` → monopolo únicamente
     /// - `2` → monopolo + cuadrupolo
-    /// - `3` → monopolo + cuadrupolo + octupolo (default, máxima precisión)
+    /// - `3` → monopolo + cuadrupolo + octupolo (default)
+    /// - `4` → incluye hexadecapolo (l = 4, 15 componentes STF compactas)
     ///
     /// Útil para benchmarks de ablación que cuantifican la contribución de cada término.
     #[serde(default = "default_multipole_order")]

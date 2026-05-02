@@ -14,7 +14,7 @@ use gadget_ng_core::{GravitySolver, MacSoftening, Vec3};
 #[derive(Debug, Clone, Copy)]
 pub struct RayonBarnesHutGravity {
     pub theta: f64,
-    /// Orden de expansión multipolar: 1=monopolo, 2=mono+quad, 3=mono+quad+oct.
+    /// Orden de expansión multipolar: 1=monopolo, 2=mono+quad, 3=+oct, 4=+hexadecapolo.
     pub multipole_order: u8,
     /// `true` → criterio de apertura relativo (GADGET-4 `ErrTolForceAcc`).
     pub use_relative_criterion: bool,
