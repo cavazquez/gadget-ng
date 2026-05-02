@@ -38,6 +38,7 @@
 [![🧲 MHD](https://img.shields.io/badge/🧲_MHD-Ideal%2BSRMHD%2BTurbulencia-blueviolet)](crates/gadget-ng-mhd/)
 [![⚛️ Plasma2F](https://img.shields.io/badge/⚛️_Plasma-2_Fluidos_T_e≠T_i-teal)](crates/gadget-ng-mhd/src/two_fluid.rs)
 [![🧪 GitHub_Actions](https://img.shields.io/badge/🧪_GitHub_Actions-CI-lightgrey?logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cavazquez/gadget-ng)
 [![📜 License](https://img.shields.io/badge/📜_License-GPL--3.0-blue)](LICENSE)
 
 | Ámbito | Herramientas |
