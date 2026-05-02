@@ -15,6 +15,9 @@ cargo test --workspace
 echo "== cargo build release (MPI) =="
 cargo build --release -p gadget-ng-cli --features mpi
 
+echo "== validate TOML (examples + configs listadas) =="
+GADGET_NG_BIN="$ROOT/target/release/gadget-ng" ./scripts/validate_example_configs.sh
+
 echo "== tests MPI (feature mpi, serial runtime) =="
 cargo test -p gadget-ng-parallel --features mpi
 

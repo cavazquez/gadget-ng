@@ -65,6 +65,8 @@
 > para tener tu primera simulación corriendo en menos de 10 minutos.
 > Los [notebooks interactivos](notebooks/) te guían paso a paso desde Python.
 
+Índice de documentación: [docs/README.md](docs/README.md). Referencias rápidas: [Guía de usuario](docs/user-guide.md) · [Desde GADGET-4](docs/from-gadget4.md) · [Validación vs referencia GADGET-4](docs/runbooks/validation-vs-gadget4-reference.md) · [Arquitectura](docs/architecture.md).
+
 ## Tabla de contenidos
 
 1. [🧰 Herramientas y tecnologías](#-herramientas-y-tecnologías)

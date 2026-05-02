@@ -1,39 +1,59 @@
 # Arquitectura de **gadget-ng**
 
-Implementación nueva en Rust inspirada **conceptualmente** en GADGET-4 ([sitio oficial](https://wwwmpa.mpa-garching.mpg.de/gadget4/), paper: Springel et al., *Simulating cosmic structure formation with the GADGET-4 code*, MNRAS 506, 2871, 2021; manual PDF enlazado desde el sitio). **No se reutiliza ni copia código** de GADGET.
+Implementación en Rust inspirada **conceptualmente** en GADGET-4 ([sitio oficial](https://wwwmpa.mpa-garching.mpg.de/gadget4/), paper: Springel et al., *Simulating cosmic structure formation with the GADGET-4 code*, MNRAS 506, 2871, 2021; manual PDF enlazado desde el sitio). **No se reutiliza ni copia código** de GADGET.
 
 ## Qué se toma de GADGET-4
 
-- **Separación modular** entre estado de partículas, cálculo de fuerzas, integración temporal, I/O de snapshots y capa de comunicación (MPI), análoga a la organización descrita en el paper/manual.
-- **N-body colisionless** con **suavizado Plummer** en el denominador de la fuerza pareada \((r^2+\varepsilon^2)^{3/2}\), práctica estándar en códigos cosmológicos.
-- **Integración leapfrog** en forma **kick–drift–kick (KDK)** sincronizada con paso global \(\Delta t\) en el MVP (equivalente al núcleo simple del esquema colisionless; sin paso jerárquico local como en GADGET-4 avanzado).
-- **Paralelismo MPI** con **descomposición por bloques contiguos de `global_id`** y **reunión global** de posiciones/masas (`MPI_Allgatherv` vía `mpi` crate) antes de evaluar el solver de gravedad en cada subconjunto local — patrón conceptualmente alineado con “acumular estado global para el solver”, simplificado frente a halos de vecinos y frente a un árbol MPI distribuido (fase futura).
+- **Separación modular** entre estado de partículas, fuerzas, integración temporal, I/O, comunicación MPI y (opcionalmente) hidrodinámica, MHD y radiación — análoga al diseño descrito en el paper/manual.
+- **N-body colisionless** con **suavizado Plummer** en \((r^2+\varepsilon^2)^{3/2}\).
+- **Integración leapfrog** en forma **kick–drift–kick (KDK)** con paso global o **block timesteps jerárquicos** (Aarseth + predictor, estilo GADGET-4).
+- **TreePM** con splitting Gaussiano en *k*-space (PM filtrado + corto alcance en árbol con kernel erfc).
+- **Cosmología** opcional (Friedmann, drift/kick en \(a\)), cajas periódicas con **PM / TreePM**, ICs Zel'dovich con Eisenstein–Hu y normalización \(\sigma_8\).
 
-## Qué se simplifica
+## Capacidades actuales (visión de conjunto)
 
-- **Gravedad**: **fuerza directa \(O(N^2)\)** (`DirectGravity`), **Barnes–Hut monopolar** \(O(N\log N)\) (`BarnesHutGravity`), **Particle-Mesh periódico** \(O(N + N_M^3 \log N_M)\) (`PmSolver`), y **TreePM** (`TreePmSolver`, splitting Gaussiano en k-space: corto alcance con kernel erfc via octree + largo alcance con PM filtrado). Se elige vía TOML `[gravity].solver = "direct" | "barnes_hut" | "pm" | "tree_pm"`.
-- **Dominio**: sin cosmología, SPH, ni I/O binario legacy; snapshots versionados con `provenance.json` y `meta.json` (véase I/O abajo).
-- **MPI**: sin híbrido MPI+OpenMP del paper de GADGET-4; un solo hilo por rango en el MVP.
-- **Configuración**: TOML + variables de entorno `GADGET_NG_*` (figment), por legibilidad y alineación con el ecosistema Rust.
+- **Gravedad**: directa \(O(N^2)\), Barnes–Hut, PM periódico 3D, TreePM; rutas **MPI** con descomposición **SFC (Hilbert 3D)** y **LET** para el corto alcance, alternativa legacy `MPI_Allgatherv` cuando se fuerza explícitamente; PM distribuido con patrones allreduce / slab / lápiz / scatter–gather según configuración y fase.
+- **Cosmología**: \(\Omega_m\), \(\Omega_\Lambda\), CPL \(w_0,w_a\), masas de neutrinos (entrada en eV); **ICs** 1LPT/2LPT, transferencias Eisenstein–Hu, convenciones de normalización (`Legacy` / `Z0Sigma8`).
+- **Bariones y campos**: crates **SPH**, **MHD**, **RT** integrados en el workspace (gas, estrellas, radiación, etc., según features y TOML).
+- **GPU**: **wgpu** (gravedad directa y otros usos portátiles); **CUDA / HIP** para solver PM en GPU (cuando el toolchain está disponible); rutas CPU siempre disponibles.
+- **Paralelismo intra-rango**: Rayon, SIMD/AVX2 en directos y BH, opciones `pm-rayon` donde aplique.
+- **I/O**: JSONL, bincode, HDF5 estilo GADGET-4, MessagePack, NetCDF; siempre `meta.json` y `provenance.json`.
+- **Análisis**: crate `gadget-ng-analysis` e integración CLI (`analyze`, insitu P(k), FoF, etc.).
 
-## Qué se descarta (por ahora)
+## MPI y descomposición del dominio
 
-- Hidrodinámica, cosmología obligatoria en el core, árboles de fusión, y demás componentes de GADGET-4 no necesarios para un **MVP N-body** verificable.
-- **GPU**: crate `gadget-ng-gpu` placeholder (sin kernels reales aún); `GpuDirectGravity` llama a `unimplemented!`. **HDF5 / bincode**: opcionales en `gadget-ng-io` (ver sección I/O).
+- **Partículas**: descomposición por **órden SFC** (Hilbert 3D) y rangos de `global_id`; intercambio de halos entre vecinos en lugar de reunir todo el estado en cada rank cuando el motor elige el **path SFC+LET** (Barnes–Hut multi-rank sin `force_allgather_fallback`).
+- **TreePM / PM cosmológico periódico**: según modo puede activarse **TreePM con path allgather** (estado global para el árbol/PM) o **PM distribuido** (comunicación sobre la malla FFT); el binario registra el path activo en diagnósticos (p. ej. `treepm_serial`, `treepm_allgather`, rutas con PM distribuido).
+- **Fallback**: `[performance] force_allgather_fallback = true` restaura el patrón tipo allgather global para depuración o comparación con versiones antiguas.
+
+La sección [Flujo de `stepping` (MPI)](#flujo-de-stepping-mpi) resume el camino principal frente al legacy.
+
+## Qué sigue siendo simplificado frente a GADGET-4 “completo”
+
+- **Paridad de parfile**: la configuración es **TOML** + variables `GADGET_NG_*`, no el formato de parámetros del manual GADGET.
+- **Multifísica**: la superficie de opciones es grande pero no pretende cubrir cada variante publicada de GADGET-4 en un único ejecutable sin features.
+- **Documentación de límites numéricos**: comparaciones de referencia (p. ej. P(k) vs referencias tipo GADGET-4) son **benchmarks**, no garantía bit-a-bit entre códigos.
 
 ## Crates
 
 | Crate | Rol |
 |--------|-----|
-| `gadget-ng-core` | `Vec3`, `Particle`, `RunConfig`, IC sintéticas, `DirectGravity` / trait `GravitySolver`; bajo `feature = "gpu"`: `gpu_bridge` (impl `GravitySolver` para `GpuDirectGravity`, conversiones SoA↔Particle) |
-| `gadget-ng-tree` | Octree + `BarnesHutGravity` (MAC `s/d` con `d` al COM; no MAC si la evaluación cae dentro de la celda del nodo) |
-| `gadget-ng-pm` | Solver Particle-Mesh periódico 3D: `PmSolver` (CIC, FFT 3D `rustfft`, Poisson en k-space); `solve_forces_filtered` con filtro Gaussiano `exp(-k²·r_s²/2)` para uso desde TreePM |
-| `gadget-ng-treepm` | `TreePmSolver`: PM filtrado (largo alcance, kernel erf) + octree erfc (corto alcance). `ShortRangeParams` agrupa los parámetros del kernel; `erfc_approx` (A&S 7.1.26) |
-| `gadget-ng-integrators` | `leapfrog_kdk_step` (KDK global); `hierarchical_kdk_step` + `HierarchicalState` (serializable, `save`/`load` a JSON) + `aarseth_bin` (block timesteps al estilo GADGET-4) |
-| `gadget-ng-parallel` | `ParallelRuntime`: `SerialRuntime`, `MpiRuntime` (`feature = "mpi"`) |
-| `gadget-ng-io` | Snapshots (`SnapshotFormat`: JSONL / bincode / HDF5 / **msgpack**) + `Provenance` |
-| `gadget-ng-gpu` | Layout SoA (`GpuParticlesSoA`: 8 arrays planos de f64/usize), `GpuDirectGravity` stub; sin dep sobre `gadget-ng-core` para evitar ciclo |
-| `gadget-ng-cli` | Binario `gadget-ng` (`config`, `stepping`, `snapshot`) |
+| `gadget-ng-core` | Tipos base (`Vec3`, `Particle`), `RunConfig`, ICs, traits de gravedad, cosmología y unidades |
+| `gadget-ng-tree` | Octree, Barnes–Hut |
+| `gadget-ng-pm` | PM periódico 3D (CIC, FFT, Poisson en *k*-space) |
+| `gadget-ng-treepm` | `TreePmSolver`: splitting Gaussiano, corto alcance en árbol |
+| `gadget-ng-integrators` | KDK global, jerárquico, Yoshida |
+| `gadget-ng-parallel` | `ParallelRuntime`, MPI, descomposición SFC/slab, LET |
+| `gadget-ng-io` | Lectura/escritura de snapshots (JSONL, bincode, HDF5, msgpack, netcdf) |
+| `gadget-ng-gpu` | SoA GPU, puentes a kernels |
+| `gadget-ng-cuda` / `gadget-ng-hip` | PM en GPU (NVIDIA / AMD) |
+| `gadget-ng-analysis` | P(k), utilidades de análisis |
+| `gadget-ng-sph` | Hidrodinámica SPH |
+| `gadget-ng-mhd` | MHD y extensiones de plasma |
+| `gadget-ng-rt` | Radiación transfer |
+| `gadget-ng-vis` | Visualización / render auxiliar |
+| `gadget-ng-physics` | Tests de integración física |
+| `gadget-ng-cli` | Binario `gadget-ng` (`stepping`, `snapshot`, `analyze`, …) |
 
 ### I/O de snapshots
 
@@ -59,23 +79,27 @@ El TOML `[output] snapshot_format` usa el enum `SnapshotFormat` en [`config.rs`]
 
 Función de conveniencia: `read_snapshot_formatted(fmt, dir)` análoga a `write_snapshot_formatted`.
 
-### Barnes–Hut vs FMM (decisión MVP)
+### Barnes–Hut vs FMM
 
-Para salir de \(O(N^2)\) sin multiplicar la superficie de código, el MVP usa **monopolo por nodo** (masa total + COM) y el MAC clásico `s/d < \theta` con \(d\) la distancia al COM del nodo. **FMM** u órdenes multipolares superiores quedan reservados para cuando haga falta más precisión por celda con el mismo \(\theta\).
+Para salir de \(O(N^2)\) sin multiplicar la superficie de código, el núcleo BH usa **monopolo por nodo** (masa total + COM) y el MAC clásico `s/d < \theta` con \(d\) la distancia al COM del nodo. **FMM** u órdenes multipolares superiores quedan como extensión si hace falta más precisión por celda con el mismo \(\theta\).
 
 ## Flujo de `stepping` (MPI)
 
+Camino **habitual** multirank con Barnes–Hut: intercambio de halos según SFC y aplicación de nodos **LET** remotos (sin reunir todas las partículas en cada proceso). Con `force_allgather_fallback` o condiciones que desactivan SFC+LET, el motor puede usar un **allgather** del estado posición/masa antes del solver (patrón más cercano al prototipo histórico).
+
 ```mermaid
 sequenceDiagram
-  participant R as CadaRango
-  participant MPI as MPI_Allgatherv
-  participant G as GravitySolver
-  participant L as LeapfrogKDK
-  R->>MPI: posiciones_masas_locales
-  MPI->>R: estado_global
-  R->>G: aceleraciones_indices_locales
-  R->>L: kick_drift_kick
+  participant R as Cada rango
+  participant X as Intercambio halos SFC
+  participant L as LET / árbol local
+  participant K as Leapfrog KDK
+  R->>X: vecinos / halos
+  X->>R: partículas halo
+  R->>L: aceleraciones (local + LET)
+  R->>K: kick_drift_kick
 ```
+
+Para **PM / TreePM** cosmológico, el diagrama de comunicación concreto depende del path (PM distribuido vs gather de densidad global); ver logs y `diagnostics.jsonl` para el identificador de path activo.
 
 ### Rendimiento / Paralelismo intra-rango
 
@@ -260,11 +284,16 @@ pm_grid_size = 64   # grid NM³; potencia de 2 recomendada para eficiencia FFT
 #### Notas de diseño
 
 - La resolución de fuerza es la escala de celda `box_size / pm_grid_size`; para fuerzas de largo alcance se recomienda `pm_grid_size` ≈ N^(1/3) – 2×N^(1/3).
-- El solver es **serial** por defecto; la paralelización con Rayon se puede añadir en el futuro.
+- El solver es **serial** por defecto en la asignación CIC salvo features Rayon; la paralelización está documentada arriba.
 - Las fuerzas son **periódicas** por construcción (incluyen todas las imágenes del sistema).
 - No aplica softening explícito (`eps2` se ignora); el suavizado natural es la escala de celda.
 
-## Limitaciones del MVP
+## Limitaciones actuales
 
-- Con `solver = "direct"`, el escalado \(O(N^2)\) no está pensado para producción masiva; con **Barnes–Hut** el coste es \(O(N\log N)\) por paso pero sigue sin PM ni dominios cosmológicos grandes. El objetivo sigue siendo **arquitectura limpia**, **MPI real** y **cadena de validación** reproducible.
-- La paridad serial/MPI se valida numéricamente con tolerancia explícita en [experiments/nbody/mvp_smoke/docs/validation.md](../experiments/nbody/mvp_smoke/docs/validation.md).
+- **`solver = "direct"`** escala como \(O(N^2)\): solo para pruebas o N modesto.
+- **Paridad numérica**: SIMD, Rayon y rutas MPI distintas no garantizan igualdad bit-a-bit entre configuraciones; hay tolerancias en tests y validaciones documentadas (p. ej. [experiments/nbody/mvp_smoke/docs/validation.md](../experiments/nbody/mvp_smoke/docs/validation.md)).
+- **Modos cosmológicos complejos**: conviene validar cada combinación (PM distribuido + jerárquico + MPI) frente a referencias antes de producción.
+
+## Evolución histórica (MVP inicial)
+
+Las primeras fases del proyecto priorizaban un **MVP** verificable: integración KDK global, MPI con reunión global de estado (`Allgatherv`) para el solver, sin cosmología extendida ni GPU productiva, y crates de hidrodinámica aún no integrados. Ese relato sirve para entender commits y documentación antigua; el comportamiento **actual** es el descrito en las secciones anteriores.

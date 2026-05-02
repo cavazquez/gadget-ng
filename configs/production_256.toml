@@ -10,10 +10,12 @@
 # Snapshots: cada 50 pasos (≈ 20 snaps en z=49→0)
 # Checkpoint: cada 100 pasos (recuperación automática cada ~2 h estimada)
 #
+# Tablas inline en una línea: compatibles con `gadget-ng config` (TOML estricto).
+#
 # Uso:
-#   cargo run --release -- run --config configs/production_256.toml
+#   cargo run --release -p gadget-ng-cli -- stepping --config configs/production_256.toml --out runs/production_256
 # Con MPI (4 ranks):
-#   mpirun -n 4 cargo run --release -- run --config configs/production_256.toml
+#   mpirun -n 4 ./target/release/gadget-ng stepping --config configs/production_256.toml --out runs/production_256
 # Con script de producción (checkpointing automático):
 #   bash scripts/run_production_256.sh
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,19 +30,7 @@ physical_softening = true          # ε en unidades físicas (NO comóvil)
 seed               = 42
 
 [initial_conditions]
-kind = { zeldovich = {
-    seed            = 12345,
-    grid_size       = 256,          # 256³ partículas en retícula
-    spectral_index  = 0.965,        # Planck18 n_s
-    transfer        = "eisenstein_hu",
-    sigma8          = 0.811,        # Planck18 σ₈(z=0)
-    omega_b         = 0.049,
-    h               = 0.674,
-    t_cmb           = 2.7255,
-    box_size_mpc_h  = 300.0,
-    use_2lpt        = true,
-    normalization_mode = "z0_sigma8"
-} }
+kind = { zeldovich = { seed = 12345, grid_size = 256, spectral_index = 0.965, transfer = "eisenstein_hu", sigma8 = 0.811, omega_b = 0.049, h = 0.674, t_cmb = 2.7255, box_size_mpc_h = 300.0, use_2lpt = true, normalization_mode = "z0_sigma8" } }
 
 [cosmology]
 enabled      = true

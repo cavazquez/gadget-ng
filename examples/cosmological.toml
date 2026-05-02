@@ -1,8 +1,11 @@
-# ─── Simulación cosmológica — ΛCDM, z=49 → z=0 ──────────────────────────────
+# ─── Simulación cosmológica — ΛCDM, z≈49 → z≈0 ───────────────────────────────
 #
 # 512 partículas de materia oscura en una caja periódica (comoving).
-# Cosmología ΛCDM estándar (Planck 2018): Ω_m = 0.3, Ω_Λ = 0.7, H₀ = 67.4 km/s/Mpc.
-# Integración con momento canónico + factores Drift/Kick sobre la escala del universo.
+# Cosmología ΛCDM estándar (Planck 2018): Ω_m = 0.3, Ω_Λ = 0.7.
+# Caja periódica → solver PM o TreePM (Barnes–Hut no es periódico en este código).
+#
+# Unidades cosmológicas: `h0` es H₀ en unidades internas de tiempo (~0.1 para
+# runs típicos L=Mpc/h, M=10¹⁰ M☉/h, V=km/s); `a_init` inicia el factor de escala.
 #
 # Ejecución (release para rendimiento):
 #   cargo run --release -p gadget-ng-cli -- stepping \
@@ -21,18 +24,27 @@ seed           = 7777
 [initial_conditions]
 kind = "lattice"
 
-[gravity]
-solver = "barnes_hut"
-theta  = 0.5
-
 [cosmology]
-enabled        = true
-omega_m        = 0.3
-omega_lambda   = 0.7
-hubble0        = 67.4         # km/s/Mpc
-a_begin        = 0.02         # z_begin ≈ 49
-a_end          = 1.0          # z_end = 0
+enabled      = true
+periodic     = true
+omega_m      = 0.3
+omega_lambda = 0.7
+h0           = 0.1            # H₀ en unidades internas (≈ 67 km/s/Mpc en convención habitual)
+a_init       = 0.02           # z inicial ≈ 49
+auto_g       = true           # G coherente con Friedmann (ρ̄_m = 1)
+
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 32
+theta        = 0.5
 
 [output]
-snapshot_format    = "jsonl"
+snapshot_format     = "jsonl"
 checkpoint_interval = 100
+
+# Análisis in-situ: escribe insitu_*.json para postprocess_pk.py (getting-started §6).
+[insitu_analysis]
+enabled    = true
+interval   = 100               # varios instantes P(k) en 500 pasos
+pk_mesh    = 32
+output_dir = "runs/cosmo/insitu"

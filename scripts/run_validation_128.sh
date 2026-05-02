@@ -12,8 +12,9 @@
 #
 # Variables de entorno:
 #   GADGET_BIN      Ruta al binario gadget-ng (default: target/release/gadget-ng)
+#   CONFIG          TOML de simulación (default: configs/validation_128.toml; p. ej. smoke: validation_128_test.toml)
 #   OUT_DIR         Directorio de salida (default: runs/validation_128)
-#   LOG_DIR         Directorio de logs (default: runs/validation_128/logs)
+#   LOG_DIR         Directorio de logs (default: ${OUT_DIR}/logs)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -25,7 +26,7 @@ cd "$REPO_ROOT"
 GADGET_BIN="${GADGET_BIN:-target/release/gadget-ng}"
 OUT_DIR="${OUT_DIR:-runs/validation_128}"
 LOG_DIR="${LOG_DIR:-${OUT_DIR}/logs}"
-CONFIG="configs/validation_128.toml"
+CONFIG="${CONFIG:-configs/validation_128.toml}"
 CHECKPOINT_DIR="${OUT_DIR}/checkpoints"
 ANALYSIS_DIR="${OUT_DIR}/analysis"
 
@@ -82,6 +83,7 @@ TIME_START=$(date +%s)
 
 $MPI_CMD "$GADGET_BIN" stepping \
     --config "$CONFIG" \
+    --out "$OUT_DIR" \
     $RESUME_FLAG \
     2>&1 | tee -a "$LOG_FILE"
 

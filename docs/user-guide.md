@@ -262,21 +262,30 @@ num_threads   = 8      # None → detecta CPUs automáticamente
 
 ## Árbol distribuido (MPI)
 
-El árbol distribuido reemplaza el `Allgather` global O(N) por halos
-punto-a-punto O(N_halo), lo que permite simular N > memoria de un nodo.
+Con **`solver = "barnes_hut"`** y **varios rangos MPI**, el motor usa por defecto una
+descomposición **SFC (curva de Hilbert 3D)** y nodos **LET** remotos: evita reunir
+todas las partículas en cada proceso salvo que actives el fallback explícito.
 
 ```toml
 [gravity]
 solver = "barnes_hut"
 
 [performance]
-use_distributed_tree = true
-halo_factor          = 0.5   # halo_width = 0.5 × slab_width
+# Opcional: fuerza el patrón antiguo tipo Allgather (depuración / comparación)
+force_allgather_fallback = false
 ```
 
-Limitaciones actuales:
-- Solo slab 1D en el eje x (SFC pendiente en Hito 13).
-- Solo funciona con `solver = "barnes_hut"` sin integrador jerárquico.
+Cosmología **periódica** (`cosmology.periodic = true`) exige **`pm`** o **`tree_pm`**:
+el árbol Barnes–Hut no implementa imágenes periódicas en el corto alcance; véase el mensaje
+de error del CLI si combinas BH + caja periódica.
+
+**Integrador jerárquico + MPI:** hay rutas SFC+LET para BH Newtoniano y para BH cosmológico
+**aperiódico** (`periodic = false`); la combinación exacta depende de `[timestep]` y
+`[cosmology]` — revisa [architecture.md](architecture.md) y los runbooks MPI si necesitas un modo concreto.
+
+**Rutas legacy** (`use_distributed_tree`, slabs 1D en **x**, intercambio impar/par de halos)
+siguen disponibles para compatibilidad cuando se desactiva el path SFC+LET por defecto;
+suelen requerir `use_distributed_tree = true` y, según el modo, `use_sfc` / slab.
 
 Ejecutar con MPI:
 ```bash

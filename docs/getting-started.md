@@ -18,8 +18,8 @@ Guía mínima para tener tu primera simulación corriendo en menos de 10 minutos
 ## 2. Compilar el binario
 
 ```bash
-# Clonar el repositorio
-git clone https://github.com/tu-usuario/gadget-ng.git
+# Clonar el repositorio (sustituye la URL por la de tu fork o el remoto que uses)
+git clone <url-de-tu-fork>
 cd gadget-ng
 
 # Compilar en modo release (recomendado, ~2-3 min la primera vez)
@@ -97,8 +97,8 @@ Resultado en `runs/nbody/analysis/results.json`.
 
 ## 6. Simulación cosmológica ΛCDM
 
-512 partículas de materia oscura, caja periódica de 100 Mpc/h,
-desde z=49 hasta z=0.
+512 partículas de materia oscura, caja periódica de 100 Mpc/h con solver TreePM,
+empezando en `a_init = 0.02` (alto redshift) y avanzando con `num_steps` cosmológicos.
 
 ```bash
 ./target/release/gadget-ng stepping \
@@ -107,7 +107,10 @@ desde z=49 hasta z=0.
   --snapshot
 ```
 
-**Postprocesar el espectro de potencia:**
+El ejemplo activa `[insitu_analysis]` y escribe `insitu_*.json` bajo `runs/cosmo/insitu/`
+(además de los snapshots si los pides con `--snapshot`).
+
+**Postprocesar el espectro de potencia** (tras la corrida anterior):
 
 ```bash
 # Instalar dependencias Python (ver requirements.txt)
@@ -145,11 +148,25 @@ cargo test -p gadget-ng-physics
 
 ---
 
+## Documentación por perfil
+
+| Perfil | Enlaces |
+|--------|---------|
+| Índice de todas las guías | [README.md](README.md) en este directorio |
+| Primer día / quick start | Esta guía, [user-guide.md](user-guide.md) |
+| Desarrollo y TOML completo | [README — Configuración TOML](../README.md#configuración-toml), [architecture.md](architecture.md) |
+| Usuarios habituales de GADGET | [from-gadget4.md](from-gadget4.md) |
+| Validación HPC / comparativas | [runbooks/validation-vs-gadget4-reference.md](runbooks/validation-vs-gadget4-reference.md), [runbooks/mpi-cluster.md](runbooks/mpi-cluster.md) |
+
+---
+
 ## Próximos pasos
 
 | Quiero... | Lee... |
 |-----------|--------|
 | Entender todas las opciones del TOML | [README.md — Configuración TOML](../README.md#configuración-toml) |
+| Venir de GADGET-4 (conceptos y equivalencias) | [from-gadget4.md](from-gadget4.md) |
+| Comparar P(k) frente a referencias tipo GADGET-4 | [runbooks/validation-vs-gadget4-reference.md](runbooks/validation-vs-gadget4-reference.md) |
 | Usar MPI para simulaciones grandes | [runbooks/mpi-cluster.md](runbooks/mpi-cluster.md) |
 | Explorar la física implementada | [physics-roadmap.md](physics-roadmap.md) |
 | Correr ejemplos con notebooks interactivos | [notebooks/](../notebooks/) |

@@ -3,7 +3,10 @@
 #
 # Configura una corrida pequeña con SPH + RT M1 + reionización para validar
 # que el frente de ionización avanza cuando hay fuentes UV activas.
-# N=16³ partículas, caja 10 Mpc/h, 5 pasos, z=12→11.9.
+# N=16³ partículas, caja 10 Mpc/h, 5 pasos.
+#
+# Tablas inline en una línea: compatibles con `gadget-ng config` (TOML estricto).
+# Cosmología: ω_Λ vía `omega_lambda` (no `omega_l`); sin `a_end` (el motor usa num_steps).
 # ─────────────────────────────────────────────────────────────────────────────
 
 [simulation]
@@ -16,37 +19,27 @@ physical_softening = true
 seed               = 42
 
 [initial_conditions]
-kind = { zeldovich = {
-    seed               = 31415,
-    grid_size          = 16,
-    spectral_index     = 0.9649,
-    transfer           = "eisenstein_hu",
-    sigma8             = 0.8111,
-    omega_b            = 0.0490,
-    h                  = 0.6736,
-    t_cmb              = 2.7255,
-    box_size_mpc_h     = 10.0,
-    use_2lpt           = false,
-    normalization_mode = "z0_sigma8"
-} }
+kind = { zeldovich = { seed = 31415, grid_size = 16, spectral_index = 0.9649, transfer = "eisenstein_hu", sigma8 = 0.8111, omega_b = 0.0490, h = 0.6736, t_cmb = 2.7255, box_size_mpc_h = 10.0, use_2lpt = false, normalization_mode = "z0_sigma8" } }
 
 [cosmology]
-enabled = true
-omega_m = 0.3089
-omega_l = 0.6911
-h       = 0.6774
-a_init  = 0.076923    # z_init ~ 12
-a_end   = 0.142857    # z_end  ~ 6
+enabled        = true
+periodic       = true
+omega_m        = 0.3089
+omega_lambda   = 0.6911
+h0             = 0.1
+a_init         = 0.076923             # z_init ~ 12
+auto_g         = true
 
 [gravity]
-solver = "pm"
+solver       = "pm"
+pm_grid_size = 16
 
 [sph]
-enabled   = true
-gamma     = 5.0
+enabled    = true
+gamma      = 1.6666666666666667       # 5/3
 alpha_visc = 0.8
-n_neigh   = 32
-cooling   = "none"
+n_neigh    = 32
+cooling    = "none"
 
 [rt]
 enabled      = true

@@ -21,6 +21,17 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
+  # ── Ejemplos TOML (parseo vía gadget-ng config) ───────────────────────────────
+  example-configs:
+    name: Example TOML configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p gadget-ng-cli
+      - run: ./scripts/validate_example_configs.sh
+
   # ── Linting ─────────────────────────────────────────────────────────────────
   clippy:
     name: Clippy

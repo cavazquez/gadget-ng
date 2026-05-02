@@ -1,0 +1,38 @@
+# ─── Plantilla conceptual: DM-only TreePM ΛCDM periódico ─────────────────────
+#
+# Equivalencia conceptual (no paridad numérica) con un run GADGET-4 típico:
+# cosmología periódica, materia oscura, solver TreePM, caja L ~ 100 Mpc/h.
+# Ver docs/from-gadget4.md y experiments/nbody/phase30_linear_reference/ para variantes.
+#
+# Ejemplo (~32³ partículas, pocos pasos — solo para probar el pipeline):
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/gadget_like_treepm_lcdm.toml --out runs/gadget_like_treepm --snapshot
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count         = 32768
+box_size               = 1.0
+dt                     = 0.0004
+num_steps              = 50
+softening              = 0.01
+gravitational_constant = 1.0
+seed                   = 42
+
+[initial_conditions]
+kind = { zeldovich = { seed = 42, grid_size = 32, spectral_index = 0.965, amplitude = 1.0e-4, transfer = "eisenstein_hu", sigma8 = 0.8, omega_b = 0.049, h = 0.674, t_cmb = 2.7255, box_size_mpc_h = 100.0, use_2lpt = true } }
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.315
+omega_lambda = 0.685
+h0           = 0.1
+a_init       = 0.02
+
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 32
+theta        = 0.5
+
+[output]
+snapshot_format = "jsonl"

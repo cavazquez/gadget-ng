@@ -1,0 +1,37 @@
+# ─── Plantilla conceptual: BH cosmológico aperiódico (sin TreePM) ─────────────
+#
+# Equivalencia conceptual con un run GADGET en caja **no** periódica usando solo
+# el árbol (sin PM): útil para halos aislados / zoom fuera de régimen periódico.
+# No garantiza los mismos números que GADGET-4.
+#
+# Ejemplo corto:
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/gadget_like_bh_lcdm.toml --out runs/gadget_like_bh --snapshot
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count         = 4096
+box_size               = 1.0
+dt                     = 0.002
+num_steps              = 20
+softening              = 0.02
+gravitational_constant = 1.0
+seed                   = 99
+
+[initial_conditions]
+kind = { perturbed_lattice = { amplitude = 0.05, velocity_amplitude = 0.0 } }
+
+[cosmology]
+enabled      = true
+periodic     = false
+omega_m      = 0.3
+omega_lambda = 0.7
+h0           = 0.1
+a_init       = 0.1
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[output]
+snapshot_format = "jsonl"

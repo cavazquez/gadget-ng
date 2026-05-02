@@ -2,6 +2,7 @@
 # Phase 79 — Smoke test CI: N = 32³ (versión reducida de validation_128.toml)
 #
 # Misma configuración física pero N=32³ y 20 pasos para correr en <60 s en CI.
+# Tablas inline en una sola línea: compatibles con `gadget-ng config` (TOML estricto).
 # ─────────────────────────────────────────────────────────────────────────────
 
 [simulation]
@@ -14,19 +15,7 @@ physical_softening = true
 seed               = 42
 
 [initial_conditions]
-kind = { zeldovich = {
-    seed            = 31415,
-    grid_size       = 32,
-    spectral_index  = 0.9649,
-    transfer        = "eisenstein_hu",
-    sigma8          = 0.8111,
-    omega_b         = 0.0490,
-    h               = 0.6736,
-    t_cmb           = 2.7255,
-    box_size_mpc_h  = 200.0,
-    use_2lpt        = true,
-    normalization_mode = "z0_sigma8"
-} }
+kind = { zeldovich = { seed = 31415, grid_size = 32, spectral_index = 0.9649, transfer = "eisenstein_hu", sigma8 = 0.8111, omega_b = 0.0490, h = 0.6736, t_cmb = 2.7255, box_size_mpc_h = 200.0, use_2lpt = true, normalization_mode = "z0_sigma8" } }
 
 [cosmology]
 enabled      = true
@@ -38,22 +27,19 @@ a_init       = 0.02
 auto_g       = true
 
 [gravity]
-solver          = "direct"             # directo para CI rápido
-softening       = 0.15
-opening_theta   = 0.5
-pm_grid         = 32
+solver       = "pm"
+pm_grid_size = 32
 
 [timestep]
-criterion       = "jerk"
-eta             = 0.025
-dt_max          = 0.01
-dt_min          = 1e-6
+criterion = "jerk"
+eta       = 0.025
+dt_max    = 0.01
+dt_min    = 1e-6
 
 [output]
-format          = "jsonl"
-snapshot_every  = 20
-out_dir         = "/tmp/val128_test_out"
+snapshot_format   = "jsonl"
+snapshot_interval = 20
 
 [insitu_analysis]
-enabled      = false
-interval     = 0
+enabled  = false
+interval = 0
