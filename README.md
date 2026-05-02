@@ -26,7 +26,7 @@
 
 ## 🧰 Herramientas y tecnologías
 
-[![🦀 Rust](https://img.shields.io/badge/🦀_Rust-1.74%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![🦀 Rust](https://img.shields.io/badge/🦀_Rust-1.85%2B_%28edition_2024%29-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![🐍 Python](https://img.shields.io/badge/🐍_Python-3.10%2B-yellow?logo=python&logoColor=white)](https://www.python.org/)
 [![🔌 MPI](https://img.shields.io/badge/🔌_MPI-OpenMPI%2FMPICH-red)](https://www.open-mpi.org/)
 [![⚡ wgpu](https://img.shields.io/badge/⚡_wgpu-Vulkan%2FMetal%2FDX12-purple)](https://wgpu.rs/)
@@ -43,7 +43,7 @@
 
 | Ámbito | Herramientas |
 |---|---|
-| 🦀 **Core** | Rust 1.74+, workspace multi-crate, `serde`, `toml`, `clap`, `rayon` |
+| 🦀 **Core** | Rust 1.85+ (edición 2024), workspace multi-crate, `serde`, `toml`, `clap`, `rayon` |
 | 🔌 **Cómputo paralelo** | MPI (`OpenMPI` / `MPICH` vía `mpi` crate), SFC Hilbert 3D, LET, alltoall/allreduce/scatter-gather |
 | ⚡ **GPU (wgpu)** | `wgpu` con shaders WGSL (Vulkan / Metal / DX12 / WebGPU) |
 | 🟢 **GPU CUDA** | Solver PM NVIDIA CUDA + cuFFT; kernels CIC + Poisson + FFT 3D; degradación elegante sin toolchain |
