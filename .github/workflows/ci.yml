@@ -5,6 +5,10 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
@@ -28,9 +32,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Instalar HDF5 (consistencia con crates que enlazan hdf5)
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p gadget-ng-cli
       - run: ./scripts/validate_example_configs.sh
+
+  # ── Compatibilidad MSRV declarada en workspace (1.85) ──────────────────────
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - run: cargo check --workspace
 
   # ── Linting ─────────────────────────────────────────────────────────────────
   clippy:
@@ -133,9 +153,9 @@ jobs:
       - name: Instalar tarpaulin
         run: cargo install cargo-tarpaulin --locked
       - name: Ejecutar cobertura
-        run: cargo tarpaulin --workspace --out Xml --timeout 120
+        run: cargo tarpaulin --workspace --out Xml --output-dir . --timeout 120
       - name: Subir a Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: cobertura.xml
+          files: cobertura.xml,tarpaulin-report.xml
         continue-on-error: true

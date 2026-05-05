@@ -46,7 +46,6 @@ fn heat_flows_hot_to_cold() {
         gas_with_energy(0, Vec3::new(0.0, 0.0, 0.0), 100.0, 1.0), // caliente
         gas_with_energy(1, Vec3::new(0.1, 0.0, 0.0), 1.0, 1.0),   // frío
     ];
-    let u_hot_before = particles[0].internal_energy;
     let u_cold_before = particles[1].internal_energy;
     apply_thermal_conduction(&mut particles, &cfg, GAMMA, T_FLOOR, 0.01);
     // La partícula fría debe ganar energía
@@ -74,7 +73,6 @@ fn respects_t_floor() {
     ];
     apply_thermal_conduction(&mut particles, &cfg, GAMMA, T_FLOOR, 0.1);
     // Después de conducción, u debe ser >= u_floor
-    let u_floor = T_FLOOR * 1.5 / (1.0e10); // rough
     for p in &particles {
         assert!(p.internal_energy >= 0.0, "u no debe ser negativa");
     }

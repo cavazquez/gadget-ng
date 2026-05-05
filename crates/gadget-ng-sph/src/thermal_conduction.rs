@@ -29,6 +29,7 @@
 //! Dolag et al. (2004) ApJ 606, L97.
 
 use crate::cooling::{temperature_to_u, u_to_temperature};
+use crate::periodic_delta;
 use gadget_ng_core::{ConductionSection, Particle, ParticleType};
 
 /// Logaritmo de Coulomb típico para plasma del ICM.
@@ -61,6 +62,18 @@ pub fn apply_thermal_conduction(
     t_floor_k: f64,
     dt: f64,
 ) {
+    apply_thermal_conduction_periodic(particles, cfg, gamma, t_floor_k, dt, None);
+}
+
+/// Igual que `apply_thermal_conduction`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn apply_thermal_conduction_periodic(
+    particles: &mut [Particle],
+    cfg: &ConductionSection,
+    gamma: f64,
+    t_floor_k: f64,
+    dt: f64,
+    periodic_box: Option<f64>,
+) {
     if !cfg.enabled {
         return;
     }
@@ -83,10 +96,7 @@ pub fn apply_thermal_conduction(
             }
             let t_j = u_to_temperature(particles[j].internal_energy.max(0.0), gamma);
 
-            let dx = particles[j].position.x - particles[i].position.x;
-            let dy = particles[j].position.y - particles[i].position.y;
-            let dz = particles[j].position.z - particles[i].position.z;
-            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            let r = periodic_delta(particles[i].position, particles[j].position, periodic_box).norm();
 
             // Usa el máximo de los dos radios de suavizado
             let h_ij = h_i.max(particles[j].smoothing_length.max(1e-10));

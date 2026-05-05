@@ -9,22 +9,9 @@ use crate::density::compute_density;
 use crate::forces::{compute_sph_forces, compute_sph_forces_gadget2};
 use crate::kernel::{grad_w, w};
 use crate::particle::SphParticle;
+use crate::periodic_delta;
 use crate::viscosity::compute_balsara_factors;
 use gadget_ng_core::{Particle, ParticleType, Vec3, cosmology::wrap_position};
-
-/// Vector mínima imagen en caja cúbica de lado `L` (`p_j - p_i` acotado a `[-L/2,L/2]` por eje).
-#[inline]
-fn periodic_delta(pi: Vec3, pj: Vec3, periodic_box: Option<f64>) -> Vec3 {
-    let mut d = pj - pi;
-    if let Some(l) = periodic_box
-        && l > 0.0
-    {
-        d.x -= l * (d.x / l).round();
-        d.y -= l * (d.y / l).round();
-        d.z -= l * (d.z / l).round();
-    }
-    d
-}
 
 // ─── SPH cosmológico sobre gadget_ng_core::Particle ──────────────────────────
 

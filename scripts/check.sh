@@ -7,7 +7,7 @@ cd "$ROOT"
 export RUSTFLAGS="-D warnings"
 
 echo "== cargo fmt =="
-cargo fmt --all
+cargo fmt --all -- --check
 
 echo "== cargo clippy =="
 # Igual que job «Clippy» en .github/workflows/ci.yml (sin --tests / --all-targets).
@@ -15,6 +15,12 @@ cargo clippy --workspace -- -D warnings
 
 echo "== cargo test (workspace) =="
 cargo test --workspace
+
+echo "== cargo test (doc) =="
+cargo test --workspace --doc
+
+echo "== cargo doc (no-deps) =="
+cargo doc --workspace --no-deps
 
 echo "== cargo build release (MPI) =="
 cargo build --release -p gadget-ng-cli --features mpi

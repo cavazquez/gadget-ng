@@ -14,6 +14,22 @@
 //! - **Formulación de entropía Gadget-2** (Springel & Hernquist 2002):
 //!   A = P/ρ^γ, evolución exacta con viscosidad de señal y **limitador de Balsara**.
 //! - Integrador `sph_kdk_step_gadget2` + función `courant_dt` para timestep adaptativo.
+use gadget_ng_core::Vec3;
+
+/// Vector mínima imagen en caja cúbica de lado `L` (`p_j - p_i` por eje en `[-L/2, L/2]`).
+#[inline]
+pub fn periodic_delta(pi: Vec3, pj: Vec3, periodic_box: Option<f64>) -> Vec3 {
+    let mut d = pj - pi;
+    if let Some(l) = periodic_box
+        && l > 0.0
+    {
+        d.x -= l * (d.x / l).round();
+        d.y -= l * (d.y / l).round();
+        d.z -= l * (d.z / l).round();
+    }
+    d
+}
+
 pub mod agn;
 pub mod cooling;
 pub mod cosmic_rays;
@@ -41,7 +57,8 @@ pub use cooling::{
     u_to_temperature,
 };
 pub use cosmic_rays::{apply_cr_hadronic_losses, cr_pressure, diffuse_cr, inject_cr_from_sn};
-pub use density::{GAMMA, compute_density};
+pub use cosmic_rays::diffuse_cr_periodic;
+pub use density::{GAMMA, compute_density, compute_density_with_periodic};
 pub use dust::{apply_dust_radiation_pressure_kick, dust_uv_opacity, update_dust};
 pub use enrichment::apply_enrichment;
 pub use feedback::compute_sfr_with_h2;
@@ -49,12 +66,15 @@ pub use feedback::{
     advance_stellar_ages, apply_galactic_winds, apply_sn_feedback, apply_snia_feedback,
     apply_stellar_wind_feedback, compute_sfr, spawn_star_particles, total_sn_energy_injection,
 };
-pub use forces::{compute_sph_forces, compute_sph_forces_gadget2};
+pub use forces::{
+    compute_sph_forces, compute_sph_forces_gadget2, compute_sph_forces_gadget2_with_periodic,
+    compute_sph_forces_with_periodic,
+};
 pub use gmc::{GmcCluster, KroupaImf, collapse_gmc, inject_sn_from_cluster, sample_stellar_mass};
 pub use integrator::{courant_dt, sph_cosmo_kdk_step, sph_kdk_step, sph_kdk_step_gadget2};
 pub use ism::{effective_pressure, effective_u, update_ism_phases};
 pub use kernel::{grad_w, w};
 pub use molecular_gas::update_h2_fraction;
 pub use particle::{GasData, ParticleType, SphParticle};
-pub use thermal_conduction::apply_thermal_conduction;
-pub use viscosity::compute_balsara_factors;
+pub use thermal_conduction::{apply_thermal_conduction, apply_thermal_conduction_periodic};
+pub use viscosity::{compute_balsara_factors, compute_balsara_factors_with_periodic};

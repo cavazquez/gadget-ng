@@ -21,8 +21,22 @@ env:
 # | x86_64-pc-windows-msvc         | windows-latest | Windows x86_64       |
 
 jobs:
+  verify:
+    name: Pre-release tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-verify
+      - run: cargo test --workspace
+
   build:
     name: Build · ${{ matrix.target }}
+    needs: verify
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

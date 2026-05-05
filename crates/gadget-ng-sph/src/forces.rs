@@ -34,6 +34,7 @@
 use crate::density::GAMMA;
 use crate::kernel::grad_w;
 use crate::particle::SphParticle;
+use crate::periodic_delta;
 use gadget_ng_core::Vec3;
 
 /// Regularización de μ_ij (viscosidad clásica de Monaghan).
@@ -43,6 +44,11 @@ const EPS_VISC: f64 = 0.01;
 ///
 /// Requiere que `compute_density` haya sido llamado previamente.
 pub fn compute_sph_forces(particles: &mut [SphParticle]) {
+    compute_sph_forces_with_periodic(particles, None);
+}
+
+/// Igual que `compute_sph_forces`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn compute_sph_forces_with_periodic(particles: &mut [SphParticle], periodic_box: Option<f64>) {
     let n = particles.len();
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let vel: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
@@ -79,7 +85,7 @@ pub fn compute_sph_forces(particles: &mut [SphParticle]) {
                 continue;
             }
 
-            let r_ij = pos[i] - pos[j];
+            let r_ij = periodic_delta(pos[j], pos[i], periodic_box);
             let r = r_ij.norm();
             let h_i = h_sml[i];
             let h_j = h_sml[j];
@@ -148,6 +154,14 @@ pub fn compute_sph_forces(particles: &mut [SphParticle]) {
 /// - `gas.da_dt`   — tasa de cambio de entropía A por calentamiento viscoso.
 /// - `gas.max_vsig` — velocidad de señal máxima (para timestep de Courant).
 pub fn compute_sph_forces_gadget2(particles: &mut [SphParticle]) {
+    compute_sph_forces_gadget2_with_periodic(particles, None);
+}
+
+/// Igual que `compute_sph_forces_gadget2`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn compute_sph_forces_gadget2_with_periodic(
+    particles: &mut [SphParticle],
+    periodic_box: Option<f64>,
+) {
     let n = particles.len();
 
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
@@ -188,7 +202,7 @@ pub fn compute_sph_forces_gadget2(particles: &mut [SphParticle]) {
                 continue;
             }
 
-            let r_ij = pos[i] - pos[j];
+            let r_ij = periodic_delta(pos[j], pos[i], periodic_box);
             let r = r_ij.norm();
             let hi = h_sml[i];
             let hj = h_sml[j];

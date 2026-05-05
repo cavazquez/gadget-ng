@@ -18,6 +18,7 @@
 //! Jubelgas et al. (2008) A&A 481, 33 — CRs en SPH cosmológico.
 //! Pfrommer et al. (2017) MNRAS 465, 4500 — transporte de CRs.
 
+use crate::periodic_delta;
 use gadget_ng_core::{Particle, ParticleType};
 
 /// Constante de energía de SN en unidades internas [(km/s)² por 10¹⁰ M_sun].
@@ -88,6 +89,17 @@ pub fn inject_cr_from_sn(particles: &mut [Particle], sfr: &[f64], cr_fraction: f
 /// - `dt`: paso de tiempo
 #[allow(clippy::needless_range_loop)]
 pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
+    diffuse_cr_periodic(particles, kappa_cr, b_suppress, dt, None);
+}
+
+/// Igual que `diffuse_cr`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn diffuse_cr_periodic(
+    particles: &mut [Particle],
+    kappa_cr: f64,
+    b_suppress: f64,
+    dt: f64,
+    periodic_box: Option<f64>,
+) {
     let n = particles.len();
     if n == 0 {
         return;
@@ -118,10 +130,7 @@ pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt
                 continue;
             }
 
-            let dx = particles[j].position.x - pos_i.x;
-            let dy = particles[j].position.y - pos_i.y;
-            let dz = particles[j].position.z - pos_i.z;
-            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
 
             let w = kernel_w_cr(r, 2.0 * h_i);
             if w > 0.0 {

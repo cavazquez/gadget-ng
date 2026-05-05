@@ -27,6 +27,7 @@
 use crate::density::GAMMA;
 use crate::kernel::grad_w;
 use crate::particle::SphParticle;
+use crate::periodic_delta;
 use gadget_ng_core::Vec3;
 
 /// Regularización para el factor Balsara (evita división por cero).
@@ -47,6 +48,14 @@ fn cross(a: Vec3, b: Vec3) -> Vec3 {
 /// Actualiza `gas.balsara` in-place. Requiere que `compute_density` haya sido
 /// llamado previamente (necesita `rho`, `pressure`, `h_sml`).
 pub fn compute_balsara_factors(particles: &mut [SphParticle]) {
+    compute_balsara_factors_with_periodic(particles, None);
+}
+
+/// Igual que `compute_balsara_factors`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn compute_balsara_factors_with_periodic(
+    particles: &mut [SphParticle],
+    periodic_box: Option<f64>,
+) {
     let n = particles.len();
 
     // Extrae datos inmutables para evitar borrow doble.
@@ -92,7 +101,7 @@ pub fn compute_balsara_factors(particles: &mut [SphParticle]) {
             if j == i || !is_gas[j] || rho[j] < 1e-200 {
                 continue;
             }
-            let r_ij = pi - pos[j];
+            let r_ij = periodic_delta(pos[j], pi, periodic_box);
             let r = r_ij.norm();
 
             let gw = grad_w(r, hi);

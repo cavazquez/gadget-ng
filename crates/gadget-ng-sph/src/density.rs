@@ -14,6 +14,7 @@
 
 use crate::kernel::{grad_w, w};
 use crate::particle::SphParticle;
+use crate::periodic_delta;
 use gadget_ng_core::Vec3;
 
 /// Número objetivo de vecinos SPH.
@@ -27,6 +28,11 @@ const MAX_ITER: usize = 30;
 ///
 /// Actualiza `gas.rho`, `gas.h_sml` y `gas.pressure` in-place.
 pub fn compute_density(particles: &mut [SphParticle]) {
+    compute_density_with_periodic(particles, None);
+}
+
+/// Igual que `compute_density`, pero usando imagen mínima si `periodic_box = Some(L)`.
+pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box: Option<f64>) {
     let n = particles.len();
     // Extrae datos de todas las partículas (pos, mass) para no tener borrowing doble.
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
@@ -45,7 +51,7 @@ pub fn compute_density(particles: &mut [SphParticle]) {
 
         for _ in 0..MAX_ITER {
             // ρ(h) = Σ_j m_j W(r_ij, h)
-            let (rho, drho_dh) = rho_and_deriv(&pos, &mass, pi, h, n);
+            let (rho, drho_dh) = rho_and_deriv(&pos, &mass, pi, h, n, periodic_box);
             // Residuo
             let n_eff = (4.0 * std::f64::consts::PI / 3.0) * (2.0 * h).powi(3) * rho / m_i;
             if (n_eff - N_NEIGH).abs() < 1e-2 {
@@ -60,7 +66,7 @@ pub fn compute_density(particles: &mut [SphParticle]) {
         }
         gas.h_sml = h;
         // Densidad final
-        gas.rho = rho_sum(&pos, &mass, pi, h, n);
+        gas.rho = rho_sum(&pos, &mass, pi, h, n, periodic_box);
         // Presión adiabática P = (γ-1) ρ u
         gas.pressure = (GAMMA - 1.0) * gas.rho * gas.u;
         // Función entrópica A = P / ρ^γ  (usada por el integrador Gadget-2)
@@ -71,11 +77,18 @@ pub fn compute_density(particles: &mut [SphParticle]) {
 }
 
 /// `ρ(h) = Σ_j m_j W(r_ij, h)` y su derivada `dρ/dh`.
-fn rho_and_deriv(pos: &[Vec3], mass: &[f64], pi: Vec3, h: f64, n: usize) -> (f64, f64) {
+fn rho_and_deriv(
+    pos: &[Vec3],
+    mass: &[f64],
+    pi: Vec3,
+    h: f64,
+    n: usize,
+    periodic_box: Option<f64>,
+) -> (f64, f64) {
     let mut rho = 0.0_f64;
     let mut drho = 0.0_f64;
     for j in 0..n {
-        let r = (pos[j] - pi).norm();
+        let r = periodic_delta(pi, pos[j], periodic_box).norm();
         rho += mass[j] * w(r, h);
         // dW/dh = -dW/dr · r/h  (chain rule: W(r, h) = 1/h³ f(r/h))
         // más correcto: dW/dh = -1/h (3 W + r dW/dr)
@@ -85,8 +98,10 @@ fn rho_and_deriv(pos: &[Vec3], mass: &[f64], pi: Vec3, h: f64, n: usize) -> (f64
     (rho, drho)
 }
 
-fn rho_sum(pos: &[Vec3], mass: &[f64], pi: Vec3, h: f64, n: usize) -> f64 {
-    (0..n).map(|j| mass[j] * w((pos[j] - pi).norm(), h)).sum()
+fn rho_sum(pos: &[Vec3], mass: &[f64], pi: Vec3, h: f64, n: usize, periodic_box: Option<f64>) -> f64 {
+    (0..n)
+        .map(|j| mass[j] * w(periodic_delta(pi, pos[j], periodic_box).norm(), h))
+        .sum()
 }
 
 #[cfg(test)]

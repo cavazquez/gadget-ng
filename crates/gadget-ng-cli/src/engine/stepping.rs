@@ -475,12 +475,13 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             cfg.simulation.dt,
                         );
                     } else {
-                        gadget_ng_sph::apply_thermal_conduction(
+                        gadget_ng_sph::apply_thermal_conduction_periodic(
                             &mut local,
                             &cfg.sph.conduction,
                             cfg.sph.gamma,
                             cfg.sph.t_floor_k,
                             cfg.simulation.dt,
+                            periodic_box,
                         );
                     }
                 }
@@ -563,11 +564,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                 cfg.simulation.dt,
                             );
                         } else {
-                            gadget_ng_sph::diffuse_cr(
+                            gadget_ng_sph::diffuse_cr_periodic(
                                 &mut local,
                                 cfg.sph.cr.kappa_cr,
                                 cfg.sph.cr.b_cr_suppress, // Phase 129
                                 cfg.simulation.dt,
+                                periodic_box,
                             );
                         }
                         if cfg.sph.cr.hadronic_loss_coeff > 0.0 {
