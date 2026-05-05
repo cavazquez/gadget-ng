@@ -50,14 +50,14 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
+    cosmology::{CosmologyParams, growth_factor_d_ratio, growth_rate_f, hubble_param},
     particle::Particle,
-    transfer_fn::{amplitude_for_sigma8, transfer_eh_nowiggle, EisensteinHuParams},
+    transfer_fn::{EisensteinHuParams, amplitude_for_sigma8, transfer_eh_nowiggle},
     vec3::Vec3,
 };
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -96,9 +96,10 @@ fn gaussian_std(seed_u64: u64) -> f64 {
     (-2.0_f64 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
 }
 
+type FftPlanCache = Mutex<HashMap<(usize, bool), Arc<dyn rustfft::Fft<f64>>>>;
+
 fn fft_plan_cached(n: usize, forward: bool) -> Arc<dyn rustfft::Fft<f64>> {
-    static CACHE: OnceLock<Mutex<HashMap<(usize, bool), Arc<dyn rustfft::Fft<f64>>>>> =
-        OnceLock::new();
+    static CACHE: OnceLock<FftPlanCache> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let mut g = cache.lock().expect("fft plan cache lock");
     g.entry((n, forward))
@@ -120,11 +121,7 @@ fn fft_plan_cached(n: usize, forward: bool) -> Arc<dyn rustfft::Fft<f64>> {
 pub fn mode_int(j: usize, n: usize) -> i64 {
     let half = (n / 2) as i64;
     let jj = j as i64;
-    if jj <= half {
-        jj
-    } else {
-        jj - n as i64
-    }
+    if jj <= half { jj } else { jj - n as i64 }
 }
 
 // ── Generación del campo gaussiano en k-space ─────────────────────────────────

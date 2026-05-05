@@ -257,7 +257,10 @@ pub struct StepStats {
 ///   Muchos solvers (PM, árbol global) ignoran el subconjunto y usan **todas** las partículas;
 ///   el vector `active_local` marca quién recibe kick END en ese sub-paso.
 /// - `periodic_box` — si es `Some(L)`, tras cada drift se envuelven posiciones a `[0,L)³`
-///   (condiciones periódicas cosmológicas).
+///   (condiciones periódicas cosmológicas). Con **PM/TreePM periódico** el caller debe
+///   pasar `Some(box_size)` coherente con `simulation.box_size`; con `None` las partículas
+///   pueden salir de `[0,L)` y las fuerzas por malla dejan de ser físicas aunque el
+///   solver asuma periodicidad.
 ///
 /// ## Retorno
 /// Devuelve [`StepStats`] con las métricas de instrumentación del paso.
@@ -357,11 +360,11 @@ pub fn hierarchical_kdk_step(
             *e += 1;
         }
 
-        if let Some(l) = periodic_box {
-            if l > 0.0 {
-                for p in particles.iter_mut() {
-                    p.position = gadget_ng_core::cosmology::wrap_position(p.position, l);
-                }
+        if let Some(l) = periodic_box
+            && l > 0.0
+        {
+            for p in particles.iter_mut() {
+                p.position = gadget_ng_core::cosmology::wrap_position(p.position, l);
             }
         }
 

@@ -44,8 +44,9 @@ use gadget_ng_analysis::power_spectrum::power_spectrum;
 use gadget_ng_core::{
     CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
     OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, TransferKind,
-    UnitsSection, Vec3, build_particles, cosmology::CosmologyParams, density_contrast_rms,
-    peculiar_vrms, wrap_position,
+    UnitsSection, Vec3, build_particles,
+    cosmology::{CosmologyParams, g_code_consistent, gravity_coupling_qksl},
+    density_contrast_rms, peculiar_vrms, wrap_position,
 };
 use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 use gadget_ng_pm::PmSolver;
@@ -53,12 +54,12 @@ use gadget_ng_treepm::TreePmSolver;
 
 // ── Constantes compartidas ────────────────────────────────────────────────────
 
-const G: f64 = 1.0;
 const BOX: f64 = 1.0;
 const GRID: usize = 8; // 8³ = 512 partículas — rápido para CI
 const N_PART: usize = 512;
 const NM: usize = 8; // malla PM/TreePM
-const NGRID_DELTA: usize = 4; // malla para density_contrast_rms
+/// Malla para `density_contrast_rms`: 8³ ≈ una celda por partícula media (menos shot-noise que 4³).
+const NGRID_DELTA: usize = 8;
 
 const OMEGA_M: f64 = 0.315;
 const OMEGA_L: f64 = 0.685;
@@ -72,6 +73,11 @@ const N_S: f64 = 0.965;
 const BOX_MPC_H: f64 = 100.0;
 const SIGMA8_STD: f64 = 0.8; // ΛCDM estándar
 
+#[inline]
+fn newton_g() -> f64 {
+    g_code_consistent(OMEGA_M, H0)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Configuración ΛCDM base. `sigma8` y `use_2lpt` son parámetros variables.
@@ -82,7 +88,7 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
             num_steps: 20,
             softening: 0.02,
             physical_softening: false,
-            gravitational_constant: G,
+            gravitational_constant: newton_g(),
             particle_count: N_PART,
             box_size: BOX,
             seed,
@@ -119,7 +125,7 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
             omega_lambda: OMEGA_L,
             h0: H0,
             a_init: A_INIT,
-            auto_g: false,
+            auto_g: true,
             ..Default::default()
         },
         units: UnitsSection::default(),
@@ -193,7 +199,7 @@ fn run_pm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, d
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
-        let g_cosmo = G / a;
+        let g_cosmo = gravity_coupling_qksl(newton_g(), a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors {
             drift,
@@ -228,7 +234,7 @@ fn run_treepm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usiz
     let mut a = A_INIT;
 
     for _ in 0..n_steps {
-        let g_cosmo = G / a;
+        let g_cosmo = gravity_coupling_qksl(newton_g(), a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors {
             drift,

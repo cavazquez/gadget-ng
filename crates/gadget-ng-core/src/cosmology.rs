@@ -698,16 +698,8 @@ fn growth_factor_d_ode_cpl(params: CosmologyParams, a: f64) -> f64 {
             (yp, -(2.0 + q) * yp + 1.5 * om * y)
         };
         let k1 = deriv(ln_a, d, dp);
-        let k2 = deriv(
-            ln_a + 0.5 * h,
-            d + 0.5 * h * k1.0,
-            dp + 0.5 * h * k1.1,
-        );
-        let k3 = deriv(
-            ln_a + 0.5 * h,
-            d + 0.5 * h * k2.0,
-            dp + 0.5 * h * k2.1,
-        );
+        let k2 = deriv(ln_a + 0.5 * h, d + 0.5 * h * k1.0, dp + 0.5 * h * k1.1);
+        let k3 = deriv(ln_a + 0.5 * h, d + 0.5 * h * k2.0, dp + 0.5 * h * k2.1);
         let k4 = deriv(ln_a + h, d + h * k3.0, dp + h * k3.1);
         d += h / 6.0 * (k1.0 + 2.0 * k2.0 + 2.0 * k3.0 + k4.0);
         dp += h / 6.0 * (k1.1 + 2.0 * k2.1 + 2.0 * k3.1 + k4.1);

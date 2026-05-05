@@ -23,12 +23,15 @@
 //! En rustfft (convención DFT estándar), el índice `j` corresponde a
 //! `n = j` para `j ≤ NM/2` y `n = j - NM` para `j > NM/2`.
 
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+
+type PmFftPlanPair = (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>);
+type PmFftPlanCache = Mutex<HashMap<usize, PmFftPlanPair>>;
 
 /// Resuelve la ecuación de Poisson y devuelve las tres componentes de la fuerza
 /// en el grid como arrays planos de longitud `nm³`.
@@ -75,9 +78,8 @@ pub fn solve_forces_softened(
     solve_forces_impl(density, g, nm, box_size, None, plummer_eps)
 }
 
-fn fft_pm_plans(nm: usize) -> (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>) {
-    static CACHE: OnceLock<Mutex<HashMap<usize, (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>)>>> =
-        OnceLock::new();
+fn fft_pm_plans(nm: usize) -> PmFftPlanPair {
+    static CACHE: OnceLock<PmFftPlanCache> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let mut g = cache.lock().expect("pm fft cache");
     g.entry(nm)
@@ -157,10 +159,10 @@ fn solve_forces_impl(
             if let Some(r_s) = r_split {
                 filter *= (-0.5 * k2 * r_s * r_s).exp();
             }
-            if let Some(eps) = plummer_eps {
-                if eps > 0.0 {
-                    filter *= (-k2 * eps * eps).exp();
-                }
+            if let Some(eps) = plummer_eps
+                && eps > 0.0
+            {
+                filter *= (-k2 * eps * eps).exp();
             }
             let phi_k = rho_c[flat] * (-four_pi_g * filter / k2);
             (

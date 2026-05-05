@@ -1,7 +1,7 @@
 //! Tests helpers cosmología roadmap (neutrinos, from_cosmology_toml).
 
 use gadget_ng_core::{
-    hubble_param, omega_nu_from_mass, split_m_nu_ev, CosmologyParams, NeutrinoHierarchyKind,
+    CosmologyParams, NeutrinoHierarchyKind, hubble_param, omega_nu_from_mass, split_m_nu_ev,
 };
 
 #[test]

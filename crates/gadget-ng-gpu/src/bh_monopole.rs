@@ -267,6 +267,7 @@ impl GpuBarnesHutMonopole {
     }
 
     /// `positions_f32`: `3 * n_all`, `nodes`: exportación del octree, `root` índice raíz.
+    #[allow(clippy::too_many_arguments)]
     pub fn compute_accelerations_raw(
         &self,
         positions_f32: &[f32],
@@ -327,10 +328,7 @@ impl GpuBarnesHutMonopole {
             });
 
         let nodes_bytes = unsafe {
-            std::slice::from_raw_parts(
-                nodes.as_ptr() as *const u8,
-                nodes.len() * std::mem::size_of::<BhMonopoleGpuNode>(),
-            )
+            std::slice::from_raw_parts(nodes.as_ptr() as *const u8, std::mem::size_of_val(nodes))
         };
         let buf_nodes = ctx
             .device

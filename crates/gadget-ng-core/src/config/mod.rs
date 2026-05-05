@@ -60,7 +60,6 @@ pub struct RunConfig {
     pub modified_gravity: ModifiedGravitySection,
 }
 
-
 // ── RunConfig ─────────────────────────────────────────────────────────────────
 impl RunConfig {
     pub fn softening_squared(&self) -> f64 {
@@ -134,10 +133,7 @@ impl RunConfig {
         if self.cosmology.enabled {
             let sum = self.cosmology.omega_m + self.cosmology.omega_lambda;
             if (sum - 1.0).abs() > FLAT_TOL {
-                return Err(ConfigError::NonFlatUniverse {
-                    sum,
-                    tol: FLAT_TOL,
-                });
+                return Err(ConfigError::NonFlatUniverse { sum, tol: FLAT_TOL });
             }
             if self.cosmology.a_init <= 0.0 {
                 return Err(ConfigError::AInitNonPositive(self.cosmology.a_init));
@@ -161,10 +157,7 @@ impl RunConfig {
         }
 
         let nm = self.gravity.pm_grid_size;
-        if matches!(
-            self.gravity.solver,
-            SolverKind::Pm | SolverKind::TreePm
-        ) {
+        if matches!(self.gravity.solver, SolverKind::Pm | SolverKind::TreePm) {
             if !self.cosmology.periodic {
                 return Err(ConfigError::PeriodicRequiredForPm);
             }

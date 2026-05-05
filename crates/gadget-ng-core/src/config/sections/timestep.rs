@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
 /// Criterio de asignación del paso individual en block timesteps.
 ///
 /// - `acceleration` (default) → `dt_i = η · sqrt(ε / |a_i|)` (criterio de Aarseth básico,

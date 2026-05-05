@@ -3,9 +3,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error(
-        "universo plano: omega_m + omega_lambda = {sum:.6} (se espera ~1, tol ±{tol})"
-    )]
+    #[error("universo plano: omega_m + omega_lambda = {sum:.6} (se espera ~1, tol ±{tol})")]
     NonFlatUniverse { sum: f64, tol: f64 },
     #[error("cosmology.a_init debe ser > 0 (actual: {0})")]
     AInitNonPositive(f64),

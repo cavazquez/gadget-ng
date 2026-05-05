@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-
 /// Parámetros del solver de gravedad (opcional en TOML; valores por defecto retrocompatibles).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GravitySection {

@@ -117,6 +117,6 @@ pub fn apply_dust_radiation_pressure_kick(
         } else {
             Vec3::new(0.0, 0.0, -1.0)
         };
-        p.velocity = p.velocity + dir * (a_mag * dt);
+        p.velocity += dir * (a_mag * dt);
     }
 }

@@ -525,10 +525,7 @@ impl GpuBarnesHutFmm {
             });
 
         let nodes_bytes = unsafe {
-            std::slice::from_raw_parts(
-                nodes.as_ptr() as *const u8,
-                nodes.len() * std::mem::size_of::<BhFmmGpuNode>(),
-            )
+            std::slice::from_raw_parts(nodes.as_ptr() as *const u8, std::mem::size_of_val(nodes))
         };
         let buf_nodes = ctx
             .device

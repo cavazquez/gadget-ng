@@ -68,13 +68,9 @@ impl GravitySolver for PmSolver {
 
         // ── 2. Resolver Poisson → fuerzas en el grid ──────────────────────────
         let [fx_grid, fy_grid, fz_grid] = match self.plummer_eps {
-            Some(eps) if eps > 0.0 => fft_poisson::solve_forces_softened(
-                &density,
-                g,
-                nm,
-                self.box_size,
-                Some(eps),
-            ),
+            Some(eps) if eps > 0.0 => {
+                fft_poisson::solve_forces_softened(&density, g, nm, self.box_size, Some(eps))
+            }
             _ => fft_poisson::solve_forces(&density, g, nm, self.box_size),
         };
 

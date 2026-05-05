@@ -148,7 +148,7 @@ mod tests {
         RunConfig, SimulationSection,
     };
     use crate::gravity::DirectGravity;
-    use crate::ic::{build_particles, IcError};
+    use crate::ic::{IcError, build_particles};
 
     fn lattice_cfg(n: usize) -> RunConfig {
         RunConfig {

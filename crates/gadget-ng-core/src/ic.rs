@@ -13,9 +13,7 @@ pub enum IcError {
     TwoBodyCount,
     #[error("lattice ic requires a perfect cube particle_count = n^3, got {0}")]
     LatticeNotCube(usize),
-    #[error(
-        "perturbed_lattice ic requires cosmology.enabled = true to use velocity_amplitude > 0"
-    )]
+    #[error("perturbed_lattice ic requires cosmology.enabled = true to use velocity_amplitude > 0")]
     PerturbedLatticeVelNoCosmo,
     #[error(
         "zeldovich ic requires particle_count == grid_size^3: got particle_count={particle_count}, grid_size={grid_size}, grid_size^3={grid_cube}"
@@ -63,7 +61,7 @@ pub fn build_particles_for_gid_range(
     }
     let seed = cfg.simulation.seed;
     let box_size = cfg.simulation.box_size;
-    let g = cfg.simulation.gravitational_constant;
+    let g = cfg.effective_g();
 
     match cfg.initial_conditions.kind {
         IcKind::Lattice => {

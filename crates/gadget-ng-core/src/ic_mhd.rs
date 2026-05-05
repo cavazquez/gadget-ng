@@ -36,7 +36,7 @@
 //! El valor `b0` está en las unidades internas del código. Para convertir desde
 //! nGauss comoving: `B_int = B_nG * unidades_B_factor`.
 
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{FftPlanner, num_complex::Complex};
 
 use crate::{particle::Particle, vec3::Vec3};
 

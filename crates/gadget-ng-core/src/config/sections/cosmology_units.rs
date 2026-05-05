@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::cosmology::NeutrinoHierarchyKind;
 
-
 /// Parámetros cosmológicos (opcional; retrocompatible: `enabled = false`).
 ///
 /// Activa la integración del factor de escala `a(t)` junto a las partículas.

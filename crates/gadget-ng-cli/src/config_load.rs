@@ -10,7 +10,9 @@ pub fn load_run_config(path: &Path) -> Result<RunConfig, CliError> {
     let figment = Figment::new()
         .merge(figment::providers::Toml::file(path))
         .merge(Env::prefixed("GADGET_NG_").split("__"));
-    figment.extract().map_err(Into::into)
+    let cfg: RunConfig = figment.extract::<RunConfig>().map_err(CliError::from)?;
+    cfg.validate()?;
+    Ok(cfg)
 }
 
 pub fn config_canonical_hash(cfg: &RunConfig) -> Result<String, toml::ser::Error> {

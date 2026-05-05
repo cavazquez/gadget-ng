@@ -143,7 +143,7 @@ pub fn build_merger_forest(
 
             // Ordenar candidatos por votos descendentes.
             let mut candidates: Vec<(u64, usize)> = votes.into_iter().collect();
-            candidates.sort_by(|a, b| b.1.cmp(&a.1));
+            candidates.sort_by_key(|(_, v)| std::cmp::Reverse(*v));
 
             // El progenitor principal del halo descendente (en next_snap) es este halo
             // actual si tiene la mayoría de votos. Aquí registramos la relación inversa:

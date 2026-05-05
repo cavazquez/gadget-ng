@@ -153,7 +153,7 @@ impl GravitySolver for RayonDirectGravity {
         global_indices: &[usize],
         out: &mut [Vec3],
     ) {
-        use crate::gravity_simd::{accel_soa_blocked, KernelParams};
+        use crate::gravity_simd::{KernelParams, accel_soa_blocked};
         use rayon::prelude::*;
 
         assert_eq!(global_positions.len(), global_masses.len());

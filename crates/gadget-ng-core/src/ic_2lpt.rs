@@ -63,7 +63,7 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
+    cosmology::{CosmologyParams, growth_factor_d_ratio, growth_rate_f, hubble_param},
     ic_zeldovich::{
         build_spectrum_fn, delta_to_displacement, fft3d, generate_delta_kspace, mode_int,
     },
@@ -310,18 +310,13 @@ fn source_to_psi2_legacy_buggy(source: &[f64], n: usize, box_size: f64) -> [Vec<
 /// Variante de `Ψ²` a usar en [`zeldovich_2lpt_ics`].
 ///
 /// Siempre prefiere `Fixed`; `LegacyBuggy` es sólo para tests de auditoría.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Psi2Variant {
     /// Versión canónica post-Phase-44 (única división por `|n|²`, signo `−i`).
+    #[default]
     Fixed,
     /// Reproduce el bug pre-Phase-44 (doble `1/|n|²` + signo `+i`). Solo A/B.
     LegacyBuggy,
-}
-
-impl Default for Psi2Variant {
-    fn default() -> Self {
-        Self::Fixed
-    }
 }
 
 // ── Entrada pública ───────────────────────────────────────────────────────────

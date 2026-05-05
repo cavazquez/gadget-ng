@@ -30,17 +30,12 @@ use rustfft::{FftPlanner, num_complex::Complex};
 // ── Structs públicos ──────────────────────────────────────────────────────
 
 /// Eje de la línea de visión (line-of-sight).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum LosAxis {
     X = 0,
     Y = 1,
+    #[default]
     Z = 2,
-}
-
-impl Default for LosAxis {
-    fn default() -> Self {
-        Self::Z
-    }
 }
 
 /// Un bin del espectro 2D P(k, μ).

@@ -1,6 +1,6 @@
 //! Conservación aproximada del momento total en paso cosmológico (mejora 7).
 use gadget_ng_core::{Particle, Vec3};
-use gadget_ng_integrators::{leapfrog_cosmo_kdk_step, CosmoFactors};
+use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
 
 fn total_momentum(particles: &[Particle]) -> Vec3 {
     particles
@@ -22,12 +22,7 @@ fn lattice_symmetric_momentum_near_zero_after_cosmo_step() {
                 let x = (ix as f64 + 0.5) * dx;
                 let y = (iy as f64 + 0.5) * dx;
                 let z = (iz as f64 + 0.5) * dx;
-                parts.push(Particle::new(
-                    gid,
-                    mass,
-                    Vec3::new(x, y, z),
-                    Vec3::zero(),
-                ));
+                parts.push(Particle::new(gid, mass, Vec3::new(x, y, z), Vec3::zero()));
                 gid += 1;
             }
         }

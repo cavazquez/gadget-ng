@@ -16,14 +16,10 @@ mod timestep;
 
 pub use analysis::{DecompositionConfig, InsituAnalysisSection};
 pub use cosmology_units::{CosmologySection, G_KPC_MSUN_KMPS, UnitsSection};
-pub use extended::{
-    ModifiedGravitySection, SidmSection, TurbulenceSection, TwoFluidSection,
-};
+pub use extended::{ModifiedGravitySection, SidmSection, TurbulenceSection, TwoFluidSection};
 pub use gravity::{GravitySection, MacSoftening, OpeningCriterion, SolverKind};
 pub use mhd::{BFieldKind, MhdSection};
-pub use output_perf::{
-    OutputSection, PerformanceSection, SfcKind, SnapshotFormat,
-};
+pub use output_perf::{OutputSection, PerformanceSection, SfcKind, SnapshotFormat};
 pub use rt_reion::{ReionizationSection, RtSection};
 pub use simulation_ic::{
     IcKind, InitialConditionsSection, IntegratorKind, NormalizationMode, SimulationSection,

@@ -1,5 +1,5 @@
 use figment::Error as FigmentError;
-use gadget_ng_core::IcError;
+use gadget_ng_core::{ConfigError, IcError};
 use gadget_ng_io::SnapshotError;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -28,6 +28,12 @@ pub enum CliError {
 impl From<FigmentError> for CliError {
     fn from(value: FigmentError) -> Self {
         Self::Config(Box::new(value))
+    }
+}
+
+impl From<ConfigError> for CliError {
+    fn from(value: ConfigError) -> Self {
+        Self::InvalidConfig(value.to_string())
     }
 }
 

@@ -146,10 +146,10 @@ pub(crate) fn hex_accel(r: Vec3, hex: &[f64; 15], g: f64) -> Vec3 {
     let mut ax = 0.0_f64;
     let mut ay = 0.0_f64;
     let mut az = 0.0_f64;
-    for p in 0..15usize {
-        ax += eval_dt_x(p, rx, ry, rz, r2) * w[p];
-        ay += eval_dt_y(p, rx, ry, rz, r2) * w[p];
-        az += eval_dt_z(p, rx, ry, rz, r2) * w[p];
+    for (p, wp) in w.iter().enumerate() {
+        ax += eval_dt_x(p, rx, ry, rz, r2) * wp;
+        ay += eval_dt_y(p, rx, ry, rz, r2) * wp;
+        az += eval_dt_z(p, rx, ry, rz, r2) * wp;
     }
     Vec3::new(-g * L4_FACT * ax, -g * L4_FACT * ay, -g * L4_FACT * az)
 }
@@ -167,10 +167,10 @@ pub(crate) fn hex_accel_from_r2s(r: Vec3, r2_eff: f64, hex: &[f64; 15], g: f64) 
     let mut ax = 0.0_f64;
     let mut ay = 0.0_f64;
     let mut az = 0.0_f64;
-    for p in 0..15usize {
-        ax += eval_dt_x(p, rx, ry, rz, r2_eff) * w[p];
-        ay += eval_dt_y(p, rx, ry, rz, r2_eff) * w[p];
-        az += eval_dt_z(p, rx, ry, rz, r2_eff) * w[p];
+    for (p, wp) in w.iter().enumerate() {
+        ax += eval_dt_x(p, rx, ry, rz, r2_eff) * wp;
+        ay += eval_dt_y(p, rx, ry, rz, r2_eff) * wp;
+        az += eval_dt_z(p, rx, ry, rz, r2_eff) * wp;
     }
     Vec3::new(-g * L4_FACT * ax, -g * L4_FACT * ay, -g * L4_FACT * az)
 }
@@ -189,10 +189,10 @@ pub(crate) fn hex_accel_softened(r: Vec3, hex: &[f64; 15], g: f64, eps2: f64) ->
     let mut ax = 0.0_f64;
     let mut ay = 0.0_f64;
     let mut az = 0.0_f64;
-    for p in 0..15usize {
-        ax += eval_dt_x(p, rx, ry, rz, r2) * w[p];
-        ay += eval_dt_y(p, rx, ry, rz, r2) * w[p];
-        az += eval_dt_z(p, rx, ry, rz, r2) * w[p];
+    for (p, wp) in w.iter().enumerate() {
+        ax += eval_dt_x(p, rx, ry, rz, r2) * wp;
+        ay += eval_dt_y(p, rx, ry, rz, r2) * wp;
+        az += eval_dt_z(p, rx, ry, rz, r2) * wp;
     }
     Vec3::new(-g * L4_FACT * ax, -g * L4_FACT * ay, -g * L4_FACT * az)
 }
