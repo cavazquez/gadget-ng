@@ -19,7 +19,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -30,7 +30,7 @@ jobs:
     name: Example TOML configs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (consistencia con crates que enlazan hdf5)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -43,7 +43,7 @@ jobs:
     name: MSRV (1.85)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.85.0
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -57,7 +57,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -86,7 +86,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -98,7 +98,7 @@ jobs:
     name: Benchmarks (compile + dry-run)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -114,7 +114,7 @@ jobs:
     name: Tests parallel (serial runtime)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p gadget-ng-parallel
@@ -124,7 +124,7 @@ jobs:
     name: Tests MPI multirank (2 y 4 rangos)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Instalar OpenMPI
@@ -160,7 +160,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
