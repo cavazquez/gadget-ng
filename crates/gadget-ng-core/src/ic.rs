@@ -63,7 +63,7 @@ pub fn build_particles_for_gid_range(
     let box_size = cfg.simulation.box_size;
     let g = cfg.effective_g();
 
-    match cfg.initial_conditions.kind {
+    match cfg.initial_conditions.kind.clone() {
         IcKind::Lattice => {
             let side = (n as f64).cbrt().round() as usize;
             if side * side * side != n {

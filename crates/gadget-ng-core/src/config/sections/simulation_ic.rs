@@ -239,7 +239,7 @@ pub enum NormalizationMode {
 }
 
 /// Tipo de función de transferencia cosmológica para el espectro de potencia inicial.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum TransferKind {
     /// Ley de potencia pura `P(k) ∝ k^n_s` (sin función de transferencia).
@@ -249,6 +249,14 @@ pub enum TransferKind {
     /// Eisenstein–Hu 1998, aproximación sin-wiggle (no-wiggle).
     /// Requiere `box_size_mpc_h` para la conversión de k.
     EisensteinHu,
+    /// Transfer function tabulada (p.ej. salida CLASS/CAMB).
+    ///
+    /// Se espera archivo de dos columnas numéricas por fila:
+    /// `k[h/Mpc]  T(k)`.
+    ///
+    /// También se aceptan líneas con columnas extra (se usan las dos primeras),
+    /// comentarios (`# ...`) y filas vacías.
+    Tabulated { path: String },
 }
 
 fn default_plummer_a() -> f64 {

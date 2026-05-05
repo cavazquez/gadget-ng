@@ -59,6 +59,7 @@ use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
+use std::fs;
 use std::sync::{Arc, Mutex, OnceLock};
 
 // ── Generador LCG ─────────────────────────────────────────────────────────────
@@ -112,6 +113,144 @@ fn fft_plan_cached(n: usize, forward: bool) -> Arc<dyn rustfft::Fft<f64>> {
             }
         })
         .clone()
+}
+
+#[derive(Debug, Clone)]
+struct TabulatedTransfer {
+    // log(k) sorted asc
+    x: Vec<f64>,
+    // log(T)
+    y: Vec<f64>,
+    // PCHIP slopes in log space
+    m: Vec<f64>,
+}
+
+impl TabulatedTransfer {
+    fn from_file(path: &str) -> Self {
+        let text = fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("no se pudo leer transfer tabulada '{path}': {e}"));
+        let mut rows: Vec<(f64, f64)> = Vec::new();
+        for raw in text.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let mut vals: Vec<f64> = Vec::new();
+            for tok in line
+                .split(|c: char| c == ',' || c == ';' || c.is_ascii_whitespace())
+                .filter(|s| !s.is_empty())
+            {
+                if let Ok(v) = tok.parse::<f64>() {
+                    vals.push(v);
+                }
+                if vals.len() >= 2 {
+                    break;
+                }
+            }
+            if vals.len() >= 2 && vals[0].is_finite() && vals[1].is_finite() && vals[0] > 0.0 && vals[1] > 0.0 {
+                rows.push((vals[0], vals[1]));
+            }
+        }
+        rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        rows.dedup_by(|a, b| (a.0 - b.0).abs() <= f64::EPSILON);
+        assert!(
+            rows.len() >= 2,
+            "transfer tabulada '{path}' requiere al menos 2 filas válidas (k>0, T>0)"
+        );
+
+        let x: Vec<f64> = rows.iter().map(|(k, _)| k.ln()).collect();
+        let y: Vec<f64> = rows.iter().map(|(_, t)| t.ln()).collect();
+        let m = pchip_slopes(&x, &y);
+        Self { x, y, m }
+    }
+
+    fn eval(&self, k: f64) -> f64 {
+        if k <= 0.0 || !k.is_finite() {
+            return 0.0;
+        }
+        let xq = k.ln();
+        let n = self.x.len();
+
+        if xq <= self.x[0] {
+            let yq = self.y[0] + self.m[0] * (xq - self.x[0]);
+            return yq.exp();
+        }
+        if xq >= self.x[n - 1] {
+            let yq = self.y[n - 1] + self.m[n - 1] * (xq - self.x[n - 1]);
+            return yq.exp();
+        }
+
+        let mut lo = 0usize;
+        let mut hi = n - 1;
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2;
+            if self.x[mid] <= xq {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        let h = self.x[lo + 1] - self.x[lo];
+        let t = (xq - self.x[lo]) / h;
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+        let h10 = t3 - 2.0 * t2 + t;
+        let h01 = -2.0 * t3 + 3.0 * t2;
+        let h11 = t3 - t2;
+        let yq = h00 * self.y[lo]
+            + h10 * h * self.m[lo]
+            + h01 * self.y[lo + 1]
+            + h11 * h * self.m[lo + 1];
+        yq.exp()
+    }
+}
+
+fn pchip_slopes(x: &[f64], y: &[f64]) -> Vec<f64> {
+    let n = x.len();
+    assert!(n >= 2);
+    let mut h = vec![0.0_f64; n - 1];
+    let mut d = vec![0.0_f64; n - 1];
+    for i in 0..(n - 1) {
+        h[i] = x[i + 1] - x[i];
+        d[i] = (y[i + 1] - y[i]) / h[i];
+    }
+
+    let mut m = vec![0.0_f64; n];
+    if n == 2 {
+        m[0] = d[0];
+        m[1] = d[0];
+        return m;
+    }
+
+    // Endpoints
+    m[0] = ((2.0 * h[0] + h[1]) * d[0] - h[0] * d[1]) / (h[0] + h[1]);
+    if m[0].signum() != d[0].signum() {
+        m[0] = 0.0;
+    } else if d[0].signum() != d[1].signum() && m[0].abs() > 3.0 * d[0].abs() {
+        m[0] = 3.0 * d[0];
+    }
+
+    m[n - 1] = ((2.0 * h[n - 2] + h[n - 3]) * d[n - 2] - h[n - 2] * d[n - 3]) / (h[n - 2] + h[n - 3]);
+    if m[n - 1].signum() != d[n - 2].signum() {
+        m[n - 1] = 0.0;
+    } else if d[n - 2].signum() != d[n - 3].signum() && m[n - 1].abs() > 3.0 * d[n - 2].abs() {
+        m[n - 1] = 3.0 * d[n - 2];
+    }
+
+    // Interior points: Fritsch-Carlson weighted harmonic mean
+    for i in 1..(n - 1) {
+        if d[i - 1] == 0.0 || d[i] == 0.0 || d[i - 1].signum() != d[i].signum() {
+            m[i] = 0.0;
+        } else {
+            let w1 = 2.0 * h[i] + h[i - 1];
+            let w2 = h[i] + 2.0 * h[i - 1];
+            m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]);
+        }
+    }
+
+    m
 }
 
 // ── Índice de modo con signo ──────────────────────────────────────────────────
@@ -302,6 +441,18 @@ pub fn build_spectrum_fn(
                 // σ² = amp² · k^n_s · T² → σ = amp · k^(n_s/2) · T(k)
                 // Dividir por sqrt(N³) para normalizar por volumen del grid.
                 amp * k_hmpc.powf(spectral_index / 2.0) * tk * inv_sqrt_n3
+            })
+        }
+        TransferKind::Tabulated { path } => {
+            let table = TabulatedTransfer::from_file(&path);
+            Box::new(move |n_abs: f64| {
+                if n_abs <= 0.0 {
+                    return 0.0;
+                }
+                let bsm = box_size_mpc_h.unwrap_or(100.0);
+                let k_hmpc = 2.0 * std::f64::consts::PI * h / bsm * n_abs;
+                let tk = table.eval(k_hmpc);
+                amplitude * k_hmpc.powf(spectral_index / 2.0) * tk * inv_sqrt_n3
             })
         }
     }
@@ -818,6 +969,7 @@ pub mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     /// Construye closure de ley de potencia simple para tests.
     fn power_law_fn(n: usize, amplitude: f64, spectral_index: f64) -> impl Fn(f64) -> f64 {
@@ -916,5 +1068,66 @@ mod tests {
         assert!(mean_x.abs() < tol, "⟨Ψ_x⟩ = {:.2e} ≠ 0", mean_x);
         assert!(mean_y.abs() < tol, "⟨Ψ_y⟩ = {:.2e} ≠ 0", mean_y);
         assert!(mean_z.abs() < tol, "⟨Ψ_z⟩ = {:.2e} ≠ 0", mean_z);
+    }
+
+    #[test]
+    fn tabulated_transfer_reconstructs_knots_and_midpoints() {
+        let path = std::env::temp_dir().join(format!(
+            "gadget_ng_tf_{}_{}.dat",
+            std::process::id(),
+            12345u32
+        ));
+        // T(k) suave con wiggles de baja amplitud.
+        let mut text = String::from("# k[h/Mpc] T(k)\n");
+        let ks = [
+            1e-3_f64, 1.5e-3, 2e-3, 3e-3, 5e-3, 7e-3, 1e-2, 1.5e-2, 2e-2, 3e-2, 5e-2, 7e-2, 0.1,
+            0.15, 0.2, 0.3, 0.5, 0.7, 1.0,
+        ];
+        for &k in &ks {
+            let tk = (1.0 + 0.02 * (1.5 * k.ln()).sin()) * (1.0 + 20.0 * k).powf(-0.8);
+            text.push_str(&format!("{k:.8e} {tk:.8e}\n"));
+        }
+        fs::write(&path, text).expect("write tabulated tf temp file");
+
+        let n = 32usize;
+        let inv_sqrt_n3 = 1.0 / ((n * n * n) as f64).sqrt();
+        let spec = build_spectrum_fn(
+            n,
+            0.0, // k^(n_s/2)=1
+            1.0, // amp=1
+            TransferKind::Tabulated {
+                path: path.to_string_lossy().to_string(),
+            },
+            None,
+            0.315,
+            0.049,
+            0.674,
+            2.7255,
+            Some(1.0), // k_hmpc = 2π h n_abs
+        );
+
+        // En knots (mapeados vía n_abs), error debe ser mínimo.
+        for &k in &ks {
+            let n_abs = k / (2.0 * std::f64::consts::PI * 0.674);
+            let sigma = spec(n_abs);
+            let tk_est = sigma / inv_sqrt_n3;
+            let tk_ref = (1.0 + 0.02 * (1.5 * k.ln()).sin()) * (1.0 + 20.0 * k).powf(-0.8);
+            let rel = (tk_est - tk_ref).abs() / tk_ref.abs().max(1e-12);
+            assert!(rel < 1e-7, "knot rel err={rel:.3e} at k={k:.3e}");
+        }
+
+        // Midpoints: <= 0.1% (objetivo roadmap).
+        for w in ks.windows(2) {
+            let k_mid = (w[0] * w[1]).sqrt();
+            let n_abs = k_mid / (2.0 * std::f64::consts::PI * 0.674);
+            let sigma = spec(n_abs);
+            let tk_est = sigma / inv_sqrt_n3;
+            let tk_ref =
+                (1.0 + 0.02 * (1.5 * k_mid.ln()).sin()) * (1.0 + 20.0 * k_mid).powf(-0.8);
+            let rel = (tk_est - tk_ref).abs() / tk_ref.abs().max(1e-12);
+            assert!(rel < 1e-3, "midpoint rel err={rel:.3e} at k={k_mid:.3e}");
+        }
+
+        let _ = fs::remove_file(path);
     }
 }
