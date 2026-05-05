@@ -155,7 +155,7 @@ fn ics_1lpt_with(
         box_size_mpc_h,
         normalization_mode,
         ..
-    } = cfg.initial_conditions.kind
+    } = cfg.initial_conditions.kind.clone()
     else {
         panic!("Phase 45 test requires Zeldovich ICs");
     };

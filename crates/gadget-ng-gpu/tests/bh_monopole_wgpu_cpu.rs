@@ -56,6 +56,7 @@ fn bh_monopole_gpu_matches_cpu_order1() {
             &masses,
             1,
             false,
+            false,
             0.0,
             false,
             MacSoftening::Bare,

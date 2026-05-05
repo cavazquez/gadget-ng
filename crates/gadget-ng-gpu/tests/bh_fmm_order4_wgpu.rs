@@ -42,6 +42,7 @@ fn bh_fmm_order4_gpu_vs_cpu_multipole() {
         &masses,
         4,
         false,
+        false,
         0.002,
         false,
         MacSoftening::Bare,

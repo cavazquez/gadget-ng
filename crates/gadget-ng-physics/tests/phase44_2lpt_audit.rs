@@ -176,7 +176,7 @@ fn generate_ics_with_variant(
         box_size_mpc_h,
         normalization_mode,
         ..
-    } = cfg.initial_conditions.kind
+    } = cfg.initial_conditions.kind.clone()
     else {
         panic!("Phase 44 requires Zeldovich/2LPT ICs");
     };
