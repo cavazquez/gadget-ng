@@ -46,10 +46,7 @@ fn bench_pm(c: &mut Criterion) {
         let indices: Vec<_> = (0..n).collect();
         let eps2 = cfg.softening_squared();
         let g = cfg.effective_g();
-        let solver = PmSolver {
-            grid_size: grid,
-            box_size: 1.0,
-        };
+        let solver = PmSolver::new(grid, 1.0);
         let mut acc = vec![gadget_ng_core::Vec3::zero(); n];
 
         group.bench_with_input(BenchmarkId::new(format!("grid{grid}"), n), &n, |b, _| {

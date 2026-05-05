@@ -141,10 +141,7 @@ fn evolve_pm_qksl(
     dt: f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..100_000 {

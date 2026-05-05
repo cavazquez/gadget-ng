@@ -137,3 +137,23 @@ pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt
         }
     }
 }
+
+/// Pérdidas hadrónicas aproximadas: `e_cr ← e_cr × exp(−k × ρ × dt)`.
+///
+/// `coeff` agrega secciones eficaces y normalización en un solo parámetro
+/// [unidades internas]; `0` desactiva. La densidad se estima como `m / (4πh³/3)`.
+pub fn apply_cr_hadronic_losses(particles: &mut [Particle], coeff: f64, dt: f64) {
+    if coeff <= 0.0 {
+        return;
+    }
+    const PI: f64 = std::f64::consts::PI;
+    for p in particles.iter_mut() {
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
+        let h = p.smoothing_length.max(1e-30);
+        let rho = p.mass / ((4.0 / 3.0) * PI * h * h * h).max(1e-100);
+        let x = (coeff * rho * dt).min(80.0);
+        p.cr_energy *= (-x).exp();
+    }
+}

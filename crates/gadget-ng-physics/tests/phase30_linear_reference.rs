@@ -244,10 +244,7 @@ fn theory_pk_at_bins(k_hmpc_vals: &[f64]) -> Vec<(f64, f64)> {
 /// Evolución PM cosmológica durante `n_steps` pasos. Devuelve (a_final, partes).
 fn run_pm(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver {
-        grid_size: NM,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(NM, BOX);
     let mut scratch = vec![Vec3::zero(); N_PART];
     let mut a = A_INIT;
 

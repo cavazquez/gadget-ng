@@ -153,10 +153,7 @@ fn evolve_pm_to_a(
     }
     let n = parts.len();
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = a_start;
     let max_iter = 1_000_000;

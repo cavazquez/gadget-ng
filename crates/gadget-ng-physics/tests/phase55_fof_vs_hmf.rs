@@ -143,10 +143,7 @@ fn evolve_pm_to_a_adaptive(
     let cosmo = cosmo_params();
     let g_code = g_consistent();
     let softening = BOX / (n_mesh as f64 * 20.0);
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let n = parts.len();
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = a_start;

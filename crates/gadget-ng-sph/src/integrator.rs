@@ -12,6 +12,20 @@ use crate::particle::SphParticle;
 use crate::viscosity::compute_balsara_factors;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
 
+/// Vector mínima imagen en caja cúbica de lado `L` (`p_j - p_i` acotado a `[-L/2,L/2]` por eje).
+#[inline]
+fn periodic_delta(pi: Vec3, pj: Vec3, periodic_box: Option<f64>) -> Vec3 {
+    let mut d = pj - pi;
+    if let Some(l) = periodic_box {
+        if l > 0.0 {
+            d.x -= l * (d.x / l).round();
+            d.y -= l * (d.y / l).round();
+            d.z -= l * (d.z / l).round();
+        }
+    }
+    d
+}
+
 // ─── SPH cosmológico sobre gadget_ng_core::Particle ──────────────────────────
 
 /// Aceleración + tasa de energía interna SPH para partículas `Particle` con `ptype == Gas`.
@@ -23,6 +37,7 @@ fn sph_accel_and_dudt(
     pressure: &[f64],
     alpha_visc: f64,
     gamma: f64,
+    periodic_box: Option<f64>,
 ) -> Vec<(Vec3, f64)> {
     let n = particles.len();
     let mut result = vec![(Vec3::zero(), 0.0f64); n];
@@ -45,7 +60,7 @@ fn sph_accel_and_dudt(
             if j == i || particles[j].ptype != ParticleType::Gas || rho[j] < 1e-200 {
                 continue;
             }
-            let r_ij = pi - particles[j].position;
+            let r_ij = periodic_delta(pi, particles[j].position, periodic_box);
             let r = r_ij.norm();
             let hj = particles[j].smoothing_length.max(1e-10);
 
@@ -93,6 +108,7 @@ fn compute_rho_pressure(
     particles: &mut [Particle],
     n_neigh: f64,
     gamma: f64,
+    periodic_box: Option<f64>,
 ) -> (Vec<f64>, Vec<f64>) {
     let n = particles.len();
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
@@ -117,7 +133,7 @@ fn compute_rho_pressure(
                 if particles[j].ptype != ParticleType::Gas {
                     continue;
                 }
-                let r = (pos[j] - pi).norm();
+                let r = periodic_delta(pi, pos[j], periodic_box).norm();
                 rho += mass[j] * w(r, h);
                 let gw = grad_w(r, h);
                 drho += mass[j] * (-1.0 / h) * (3.0 * w(r, h) + r * gw);
@@ -134,7 +150,7 @@ fn compute_rho_pressure(
         }
         let rho_final: f64 = (0..n)
             .filter(|&j| particles[j].ptype == ParticleType::Gas)
-            .map(|j| mass[j] * w((pos[j] - pi).norm(), h))
+            .map(|j| mass[j] * w(periodic_delta(pi, pos[j], periodic_box).norm(), h))
             .sum();
         particles[i].smoothing_length = h;
         rho_out[i] = rho_final;
@@ -155,6 +171,7 @@ fn compute_rho_pressure(
 /// - `gamma`: índice adiabático (p. ej. 5/3).
 /// - `alpha_visc`: parámetro de viscosidad artificial (p. ej. 1.0).
 /// - `n_neigh`: número objetivo de vecinos SPH (p. ej. 32.0).
+/// - `periodic_box`: si es `Some(L)`, distancias SPH usan imagen mínima en `[0,L)³`.
 /// - `gravity_accel`: función que escribe `particle.acceleration` para todas las partículas.
 pub fn sph_cosmo_kdk_step<F>(
     particles: &mut [Particle],
@@ -162,15 +179,17 @@ pub fn sph_cosmo_kdk_step<F>(
     gamma: f64,
     alpha_visc: f64,
     n_neigh: f64,
+    periodic_box: Option<f64>,
     mut gravity_accel: F,
 ) where
     F: FnMut(&mut [Particle]),
 {
     // ── Densidad y presión al inicio del paso ─────────────────────────────────
-    let (rho, pressure) = compute_rho_pressure(particles, n_neigh, gamma);
+    let (rho, pressure) = compute_rho_pressure(particles, n_neigh, gamma, periodic_box);
 
     // ── Fuerzas SPH al inicio ─────────────────────────────────────────────────
-    let sph_forces = sph_accel_and_dudt(particles, &rho, &pressure, alpha_visc, gamma);
+    let sph_forces =
+        sph_accel_and_dudt(particles, &rho, &pressure, alpha_visc, gamma, periodic_box);
 
     // ── Kick 1 (½ kick) ──────────────────────────────────────────────────────
     for (i, p) in particles.iter_mut().enumerate() {
@@ -190,8 +209,9 @@ pub fn sph_cosmo_kdk_step<F>(
 
     // ── Fuerzas al nuevo tiempo ───────────────────────────────────────────────
     gravity_accel(particles);
-    let (rho2, pressure2) = compute_rho_pressure(particles, n_neigh, gamma);
-    let sph_forces2 = sph_accel_and_dudt(particles, &rho2, &pressure2, alpha_visc, gamma);
+    let (rho2, pressure2) = compute_rho_pressure(particles, n_neigh, gamma, periodic_box);
+    let sph_forces2 =
+        sph_accel_and_dudt(particles, &rho2, &pressure2, alpha_visc, gamma, periodic_box);
 
     // ── Kick 2 (½ kick) ──────────────────────────────────────────────────────
     for (i, p) in particles.iter_mut().enumerate() {

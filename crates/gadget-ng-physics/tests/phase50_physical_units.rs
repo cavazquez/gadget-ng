@@ -194,10 +194,7 @@ fn evolve_adaptive_g(
     dt_max: f64,
 ) -> (f64, usize) {
     let c = cosmo();
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let softening = 1.0 / (n_mesh as f64 * 20.0);
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
@@ -249,10 +246,7 @@ fn evolve_fixed_g(
     dt: f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..500_000 {

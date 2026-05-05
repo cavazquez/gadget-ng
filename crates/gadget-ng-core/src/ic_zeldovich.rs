@@ -19,9 +19,11 @@
 //!
 //! ## Espectro de potencia
 //!
-//! El campo de densidad gaussiano tiene espectro `P(k) = amplitude²·|n|^spectral_index`
-//! en unidades de grid, donde `n = (nx,ny,nz)` es el vector de modo entero y
-//! `|n|² = nx²+ny²+nz²`.
+//! El campo de densidad gaussiano depende del modo de transferencia:
+//! - **PowerLaw (legacy):** varianza por modo escala como `|n|^(n_s/2)` en potencia,
+//!   es decir `σ ∝ |n|^(n_s/4)` porque `δ̂` es complejo gaussiano — **no** usar el mismo
+//!   `n_s` que en Eisenstein–Hu esperando el mismo `P(k)`; compare sólo dentro del mismo modo.
+//! - **Eisenstein–Hu:** `σ ∝ k^(n_s/2)·T(k)` de modo que `P(k) ∝ k^n_s·T²` tras normalizar.
 //!
 //! La varianza por modo es: `σ²(k) = P(k)/N³`
 //!
@@ -48,12 +50,16 @@
 
 use crate::{
     config::{RunConfig, TransferKind},
-    cosmology::{CosmologyParams, growth_factor_d_ratio, growth_rate_f, hubble_param},
+    cosmology::{growth_factor_d_ratio, growth_rate_f, hubble_param, CosmologyParams},
     particle::Particle,
-    transfer_fn::{EisensteinHuParams, amplitude_for_sigma8, transfer_eh_nowiggle},
+    transfer_fn::{amplitude_for_sigma8, transfer_eh_nowiggle, EisensteinHuParams},
     vec3::Vec3,
 };
-use rustfft::{FftPlanner, num_complex::Complex};
+use rand::rngs::StdRng;
+use rand::{RngCore, SeedableRng};
+use rustfft::{num_complex::Complex, FftPlanner};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 // ── Generador LCG ─────────────────────────────────────────────────────────────
 
@@ -75,35 +81,36 @@ fn mode_seed(global_seed: u64, ix: usize, iy: usize, iz: usize, n: usize) -> u64
     hash_u64(global_seed ^ hash_u64(packed))
 }
 
-/// Generador LCG simple (Knuth MMIX).
-struct Lcg(u64);
+/// PRNG **`rand::StdRng`** (semilla [`mode_seed`]): mejor estadística que el LCG legacy.
+/// (Alternativa recomendada en bibliografía: **Pcg64** vía `rand_pcg`.)
+#[inline]
+fn uniform01_u53(rng: &mut impl RngCore) -> f64 {
+    (rng.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+}
 
-impl Lcg {
-    fn new(seed: u64) -> Self {
-        Lcg(seed | 1)
-    }
+#[inline]
+fn gaussian_std(seed_u64: u64) -> f64 {
+    let mut rng = StdRng::seed_from_u64(seed_u64);
+    let u1 = uniform01_u53(&mut rng).max(1e-300);
+    let u2 = uniform01_u53(&mut rng);
+    (-2.0_f64 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+}
 
-    #[inline]
-    fn next_u64(&mut self) -> u64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        self.0
-    }
-
-    /// Número en `(0, 1)` usando 53 bits.
-    #[inline]
-    fn next_f64(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
-    }
-
-    /// Gaussiana estándar via Box-Muller.
-    fn gauss(&mut self) -> f64 {
-        let u1 = self.next_f64().max(1e-300);
-        let u2 = self.next_f64();
-        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::TAU * u2).cos()
-    }
+fn fft_plan_cached(n: usize, forward: bool) -> Arc<dyn rustfft::Fft<f64>> {
+    static CACHE: OnceLock<Mutex<HashMap<(usize, bool), Arc<dyn rustfft::Fft<f64>>>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut g = cache.lock().expect("fft plan cache lock");
+    g.entry((n, forward))
+        .or_insert_with(|| {
+            let mut planner = FftPlanner::new();
+            if forward {
+                planner.plan_fft_forward(n)
+            } else {
+                planner.plan_fft_inverse(n)
+            }
+        })
+        .clone()
 }
 
 // ── Índice de modo con signo ──────────────────────────────────────────────────
@@ -113,7 +120,11 @@ impl Lcg {
 pub fn mode_int(j: usize, n: usize) -> i64 {
     let half = (n / 2) as i64;
     let jj = j as i64;
-    if jj <= half { jj } else { jj - n as i64 }
+    if jj <= half {
+        jj
+    } else {
+        jj - n as i64
+    }
 }
 
 // ── Generación del campo gaussiano en k-space ─────────────────────────────────
@@ -139,8 +150,8 @@ pub fn generate_delta_kspace(
     let n3 = n * n * n;
     let mut delta = vec![Complex::new(0.0, 0.0); n3];
 
-    // Paso 1: generar la mitad "upper" del campo (iz >= 0, iz=0 tomamos iy >= 0).
-    // Garantizar simetría Hermitiana a posteriori.
+    // Paso 1: rellenar todos los modos con gaussianas independientes por celda FFT.
+    // Paso 2 impone δ̂(−k)=conj(δ̂(k)) con un único representante por par {k,−k}.
     for ix in 0..n {
         let nx = mode_int(ix, n);
         for iy in 0..n {
@@ -165,9 +176,9 @@ pub fn generate_delta_kspace(
                 let sigma = spectrum_fn(n2.sqrt());
 
                 // Generador por modo: reproducible con seed+modo.
-                let mut lcg = Lcg::new(mode_seed(seed, ix, iy, iz, n));
-                let g_r = lcg.gauss();
-                let g_i = lcg.gauss();
+                let ms = mode_seed(seed, ix, iy, iz, n);
+                let g_r = gaussian_std(ms);
+                let g_i = gaussian_std(hash_u64(ms ^ 0x9E37_79B9_7F4A_7C15));
 
                 let val = Complex::new(sigma * g_r, sigma * g_i);
                 delta[ix * n * n + iy * n + iz] = val;
@@ -197,10 +208,12 @@ pub fn generate_delta_kspace(
                 let iy_neg = ((-ny).rem_euclid(n as i64)) as usize;
                 let iz_neg = ((-nz).rem_euclid(n as i64)) as usize;
 
-                // Solo procesar cada par una vez (modo "upper": iz > 0, o iz=0 iy>0, o iz=0 iy=0 ix>0).
-                let is_upper = iz > 0 || (iz == 0 && iy > 0) || (iz == 0 && iy == 0 && ix > 0);
+                // Un solo representante por par {k, −k}: comparación lexicográfica determinista.
+                // La condición previa por half-space dejaba ambos extremos como "upper" y el orden
+                // del bucle rompía la simetría Hermitiana.
+                let take_this_cell = (ix, iy, iz) < (ix_neg, iy_neg, iz_neg);
 
-                if is_upper {
+                if take_this_cell {
                     let val = delta[ix * n * n + iy * n + iz];
                     delta[ix_neg * n * n + iy_neg * n + iz_neg] = val.conj();
                 }
@@ -293,12 +306,7 @@ pub fn build_spectrum_fn(
 /// FFT 3D in-place sobre el array `buf` de tamaño `n³`.
 /// Convención: tres pasadas de FFT 1D (ejes z, y, x).
 pub fn fft3d(buf: &mut [Complex<f64>], n: usize, forward: bool) {
-    let mut planner = FftPlanner::new();
-    let plan = if forward {
-        planner.plan_fft_forward(n)
-    } else {
-        planner.plan_fft_inverse(n)
-    };
+    let plan = fft_plan_cached(n, forward);
 
     // Eje Z: n×n filas de longitud n (contiguas en memoria).
     for row in buf.chunks_exact_mut(n) {
@@ -621,9 +629,9 @@ impl IcMomentumConvention {
 /// [`IcMomentumConvention`]. Utilizada en auditorías de unidades (Phase 45)
 /// y en A/B tests.
 ///
-/// Salvo por el factor de velocidad, el comportamiento es bit-idéntico a
-/// `zeldovich_ics` con la misma configuración. En particular:
-/// `zeldovich_ics(...) == zeldovich_ics_with_convention(..., IcMomentumConvention::A2DxDt)`.
+/// Salvo por el factor de velocidad según [`IcMomentumConvention`], debe coincidir con
+/// `zeldovich_ics` (misma cosmología CPL/Ω_ν, misma supresión de neutrinos en el espectro).
+/// En particular: `zeldovich_ics(...) == zeldovich_ics_with_convention(..., IcMomentumConvention::A2DxDt)`.
 #[allow(clippy::too_many_arguments)]
 pub fn zeldovich_ics_with_convention(
     cfg: &RunConfig,
@@ -648,15 +656,29 @@ pub fn zeldovich_ics_with_convention(
 
     let (a_init, cosmo) = if cfg.cosmology.enabled {
         let a = cfg.cosmology.a_init;
-        let cp = CosmologyParams::new(
+        let omega_nu =
+            crate::cosmology::omega_nu_from_mass(cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0);
+        let mut cp = CosmologyParams::new(
             cfg.cosmology.omega_m,
             cfg.cosmology.omega_lambda,
             cfg.cosmology.h0,
         );
+        cp.w0 = cfg.cosmology.w0;
+        cp.wa = cfg.cosmology.wa;
+        cp.omega_nu = omega_nu;
         (a, cp)
     } else {
         let cp = CosmologyParams::new(1.0, 0.0, cfg.cosmology.h0);
         (1.0, cp)
+    };
+
+    let nu_suppression = if cfg.cosmology.m_nu_ev > 0.0 && cfg.cosmology.omega_m > 0.0 {
+        let omega_nu =
+            crate::cosmology::omega_nu_from_mass(cfg.cosmology.m_nu_ev, cfg.cosmology.h0 * 10.0);
+        let f_nu = omega_nu / cfg.cosmology.omega_m;
+        crate::cosmology::neutrino_suppression(f_nu)
+    } else {
+        1.0
     };
 
     let h_a = hubble_param(cosmo, a_init);
@@ -671,7 +693,7 @@ pub fn zeldovich_ics_with_convention(
 
     let d = box_size / n as f64;
 
-    let spectrum_fn = build_spectrum_fn(
+    let spectrum_fn_base = build_spectrum_fn(
         n,
         spectral_index,
         amplitude,
@@ -683,6 +705,12 @@ pub fn zeldovich_ics_with_convention(
         t_cmb,
         box_size_mpc_h,
     );
+    let spectrum_fn: Box<dyn Fn(f64) -> f64> = if nu_suppression < 1.0 {
+        let sqrt_sup = nu_suppression.sqrt();
+        Box::new(move |n_abs: f64| spectrum_fn_base(n_abs) * sqrt_sup)
+    } else {
+        spectrum_fn_base
+    };
 
     let delta = generate_delta_kspace(n, seed, spectrum_fn);
     let [mut psi_x, mut psi_y, mut psi_z] = delta_to_displacement(&delta, n, box_size);

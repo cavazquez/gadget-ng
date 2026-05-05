@@ -186,10 +186,7 @@ fn run_pm_n_a(
 ) -> f64 {
     let n = parts.len();
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver {
-        grid_size: nm,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(nm, BOX);
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = a_init;
 

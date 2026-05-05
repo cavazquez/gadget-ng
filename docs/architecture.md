@@ -83,6 +83,24 @@ Función de conveniencia: `read_snapshot_formatted(fmt, dir)` análoga a `write_
 
 Para salir de \(O(N^2)\) sin multiplicar la superficie de código, el núcleo BH usa **monopolo por nodo** (masa total + COM) y el MAC clásico `s/d < \theta` con \(d\) la distancia al COM del nodo. **FMM** u órdenes multipolares superiores quedan como extensión si hace falta más precisión por celda con el mismo \(\theta\).
 
+### PM en GPU (CUDA, HIP y referencia `fft_poisson`)
+
+El crate **`gadget-ng-pm`** implementa el PM periódico con `rustfft` en **f64**, CIC y Poisson en *k*-espacio (`fft_poisson`). Tras la IFFT 3D, la fuerza en cada celda se toma de la **parte real** del complejo resultante (convención del código CPU).
+
+**CUDA (`gadget-ng-cuda`)** — pipeline alineado con esa referencia:
+
+- FFT **Z2Z en doble precisión** y **tres pasadas 1D** en el mismo orden que `fft3d_inplace` / `ifft3d_inplace` en `fft_poisson.rs` (no un único plan R2C 3D).
+- Tras la **triple IFFT inversa**, el solver aplica un factor escalar **\(1/N^4\)** sobre la parte real (cuFFT no introduce el producto de \(1/N\) por eje de forma que coincida con el encadenado CPU en un solo paso; el factor empírico closing reproduce los smoke tests frente a `fft_poisson`).
+- **TreePM / filtro Gaussiano** (\(r_{\mathrm{split}} > 0\)): el mismo filtro \(W(k)=\exp(-k^2 r_s^2/2)\) que en CPU. Para que la fuerza física quede en **Re(IFFT)** como en la referencia, se multiplica **\(\hat F_y\)** y **\(\hat F_z\)** por **\(-i\)** en *k*-espacio **solo si el filtro está activo** (convención cuFFT Z2Z vs `rustfft`); \(\hat F_x\) no se rota.
+
+**HIP (`gadget-ng-hip`)** — hoy usa **rocFFT R2C / C2R en f32** y layout Hermitiano de **media malla** (\(N_x N_y (N_z/2+1)\)), con normalización **\(1/N^3\)** aplicada sobre \(\hat\rho\) en el kernel de Poisson. **No** replica el pipeline Z2Z f64 de CUDA ni la misma cadena de escalado que `fft_poisson`; la paridad numérica con CPU/CUDA es **aproximada**. Un objetivo razonable de evolución es portar el mismo esquema que CUDA (Z2Z f64, orden 1D, \(1/N^4\) post-IFFT, rotación \(-i\) en \(\hat F_y,\hat F_z\) con filtro) para no mantener dos físicas distintas en NVIDIA vs AMD.
+
+**Tests** (`crates/gadget-ng-cuda/tests/cuda_pm_smoke.rs`): el caso **filtrado** compara con `solve_forces_filtered` + CIC. El error relativo **por partícula** usa un **denominador robusto** (norma de referencia acotada inferiormente por una fracción de la norma media) para que partículas con \(|\mathbf a|\approx 0\) no exploten la métrica; además se puede reportar un percentil (p. ej. p90) además del máximo.
+
+### Extensiones de física (roadmap ejecutado)
+
+La cartera priorizada (CR anisótropo, polvo con impulso radiativo, neutrinos/jerarquía en cosmología de run) está descrita en [roadmap-physics-extensions.md](roadmap-physics-extensions.md).
+
 ## Flujo de `stepping` (MPI)
 
 Camino **habitual** multirank con Barnes–Hut: intercambio de halos según SFC y aplicación de nodos **LET** remotos (sin reunir todas las partículas en cada proceso). Con `force_allgather_fallback` o condiciones que desactivan SFC+LET, el motor puede usar un **allgather** del estado posición/masa antes del solver (patrón más cercano al prototipo histórico).

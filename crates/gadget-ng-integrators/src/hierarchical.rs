@@ -32,7 +32,8 @@
 //!    (`(s+1) % stride(k) == 0`):
 //!    ```text
 //!    // Corrección de segundo orden para partículas INACTIVAS antes de evaluar fuerzas:
-//!    Δx_j = 0.5 * a_j * (elapsed[j] * fine_dt)²   (j ∉ end_active)
+//!    D = Σ ∫dt/a² en los sub-pasos finos desde el último START (Newtoniano: elapsed·fine_dt)
+//!    Δx_j = 0.5 * a_j * D²   (j ∉ end_active)
 //!    x_j += Δx_j
 //!    compute a_new  (usa posiciones predichas de inactivas)
 //!    x_j -= Δx_j   (restaurar posición real)
@@ -215,7 +216,7 @@ pub struct StepStats {
 /// **inactivas** se mejoran temporalmente con el predictor de Störmer:
 ///
 /// ```text
-/// Δx_j = 0.5 * a_j * (elapsed[j] * fine_dt)²
+/// Δx_j = 0.5 * a_j * D_elapsed²,  D_elapsed = Σ_s ∫dt/a² en sub-pasos finos desde el último START
 /// ```
 ///
 /// donde `elapsed[j]` es el número de sub-pasos finos desde el último kick de
@@ -253,6 +254,10 @@ pub struct StepStats {
 /// - `compute` — cierre `FnMut(&[Particle], &[usize], &mut [Vec3])`.
 ///   Rellena `out[j]` con la aceleración de `particles[active_local[j]]`.
 ///   Los índices son **locales** (posición en `particles`), no `global_id`.
+///   Muchos solvers (PM, árbol global) ignoran el subconjunto y usan **todas** las partículas;
+///   el vector `active_local` marca quién recibe kick END en ese sub-paso.
+/// - `periodic_box` — si es `Some(L)`, tras cada drift se envuelven posiciones a `[0,L)³`
+///   (condiciones periódicas cosmológicas).
 ///
 /// ## Retorno
 /// Devuelve [`StepStats`] con las métricas de instrumentación del paso.
@@ -267,6 +272,7 @@ pub fn hierarchical_kdk_step(
     criterion: TimestepCriterion,
     cosmo: Option<(&CosmologyParams, &mut f64)>,
     kappa_h: Option<f64>,
+    periodic_box: Option<f64>,
     mut compute: impl FnMut(&[Particle], &[usize], &mut [Vec3]),
 ) -> StepStats {
     assert_eq!(particles.len(), state.levels.len());
@@ -351,6 +357,14 @@ pub fn hierarchical_kdk_step(
             *e += 1;
         }
 
+        if let Some(l) = periodic_box {
+            if l > 0.0 {
+                for p in particles.iter_mut() {
+                    p.position = gadget_ng_core::cosmology::wrap_position(p.position, l);
+                }
+            }
+        }
+
         // ── 3. Predictor + END kick ───────────────────────────────────────────────
         // Condición: (s+1) % stride(k) == 0.
         let end_active: Vec<usize> = (0..n)
@@ -372,9 +386,15 @@ pub fn hierarchical_kdk_step(
                 let stride_i = 1u64 << (max_level - state.levels[i]);
                 let el = state.elapsed[i];
                 if el > 0 && el < stride_i {
-                    // Partícula inactiva: elapsed < stride (no está en end_active)
-                    let elapsed_t = el as f64 * fine_dt;
-                    let corr = particles[i].acceleration * (0.5 * elapsed_t * elapsed_t);
+                    // Partícula inactiva: elapsed < stride (no está en end_active).
+                    // Factor ∫dt/a² acumulado en los `el` sub-pasos finos desde el último START,
+                    // para alinear el predictor con el drift cosmológico (Newtoniano: el·fine_dt).
+                    let start_s = s_idx + 1 - (el as usize);
+                    let mut d_cum = 0.0_f64;
+                    for j in start_s..=s_idx {
+                        d_cum += drift_prefix[2 * j + 2] - drift_prefix[2 * j];
+                    }
+                    let corr = particles[i].acceleration * (0.5 * d_cum * d_cum);
                     particles[i].position += corr;
                     pred_corr[i] = corr;
                 }
@@ -631,6 +651,7 @@ mod tests {
                 eta_large,
                 max_level,
                 TimestepCriterion::Acceleration,
+                None,
                 None,
                 None,
                 |ps, _idx, out| {

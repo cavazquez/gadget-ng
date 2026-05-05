@@ -96,6 +96,7 @@ fn hierarchical_cosmo_energy_bounded() {
             TimestepCriterion::Acceleration,
             Some((&cosmo, &mut a)),
             None,
+            None,
             |ps, active, acc| {
                 gravity_direct(ps, active, acc);
                 for a_val in acc.iter_mut() {
@@ -165,6 +166,7 @@ fn hierarchical_cosmo_kappa_h_restricts_bins() {
         TimestepCriterion::Acceleration,
         Some((&cosmo, &mut a)),
         kappa_h,
+        None,
         |ps, active, acc| {
             gravity_direct(ps, active, acc);
             for a_val in acc.iter_mut() {

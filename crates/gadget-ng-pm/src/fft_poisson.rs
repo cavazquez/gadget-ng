@@ -9,6 +9,13 @@
 //! 3. Fuerzas en k-space: `F̂_α(k) = -i · k_α · Φ̂(k)`
 //! 4. IFFT por componente: `F_α = IFFT3D{F̂_α}`
 //!
+//! ## Suavizado Plummer coherente con TreePM (opcional)
+//!
+//! Si se pasa `plummer_eps > 0`, se multiplica `Φ̂(k)` por `exp(−k² ε²)` en el mismo espacio k
+//! que el PM (aproximación Gaussiana al kernel de Plummer). Así el largo alcance PM puede
+//! alinearse con el ε del par corto Newtoniano cuando `physical_softening` está activo (valor
+//! referenciado al factor de escala de construcción del solver).
+//!
 //! ## Convención de k
 //!
 //! Para un grid de lado NM y celda de tamaño `Δx = box_size/NM`, los números
@@ -16,7 +23,9 @@
 //! En rustfft (convención DFT estándar), el índice `j` corresponde a
 //! `n = j` para `j ≤ NM/2` y `n = j - NM` para `j > NM/2`.
 
-use rustfft::{FftPlanner, num_complex::Complex};
+use rustfft::{num_complex::Complex, FftPlanner};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -33,7 +42,7 @@ use rayon::prelude::*;
 /// unidades de aceleración (longitud/tiempo²), las masas deben estar en las
 /// mismas unidades que G·m/r².
 pub fn solve_forces(density: &[f64], g: f64, nm: usize, box_size: f64) -> [Vec<f64>; 3] {
-    solve_forces_impl(density, g, nm, box_size, None)
+    solve_forces_impl(density, g, nm, box_size, None, None)
 }
 
 /// Igual que [`solve_forces`] pero aplica un filtro Gaussiano en k-space que
@@ -52,7 +61,33 @@ pub fn solve_forces_filtered(
     box_size: f64,
     r_split: f64,
 ) -> [Vec<f64>; 3] {
-    solve_forces_impl(density, g, nm, box_size, Some(r_split))
+    solve_forces_impl(density, g, nm, box_size, Some(r_split), None)
+}
+
+/// Como [`solve_forces`] pero aplica suavizado Plummer en k-space `∝ exp(−k² ε²)` si `plummer_eps = Some(ε)`.
+pub fn solve_forces_softened(
+    density: &[f64],
+    g: f64,
+    nm: usize,
+    box_size: f64,
+    plummer_eps: Option<f64>,
+) -> [Vec<f64>; 3] {
+    solve_forces_impl(density, g, nm, box_size, None, plummer_eps)
+}
+
+fn fft_pm_plans(nm: usize) -> (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>) {
+    static CACHE: OnceLock<Mutex<HashMap<usize, (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>)>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut g = cache.lock().expect("pm fft cache");
+    g.entry(nm)
+        .or_insert_with(|| {
+            let mut planner = FftPlanner::new();
+            let fwd = planner.plan_fft_forward(nm);
+            let inv = planner.plan_fft_inverse(nm);
+            (fwd, inv)
+        })
+        .clone()
 }
 
 fn solve_forces_impl(
@@ -61,6 +96,7 @@ fn solve_forces_impl(
     nm: usize,
     box_size: f64,
     r_split: Option<f64>,
+    plummer_eps: Option<f64>,
 ) -> [Vec<f64>; 3] {
     let nm2 = nm * nm;
     let nm3 = nm2 * nm;
@@ -75,10 +111,7 @@ fn solve_forces_impl(
     let rho_scale = 1.0 / cell_vol;
 
     // ── FFT 3D de la densidad ─────────────────────────────────────────────────
-    // Usamos rustfft con arrays complejos; el input real implica f[j] = conj(f[N-j]).
-    let mut planner = FftPlanner::new();
-    let fft_fwd = planner.plan_fft_forward(nm);
-    let fft_inv = planner.plan_fft_inverse(nm);
+    let (fft_fwd, fft_inv) = fft_pm_plans(nm);
 
     // Convertir densidad a complejo.
     let mut rho_c: Vec<Complex<f64>> = density
@@ -120,11 +153,15 @@ fn solve_forces_impl(
                     Complex::new(0.0, 0.0),
                 );
             }
-            let filter = if let Some(r_s) = r_split {
-                (-0.5 * k2 * r_s * r_s).exp()
-            } else {
-                1.0
-            };
+            let mut filter = 1.0_f64;
+            if let Some(r_s) = r_split {
+                filter *= (-0.5 * k2 * r_s * r_s).exp();
+            }
+            if let Some(eps) = plummer_eps {
+                if eps > 0.0 {
+                    filter *= (-k2 * eps * eps).exp();
+                }
+            }
             let phi_k = rho_c[flat] * (-four_pi_g * filter / k2);
             (
                 Complex::new(kx * phi_k.im, -kx * phi_k.re),

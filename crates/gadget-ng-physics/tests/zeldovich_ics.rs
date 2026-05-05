@@ -426,10 +426,7 @@ fn zel_pm_short_run_stable() {
     let cosmo = CosmologyParams::new(1.0, 0.0, 0.1);
     let mut a = 0.02_f64;
     let dt = 0.002_f64;
-    let pm = PmSolver {
-        grid_size: NM,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(NM, BOX);
     let mut scratch = vec![Vec3::zero(); N_PART];
 
     for _ in 0..10 {

@@ -81,10 +81,7 @@ fn build_initial_particles() -> Vec<Particle> {
 }
 
 fn make_pm() -> PmSolver {
-    PmSolver {
-        grid_size: N_GRID,
-        box_size: BOX,
-    }
+    PmSolver::new(N_GRID, BOX)
 }
 
 /// Computa fuerzas y las almacena en `scratch`.

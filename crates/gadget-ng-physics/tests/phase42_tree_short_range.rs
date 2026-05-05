@@ -255,10 +255,7 @@ fn compute_accelerations(
 
     match variant {
         SolverVariant::PmOnly => {
-            let pm = PmSolver {
-                grid_size: n_mesh,
-                box_size: BOX,
-            };
+            let pm = PmSolver::new(n_mesh, BOX);
             pm.accelerations_for_indices(&positions, &masses, 0.0, g_cosmo, &indices, out);
         }
         SolverVariant::TreePmPeriodic { .. } => {

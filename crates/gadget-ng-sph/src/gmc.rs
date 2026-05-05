@@ -25,8 +25,8 @@
 //! Kroupa (2001) MNRAS 322, 231 — IMF estándar.
 //! Kennicutt (1998) ApJ 498, 541 — relación Schmidt-Kennicutt.
 
-use gadget_ng_core::Particle;
 use gadget_ng_core::config::SphSection;
+use gadget_ng_core::Particle;
 
 /// Masa mínima de la IMF de Kroupa [M☉].
 const M_MIN: f64 = 0.1;

@@ -204,10 +204,7 @@ fn evolve_to_a(
     }
     let n = parts.len();
     let cosmo = cosmo_params();
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let treepm = TreePmSolver {
         grid_size: n_mesh,
         box_size: BOX,

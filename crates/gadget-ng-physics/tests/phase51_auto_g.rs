@@ -233,10 +233,7 @@ fn phase51_auto_g_simulation_stable() {
 
     let mut parts = build_particles(&cfg).expect("ICs");
     let c = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver {
-        grid_size: 8,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(8, BOX);
     let softening = cfg.simulation.softening;
     let mut scratch = vec![Vec3::zero(); parts.len()];
 

@@ -320,10 +320,7 @@ fn lpt2_pm_run_stable() {
     let mut a = cfg.cosmology.a_init;
     let dt = cfg.simulation.dt;
 
-    let pm = PmSolver {
-        grid_size: NM,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(NM, BOX);
     let mut scratch = vec![Vec3::zero(); N_PART];
 
     for _ in 0..10 {

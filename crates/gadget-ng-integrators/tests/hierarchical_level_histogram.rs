@@ -127,6 +127,7 @@ fn level_histogram_not_degenerate_plummer() {
         TimestepCriterion::Acceleration,
         None,
         None,
+        None,
         direct_gravity,
     );
 
@@ -184,6 +185,7 @@ fn level_histogram_jerk_not_degenerate_plummer() {
         TimestepCriterion::Acceleration,
         None,
         None,
+        None,
         direct_gravity,
     );
 
@@ -196,6 +198,7 @@ fn level_histogram_jerk_not_degenerate_plummer() {
         ETA,
         MAX_LEVEL,
         TimestepCriterion::Jerk,
+        None,
         None,
         None,
         direct_gravity,
@@ -245,6 +248,7 @@ fn force_evals_nonzero_plummer() {
         ETA,
         MAX_LEVEL,
         TimestepCriterion::Acceleration,
+        None,
         None,
         None,
         direct_gravity,

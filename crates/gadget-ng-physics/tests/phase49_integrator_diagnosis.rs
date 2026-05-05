@@ -173,10 +173,7 @@ fn evolve_fixed_dt(
     coupling_fn: impl Fn(f64) -> f64,
 ) -> f64 {
     let c = cosmo();
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     for _ in 0..500_000 {
@@ -214,10 +211,7 @@ fn evolve_adaptive(
     dt_max: f64,
 ) -> (f64, usize) {
     let c = cosmo();
-    let pm = PmSolver {
-        grid_size: n_mesh,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(n_mesh, BOX);
     let mut scratch = vec![Vec3::zero(); parts.len()];
     let mut a = a_start;
     let mut n_steps = 0_usize;

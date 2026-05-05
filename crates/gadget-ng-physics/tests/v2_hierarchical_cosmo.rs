@@ -162,6 +162,7 @@ fn v2_mass_conserved_hierarchical_cosmo_10steps() {
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a)),
             None,
+            None,
             gravity_direct,
         );
     }
@@ -204,6 +205,7 @@ fn v2_energy_drift_cosmo_hierarchical_50steps() {
             MAX_LEVEL,
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a)),
+            None,
             None,
             gravity_direct,
         );
@@ -278,6 +280,7 @@ fn v2_reproducible_serial_vs_hierarchical_cosmo() {
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a)),
             None,
+            None,
             |_parts, _active, acc| {
                 // Sin fuerzas.
                 for a in acc.iter_mut() {
@@ -344,6 +347,7 @@ fn v2_scale_factor_agreement_hierarchical_vs_friedmann() {
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a)),
             None,
+            None,
             |_parts, _active, acc| {
                 for a in acc.iter_mut() {
                     *a = Vec3::zero();
@@ -391,6 +395,7 @@ fn v2_checkpoint_resume_cosmo_hierarchical() {
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a_cont)),
             None,
+            None,
             gravity_direct,
         );
     }
@@ -411,6 +416,7 @@ fn v2_checkpoint_resume_cosmo_hierarchical() {
             MAX_LEVEL,
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a_cp)),
+            None,
             None,
             gravity_direct,
         );
@@ -436,6 +442,7 @@ fn v2_checkpoint_resume_cosmo_hierarchical() {
             MAX_LEVEL,
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a_resume)),
+            None,
             None,
             gravity_direct,
         );
@@ -499,6 +506,7 @@ fn v2_strong_scaling_benchmark() {
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a_512)),
             None,
+            None,
             gravity_direct,
         );
     }
@@ -519,6 +527,7 @@ fn v2_strong_scaling_benchmark() {
             MAX_LEVEL,
             TimestepCriterion::Acceleration,
             Some((&cp, &mut a_1024)),
+            None,
             None,
             gravity_direct,
         );

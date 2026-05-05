@@ -269,10 +269,7 @@ fn pm_g_cosmo_scaling() {
     let positions: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = parts.iter().map(|p| p.mass).collect();
 
-    let pm = PmSolver {
-        grid_size: NM,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(NM, BOX);
     let idx: Vec<usize> = (0..n).collect();
 
     let mut acc_full = vec![Vec3::zero(); n];
@@ -314,10 +311,7 @@ fn pm_cosmo_no_explosion() {
     let positions_initial: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
     let masses: Vec<f64> = parts.iter().map(|p| p.mass).collect();
     let idx: Vec<usize> = (0..n).collect();
-    let pm = PmSolver {
-        grid_size: NM,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(NM, BOX);
 
     for _ in 0..n_steps {
         // Phase 49: coupling correcto QKSL (G·a³), reemplaza G/a histórico.
@@ -424,10 +418,7 @@ fn pm_periodic_force_symmetry() {
     let positions_a = vec![Vec3::new(0.1, 0.5, 0.5), Vec3::new(0.9, 0.5, 0.5)];
     let masses = vec![1.0_f64, 1.0_f64];
 
-    let pm = PmSolver {
-        grid_size: nm,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(nm, BOX);
     let mut acc = vec![Vec3::zero(); 2];
     let idx = vec![0_usize, 1_usize];
     pm.accelerations_for_indices(&positions_a, &masses, 0.0, G, &idx, &mut acc);

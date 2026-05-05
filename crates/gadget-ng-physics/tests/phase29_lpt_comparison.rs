@@ -188,10 +188,7 @@ fn psi1_rms(parts_1lpt: &[gadget_ng_core::Particle]) -> f64 {
 /// Retorna el factor de escala final.
 fn run_pm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
-    let pm = PmSolver {
-        grid_size: NM,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(NM, BOX);
     let mut scratch = vec![Vec3::zero(); N_PART];
     let mut a = A_INIT;
 

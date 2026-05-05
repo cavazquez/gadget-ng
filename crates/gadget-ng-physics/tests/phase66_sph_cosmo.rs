@@ -72,7 +72,7 @@ fn sph_energy_conservation_50steps() {
     let e0 = total_kinetic_energy(&parts) + total_internal_energy(&parts);
 
     for _ in 0..50 {
-        sph_cosmo_kdk_step(&mut parts, cf, gamma, 1.0, 32.0, no_gravity);
+        sph_cosmo_kdk_step(&mut parts, cf, gamma, 1.0, 32.0, None, no_gravity);
     }
 
     let e1 = total_kinetic_energy(&parts) + total_internal_energy(&parts);
@@ -162,7 +162,7 @@ fn sph_cosmo_kdk_no_gravity_bounded() {
     let cf = CosmoFactors::flat(dt);
 
     for _ in 0..10 {
-        sph_cosmo_kdk_step(&mut parts, cf, gamma, 1.0, 32.0, no_gravity);
+        sph_cosmo_kdk_step(&mut parts, cf, gamma, 1.0, 32.0, None, no_gravity);
     }
 
     for p in &parts {

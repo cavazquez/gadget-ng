@@ -1,18 +1,24 @@
 /**
  * pm_gravity.hip — Solver PM GPU con HIP + rocFFT.
  *
- * ~95% idéntico al equivalente CUDA (pm_gravity.cu); las diferencias son:
- *   - `#include <hip/hip_runtime.h>` en lugar de `<cuda_runtime.h>`
- *   - `hipMalloc` / `hipFree` / `hipMemcpy` / `hipMemset` / `hipDeviceSynchronize`
- *   - API rocFFT en lugar de cuFFT (ver sección "Diferencia clave rocFFT vs cuFFT")
- *   - Tipos rocfft_complex en lugar de cufftComplex
- *   - Macros HIP_CHECK / ROCFFT_CHECK
+ * Infraestructura HIP/rocFFT (macros, tipos) distinta de CUDA, y **pipeline distinto**
+ * al `pm_gravity.cu` actual:
+ *   - Aquí: **R2C / C2R en precisión simple**, malla compleja Hermitiana **N·N·(N/2+1)**,
+ *     normalización **1/N³** dentro del kernel sobre ρ̂ (ver `norm` en `poisson_kernel`).
+ *   - CUDA: **Z2Z en f64**, grilla completa **N³**, orden de FFT 1D igual que `fft_poisson`,
+ *     escala **1/N⁴** tras la triple IFFT, y con filtro TreePM multiplica **F̂_y, F̂_z** por **−i**
+ *     en k antes de la IFFT para alinear **Re(IFFT)** con la referencia CPU.
+ *
+ * No esperes paridad bit-a-bit ni la misma métrica de test que el PM CUDA frente a
+ * `fft_poisson` hasta portar el mismo esquema Z2Z f64 (ver `docs/architecture.md`).
+ *
+ * Includes / API: hip_runtime, rocfft; macros HIP_CHECK / ROCFFT_CHECK.
  *
  * Pipeline:
  *   1. cic_assign_kernel  — masas → grilla de densidad (CIC, periódico, atomicAdd)
  *   2. rocfft R→C         — ρ(x) → ρ(k)
- *   3. poisson_kernel     — Φ(k) = −4πG·ρ(k)/k²; F_α(k) = −ik_α·Φ(k)
- *   4. rocfft C→R × 3    — F_x/y/z(k) → F_x/y/z(x)
+ *   3. poisson_kernel     — Φ(k) = −4πG·ρ(k)/k²; F_α(k) = −ik_α·Φ(k); filtro W si r_split>0
+ *   4. rocfft C→R × 3    — F_x/y/z(k) → F_x/y/z(x) (salida real)
  *   5. cic_interp_kernel  — grilla de fuerza → aceleraciones en posición de partículas
  */
 

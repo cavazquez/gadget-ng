@@ -30,7 +30,7 @@
 //! Zhukovska et al. (2014), A&A 562, A76 — modelo D/G en SPH.
 
 use crate::cooling::u_to_temperature;
-use gadget_ng_core::{DustSection, Particle, ParticleType};
+use gadget_ng_core::{DustSection, Particle, ParticleType, Vec3};
 
 /// Actualiza la relación polvo/gas D/G de cada partícula de gas (Phase 130).
 ///
@@ -83,4 +83,40 @@ pub fn update_dust(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt
 /// El flujo UV atenuado: `J_UV_eff = J_UV × exp(−τ_dust)`.
 pub fn dust_uv_opacity(kappa_dust_uv: f64, dust_to_gas: f64, rho: f64, h: f64) -> f64 {
     kappa_dust_uv * dust_to_gas * rho * h
+}
+
+/// Impulso de “presión de radiación” en el gas acoplado al polvo (modelo mínimo Fase A).
+///
+/// Ajusta `velocity` (misma variable que el integrador SPH cosmológico) con
+/// `Δv ≈ (κ × (D/G) × J / ρ) · û`, con û = signo(z − z_ref)·ẑ para un escape
+/// vertical simplificado. Requiere `DustSection::radiation_pressure_enabled` y
+/// `dust_to_gas` &gt; 0.
+pub fn apply_dust_radiation_pressure_kick(
+    particles: &mut [Particle],
+    cfg: &DustSection,
+    z_reference: f64,
+    dt: f64,
+) {
+    if !cfg.enabled || !cfg.radiation_pressure_enabled {
+        return;
+    }
+    const PI: f64 = std::f64::consts::PI;
+    for p in particles.iter_mut() {
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
+        if p.dust_to_gas <= 0.0 {
+            continue;
+        }
+        let h = p.smoothing_length.max(1e-30);
+        let rho = p.mass / ((4.0 / 3.0) * PI * h * h * h).max(1e-100);
+        let a_mag = cfg.radiation_pressure_kappa * p.dust_to_gas * cfg.radiation_pressure_j_uv
+            / rho.max(1e-30);
+        let dir = if p.position.z >= z_reference {
+            Vec3::new(0.0, 0.0, 1.0)
+        } else {
+            Vec3::new(0.0, 0.0, -1.0)
+        };
+        p.velocity = p.velocity + dir * (a_mag * dt);
+    }
 }

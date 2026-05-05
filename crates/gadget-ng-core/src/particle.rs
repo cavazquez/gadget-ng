@@ -15,6 +15,11 @@ pub enum ParticleType {
     Star,
 }
 
+/// Partícula N-body / SPH (estilo AoS).
+///
+/// Para simulaciones masivas (≳10⁷ partículas), un layout **SoA** (posiciones y velocidades
+/// en arrays contiguos por componente) mejora ancho de banda y vectorización; este struct
+/// permanece como formato canónico por compatibilidad con MPI y snapshots.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Particle {
     /// Índice global único en [0, N) usado para orden estable MPI/serial.

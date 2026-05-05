@@ -135,8 +135,10 @@ pub fn apply_modified_gravity(
     let _ = (cosmo, a); // parámetros disponibles para implementaciones más detalladas
 
     for p in particles.iter_mut() {
+        // Volumen esférico del kernel SPH (radio h): ρ ≈ m / (4π/3 · h³).
         let rho_local = if p.smoothing_length > 0.0 {
-            p.mass / p.smoothing_length.powi(3)
+            let h = p.smoothing_length;
+            p.mass / ((4.0 / 3.0) * std::f64::consts::PI * h * h * h)
         } else {
             rho_bar
         };

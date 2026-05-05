@@ -295,7 +295,14 @@ pub fn apply_cooling(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
         }
         // du/dt = -Λ · X_H² · ρ / m
         let du_dt = -lambda * X_H * X_H * rho_local;
-        p.internal_energy = (p.internal_energy + du_dt * dt).max(u_floor);
+        // Subciclo: limitar dt para que Euler explícito no cruce u=0 de un salto no físico.
+        let dt_eff = if du_dt < 0.0 {
+            let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
+            dt.min(dt_cool)
+        } else {
+            dt
+        };
+        p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
     }
 }
 
@@ -358,7 +365,13 @@ pub fn apply_cooling_mhd(particles: &mut [Particle], cfg: &SphSection, dt: f64) 
         };
 
         let du_dt = -lambda * X_H * X_H * rho_local * mag_suppression;
-        p.internal_energy = (p.internal_energy + du_dt * dt).max(u_floor);
+        let dt_eff = if du_dt < 0.0 {
+            let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
+            dt.min(dt_cool)
+        } else {
+            dt
+        };
+        p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
     }
 }
 

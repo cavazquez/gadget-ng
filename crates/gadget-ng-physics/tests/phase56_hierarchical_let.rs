@@ -263,6 +263,7 @@ fn momentum_conservation_hierarchical() {
             TimestepCriterion::Acceleration,
             None,
             None,
+            None,
             |ps, active_local, acc| {
                 force_active_let(ps, &[], active_local, G, EPS2, theta, acc);
             },
@@ -325,6 +326,7 @@ fn hierarchical_let_closure_stability() {
             ETA,
             MAX_LEVEL,
             TimestepCriterion::Acceleration,
+            None,
             None,
             None,
             |ps, active_local, acc| {
@@ -398,6 +400,7 @@ fn hierarchical_let_vs_full_tree_one_step() {
         TimestepCriterion::Acceleration,
         None,
         None,
+        None,
         |ps, active_local, acc| {
             force_active_let(ps, &[], active_local, G, EPS2, theta, acc);
         },
@@ -412,6 +415,7 @@ fn hierarchical_let_vs_full_tree_one_step() {
         ETA,
         MAX_LEVEL,
         TimestepCriterion::Acceleration,
+        None,
         None,
         None,
         |ps, active_local, acc| {
@@ -486,6 +490,7 @@ fn active_only_skips_inactive() {
             ETA,
             MAX_LEVEL,
             TimestepCriterion::Acceleration,
+            None,
             None,
             None,
             |ps, active_local, acc| {

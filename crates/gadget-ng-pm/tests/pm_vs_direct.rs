@@ -43,10 +43,7 @@ fn pm_force_direction_matches_direct() {
     direct.accelerations_for_indices(&positions, &masses, eps2, g, &probe_slice, &mut acc_direct);
 
     // ── PM (periódico) ────────────────────────────────────────────────────────
-    let pm = PmSolver {
-        grid_size: nm,
-        box_size,
-    };
+    let pm = PmSolver::new(nm, box_size);
     let mut acc_pm = vec![Vec3::zero(); 1];
     pm.accelerations_for_indices(&positions, &masses, eps2, g, &probe_slice, &mut acc_pm);
 
@@ -85,10 +82,7 @@ fn pm_total_momentum_conserved() {
     let (positions, masses, _) = center_mass_probe(box_size);
     let n = positions.len();
 
-    let pm = PmSolver {
-        grid_size: nm,
-        box_size,
-    };
+    let pm = PmSolver::new(nm, box_size);
 
     let all_idx: Vec<usize> = (0..n).collect();
     let mut acc = vec![Vec3::zero(); n];

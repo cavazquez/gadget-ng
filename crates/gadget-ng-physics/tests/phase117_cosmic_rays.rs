@@ -95,6 +95,7 @@ fn cr_section_serde() {
         cr_fraction: 0.15,
         kappa_cr: 5e-3,
         b_cr_suppress: 0.0,
+        ..Default::default()
     };
     let json = serde_json::to_string(&cfg).unwrap();
     let cfg2: CrSection = serde_json::from_str(&json).unwrap();

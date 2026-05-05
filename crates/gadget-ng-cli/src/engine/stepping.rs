@@ -278,10 +278,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     // Estado cosmológico: factor de escala `a` y parámetros (si está habilitado).
     let cosmo_state: Option<(CosmologyParams, f64)> = if cfg.cosmology.enabled {
-        let params = CosmologyParams::new(
+        let params = CosmologyParams::from_cosmology_toml(
             cfg.cosmology.omega_m,
             cfg.cosmology.omega_lambda,
             cfg.cosmology.h0,
+            cfg.cosmology.w0,
+            cfg.cosmology.wa,
+            cfg.cosmology.m_nu_ev,
+            cfg.cosmology.h0 * 10.0,
         );
         Some((params, cfg.cosmology.a_init))
     } else {
@@ -422,12 +426,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let gamma = cfg.sph.gamma;
                 let alpha = cfg.sph.alpha_visc;
                 let n_neigh = cfg.sph.n_neigh as f64;
+                let periodic_box = cfg.cosmology.periodic.then_some(cfg.simulation.box_size);
                 gadget_ng_sph::sph_cosmo_kdk_step(
                     &mut local,
                     cf_sph,
                     gamma,
                     alpha,
                     n_neigh,
+                    periodic_box,
                     |_parts| {},  // gravedad ya fue calculada por el solver principal
                 );
                 if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
@@ -444,6 +450,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         &mut local,
                         &cfg.sph.dust,
                         cfg.sph.gamma,
+                        cfg.simulation.dt,
+                    );
+                }
+                if cfg.sph.dust.enabled && cfg.sph.dust.radiation_pressure_enabled {
+                    let z_ref = 0.5 * cfg.simulation.box_size;
+                    gadget_ng_sph::apply_dust_radiation_pressure_kick(
+                        &mut local,
+                        &cfg.sph.dust,
+                        z_ref,
                         cfg.simulation.dt,
                     );
                 }
@@ -540,12 +555,28 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             cfg.sph.cr.cr_fraction,
                             cfg.simulation.dt,
                         );
-                        gadget_ng_sph::diffuse_cr(
-                            &mut local,
-                            cfg.sph.cr.kappa_cr,
-                            cfg.sph.cr.b_cr_suppress, // Phase 129
-                            cfg.simulation.dt,
-                        );
+                        if cfg.sph.cr.anisotropic_diffusion && cfg.mhd.enabled {
+                            gadget_ng_mhd::diffuse_cr_anisotropic(
+                                &mut local,
+                                cfg.sph.cr.kappa_cr,
+                                cfg.sph.cr.b_cr_suppress,
+                                cfg.simulation.dt,
+                            );
+                        } else {
+                            gadget_ng_sph::diffuse_cr(
+                                &mut local,
+                                cfg.sph.cr.kappa_cr,
+                                cfg.sph.cr.b_cr_suppress, // Phase 129
+                                cfg.simulation.dt,
+                            );
+                        }
+                        if cfg.sph.cr.hadronic_loss_coeff > 0.0 {
+                            gadget_ng_sph::apply_cr_hadronic_losses(
+                                &mut local,
+                                cfg.sph.cr.hadronic_loss_coeff,
+                                cfg.simulation.dt,
+                            );
+                        }
                     }
 
                     // Phase 112: Spawning de partículas estelares
@@ -756,10 +787,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     f_r0: cfg.modified_gravity.f_r0,
                     n: cfg.modified_gravity.n,
                 };
-                let cosmo_params = gadget_ng_core::CosmologyParams::new(
+                let cosmo_params = gadget_ng_core::CosmologyParams::from_cosmology_toml(
                     cfg.cosmology.omega_m,
                     cfg.cosmology.omega_lambda,
                     cfg.cosmology.h0,
+                    cfg.cosmology.w0,
+                    cfg.cosmology.wa,
+                    cfg.cosmology.m_nu_ev,
+                    cfg.cosmology.h0 * 10.0,
                 );
                 gadget_ng_core::apply_modified_gravity(
                     &mut local,
@@ -990,6 +1025,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             let cosmo_arg = cosmo_state
                 .as_ref()
                 .map(|(params, _)| (params, &mut a_current));
+            let periodic_wrap_hier = cfg.cosmology.periodic.then_some(cfg.simulation.box_size);
             let step_stats = hierarchical_kdk_step(
                 &mut local,
                 &mut h_state,
@@ -1000,6 +1036,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 criterion,
                 cosmo_arg,
                 kappa_h_hier,
+                periodic_wrap_hier,
                 |parts, active_local, acc| {
                     if let Some(ref sfc_snap) = sfc_snap_hier {
                         // Path Phase 56: halos SFC + árbol local, solo activos.

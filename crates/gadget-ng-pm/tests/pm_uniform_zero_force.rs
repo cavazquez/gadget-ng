@@ -37,10 +37,7 @@ fn uniform_lattice_gives_zero_acceleration() {
     let (positions, masses) = uniform_lattice(np, box_size);
     let n = positions.len();
 
-    let solver = PmSolver {
-        grid_size: nm,
-        box_size,
-    };
+    let solver = PmSolver::new(nm, box_size);
 
     let all_idx: Vec<usize> = (0..n).collect();
     let mut acc = vec![Vec3::zero(); n];
@@ -64,10 +61,7 @@ fn partial_indices_subset() {
 
     let (positions, masses) = uniform_lattice(np, box_size);
     let n = positions.len();
-    let solver = PmSolver {
-        grid_size: nm,
-        box_size,
-    };
+    let solver = PmSolver::new(nm, box_size);
 
     // Solo calcular para las primeras 4 partículas.
     let subset: Vec<usize> = (0..4).collect();

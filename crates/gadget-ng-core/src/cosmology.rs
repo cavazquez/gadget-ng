@@ -19,6 +19,18 @@
 //! ```
 //! `H₀` se expresa en **unidades internas de tiempo** (1/t_sim).
 
+use serde::{Deserialize, Serialize};
+
+/// Jerarquía de masas de neutrinos (reparto fenomenológico de Σm_ν).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NeutrinoHierarchyKind {
+    #[default]
+    Degenerate,
+    Normal,
+    Inverted,
+}
+
 /// Parámetros cosmológicos para ΛCDM plano o energía oscura dinámica w(z) CPL.
 ///
 /// `h0` es H₀ en unidades internas de tiempo (1/t_sim), no el parámetro
@@ -93,6 +105,42 @@ impl CosmologyParams {
             wa: 0.0,
             omega_nu,
         }
+    }
+
+    /// CPL + neutrinos masivos (Ω_ν explícito).
+    pub fn new_cpl_nu(
+        omega_m: f64,
+        omega_lambda: f64,
+        h0: f64,
+        w0: f64,
+        wa: f64,
+        omega_nu: f64,
+    ) -> Self {
+        Self {
+            omega_m,
+            omega_lambda,
+            h0,
+            w0,
+            wa,
+            omega_nu,
+        }
+    }
+
+    /// Construye parámetros desde la sección TOML estándar: CPL, `m_nu_ev` → Ω_ν.
+    ///
+    /// `h100` debe ser `h₁₀₀ = H₀/(100 km/s/Mpc)` (p. ej. `h0_sim × 10` si `h0` del TOML
+    /// está en las mismas unidades que usa `ic_zeldovich`).
+    pub fn from_cosmology_toml(
+        omega_m: f64,
+        omega_lambda: f64,
+        h0: f64,
+        w0: f64,
+        wa: f64,
+        m_nu_ev: f64,
+        h100: f64,
+    ) -> Self {
+        let omega_nu = omega_nu_from_mass(m_nu_ev, h100);
+        Self::new_cpl_nu(omega_m, omega_lambda, h0, w0, wa, omega_nu)
     }
 
     /// `da/dt` con energía oscura dinámica w(a) CPL y neutrinos masivos (Phase 155/156).
@@ -252,7 +300,7 @@ pub fn density_contrast_rms(particles: &[Particle], box_size: f64, n_grid: usize
     }
     let ng = n_grid;
     let inv_cell = ng as f64 / box_size;
-    let mut counts = vec![0u32; ng * ng * ng];
+    let mut counts = vec![0u64; ng * ng * ng];
 
     for p in particles {
         // Coordenadas periódicas módulo box_size.
@@ -488,6 +536,38 @@ pub fn omega_nu_from_mass(m_nu_ev: f64, h100: f64) -> f64 {
     m_nu_ev / (93.14 * h100 * h100)
 }
 
+/// Reparto fenomenológico de Σm_ν entre tres especies (para IC / extensiones futuras).
+///
+/// No altera Ω_ν total ni H(a) en el límite no relativista frente a tres masas iguales
+/// con la misma suma; sirve para acoplar jerarquías a modelos de free-streaming o química.
+///
+/// - **Degenerate**: mᵢ = Σm/3.
+/// - **Normal**: masas proporcionales a (1, 3, 10) normalizadas a Σm (mayor a la tercera).
+/// - **Inverted**: proporciones (10, 3, 1).
+///
+/// Devuelve masas en eV (orden liviano → pesado en NH).
+pub fn split_m_nu_ev(sum_ev: f64, hierarchy: NeutrinoHierarchyKind) -> [f64; 3] {
+    if sum_ev <= 0.0 {
+        return [0.0, 0.0, 0.0];
+    }
+    match hierarchy {
+        NeutrinoHierarchyKind::Degenerate => {
+            let t = sum_ev / 3.0;
+            [t, t, t]
+        }
+        NeutrinoHierarchyKind::Normal => {
+            let w = [1.0_f64, 3.0, 10.0];
+            let s: f64 = w.iter().sum();
+            [w[0] / s * sum_ev, w[1] / s * sum_ev, w[2] / s * sum_ev]
+        }
+        NeutrinoHierarchyKind::Inverted => {
+            let w = [10.0_f64, 3.0, 1.0];
+            let s: f64 = w.iter().sum();
+            [w[0] / s * sum_ev, w[1] / s * sum_ev, w[2] / s * sum_ev]
+        }
+    }
+}
+
 /// Supresión del espectro de potencia por neutrinos masivos (Phase 156).
 ///
 /// Aproximación lineal de Lesgourgues & Pastor (2006):
@@ -554,10 +634,8 @@ pub fn growth_rate_f(params: CosmologyParams, a: f64) -> f64 {
 /// amplitudes LPT: `Ψ¹ ← s·Ψ¹`, `Ψ² ← s²·Ψ²`. Esto referencia σ₈ a
 /// `a=1` (convención estándar tipo CAMB/CLASS) en lugar de aplicarlo
 /// directamente en `a_init`.
-pub fn growth_factor_d(params: CosmologyParams, a: f64) -> f64 {
-    if a <= 0.0 {
-        return 0.0;
-    }
+/// CPT92 exacto para ΛCDM (`w₀ = −1`, `wₐ = 0`). Ver [`growth_factor_d`].
+fn growth_factor_d_cpt92(params: CosmologyParams, a: f64) -> f64 {
     let a3 = a * a * a;
     let denom = params.omega_m + params.omega_lambda * a3;
     if denom <= 0.0 {
@@ -571,6 +649,87 @@ pub fn growth_factor_d(params: CosmologyParams, a: f64) -> f64 {
     }
     let g = 2.5 * om_a / bracket;
     a * g
+}
+
+#[inline]
+fn omega_matter_fraction(params: CosmologyParams, a: f64) -> f64 {
+    let h = hubble_param(params, a);
+    let h0 = params.h0;
+    if h <= 0.0 || h0 <= 0.0 {
+        return 0.0;
+    }
+    let h_ratio_sq = (h / h0) * (h / h0);
+    let rho_m = (params.omega_m + params.omega_nu) / (a * a * a);
+    rho_m / h_ratio_sq.max(1e-300)
+}
+
+#[inline]
+fn d_ln_h_d_ln_a(params: CosmologyParams, a: f64) -> f64 {
+    let eps = (1e-7_f64).max(a * 1e-9);
+    let hp = hubble_param(params, (a + eps).min(1e9));
+    let hm = hubble_param(params, (a - eps).max(1e-18));
+    let h = hubble_param(params, a);
+    if h <= 0.0 {
+        return 0.0;
+    }
+    (a / h) * (hp - hm) / (2.0 * eps)
+}
+
+/// Integración RK4 de la ecuación del modo creciente en variables `ln a` (CPL / w(z) genérico).
+///
+/// `d²D/d(ln a)² + (2 + d ln H/d ln a) dD/d(ln a) − (3/2) Ω_m(a) D = 0`
+fn growth_factor_d_ode_cpl(params: CosmologyParams, a: f64) -> f64 {
+    const A_START: f64 = 1e-5;
+    if a <= A_START {
+        return a.max(0.0);
+    }
+    let ln_end = a.ln();
+    let ln_start = A_START.ln();
+    const N_STEP: usize = 768;
+    let h = (ln_end - ln_start) / N_STEP as f64;
+    let mut ln_a = ln_start;
+    let mut d = A_START;
+    let mut dp = A_START;
+    for _ in 0..N_STEP {
+        let deriv = |la: f64, y: f64, yp: f64| -> (f64, f64) {
+            let aa = la.exp();
+            let om = omega_matter_fraction(params, aa);
+            let q = d_ln_h_d_ln_a(params, aa);
+            (yp, -(2.0 + q) * yp + 1.5 * om * y)
+        };
+        let k1 = deriv(ln_a, d, dp);
+        let k2 = deriv(
+            ln_a + 0.5 * h,
+            d + 0.5 * h * k1.0,
+            dp + 0.5 * h * k1.1,
+        );
+        let k3 = deriv(
+            ln_a + 0.5 * h,
+            d + 0.5 * h * k2.0,
+            dp + 0.5 * h * k2.1,
+        );
+        let k4 = deriv(ln_a + h, d + h * k3.0, dp + h * k3.1);
+        d += h / 6.0 * (k1.0 + 2.0 * k2.0 + 2.0 * k3.0 + k4.0);
+        dp += h / 6.0 * (k1.1 + 2.0 * k2.1 + 2.0 * k3.1 + k4.1);
+        ln_a += h;
+    }
+    d
+}
+
+/// Aproximación CPT92 (Carroll–Press–Turner 1992) para ΛCDM, u ODE lineal para CPL (`w₀`,`wₐ≠0`).
+///
+/// Si `w₀ = −1` y `wₐ = 0` se usa CPT92 (rápido). En caso contrario se integra numéricamente la ecuación
+/// del factor de crecimiento en presencia de energía oscura dinámica (mejor que CPT92 extrapolado).
+pub fn growth_factor_d(params: CosmologyParams, a: f64) -> f64 {
+    if a <= 0.0 {
+        return 0.0;
+    }
+    let lcdm_like = (params.w0 + 1.0).abs() < 1e-10 && params.wa.abs() < 1e-10;
+    if lcdm_like {
+        growth_factor_d_cpt92(params, a)
+    } else {
+        growth_factor_d_ode_cpl(params, a)
+    }
 }
 
 /// Cociente del factor de crecimiento lineal `D(a_num)/D(a_den)` en CPT92.

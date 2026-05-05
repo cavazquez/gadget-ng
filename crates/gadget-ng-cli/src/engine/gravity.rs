@@ -441,9 +441,19 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
 
     // Los solvers PM y TreePM no usan Rayon; se enrutan antes del bloque SIMD.
     if cfg.gravity.solver == SolverKind::Pm {
+        let plummer_eps = if cfg.simulation.softening > 0.0 {
+            Some(if cfg.cosmology.enabled && cfg.simulation.physical_softening {
+                cfg.simulation.softening / cfg.cosmology.a_init.max(1e-300)
+            } else {
+                cfg.simulation.softening
+            })
+        } else {
+            None
+        };
         return Box::new(PmSolver {
             grid_size: cfg.gravity.pm_grid_size,
             box_size: cfg.simulation.box_size,
+            plummer_eps,
         });
     }
     if cfg.gravity.solver == SolverKind::TreePm {

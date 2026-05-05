@@ -26,6 +26,19 @@ pub struct PmSolver {
     pub grid_size: usize,
     /// Longitud del cubo periódico en las mismas unidades que las posiciones.
     pub box_size: f64,
+    /// Suavizado Plummer en k-space (`exp(−k²ε²)`). `None` = sólo resolución de malla.
+    pub plummer_eps: Option<f64>,
+}
+
+impl PmSolver {
+    #[must_use]
+    pub fn new(grid_size: usize, box_size: f64) -> Self {
+        Self {
+            grid_size,
+            box_size,
+            plummer_eps: None,
+        }
+    }
 }
 
 impl GravitySolver for PmSolver {
@@ -54,7 +67,16 @@ impl GravitySolver for PmSolver {
         let density = cic::assign(global_positions, global_masses, self.box_size, nm);
 
         // ── 2. Resolver Poisson → fuerzas en el grid ──────────────────────────
-        let [fx_grid, fy_grid, fz_grid] = fft_poisson::solve_forces(&density, g, nm, self.box_size);
+        let [fx_grid, fy_grid, fz_grid] = match self.plummer_eps {
+            Some(eps) if eps > 0.0 => fft_poisson::solve_forces_softened(
+                &density,
+                g,
+                nm,
+                self.box_size,
+                Some(eps),
+            ),
+            _ => fft_poisson::solve_forces(&density, g, nm, self.box_size),
+        };
 
         // ── 3. Interpolar fuerzas a las posiciones activas ────────────────────
         let active_pos: Vec<Vec3> = global_indices

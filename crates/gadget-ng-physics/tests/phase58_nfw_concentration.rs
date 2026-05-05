@@ -161,10 +161,7 @@ fn run_simulation() -> Phase58Result {
     let mut parts = build_particles(&cfg).expect("[phase58] ICs no deben fallar");
     let cosmo = cosmo_params();
     let g_code = g_code_consistent(OMEGA_M, H0);
-    let pm = PmSolver {
-        grid_size: N_GRID,
-        box_size: BOX,
-    };
+    let pm = PmSolver::new(N_GRID, BOX);
     let n = parts.len();
     let mut scratch = vec![Vec3::zero(); n];
     let mut a = A_INIT;
