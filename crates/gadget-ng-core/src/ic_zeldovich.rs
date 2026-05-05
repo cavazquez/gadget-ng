@@ -56,7 +56,7 @@ use crate::{
     vec3::Vec3,
 };
 use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
 use std::fs;
@@ -85,7 +85,7 @@ fn mode_seed(global_seed: u64, ix: usize, iy: usize, iz: usize, n: usize) -> u64
 /// PRNG **`rand::StdRng`** (semilla [`mode_seed`]): mejor estadística que el LCG legacy.
 /// (Alternativa recomendada en bibliografía: **Pcg64** vía `rand_pcg`.)
 #[inline]
-fn uniform01_u53(rng: &mut impl RngCore) -> f64 {
+fn uniform01_u53(rng: &mut impl Rng) -> f64 {
     (rng.next_u64() >> 11) as f64 / (1u64 << 53) as f64
 }
 
