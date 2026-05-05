@@ -4,6 +4,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_mhd::{advance_induction, apply_magnetic_forces, dedner_cleaning_step};
+use std::f64::consts::TAU;
 
 fn make_particles(n: usize) -> Vec<Particle> {
     (0..n)
@@ -17,7 +18,7 @@ fn make_particles(n: usize) -> Vec<Particle> {
                 1.0,
                 0.15,
             );
-            p.b_field = Vec3::new(1.0, 0.05 * (x * 6.28).sin(), 0.0);
+            p.b_field = Vec3::new(1.0, 0.05 * (x * TAU).sin(), 0.0);
             p.psi_div = 0.0;
             p
         })

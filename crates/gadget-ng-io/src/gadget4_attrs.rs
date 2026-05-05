@@ -372,8 +372,10 @@ mod tests {
 
     #[test]
     fn total_particles_sum() {
-        let mut h = Gadget4Header::default();
-        h.num_part_total = [100, 200, 0, 0, 0, 0];
+        let h = Gadget4Header {
+            num_part_total: [100, 200, 0, 0, 0, 0],
+            ..Gadget4Header::default()
+        };
         assert_eq!(h.total_particles(), 300);
     }
 

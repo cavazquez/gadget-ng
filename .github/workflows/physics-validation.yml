@@ -1,0 +1,46 @@
+name: Physics Validation (Nightly)
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: physics-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  physics-validation:
+    name: Physics validation suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Instalar HDF5
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: physics-validation
+
+      - name: Ejecutar tests físicos de larga duración
+        run: |
+          mkdir -p artifacts
+          cargo test -p gadget-ng-physics --test zeldovich_pancake -- --nocapture | tee artifacts/zeldovich_pancake.log
+          cargo test -p gadget-ng-physics --test phase49_long_growth -- --nocapture | tee artifacts/phase49_long_growth.log
+          cargo test -p gadget-ng-physics --test phase69_production -- --nocapture | tee artifacts/phase69_production.log
+
+      - name: Ejecutar snapshot de clippy all-targets (advisory)
+        continue-on-error: true
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings | tee artifacts/clippy_all_targets.log
+
+      - name: Publicar artefactos históricos
+        uses: actions/upload-artifact@v4
+        with:
+          name: physics-validation-${{ github.run_id }}
+          path: artifacts/**
+          if-no-files-found: error

@@ -6,12 +6,13 @@
 //! - `advance_srmhd`           — N = 100 (~10% relativistas)
 //! - `srmhd_conserved_to_primitive` — llamada unitaria, 1000 iteraciones
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use gadget_ng_core::{Particle, ParticleType, TurbulenceSection, Vec3};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use gadget_ng_core::{Particle, TurbulenceSection, Vec3};
 use gadget_ng_mhd::{
     C_LIGHT, advance_srmhd, apply_flux_freeze, apply_turbulent_forcing, mean_gas_density,
     srmhd_conserved_to_primitive,
 };
+use std::hint::black_box;
 
 fn make_gas_particles(n: usize) -> Vec<Particle> {
     (0..n)

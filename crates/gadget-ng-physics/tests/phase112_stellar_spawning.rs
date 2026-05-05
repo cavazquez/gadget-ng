@@ -69,13 +69,6 @@ fn mass_conserved_on_spawn() {
         } else {
             particles[0].mass
         };
-        let m_total = m_star
-            + m_gas_remaining
-            + if to_remove.contains(&0) {
-                particles[0].mass
-            } else {
-                0.0
-            };
         // La masa total debe ser menor o igual (puede perderse algo si se eliminó gas)
         // Verificamos que m_star = m_star_fraction × m0
         assert!(

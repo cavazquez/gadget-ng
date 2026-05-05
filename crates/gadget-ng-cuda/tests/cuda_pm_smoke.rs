@@ -81,11 +81,11 @@ fn cpu_pm_reference(
     // Φ_ij = G·m_j / |r_ij|  con periodicidad.
     let cell_size = box_size / n as f64;
     let mut phi = vec![0.0f64; n3];
-    for i in 0..n3 {
+    for (i, phi_i) in phi.iter_mut().enumerate().take(n3) {
         let xi = ((i % n) as f64 + 0.5) * cell_size;
         let yi = ((i / n % n) as f64 + 0.5) * cell_size;
         let zi = ((i / n / n) as f64 + 0.5) * cell_size;
-        for j in 0..n3 {
+        for (j, rho_j) in rho.iter().enumerate().take(n3) {
             if i == j {
                 continue;
             }
@@ -97,7 +97,7 @@ fn cpu_pm_reference(
             let dz = (zj - zi + box_size / 2.0).rem_euclid(box_size) - box_size / 2.0;
             let r = (dx * dx + dy * dy + dz * dz).sqrt();
             if r > 1e-12 {
-                phi[i] -= g * rho[j] * cell_size.powi(3) / r;
+                *phi_i -= g * *rho_j * cell_size.powi(3) / r;
             }
         }
     }

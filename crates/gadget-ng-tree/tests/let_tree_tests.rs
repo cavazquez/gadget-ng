@@ -10,6 +10,7 @@
 
 use gadget_ng_core::Vec3;
 use gadget_ng_tree::{LetTree, RemoteMultipoleNode, accel_from_let};
+use std::f64::consts::TAU;
 
 // ── Utilidades ─────────────────────────────────────────────────────────────────
 
@@ -217,13 +218,13 @@ fn let_tree_energy_conservation_short() {
     let mut pos: Vec<Vec3> = (0..n_local)
         .map(|i| {
             let t = i as f64 / n_local as f64;
-            Vec3::new((t * 6.28).cos() * 5.0, (t * 6.28).sin() * 5.0, 0.0)
+            Vec3::new((t * TAU).cos() * 5.0, (t * TAU).sin() * 5.0, 0.0)
         })
         .collect();
     let mut vel: Vec<Vec3> = (0..n_local)
         .map(|i| {
             let t = i as f64 / n_local as f64;
-            Vec3::new(-(t * 6.28).sin() * 0.3, (t * 6.28).cos() * 0.3, 0.0)
+            Vec3::new(-(t * TAU).sin() * 0.3, (t * TAU).cos() * 0.3, 0.0)
         })
         .collect();
     let mass = 0.01_f64;

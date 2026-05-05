@@ -113,7 +113,7 @@ fn friedmann_rk4(a0: f64, dt: f64, n_steps: usize, cp: &CosmologyParams) -> f64 
 }
 
 /// Inicializa aceleraciones y HierarchicalState para un sistema.
-fn init_hierarchical(parts: &mut Vec<Particle>, dt: f64) -> HierarchicalState {
+fn init_hierarchical(parts: &mut [Particle], dt: f64) -> HierarchicalState {
     let n = parts.len();
     let all_idx: Vec<usize> = (0..n).collect();
     let mut init_acc = vec![Vec3::zero(); n];
