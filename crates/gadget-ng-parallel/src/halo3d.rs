@@ -430,7 +430,7 @@ mod tests {
         // El rank 1 enviaría a rank 0 partículas con z < z_lo_rank1 + halo_width.
         // Con descomposición octante, z_lo_rank1 = 0.5, halo = 0.1 → z < 0.6.
         // La partícula tiene z=0.95 > 0.6 → NO enviada por halo 1D. ✗
-        let my_z_lo = 0.0_f64;
+        let _my_z_lo = 0.0_f64; // rank 0: [0, 0.5) en z; solo documentado en comentarios arriba
         let halo_width = 0.1_f64;
         let z_particle = 0.95_f64;
         // Criterio 1D: z ∈ [z_lo - halo_width, z_lo) → NOT included from "left"

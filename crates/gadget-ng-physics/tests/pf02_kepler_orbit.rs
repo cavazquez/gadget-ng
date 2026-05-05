@@ -58,7 +58,6 @@ fn eccentricity(particles: &[Particle]) -> f64 {
     let r_vec = particles[1].position - particles[0].position;
     let r = r_vec.dot(r_vec).sqrt();
     let v = particles[1].velocity;
-    let v2 = v.dot(v);
 
     // Vector de excentricidad: e = (v×L)/(G·M) - r̂
     let lz = r_vec.x * v.y - r_vec.y * v.x; // L_z = (r×v)_z

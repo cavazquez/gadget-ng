@@ -3,10 +3,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Alinear con CI (.github/workflows/ci.yml): warnings de rustc/clippy = error.
+export RUSTFLAGS="-D warnings"
+
 echo "== cargo fmt =="
 cargo fmt --all
 
 echo "== cargo clippy =="
+# Igual que job «Clippy» en .github/workflows/ci.yml (sin --tests / --all-targets).
 cargo clippy --workspace -- -D warnings
 
 echo "== cargo test (workspace) =="
