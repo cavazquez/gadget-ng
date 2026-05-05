@@ -64,7 +64,7 @@ def main():
     results_json = os.path.join(out_dir, 'results.json')
     subprocess.run([
         'cargo', 'run', '--release', '--', 
-        'analyze', '--snapshot', snap_final_dir, '--fof-b', '0.2', '--fof-min-part', '20', '--out', results_json
+        'analyze', '--snapshot', snap_final_dir, '--fof-b', '0.2', '--nfw-min-part', '20', '--out', results_json
     ], cwd=ws_root, check=True)
     
     print("\n=== 3. Extrayendo Masas y Generando HMF ===")
