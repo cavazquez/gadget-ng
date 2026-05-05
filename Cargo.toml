@@ -59,4 +59,4 @@ hex = "0.4.3"
 chrono = { version = "0.4.40", features = ["serde"] }
 mpi = { version = "0.8.0", default-features = false }
 criterion = { version = "0.8", features = ["html_reports"] }
-rand = "0.8"
+rand = "0.10"
