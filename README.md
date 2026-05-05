@@ -23,6 +23,11 @@
 >
 > **Estado:** Phases 1–166 completadas · **SPH Gadget-2 completo** (entropía + Balsara + colapso de Evrard) ·
 > GPU kernels reales CUDA/HIP N² · MHD 3D solenoidal · `cargo test -p gadget-ng-physics` en ~3.5 min.
+>
+> **Mayo 2026 — validación tipo paper:** transferencia **tabulada** CLASS/CAMB en ICs, **pancake** Zel’dovich analítico,
+> MAC **geométrico bmax** + **relativo** en árbol local y LET, backend FFT opcional **`fftw`** en PM con tests de paridad,
+> workflow nocturno [**physics-validation**](.github/workflows/physics-validation.yml), script local
+> [`scripts/check-physics.sh`](scripts/check-physics.sh) y módulo **lightcone** (κ/γ Born) en análisis.
 
 ## 🧰 Herramientas y tecnologías
 
@@ -56,7 +61,7 @@
 | 🔭 **Cosmología de referencia** | `classy` 3.3+ (CLASS) para validación externa (Phase 38), Eisenstein–Hu interno |
 | 📊 **Postproceso** | Python 3.10+, NumPy, SciPy, Matplotlib — mirrors de `pk_correction` y figuras por fase |
 | 🖼️ **Visualización PPM** | `render_ppm` + `write_ppm` sin dependencias externas; salida P6 legible por GIMP/ImageMagick |
-| 🧪 **CI / calidad** | GitHub Actions, `cargo fmt`, `cargo clippy --workspace` (0 warnings), `cargo test --release` |
+| 🧪 **CI / calidad** | GitHub Actions (`ci.yml` + **physics-validation** nocturno), `cargo fmt`, `cargo clippy --workspace` (0 warnings), `cargo test --release`; snapshot advisory `clippy --all-targets` (ver [backlog](docs/reports/2026-05-clippy-all-targets-backlog.md)) |
 | 📁 **Experimentos** | TOML + orquestadores Bash + volcados JSON cacheables en `target/phaseNN/` |
 
 ---
@@ -97,23 +102,36 @@
 
 ## Características
 
+### Avances mayo 2026 (validación tipo paper)
+
+| Tema | Qué hay y dónde |
+|------|-----------------|
+| **ICs tabuladas** | `TransferKind::Tabulated { path }`: archivo texto `k [h/Mpc]`, `T(k)` (p. ej. CLASS/CAMB), interpolación log–log monotónica (PCHIP). Unidad: `ic_zeldovich::tests::tabulated_transfer_reconstructs_knots_and_midpoints`. |
+| **Pancake Zel’dovich** | Tests `zeldovich_pancake` en `gadget-ng-physics`; reporte [phase160-zeldovich-pancake](docs/reports/2026-05-phase160-zeldovich-pancake.md). |
+| **MAC árbol** | `OpeningCriterion::GeometricBmax` (criterio `b_max/d`) además de `geometric` y `relative`; comparación error/costo en `gadget-ng-tree` → `mac_error_cost`. |
+| **PM / FFT** | Feature opcional **`fftw`** en `gadget-ng-pm`: segundo backend con **paridad numérica** frente a RustFFT en `fft_poisson` / `slab_fft` (gancho listo para FFTW nativo en host). |
+| **CI física** | [`.github/workflows/physics-validation.yml`](.github/workflows/physics-validation.yml): corrida programada + artefactos (pancake, growth largo, producción); clippy `--all-targets` en modo advisory. |
+| **Chequeo local** | `bash scripts/check-physics.sh` — transfer tabulada (unit) + pancake + suite CLASS completa con `--include-ignored`. |
+| **Lightcone / lensing** | `gadget_ng_analysis::lightcone`: cruces de cono de luz y acumulación Born para mapas de convergencia y shear (κ, γ). |
+| **Clippy all-targets** | Deuda y plan documentados en [2026-05-clippy-all-targets-backlog](docs/reports/2026-05-clippy-all-targets-backlog.md). |
+
 | Componente | Descripción |
 |---|---|
 | **Integradores** | Leapfrog KDK + **Yoshida4** KDK, newtonianos **y cosmológicos** (drift/kick `∫dt'/a²`, `∫dt'/a`); timestep adaptativo estilo Aarseth |
 | **Gravedad directa** | Pares Plummer-suavizados O(N²) — `DirectGravity` con SoA + SIMD |
-| **Barnes–Hut + FMM** | Octree en arena, MAC `s/d < θ`, monopolo + cuadrupolo + **octupolo STF**, suavizado multipolar |
-| **PM periódico** | CIC + FFT Poisson 3D periódica; solver `pm` (Fase 18) |
+| **Barnes–Hut + FMM** | Octree en arena, MAC `s/d < θ`, criterio **`b_max/d`** (`GeometricBmax`), MAC **relativo** tipo GADGET-4; monopolo + cuadrupolo + **octupolo STF**, suavizado multipolar |
+| **PM periódico** | CIC + FFT Poisson 3D periódica; solver `pm` (Fase 18); backend FFT por defecto RustFFT, opcional **`fftw`** (`gadget-ng-pm`) |
 | **PM distribuido (allreduce)** | `allreduce_sum_f64_slice` O(nm³) — elimina `allgather` O(N·P) (Fase 19) |
 | **PM slab (alltoall)** | Slab decomposition Z: FFT 3D distribuida con `alltoall_transpose`, grid **no replicado** (Fase 20) |
 | **PM pencil 2D** | Descomposición 2D; escala hasta `P ≤ nm²` en lugar de `P ≤ nm`; `alltoallv_f64_subgroup` (Phase 46) |
 | **TreePM** | Barnes–Hut short-range + PM long-range; versión distribuida (Fase 21–25) con scatter-gather (Fase 24); softening Plummer absoluto `ε_phys` (Mpc/h) independiente de `N` (Phase 42) |
 | **Cosmología ΛCDM** | Friedmann ΛCDM, factor de escala `a(t)` por RK4, momentum canónico, diagnósticos `a/z/v_rms/δ_rms`; fallback EdS |
-| **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle** + normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
+| **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle**, **tabulada** (CLASS/CAMB) o ley de potencia; normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
 | **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta, validado vs 🔭 CLASS (Phase 38) y en alta resolución hasta `N=128³` (Phase 41) |
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
 | **SPH Gadget-2** | Kernel Wendland C2, densidad adaptativa; **entropía A=P/ρ^γ** (Springel & Hernquist 2002); **viscosidad de señal** + **limitador de Balsara** (∇·v, ∇×v); integrador KDK-entropía + `courant_dt`; validado en tubo de Sod + **colapso de Evrard** (Phase 166) |
 | **GPU** | Compute shader WGSL vía `wgpu` (Vulkan/Metal/DX12/WebGPU); fallback CPU automático |
-| **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL; HMF Press-Schechter/Sheth-Tormen; perfiles NFW + c(M) Duffy/Bhattacharya/Ludlow+2016; Halofit no-lineal (Takahashi+2012); función de correlación ξ(r) FFT + pares |
+| **Análisis in-situ** | FoF (halos), espectro de potencia P(k), catálogos JSONL; HMF Press-Schechter/Sheth-Tormen; perfiles NFW + c(M) Duffy/Bhattacharya/Ludlow+2016; Halofit no-lineal (Takahashi+2012); función de correlación ξ(r) FFT + pares; **lightcone** + mapas Born κ/γ (`gadget-ng-analysis`) |
 | **🟢🔴 GPU PM** | Solver PM CUDA/HIP opcional (cuFFT/rocFFT); CIC+Poisson+FFT 3D en GPU; degradación elegante automática si no hay toolchain |
 | **⏱️ Block timesteps** | Integrador jerárquico acoplado al árbol LET distribuido; evaluación de fuerzas solo para partículas activas (`active_local`), O(N_active) por subnivel |
 | **Checkpointing** | Guarda/reanuda desde snapshots comprimidos (`--resume`); continuidad bit-a-bit verificada; `SfcDecomposition` reconstruida automáticamente post-restart |
@@ -283,6 +301,21 @@ box_size_mpc_h  = 100.0
 use_2lpt        = true              # 1LPT=false / 2LPT=true
 ```
 
+Transferencia tabulada (CLASS/CAMB u otra tabla `k[h/Mpc]  T(k)`):
+
+```toml
+[initial_conditions.kind.zeldovich]
+# … mismos campos que arriba …
+transfer = { tabulated = { path = "path/to/class_transfer.dat" } }
+```
+
+Criterio de apertura **b_max** en Barnes–Hut / TreePM:
+
+```toml
+[gravity]
+opening_criterion = "geometric_bmax"   # "geometric" | "geometric_bmax" | "relative"
+```
+
 ### PM distribuido (Fase 19 — allreduce grid)
 
 ```toml
@@ -328,21 +361,21 @@ gadget-ng/
 │   │                           # transfer EH no-wiggle + amplitude_for_sigma8;
 │   │                           # rebalance_imbalance_threshold (Phase 60)
 │   ├── gadget-ng-tree          # Octree + Barnes–Hut + FMM (cuadrupolo + octupolo STF),
-│   │                           # SoA + SIMD, Locally Essential Trees (LET)
+│   │                           # SoA + SIMD, LET; MAC geometric / bmax / relative
 │   ├── gadget-ng-integrators   # leapfrog_kdk / yoshida4_kdk (newton + cosmológico),
 │   │                           # integrador jerárquico + block timesteps LET (Phase 56),
 │   │                           # Aarseth timestep
 │   ├── gadget-ng-parallel      # SerialRuntime / MpiRuntime, SFC Hilbert 3D,
 │   │                           # alltoallv, allreduce, exchange_domain_{x,z}, halos
 │   ├── gadget-ng-io            # Snapshots JSONL / Bincode / HDF5 estilo GADGET + Provenance
-│   ├── gadget-ng-pm            # PM: CIC, FFT Poisson periódica, slab_fft, slab_pm
+│   ├── gadget-ng-pm            # PM: CIC, FFT Poisson periódica, slab_fft, slab_pm; feature `fftw`
 │   ├── gadget-ng-treepm        # TreePM: BH short-range + PM long-range (serial + dist)
 │   ├── gadget-ng-gpu           # Compute shaders WGSL vía wgpu (Vulkan/Metal/DX12)
 │   ├── gadget-ng-cuda          # 🟢 Solver PM NVIDIA CUDA + cuFFT (Phase 57); CIC+Poisson+FFT 3D
 │   ├── gadget-ng-hip           # 🔴 Solver PM AMD HIP + rocFFT (Phase 57); misma API que CUDA
 │   ├── gadget-ng-analysis      # FoF halos + P(k) + pk_correction (Phase 34–36);
 │   │                           # NFW + c(M) Duffy/Bhattacharya/Ludlow+2016 (Phase 53/58);
-│   │                           # ξ(r) FFT + pares Davis-Peebles (Phase 58)
+│   │                           # ξ(r) FFT + pares Davis-Peebles (Phase 58); lightcone + Born κ/γ
 │   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan;
 │   │                           # ⭐ stellar feedback (Phase 78); AGN Bondi (Phase 96/100);
 │   │                           # metales/SFR/SN Ia+II (Phase 109–115); CRs (Phase 117);
@@ -574,6 +607,7 @@ validación física:
   normalización por `σ(|n|)` en modo `power_law`.
 - **Fase 27** — Transferencia EH no-wiggle + `amplitude_for_sigma8`
   (convierte σ₈ en amplitud absoluta resolviendo `σ²(R=8)=σ₈²`).
+- **2026-05** — Transferencia **tabulada** (`k`, `T(k)` desde CLASS/CAMB u otras tablas) con interpolación log–log monotónica; **pancake** Zel’dovich analítico ([reporte](docs/reports/2026-05-phase160-zeldovich-pancake.md)).
 - **Fase 28** — 2LPT (Buchert–Ehlers): segundo orden en el
   desplazamiento, corrige transitorios de 1LPT a `a_init` alto.
 - **Fase 29** — Validación 1LPT vs 2LPT: comparación de crecimiento
@@ -1015,11 +1049,20 @@ python docs/scripts/postprocess_insitu.py \
 ## Tests automáticos
 
 ```bash
+# Chequeo físico local recomendado (transfer tabulada unit + pancake + CLASS completo):
+bash scripts/check-physics.sh
+
 # Tests unitarios de todos los crates (tests lentos marcados #[ignore] → ~3.5 min)
 cargo test
 
 # Tests de validación física (N-body + cosmología) — rápidos por defecto (~3.5 min)
 cargo test -p gadget-ng-physics --release
+
+# Pancake Zel’dovich (analítico)
+cargo test -p gadget-ng-physics --test zeldovich_pancake --release
+
+# MAC relativo vs costo (árbol)
+cargo test -p gadget-ng-tree --test mac_error_cost --release
 
 # Incluir tests lentos (N=32³-64³, corridas largas):
 cargo test -p gadget-ng-physics --release -- --include-ignored
@@ -1082,6 +1125,10 @@ Tests de validación cubiertos:
 - **TreePM scatter-gather** (Fase 24–25): paridad con TreePM replicado.
 - **ICs ZA + EH + σ₈** (Fase 26–27): transferencia, normalización,
   reproducibilidad bit-idéntica.
+- **Transfer tabulada** (2026-05): reconstrucción PCHIP log–log en nodos y puntos intermedios (`gadget-ng-core`).
+- **Pancake Zel’dovich** (2026-05): convergencia frente a solución analítica (`zeldovich_pancake`).
+- **MAC bmax + relativo** (2026-05): `GeometricBmax` y comparación error/costo (`mac_error_cost`).
+- **PM FFT** (2026-05): paridad numérica backend `fftw` vs RustFFT cuando la feature está activa (`gadget-ng-pm`).
 - **2LPT** (Fase 28–29): crecimiento `D₁(a)`, residuos 1LPT vs 2LPT.
 - **Ensembles cosmológicos** (Fase 30–32): shape espectral, `R(k)`,
   crecimiento lineal, PM vs TreePM, reproducibilidad.
@@ -1185,6 +1232,13 @@ metodología, resultados y limitaciones.
 | [`phase40-physical-ics-normalization`](docs/reports/2026-04-phase40-physical-ics-normalization.md) | `NormalizationMode { Legacy, Z0Sigma8 }` |
 | [`phase41-high-resolution-validation`](docs/reports/2026-04-phase41-high-resolution-validation.md) | 📈 Alta resolución y shot-noise↔señal |
 | [`phase42-tree-short-range`](docs/reports/2026-04-phase42-tree-short-range.md) | 🌲 TreePM + softening absoluto `ε_phys` |
+| [`phase160-zeldovich-pancake`](docs/reports/2026-05-phase160-zeldovich-pancake.md) | 🥞 Pancake Zel’dovich: convergencia vs solución analítica |
+
+### Calidad / deuda (2026-05)
+
+| Reporte | Tema |
+|---------|------|
+| [`clippy-all-targets-backlog`](docs/reports/2026-05-clippy-all-targets-backlog.md) | Snapshot `clippy --all-targets` y plan de endurecimiento |
 
 ### HPC avanzado, GPU y análisis (Phase 56–60 + Rápidas)
 
@@ -1252,6 +1306,7 @@ metodología, resultados y limitaciones.
 | `msgpack` | Snapshots compactos MessagePack |
 | `netcdf` | Snapshots NetCDF4 (requiere `libnetcdf-dev`) |
 | `full` | Todas las anteriores activadas |
+| `fftw` | `gadget-ng-pm`: backend FFT alternativo con tests de paridad frente a RustFFT (API preparada; sin dependencia obligatoria de libfftw en el árbol actual) |
 
 ---
 
@@ -1264,7 +1319,8 @@ cargo test --release
 cargo build --release --features mpi
 ```
 
-GitHub Actions: [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+GitHub Actions: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (PR/push) y
+[`.github/workflows/physics-validation.yml`](.github/workflows/physics-validation.yml) (nocturno: tests físicos largos + log advisory de `clippy --workspace --all-targets`).
 
 Convención de estilo:
 
