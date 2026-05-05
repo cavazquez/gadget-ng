@@ -170,7 +170,7 @@ jobs:
       - name: Ejecutar cobertura
         run: cargo tarpaulin --workspace --out Xml --output-dir . --timeout 120
       - name: Subir a Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: cobertura.xml,tarpaulin-report.xml
         continue-on-error: true
