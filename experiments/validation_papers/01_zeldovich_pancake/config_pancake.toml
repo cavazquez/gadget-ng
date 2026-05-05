@@ -1,0 +1,31 @@
+
+[simulation]
+dt = 0.01
+num_steps = 100
+softening = 0.1
+particle_count = 512
+box_size = 100.0
+seed = 42
+integrator = "leapfrog"
+
+[initial_conditions]
+kind = { external = { path = "/home/cristian/repos/propios/gadget-ng/experiments/validation_papers/01_zeldovich_pancake/ic", format = "jsonl" } }
+
+[cosmology]
+enabled = true
+omega_m = 1.0
+omega_lambda = 0.0
+h0 = 1.0
+a_init = 0.02
+periodic = true
+auto_g = false
+gravitational_constant = 1.0
+
+[output]
+snapshot_interval = 10
+snapshot_format = "jsonl"
+dir = "out"
+
+[gravity]
+solver = "pm"
+pm_grid_size = 512

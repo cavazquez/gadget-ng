@@ -1,0 +1,32 @@
+[simulation]
+dt = 0.05
+num_steps = 150
+softening = 0.05
+particle_count = 262144
+box_size = 100.0
+seed = 42
+integrator = "leapfrog"
+
+[initial_conditions]
+kind = { zeldovich = { seed = 42, grid_size = 64, spectral_index = 0.965, transfer = "eisenstein_hu", sigma8 = 0.8, box_size_mpc_h = 100.0, use_2lpt = true, normalization_mode = "z0_sigma8" } }
+
+[cosmology]
+enabled = true
+omega_m = 0.315
+omega_lambda = 0.685
+h0 = 0.1
+a_init = 0.02
+periodic = true
+auto_g = true
+
+[output]
+snapshot_interval = 30
+snapshot_format = "jsonl"
+dir = "out_simd"
+
+[gravity]
+solver = "pm"
+pm_grid_size = 128
+
+[performance]
+deterministic = false
