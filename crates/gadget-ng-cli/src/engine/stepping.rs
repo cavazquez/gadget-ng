@@ -2373,8 +2373,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                         for k in 0..tile_size {
                                             pos[k] = parts_tile[k].position;
                                         }
-                                        let result =
-                                            let_tree.walk_accel_4xi(pos, tile_size, g, eps2, theta);
+                                        let result = let_tree.walk_accel_4xi_with_criterion(
+                                            pos,
+                                            tile_size,
+                                            g,
+                                            eps2,
+                                            theta,
+                                            cfg.gravity.opening_criterion
+                                                == gadget_ng_core::OpeningCriterion::GeometricBmax,
+                                        );
                                         for k in 0..tile_size {
                                             acc_tile[k] = local_tile[k] + result[k];
                                         }
@@ -2384,8 +2391,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             #[cfg(not(feature = "simd"))]
                             {
                                 for (li, a_out) in acc.iter_mut().enumerate() {
-                                    let a_remote =
-                                        let_tree.walk_accel(parts[li].position, g, eps2, theta);
+                                    let a_remote = let_tree.walk_accel_with_criterion(
+                                        parts[li].position,
+                                        g,
+                                        eps2,
+                                        theta,
+                                        cfg.gravity.opening_criterion
+                                            == gadget_ng_core::OpeningCriterion::GeometricBmax,
+                                    );
                                     *a_out = local_accels[li] + a_remote;
                                 }
                             }

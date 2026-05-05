@@ -654,6 +654,7 @@ impl Octree {
             masses,
             3,
             false,
+            false,
             0.005,
             false,
             MacSoftening::Bare,
@@ -677,6 +678,7 @@ impl Octree {
         masses: &[f64],
         multipole_order: u8,
         use_relative_criterion: bool,
+        use_bmax_criterion: bool,
         err_tol: f64,
         softened_multipoles: bool,
         mac_softening: MacSoftening,
@@ -693,6 +695,7 @@ impl Octree {
             masses,
             multipole_order,
             use_relative_criterion,
+            use_bmax_criterion,
             err_tol,
             softened_multipoles,
             mac_softening,
@@ -714,6 +717,7 @@ impl Octree {
         masses: &[f64],
         multipole_order: u8,
         use_relative_criterion: bool,
+        use_bmax_criterion: bool,
         err_tol: f64,
         softened_multipoles: bool,
         mac_softening: MacSoftening,
@@ -774,8 +778,16 @@ impl Octree {
                 false
             }
         } else {
-            // Criterio geométrico clásico Barnes-Hut: s / d < theta.
-            theta > 0.0 && !eval_inside_cell && d_com > 1e-300 && s / d_com < theta
+            // Criterio geométrico clásico o variante b_max (Dehnen & Read).
+            if !(theta > 0.0 && !eval_inside_cell && d_com > 1e-300) {
+                false
+            } else if use_bmax_criterion {
+                let delta = (node.com - node.center).norm();
+                let bmax = s + delta;
+                bmax / d_com < theta
+            } else {
+                s / d_com < theta
+            }
         };
 
         if use_mac {
@@ -833,6 +845,7 @@ impl Octree {
                 masses,
                 multipole_order,
                 use_relative_criterion,
+                use_bmax_criterion,
                 err_tol,
                 softened_multipoles,
                 mac_softening,

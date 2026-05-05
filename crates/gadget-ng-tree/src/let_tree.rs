@@ -183,13 +183,33 @@ impl LetTree {
     ///
     /// Usa MAC geométrico `2·half_size / d < theta` en cada nodo interno.
     pub fn walk_accel(&self, pos_i: Vec3, g: f64, eps2: f64, theta: f64) -> Vec3 {
+        self.walk_accel_with_criterion(pos_i, g, eps2, theta, false)
+    }
+
+    /// Variante configurable del MAC geométrico del LET.
+    pub fn walk_accel_with_criterion(
+        &self,
+        pos_i: Vec3,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+        use_bmax_criterion: bool,
+    ) -> Vec3 {
         if self.root == NO_LET_CHILD {
             return Vec3::zero();
         }
-        self.walk_inner(self.root, pos_i, g, eps2, theta)
+        self.walk_inner(self.root, pos_i, g, eps2, theta, use_bmax_criterion)
     }
 
-    fn walk_inner(&self, node_idx: u32, pos_i: Vec3, g: f64, eps2: f64, theta: f64) -> Vec3 {
+    fn walk_inner(
+        &self,
+        node_idx: u32,
+        pos_i: Vec3,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+        use_bmax_criterion: bool,
+    ) -> Vec3 {
         let node = &self.nodes[node_idx as usize];
         if node.mass == 0.0 {
             return Vec3::zero();
@@ -206,7 +226,18 @@ impl LetTree {
         // Criterio MAC geométrico.
         let r = pos_i - node.com;
         let d = r.norm();
-        if d > 1e-300 && 2.0 * node.half_size / d < theta {
+        let s = 2.0 * node.half_size;
+        let mac_pass = if d > 1e-300 {
+            if use_bmax_criterion {
+                let bmax = s + (node.com - node.center).norm();
+                bmax / d < theta
+            } else {
+                s / d < theta
+            }
+        } else {
+            false
+        };
+        if mac_pass {
             // Usar multipolo agregado (mono + quad + oct). El hexadecapolo no se agrega en
             // nodos internos del LET (solo en hojas por RMN) para alinear el MAC con `accel_from_let`.
             let a_mono = accel_mono_softened(pos_i, node.mass, node.com, g, eps2);
@@ -219,7 +250,7 @@ impl LetTree {
         let mut acc = Vec3::zero();
         for &ch in &node.children {
             if ch != NO_LET_CHILD {
-                acc += self.walk_inner(ch, pos_i, g, eps2, theta);
+                acc += self.walk_inner(ch, pos_i, g, eps2, theta, use_bmax_criterion);
             }
         }
         acc
@@ -285,11 +316,33 @@ impl LetTree {
         eps2: f64,
         theta: f64,
     ) -> [Vec3; 4] {
+        self.walk_accel_4xi_with_criterion(pos, tile_size, g, eps2, theta, false)
+    }
+
+    #[cfg(feature = "simd")]
+    pub fn walk_accel_4xi_with_criterion(
+        &self,
+        pos: [Vec3; 4],
+        tile_size: usize,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+        use_bmax_criterion: bool,
+    ) -> [Vec3; 4] {
         if self.root == NO_LET_CHILD {
             return [Vec3::zero(); 4];
         }
         let mut acc = [Vec3::zero(); 4];
-        self.walk_inner_4xi(self.root, &pos, tile_size, g, eps2, theta, &mut acc);
+        self.walk_inner_4xi(
+            self.root,
+            &pos,
+            tile_size,
+            g,
+            eps2,
+            theta,
+            use_bmax_criterion,
+            &mut acc,
+        );
         acc
     }
 
@@ -303,6 +356,7 @@ impl LetTree {
         g: f64,
         eps2: f64,
         theta: f64,
+        use_bmax_criterion: bool,
         acc: &mut [Vec3; 4],
     ) {
         let node = &self.nodes[node_idx as usize];
@@ -319,7 +373,16 @@ impl LetTree {
         // MAC conservativo: abrir el nodo si CUALQUIER partícula válida falla.
         let all_pass = pos[..tile_size].iter().all(|p| {
             let d = (*p - node.com).norm();
-            d > 1e-300 && 2.0 * node.half_size / d < theta
+            if !(d > 1e-300) {
+                return false;
+            }
+            let s = 2.0 * node.half_size;
+            if use_bmax_criterion {
+                let bmax = s + (node.com - node.center).norm();
+                bmax / d < theta
+            } else {
+                s / d < theta
+            }
         });
 
         if all_pass {
@@ -334,7 +397,16 @@ impl LetTree {
             // MAC falla: descender a hijos (todos bajo el mismo tile).
             for &ch in &node.children {
                 if ch != NO_LET_CHILD {
-                    self.walk_inner_4xi(ch, pos, tile_size, g, eps2, theta, acc);
+                    self.walk_inner_4xi(
+                        ch,
+                        pos,
+                        tile_size,
+                        g,
+                        eps2,
+                        theta,
+                        use_bmax_criterion,
+                        acc,
+                    );
                 }
             }
         }

@@ -23,6 +23,8 @@ pub struct RayonBarnesHutGravity {
     pub multipole_order: u8,
     /// `true` → criterio de apertura relativo (GADGET-4 `ErrTolForceAcc`).
     pub use_relative_criterion: bool,
+    /// `true` → criterio geométrico `b_max/d < theta` (Dehnen & Read).
+    pub use_bmax_criterion: bool,
     /// Tolerancia para el criterio relativo.
     pub err_tol_force_acc: f64,
     /// `true` → softening Plummer consistente en términos cuadrupolar y octupolar.
@@ -37,6 +39,7 @@ impl Default for RayonBarnesHutGravity {
             theta: 0.5,
             multipole_order: 3,
             use_relative_criterion: false,
+            use_bmax_criterion: false,
             err_tol_force_acc: 0.005,
             softened_multipoles: false,
             mac_softening: MacSoftening::Bare,
@@ -63,6 +66,7 @@ impl GravitySolver for RayonBarnesHutGravity {
         let theta = self.theta;
         let multipole_order = self.multipole_order;
         let use_relative_criterion = self.use_relative_criterion;
+        let use_bmax_criterion = self.use_bmax_criterion;
         let err_tol = self.err_tol_force_acc;
         let softened_multipoles = self.softened_multipoles;
         let mac_softening = self.mac_softening;
@@ -79,6 +83,7 @@ impl GravitySolver for RayonBarnesHutGravity {
                     global_masses,
                     multipole_order,
                     use_relative_criterion,
+                    use_bmax_criterion,
                     err_tol,
                     softened_multipoles,
                     mac_softening,

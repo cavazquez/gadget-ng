@@ -221,6 +221,9 @@ pub enum OpeningCriterion {
     /// Criterio geométrico clásico: abre si `s/d ≥ theta`.
     #[default]
     Geometric,
+    /// Criterio geométrico mejorado (Dehnen & Read): usa `b_max/d ≥ theta`,
+    /// con `b_max = s + |com-center|`.
+    GeometricBmax,
     /// Criterio relativo (GADGET-4 `TypeOfOpeningCriterion=1`): abre si el error de
     /// truncamiento estimado supera `err_tol_force_acc`.
     Relative,

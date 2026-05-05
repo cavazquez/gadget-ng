@@ -9,6 +9,7 @@ description = "Particle-Mesh (PM) gravity solver — FFT periódico 3D para gadg
 default = []
 rayon = ["dep:rayon"]
 mpi = ["dep:mpi"]
+fftw = []
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }

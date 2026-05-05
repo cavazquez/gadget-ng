@@ -26,6 +26,9 @@
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
+use crate::fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
+#[cfg(feature = "fftw")]
+use crate::fft_backend::FftwBackend;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -45,7 +48,7 @@ type PmFftPlanCache = Mutex<HashMap<usize, PmFftPlanPair>>;
 /// unidades de aceleración (longitud/tiempo²), las masas deben estar en las
 /// mismas unidades que G·m/r².
 pub fn solve_forces(density: &[f64], g: f64, nm: usize, box_size: f64) -> [Vec<f64>; 3] {
-    solve_forces_impl(density, g, nm, box_size, None, None)
+    solve_forces_with_backend(density, g, nm, box_size, None, None, FftBackendKind::RustFft)
 }
 
 /// Igual que [`solve_forces`] pero aplica un filtro Gaussiano en k-space que
@@ -64,7 +67,15 @@ pub fn solve_forces_filtered(
     box_size: f64,
     r_split: f64,
 ) -> [Vec<f64>; 3] {
-    solve_forces_impl(density, g, nm, box_size, Some(r_split), None)
+    solve_forces_with_backend(
+        density,
+        g,
+        nm,
+        box_size,
+        Some(r_split),
+        None,
+        FftBackendKind::RustFft,
+    )
 }
 
 /// Como [`solve_forces`] pero aplica suavizado Plummer en k-space `∝ exp(−k² ε²)` si `plummer_eps = Some(ε)`.
@@ -75,7 +86,31 @@ pub fn solve_forces_softened(
     box_size: f64,
     plummer_eps: Option<f64>,
 ) -> [Vec<f64>; 3] {
-    solve_forces_impl(density, g, nm, box_size, None, plummer_eps)
+    solve_forces_with_backend(
+        density,
+        g,
+        nm,
+        box_size,
+        None,
+        plummer_eps,
+        FftBackendKind::RustFft,
+    )
+}
+
+pub fn solve_forces_with_backend(
+    density: &[f64],
+    g: f64,
+    nm: usize,
+    box_size: f64,
+    r_split: Option<f64>,
+    plummer_eps: Option<f64>,
+    backend_kind: FftBackendKind,
+) -> [Vec<f64>; 3] {
+    match backend_kind {
+        FftBackendKind::RustFft => RustFftBackend.solve_forces(density, g, nm, box_size, r_split, plummer_eps),
+        #[cfg(feature = "fftw")]
+        FftBackendKind::Fftw => FftwBackend.solve_forces(density, g, nm, box_size, r_split, plummer_eps),
+    }
 }
 
 fn fft_pm_plans(nm: usize) -> PmFftPlanPair {
@@ -92,7 +127,7 @@ fn fft_pm_plans(nm: usize) -> PmFftPlanPair {
         .clone()
 }
 
-fn solve_forces_impl(
+pub(crate) fn solve_forces_impl(
     density: &[f64],
     g: f64,
     nm: usize,
@@ -324,6 +359,53 @@ mod tests {
         for (i, (d, o)) in data.iter().zip(original.iter()).enumerate() {
             let err = (d.re * norm - o.re).abs();
             assert!(err < 1e-10, "error en índice {i}: {err}");
+        }
+    }
+
+    #[cfg(feature = "fftw")]
+    #[test]
+    fn fftw_backend_matches_rustfft_backend() {
+        let nm = 8usize;
+        let nm3 = nm * nm * nm;
+        let mut density = vec![0.0_f64; nm3];
+        for iz in 0..nm {
+            for iy in 0..nm {
+                for ix in 0..nm {
+                    let x = ix as f64 / nm as f64;
+                    let y = iy as f64 / nm as f64;
+                    let z = iz as f64 / nm as f64;
+                    density[iz * nm * nm + iy * nm + ix] = 1.0
+                        + 0.1 * (2.0 * std::f64::consts::PI * x).sin()
+                        + 0.07 * (2.0 * std::f64::consts::PI * y).cos()
+                        + 0.05 * (4.0 * std::f64::consts::PI * z).sin();
+                }
+            }
+        }
+        let a = solve_forces_with_backend(
+            &density,
+            1.0,
+            nm,
+            1.0,
+            Some(0.15),
+            Some(0.01),
+            FftBackendKind::RustFft,
+        );
+        let b = solve_forces_with_backend(
+            &density,
+            1.0,
+            nm,
+            1.0,
+            Some(0.15),
+            Some(0.01),
+            FftBackendKind::Fftw,
+        );
+
+        for c in 0..3 {
+            for i in 0..nm3 {
+                let den = a[c][i].abs().max(1e-12);
+                let rel = (a[c][i] - b[c][i]).abs() / den;
+                assert!(rel < 1e-10, "backend mismatch comp={c}, i={i}, rel={rel:.3e}");
+            }
         }
     }
 }

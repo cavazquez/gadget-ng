@@ -31,6 +31,7 @@
 use gadget_ng_parallel::ParallelRuntime;
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Arc;
+use crate::fft_backend::FftBackendKind;
 
 // ── Layout de slabs ───────────────────────────────────────────────────────────
 
@@ -415,16 +416,40 @@ pub fn solve_forces_slab<R: ParallelRuntime + ?Sized>(
     r_split: Option<f64>,
     rt: &R,
 ) -> [Vec<f64>; 3] {
+    solve_forces_slab_with_backend(
+        density_slab,
+        layout,
+        g,
+        box_size,
+        r_split,
+        rt,
+        FftBackendKind::RustFft,
+    )
+}
+
+pub fn solve_forces_slab_with_backend<R: ParallelRuntime + ?Sized>(
+    density_slab: &[f64],
+    layout: &SlabLayout,
+    g: f64,
+    box_size: f64,
+    r_split: Option<f64>,
+    rt: &R,
+    backend: FftBackendKind,
+) -> [Vec<f64>; 3] {
     let nm = layout.nm;
 
     // P=1: delegar al solver serial existente para exactitud bit-a-bit.
     if layout.n_ranks == 1 {
         assert_eq!(density_slab.len(), nm * nm * nm);
-        return if let Some(rs) = r_split {
-            crate::fft_poisson::solve_forces_filtered(density_slab, g, nm, box_size, rs)
-        } else {
-            crate::fft_poisson::solve_forces(density_slab, g, nm, box_size)
-        };
+        return crate::fft_poisson::solve_forces_with_backend(
+            density_slab,
+            g,
+            nm,
+            box_size,
+            r_split,
+            None,
+            backend,
+        );
     }
 
     let nm2 = nm * nm;
@@ -495,6 +520,8 @@ pub fn solve_forces_slab<R: ParallelRuntime + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "fftw")]
+    use crate::fft_backend::FftBackendKind;
     use gadget_ng_parallel::SerialRuntime;
 
     fn make_layout_p1(nm: usize) -> SlabLayout {
@@ -606,6 +633,51 @@ mod tests {
                 (fz_s[i] - fz_d[i]).abs() < 1e-10,
                 "fz slab != serial en {i}"
             );
+        }
+    }
+
+    #[cfg(feature = "fftw")]
+    #[test]
+    fn solve_forces_slab_p1_backend_parity() {
+        let nm = 8usize;
+        let layout = make_layout_p1(nm);
+        let rt = SerialRuntime;
+        let box_size = 1.0_f64;
+        let g = 1.0_f64;
+        let mut density = vec![0.0_f64; nm * nm * nm];
+        for iz in 0..nm {
+            for iy in 0..nm {
+                for ix in 0..nm {
+                    let i = iz * nm * nm + iy * nm + ix;
+                    density[i] = 1.0
+                        + 0.2 * (2.0 * std::f64::consts::PI * ix as f64 / nm as f64).sin();
+                }
+            }
+        }
+        let a = solve_forces_slab_with_backend(
+            &density,
+            &layout,
+            g,
+            box_size,
+            Some(0.12),
+            &rt,
+            FftBackendKind::RustFft,
+        );
+        let b = solve_forces_slab_with_backend(
+            &density,
+            &layout,
+            g,
+            box_size,
+            Some(0.12),
+            &rt,
+            FftBackendKind::Fftw,
+        );
+        for c in 0..3 {
+            for i in 0..density.len() {
+                let den = a[c][i].abs().max(1e-12);
+                let rel = (a[c][i] - b[c][i]).abs() / den;
+                assert!(rel < 1e-10, "slab backend mismatch comp={c}, i={i}, rel={rel:.3e}");
+            }
         }
     }
 }

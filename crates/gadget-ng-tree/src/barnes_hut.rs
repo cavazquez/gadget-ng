@@ -10,6 +10,9 @@ pub struct BarnesHutGravity {
     /// `true` → criterio de apertura relativo (GADGET-4 `ErrTolForceAcc`).
     /// `false` → criterio geométrico clásico `s/d < theta`.
     pub use_relative_criterion: bool,
+    /// `true` → criterio geométrico mejorado `b_max/d < theta` (Dehnen & Read).
+    /// Ignorado cuando `use_relative_criterion = true`.
+    pub use_bmax_criterion: bool,
     /// Tolerancia para el criterio relativo (ignorada en modo geométrico).
     pub err_tol_force_acc: f64,
     /// `true` → aplica softening Plummer consistente en términos cuadrupolar y octupolar
@@ -27,6 +30,7 @@ impl Default for BarnesHutGravity {
             theta: 0.5,
             multipole_order: 3,
             use_relative_criterion: false,
+            use_bmax_criterion: false,
             err_tol_force_acc: 0.005,
             softened_multipoles: false,
             mac_softening: MacSoftening::Bare,
@@ -56,6 +60,7 @@ impl BarnesHutGravity {
             global_masses,
             self.multipole_order,
             self.use_relative_criterion,
+            self.use_bmax_criterion,
             self.err_tol_force_acc,
             self.softened_multipoles,
             self.mac_softening,
