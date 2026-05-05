@@ -48,28 +48,33 @@ pub mod thermal_conduction;
 pub mod viscosity;
 
 pub use agn::{
-    AgnParams, BlackHole, apply_agn_feedback, apply_agn_feedback_bimodal, bondi_accretion_rate,
-    bubble_feedback_radio, grow_black_holes,
+    AgnParams, BlackHole, apply_agn_feedback, apply_agn_feedback_bimodal,
+    apply_agn_feedback_bimodal_periodic, apply_agn_feedback_periodic, bondi_accretion_rate,
+    bubble_feedback_radio, bubble_feedback_radio_periodic, grow_black_holes,
+    grow_black_holes_periodic,
 };
 pub use cooling::apply_cooling_mhd;
 pub use cooling::{
     apply_cooling, cooling_rate_atomic, cooling_rate_metal, cooling_rate_tabular, temperature_to_u,
     u_to_temperature,
 };
-pub use cosmic_rays::{apply_cr_hadronic_losses, cr_pressure, diffuse_cr, inject_cr_from_sn};
 pub use cosmic_rays::diffuse_cr_periodic;
+pub use cosmic_rays::{apply_cr_hadronic_losses, cr_pressure, diffuse_cr, inject_cr_from_sn};
 pub use density::{GAMMA, compute_density, compute_density_with_periodic};
 pub use dust::{apply_dust_radiation_pressure_kick, dust_uv_opacity, update_dust};
 pub use enrichment::apply_enrichment;
+pub use enrichment::apply_enrichment_periodic;
 pub use feedback::compute_sfr_with_h2;
 pub use feedback::{
     advance_stellar_ages, apply_galactic_winds, apply_sn_feedback, apply_snia_feedback,
-    apply_stellar_wind_feedback, compute_sfr, spawn_star_particles, total_sn_energy_injection,
+    apply_snia_feedback_periodic, apply_stellar_wind_feedback, compute_sfr, spawn_star_particles,
+    total_sn_energy_injection,
 };
 pub use forces::{
     compute_sph_forces, compute_sph_forces_gadget2, compute_sph_forces_gadget2_with_periodic,
     compute_sph_forces_with_periodic,
 };
+pub use gmc::inject_sn_from_cluster_periodic;
 pub use gmc::{GmcCluster, KroupaImf, collapse_gmc, inject_sn_from_cluster, sample_stellar_mass};
 pub use integrator::{courant_dt, sph_cosmo_kdk_step, sph_kdk_step, sph_kdk_step_gadget2};
 pub use ism::{effective_pressure, effective_u, update_ism_phases};

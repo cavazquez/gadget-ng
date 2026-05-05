@@ -25,6 +25,7 @@
 //! Kroupa (2001) MNRAS 322, 231 — IMF estándar.
 //! Kennicutt (1998) ApJ 498, 541 — relación Schmidt-Kennicutt.
 
+use crate::periodic_delta;
 use gadget_ng_core::Particle;
 use gadget_ng_core::config::SphSection;
 
@@ -237,6 +238,17 @@ pub fn inject_sn_from_cluster(
     dt: f64,
     cfg: &SphSection,
 ) {
+    inject_sn_from_cluster_periodic(clusters, particles, dt, cfg, None);
+}
+
+/// Igual que `inject_sn_from_cluster`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn inject_sn_from_cluster_periodic(
+    clusters: &[GmcCluster],
+    particles: &mut [Particle],
+    dt: f64,
+    cfg: &SphSection,
+    periodic_box: Option<f64>,
+) {
     const AGE_SN_MAX_GYR: f64 = 0.030; // 30 Myr
     const E_SN_CODE: f64 = 1.0e-4; // energía SN en unidades internas por unidad de masa
     const R_INJECT: f64 = 0.5; // radio de inyección en unidades internas
@@ -259,10 +271,9 @@ pub fn inject_sn_from_cluster(
             if !p.is_gas() {
                 continue;
             }
-            let dx = p.position.x - cluster.pos[0];
-            let dy = p.position.y - cluster.pos[1];
-            let dz = p.position.z - cluster.pos[2];
-            if (dx * dx + dy * dy + dz * dz).sqrt() < R_INJECT {
+            let cluster_pos =
+                gadget_ng_core::Vec3::new(cluster.pos[0], cluster.pos[1], cluster.pos[2]);
+            if periodic_delta(cluster_pos, p.position, periodic_box).norm() < R_INJECT {
                 n_neighbors += 1;
             }
         }
@@ -275,10 +286,9 @@ pub fn inject_sn_from_cluster(
             if !p.is_gas() {
                 continue;
             }
-            let dx = p.position.x - cluster.pos[0];
-            let dy = p.position.y - cluster.pos[1];
-            let dz = p.position.z - cluster.pos[2];
-            if (dx * dx + dy * dy + dz * dz).sqrt() < R_INJECT {
+            let cluster_pos =
+                gadget_ng_core::Vec3::new(cluster.pos[0], cluster.pos[1], cluster.pos[2]);
+            if periodic_delta(cluster_pos, p.position, periodic_box).norm() < R_INJECT {
                 // Escalar por gamma para convertir energía en u (energía interna específica)
                 p.internal_energy += e_per_particle * (cfg.gamma - 1.0);
                 // Enriquecer ligeramente con metales

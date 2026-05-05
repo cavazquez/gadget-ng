@@ -606,11 +606,12 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     let dt_gyr = cfg.simulation.dt * 1e-3; // conversión rough: 1 u.i. ~ 1 Myr
                     gadget_ng_sph::advance_stellar_ages(&mut local, dt_gyr);
                     let mut ia_seed = fb_seed.wrapping_add(0xF00D);
-                    gadget_ng_sph::apply_snia_feedback(
+                    gadget_ng_sph::apply_snia_feedback_periodic(
                         &mut local,
                         dt_gyr,
                         &mut ia_seed,
                         &cfg.sph.feedback,
+                        periodic_box,
                     );
                 }
             }
@@ -653,6 +654,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     macro_rules! maybe_agn {
         ($sph_step_agn:expr) => {
             if cfg.sph.agn.enabled {
+                let periodic_box_agn = cfg.cosmology.periodic.then_some(cfg.simulation.box_size);
                 let agn_params = gadget_ng_sph::AgnParams {
                     eps_feedback: cfg.sph.agn.eps_feedback,
                     m_seed: cfg.sph.agn.m_seed,
@@ -682,14 +684,15 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         agn_params.m_seed,
                     ));
                 }
-                gadget_ng_sph::grow_black_holes(
+                gadget_ng_sph::grow_black_holes_periodic(
                     &mut agn_bhs,
                     &local,
                     &agn_params,
                     cfg.simulation.dt,
+                    periodic_box_agn,
                 );
                 // Phase 116: Bifurcación modo quasar / modo radio AGN
-                gadget_ng_sph::apply_agn_feedback_bimodal(
+                gadget_ng_sph::apply_agn_feedback_bimodal_periodic(
                     &mut local,
                     &agn_bhs,
                     &agn_params,
@@ -697,6 +700,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     cfg.sph.agn.r_bubble,
                     cfg.sph.agn.eps_radio,
                     cfg.simulation.dt,
+                    periodic_box_agn,
                 );
                 let _ = $sph_step_agn;
             }

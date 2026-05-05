@@ -10,7 +10,7 @@ echo "== cargo fmt =="
 cargo fmt --all -- --check
 
 echo "== cargo clippy =="
-# Igual que job «Clippy» en .github/workflows/ci.yml (sin --tests / --all-targets).
+# Igual que job «Clippy» bloqueante en .github/workflows/ci.yml.
 cargo clippy --workspace -- -D warnings
 
 echo "== cargo test (workspace) =="

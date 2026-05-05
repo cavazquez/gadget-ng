@@ -93,6 +93,7 @@ pub fn diffuse_cr(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt
 }
 
 /// Igual que `diffuse_cr`, usando imagen mínima si `periodic_box = Some(L)`.
+#[allow(clippy::needless_range_loop)]
 pub fn diffuse_cr_periodic(
     particles: &mut [Particle],
     kappa_cr: f64,

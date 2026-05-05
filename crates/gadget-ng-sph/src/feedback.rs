@@ -30,6 +30,7 @@
 //! Springel & Hernquist (2003), MNRAS 339, 289;
 //! Dalla Vecchia & Schaye (2012), MNRAS 426, 140.
 
+use crate::periodic_delta;
 use gadget_ng_core::{FeedbackSection, Particle, ParticleType, WindParams};
 
 // ── Constantes ─────────────────────────────────────────────────────────────
@@ -96,6 +97,19 @@ pub fn compute_sfr_with_h2(
         .collect()
 }
 
+#[inline]
+fn lcg_next(seed: &mut u64) -> u64 {
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    *seed
+}
+
+#[inline]
+fn rand01(seed: &mut u64) -> f64 {
+    (lcg_next(seed) >> 33) as f64 / u32::MAX as f64
+}
+
 /// Aplica el feedback por supernovas estocástico a las partículas de gas.
 ///
 /// Para cada partícula de gas con `sfr[i] > sfr_min`:
@@ -135,11 +149,7 @@ pub fn apply_sn_feedback(
         let m = particles[i].mass.max(1e-30);
         let prob = 1.0 - (-sfr_i * dt / m).exp();
 
-        // LCG aleatorio
-        *seed = seed
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+        let rand_val = rand01(seed);
 
         if rand_val < prob {
             // Dirección de kick aleatoria en esfera unitaria (rechazo)
@@ -157,16 +167,10 @@ pub fn apply_sn_feedback(
 
 /// Genera un vector unitario aleatorio en la esfera usando un LCG.
 fn random_unit_vector(seed: &mut u64) -> (f64, f64, f64) {
-    let lcg = |s: &mut u64| -> f64 {
-        *s = s
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        ((*s >> 33) as f64 / u32::MAX as f64) * 2.0 - 1.0
-    };
     loop {
-        let x = lcg(seed);
-        let y = lcg(seed);
-        let z = lcg(seed);
+        let x = 2.0 * rand01(seed) - 1.0;
+        let y = 2.0 * rand01(seed) - 1.0;
+        let z = 2.0 * rand01(seed) - 1.0;
         let r2 = x * x + y * y + z * z;
         if r2 > 0.0 && r2 <= 1.0 {
             let r = r2.sqrt();
@@ -219,10 +223,7 @@ pub fn apply_galactic_winds(
         // Probabilidad de ser lanzado como viento en este paso.
         let prob = 1.0 - (-(eta * sfr_i * dt) / m).exp();
 
-        *seed = seed
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+        let rand_val = rand01(seed);
 
         if rand_val < prob {
             let (nx, ny, nz) = random_unit_vector(seed);
@@ -297,10 +298,7 @@ pub fn spawn_star_particles(
 
         // Probabilidad de spawning
         let prob = 1.0 - (-sfr[i] * dt / m_i).exp();
-        *seed ^= *seed << 13;
-        *seed ^= *seed >> 7;
-        *seed ^= *seed << 17;
-        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+        let rand_val = rand01(seed);
 
         if rand_val < prob {
             let m_star = cfg.m_star_fraction * m_i;
@@ -346,6 +344,17 @@ pub fn apply_snia_feedback(
     seed: &mut u64,
     cfg: &FeedbackSection,
 ) {
+    apply_snia_feedback_periodic(particles, dt_gyr, seed, cfg, None);
+}
+
+/// Igual que `apply_snia_feedback`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn apply_snia_feedback_periodic(
+    particles: &mut [Particle],
+    dt_gyr: f64,
+    seed: &mut u64,
+    cfg: &FeedbackSection,
+    periodic_box: Option<f64>,
+) {
     if !cfg.enabled {
         return;
     }
@@ -368,10 +377,7 @@ pub fn apply_snia_feedback(
         let n_exp = rate * dt_gyr * particles[i].mass;
 
         // Sorteo estocástico
-        *seed ^= *seed << 13;
-        *seed ^= *seed >> 7;
-        *seed ^= *seed << 17;
-        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+        let rand_val = rand01(seed);
         let prob = 1.0 - (-n_exp).exp();
         if rand_val >= prob {
             continue;
@@ -392,10 +398,7 @@ pub fn apply_snia_feedback(
             if particles[j].ptype != gadget_ng_core::ParticleType::Gas {
                 continue;
             }
-            let dx = particles[j].position.x - pos_i.x;
-            let dy = particles[j].position.y - pos_i.y;
-            let dz = particles[j].position.z - pos_i.z;
-            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
             if r < 2.0 * h_i {
                 let w = (1.0 - r / (2.0 * h_i)).powi(2);
                 weights[j] = w;
@@ -408,10 +411,8 @@ pub fn apply_snia_feedback(
             let (closest, _) = (0..n)
                 .filter(|&j| j != i && particles[j].ptype == gadget_ng_core::ParticleType::Gas)
                 .map(|j| {
-                    let dx = particles[j].position.x - pos_i.x;
-                    let dy = particles[j].position.y - pos_i.y;
-                    let dz = particles[j].position.z - pos_i.z;
-                    let r2 = dx * dx + dy * dy + dz * dz;
+                    let d = periodic_delta(pos_i, particles[j].position, periodic_box);
+                    let r2 = d.dot(d);
                     (j, r2)
                 })
                 .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
@@ -494,10 +495,7 @@ pub fn apply_stellar_wind_feedback(
         // Probabilidad: p = η_w × sfr × dt / m
         let prob = (cfg.eta_stellar_wind * sfr[i] * dt / m_i).min(1.0);
 
-        *seed ^= *seed << 13;
-        *seed ^= *seed >> 7;
-        *seed ^= *seed << 17;
-        let rand_val = (*seed >> 33) as f64 / u32::MAX as f64;
+        let rand_val = rand01(seed);
 
         if rand_val < prob {
             let (nx, ny, nz) = random_unit_vector(seed);

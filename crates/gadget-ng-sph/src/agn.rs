@@ -5,6 +5,7 @@
 //! 2. **Crecimiento del agujero negro**: M_BH → M_BH + Ṁ dt (masa acretada)
 //! 3. **Feedback térmico**: E_fb = ε_feedback × Ṁ × c² depositada en gas vecino
 
+use crate::periodic_delta;
 use gadget_ng_core::{Particle, Vec3};
 
 /// Agujero negro supermasivo (SMBH) en la simulación.
@@ -97,6 +98,17 @@ pub fn apply_agn_feedback(
     params: &AgnParams,
     dt: f64,
 ) {
+    apply_agn_feedback_periodic(particles, bhs, params, dt, None);
+}
+
+/// Igual que `apply_agn_feedback`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn apply_agn_feedback_periodic(
+    particles: &mut [Particle],
+    bhs: &[BlackHole],
+    params: &AgnParams,
+    dt: f64,
+    periodic_box: Option<f64>,
+) {
     for bh in bhs {
         // Energía de feedback disponible en este paso
         let e_feedback = params.eps_feedback * bh.accretion_rate * C_KMS * C_KMS * dt;
@@ -113,10 +125,8 @@ pub fn apply_agn_feedback(
             if p.internal_energy <= 0.0 {
                 continue; // no es partícula de gas
             }
-            let dx = p.position.x - bh.pos.x;
-            let dy = p.position.y - bh.pos.y;
-            let dz = p.position.z - bh.pos.z;
-            let r2 = dx * dx + dy * dy + dz * dz;
+            let d = periodic_delta(bh.pos, p.position, periodic_box);
+            let r2 = d.dot(d);
             if r2 < r2_max {
                 neighbors.push(i);
                 total_mass_neighbors += p.mass;
@@ -135,14 +145,10 @@ pub fn apply_agn_feedback(
 
             // Kick cinético radial (modo jet)
             if params.v_kick_agn > 0.0 {
-                let dx = particles[i].position.x - bh.pos.x;
-                let dy = particles[i].position.y - bh.pos.y;
-                let dz = particles[i].position.z - bh.pos.z;
-                let r = (dx * dx + dy * dy + dz * dz).sqrt().max(1e-30);
+                let d = periodic_delta(bh.pos, particles[i].position, periodic_box);
+                let r = d.norm().max(1e-30);
                 let kick = params.v_kick_agn * mass_frac;
-                particles[i].velocity.x += kick * dx / r;
-                particles[i].velocity.y += kick * dy / r;
-                particles[i].velocity.z += kick * dz / r;
+                particles[i].velocity += d * (kick / r);
             }
         }
     }
@@ -173,6 +179,19 @@ pub fn bubble_feedback_radio(
     eps_radio: f64,
     dt: f64,
 ) {
+    bubble_feedback_radio_periodic(bh, particles, _params, r_bubble, eps_radio, dt, None);
+}
+
+/// Igual que `bubble_feedback_radio`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn bubble_feedback_radio_periodic(
+    bh: &BlackHole,
+    particles: &mut [Particle],
+    _params: &AgnParams,
+    r_bubble: f64,
+    eps_radio: f64,
+    dt: f64,
+    periodic_box: Option<f64>,
+) {
     let e_radio = eps_radio * bh.accretion_rate * C_KMS * C_KMS * dt;
     if e_radio <= 0.0 {
         return;
@@ -188,10 +207,8 @@ pub fn bubble_feedback_radio(
         if p.ptype != gadget_ng_core::ParticleType::Gas {
             continue;
         }
-        let dx = p.position.x - bh.pos.x;
-        let dy = p.position.y - bh.pos.y;
-        let dz = p.position.z - bh.pos.z;
-        let r2 = dx * dx + dy * dy + dz * dz;
+        let d = periodic_delta(bh.pos, p.position, periodic_box);
+        let r2 = d.dot(d);
         if r2 < r2_bubble && r2 > 0.0 {
             neighbors.push(i);
             total_mass += p.mass;
@@ -208,14 +225,12 @@ pub fn bubble_feedback_radio(
         let mass_frac = particles[i].mass / total_mass;
         let e_i = e_radio * mass_frac / particles[i].mass.max(1e-30);
 
-        let dx = particles[i].position.x - bh.pos.x;
-        let dy = particles[i].position.y - bh.pos.y;
-        let dz = particles[i].position.z - bh.pos.z;
-        let r = (dx * dx + dy * dy + dz * dz).sqrt().max(1e-30);
+        let d = periodic_delta(bh.pos, particles[i].position, periodic_box);
+        let r = d.norm().max(1e-30);
 
         // Dirección tangencial: producto vectorial r × ẑ, luego normalizar
-        let tx = -dy / r;
-        let ty = dx / r;
+        let tx = -d.y / r;
+        let ty = d.x / r;
         let tz = 0.0_f64;
         let t_norm = (tx * tx + ty * ty + tz * tz).sqrt().max(1e-30);
 
@@ -245,6 +260,30 @@ pub fn apply_agn_feedback_bimodal(
     eps_radio: f64,
     dt: f64,
 ) {
+    apply_agn_feedback_bimodal_periodic(
+        particles,
+        bhs,
+        params,
+        f_edd_threshold,
+        r_bubble,
+        eps_radio,
+        dt,
+        None,
+    );
+}
+
+/// Igual que `apply_agn_feedback_bimodal`, usando imagen mínima si `periodic_box = Some(L)`.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_agn_feedback_bimodal_periodic(
+    particles: &mut [Particle],
+    bhs: &[BlackHole],
+    params: &AgnParams,
+    f_edd_threshold: f64,
+    r_bubble: f64,
+    eps_radio: f64,
+    dt: f64,
+    periodic_box: Option<f64>,
+) {
     for bh in bhs {
         if bh.accretion_rate <= 0.0 {
             continue;
@@ -260,10 +299,24 @@ pub fn apply_agn_feedback_bimodal(
 
         if f_edd > f_edd_threshold {
             // Modo quasar: feedback térmico (comportamiento original)
-            apply_agn_feedback(particles, std::slice::from_ref(bh), params, dt);
+            apply_agn_feedback_periodic(
+                particles,
+                std::slice::from_ref(bh),
+                params,
+                dt,
+                periodic_box,
+            );
         } else {
             // Modo radio: jets mecánicos en burbuja
-            bubble_feedback_radio(bh, particles, params, r_bubble, eps_radio, dt);
+            bubble_feedback_radio_periodic(
+                bh,
+                particles,
+                params,
+                r_bubble,
+                eps_radio,
+                dt,
+                periodic_box,
+            );
         }
     }
 }
@@ -284,6 +337,17 @@ pub fn grow_black_holes(
     params: &AgnParams,
     dt: f64,
 ) {
+    grow_black_holes_periodic(bhs, particles, params, dt, None);
+}
+
+/// Igual que `grow_black_holes`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn grow_black_holes_periodic(
+    bhs: &mut [BlackHole],
+    particles: &[Particle],
+    params: &AgnParams,
+    dt: f64,
+    periodic_box: Option<f64>,
+) {
     for bh in bhs.iter_mut() {
         // Densidad local: suma de masa de gas vecino / volumen esférico
         let r_inf = params.r_influence;
@@ -298,10 +362,8 @@ pub fn grow_black_holes(
             if p.internal_energy <= 0.0 {
                 continue;
             }
-            let dx = p.position.x - bh.pos.x;
-            let dy = p.position.y - bh.pos.y;
-            let dz = p.position.z - bh.pos.z;
-            let r2 = dx * dx + dy * dy + dz * dz;
+            let d = periodic_delta(bh.pos, p.position, periodic_box);
+            let r2 = d.dot(d);
             if r2 < r2_max {
                 mass_in_sphere += p.mass;
                 // c_s² ∝ u para gas ideal: c_s ≈ sqrt(γ(γ-1)u) con γ=5/3

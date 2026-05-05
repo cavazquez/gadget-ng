@@ -96,7 +96,8 @@ pub fn apply_thermal_conduction_periodic(
             }
             let t_j = u_to_temperature(particles[j].internal_energy.max(0.0), gamma);
 
-            let r = periodic_delta(particles[i].position, particles[j].position, periodic_box).norm();
+            let r =
+                periodic_delta(particles[i].position, particles[j].position, periodic_box).norm();
 
             // Usa el máximo de los dos radios de suavizado
             let h_ij = h_i.max(particles[j].smoothing_length.max(1e-10));

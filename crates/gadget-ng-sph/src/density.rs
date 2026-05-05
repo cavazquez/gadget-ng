@@ -98,7 +98,14 @@ fn rho_and_deriv(
     (rho, drho)
 }
 
-fn rho_sum(pos: &[Vec3], mass: &[f64], pi: Vec3, h: f64, n: usize, periodic_box: Option<f64>) -> f64 {
+fn rho_sum(
+    pos: &[Vec3],
+    mass: &[f64],
+    pi: Vec3,
+    h: f64,
+    n: usize,
+    periodic_box: Option<f64>,
+) -> f64 {
     (0..n)
         .map(|j| mass[j] * w(periodic_delta(pi, pos[j], periodic_box).norm(), h))
         .sum()

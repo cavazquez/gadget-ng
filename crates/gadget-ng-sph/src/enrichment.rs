@@ -19,6 +19,7 @@
 //! - Woosley & Weaver (1995) ApJS 101, 181 — yields de SN II
 //! - Portinari, Chiosi & Bressan (1998) A&A 334, 505 — yields AGB
 
+use crate::periodic_delta;
 use gadget_ng_core::{EnrichmentSection, Particle, ParticleType};
 
 /// Factor de normalización del kernel SPH (usado solo para peso relativo).
@@ -53,6 +54,17 @@ fn kernel_w(r: f64, h: f64) -> f64 {
 /// - `dt` — paso de tiempo en unidades internas.
 /// - `cfg` — configuración de enriquecimiento.
 pub fn apply_enrichment(particles: &mut [Particle], sfr: &[f64], dt: f64, cfg: &EnrichmentSection) {
+    apply_enrichment_periodic(particles, sfr, dt, cfg, None);
+}
+
+/// Igual que `apply_enrichment`, usando imagen mínima si `periodic_box = Some(L)`.
+pub fn apply_enrichment_periodic(
+    particles: &mut [Particle],
+    sfr: &[f64],
+    dt: f64,
+    cfg: &EnrichmentSection,
+    periodic_box: Option<f64>,
+) {
     if !cfg.enabled || particles.is_empty() {
         return;
     }
@@ -91,10 +103,7 @@ pub fn apply_enrichment(particles: &mut [Particle], sfr: &[f64], dt: f64, cfg: &
                 continue;
             }
 
-            let dx = particles[j].position.x - pos_i.x;
-            let dy = particles[j].position.y - pos_i.y;
-            let dz = particles[j].position.z - pos_i.z;
-            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
 
             let w = kernel_w(r, 2.0 * h_i);
             if w > 0.0 {
@@ -145,10 +154,7 @@ pub fn apply_enrichment(particles: &mut [Particle], sfr: &[f64], dt: f64, cfg: &
                 continue;
             }
 
-            let dx = particles[j].position.x - pos_i.x;
-            let dy = particles[j].position.y - pos_i.y;
-            let dz = particles[j].position.z - pos_i.z;
-            let r = (dx * dx + dy * dy + dz * dz).sqrt();
+            let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
 
             let w = kernel_w(r, 2.0 * h_i);
             if w > 0.0 {
