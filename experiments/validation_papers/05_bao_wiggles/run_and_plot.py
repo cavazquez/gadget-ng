@@ -92,7 +92,7 @@ def main():
     results_json = os.path.join(out_dir, 'results.json')
     subprocess.run([
         'cargo', 'run', '--release', '--', 
-        'analyze', '--snapshot', snap_final_dir, '--xi-bins', '50', '--xi-rmax', '160.0', '--out', results_json
+        'analyze', '--snapshot', snap_final_dir, '--xi-bins', '50', '--xi-rmax', '160.0', '--output', results_json
     ], cwd=ws_root, check=True)
     
     print("\n=== 3. Graficando Pico Acústico (BAO) ===")
