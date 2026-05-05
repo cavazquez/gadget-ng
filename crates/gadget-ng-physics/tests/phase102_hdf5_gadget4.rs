@@ -64,16 +64,11 @@ fn header_unit_constants_set() {
     assert!((h.unit_velocity_in_cm_per_s - KMS_IN_CMS).abs() < 1.0);
 }
 
-// Tests HDF5 con feature "hdf5"
-#[cfg(feature = "hdf5")]
+// Tests HDF5 (gadget-ng-physics depende de gadget-ng-io con hdf5 habilitado).
 mod hdf5_tests {
     use gadget_ng_core::{Particle, Vec3};
     use gadget_ng_io::{
-        gadget4_attrs::Gadget4Header,
-        hdf5_writer::{Hdf5Reader, Hdf5Writer},
-        provenance::Provenance,
-        reader::SnapshotReader,
-        writer::{SnapshotEnv, SnapshotWriter},
+        Hdf5Reader, Hdf5Writer, Provenance, SnapshotEnv, SnapshotReader, SnapshotWriter,
     };
 
     fn make_prov() -> Provenance {

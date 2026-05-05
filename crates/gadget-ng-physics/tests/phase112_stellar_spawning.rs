@@ -59,16 +59,11 @@ fn mass_conserved_on_spawn() {
     let sfr = vec![1e10_f64];
     let mut seed = 42u64;
     let mut next_gid = 10;
-    let (stars, to_remove) =
+    let (stars, _to_remove) =
         spawn_star_particles(&mut particles, &sfr, 1e-10, &mut seed, &cfg, &mut next_gid);
 
     if !stars.is_empty() {
         let m_star: f64 = stars.iter().map(|s| s.mass).sum();
-        let m_gas_remaining = if to_remove.contains(&0) {
-            0.0
-        } else {
-            particles[0].mass
-        };
         // La masa total debe ser menor o igual (puede perderse algo si se eliminó gas)
         // Verificamos que m_star = m_star_fraction × m0
         assert!(

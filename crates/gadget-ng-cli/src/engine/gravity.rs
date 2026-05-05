@@ -486,7 +486,8 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
                 theta: cfg.gravity.theta,
                 multipole_order: cfg.gravity.multipole_order,
                 use_relative_criterion: cfg.gravity.opening_criterion == OpeningCriterion::Relative,
-                use_bmax_criterion: cfg.gravity.opening_criterion == OpeningCriterion::GeometricBmax,
+                use_bmax_criterion: cfg.gravity.opening_criterion
+                    == OpeningCriterion::GeometricBmax,
                 err_tol_force_acc: cfg.gravity.err_tol_force_acc,
                 softened_multipoles: cfg.gravity.softened_multipoles,
                 mac_softening: cfg.gravity.mac_softening,

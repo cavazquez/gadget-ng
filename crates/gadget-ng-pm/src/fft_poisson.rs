@@ -23,12 +23,12 @@
 //! En rustfft (convención DFT estándar), el índice `j` corresponde a
 //! `n = j` para `j ≤ NM/2` y `n = j - NM` para `j > NM/2`.
 
+#[cfg(feature = "fftw")]
+use crate::fft_backend::FftwBackend;
+use crate::fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
-use crate::fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
-#[cfg(feature = "fftw")]
-use crate::fft_backend::FftwBackend;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -48,7 +48,15 @@ type PmFftPlanCache = Mutex<HashMap<usize, PmFftPlanPair>>;
 /// unidades de aceleración (longitud/tiempo²), las masas deben estar en las
 /// mismas unidades que G·m/r².
 pub fn solve_forces(density: &[f64], g: f64, nm: usize, box_size: f64) -> [Vec<f64>; 3] {
-    solve_forces_with_backend(density, g, nm, box_size, None, None, FftBackendKind::RustFft)
+    solve_forces_with_backend(
+        density,
+        g,
+        nm,
+        box_size,
+        None,
+        None,
+        FftBackendKind::RustFft,
+    )
 }
 
 /// Igual que [`solve_forces`] pero aplica un filtro Gaussiano en k-space que
@@ -107,9 +115,13 @@ pub fn solve_forces_with_backend(
     backend_kind: FftBackendKind,
 ) -> [Vec<f64>; 3] {
     match backend_kind {
-        FftBackendKind::RustFft => RustFftBackend.solve_forces(density, g, nm, box_size, r_split, plummer_eps),
+        FftBackendKind::RustFft => {
+            RustFftBackend.solve_forces(density, g, nm, box_size, r_split, plummer_eps)
+        }
         #[cfg(feature = "fftw")]
-        FftBackendKind::Fftw => FftwBackend.solve_forces(density, g, nm, box_size, r_split, plummer_eps),
+        FftBackendKind::Fftw => {
+            FftwBackend.solve_forces(density, g, nm, box_size, r_split, plummer_eps)
+        }
     }
 }
 
@@ -404,7 +416,10 @@ mod tests {
             for i in 0..nm3 {
                 let den = a[c][i].abs().max(1e-12);
                 let rel = (a[c][i] - b[c][i]).abs() / den;
-                assert!(rel < 1e-10, "backend mismatch comp={c}, i={i}, rel={rel:.3e}");
+                assert!(
+                    rel < 1e-10,
+                    "backend mismatch comp={c}, i={i}, rel={rel:.3e}"
+                );
             }
         }
     }

@@ -39,16 +39,6 @@ fn parts_in_halo(n: usize, halo_idx: usize, id_offset: u64) -> Vec<ParticleSnaps
         .collect()
 }
 
-/// Construye partículas sin halo (campo).
-fn parts_field(n: usize, id_offset: u64) -> Vec<ParticleSnapshot> {
-    (0..n)
-        .map(|i| ParticleSnapshot {
-            id: id_offset + i as u64,
-            halo_idx: None,
-        })
-        .collect()
-}
-
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 /// Halo con progenitor único: las mismas partículas aparecen en dos snapshots

@@ -85,13 +85,6 @@ fn metallicity_serde_roundtrip() {
 #[test]
 fn backward_compat_missing_metal_fields() {
     // JSON sin los campos nuevos — deben caer a 0.0 via #[serde(default)]
-    let json = r#"{
-        "global_id": 7,
-        "mass": 2.0,
-        "px": 0.0, "py": 0.0, "pz": 0.0,
-        "vx": 0.0, "vy": 0.0, "vz": 0.0
-    }"#;
-
     // ParticleRecord en gadget-ng-io tiene el formato con px/py/pz
     // Aquí usamos Particle directamente con su formato serde
     let json2 = r#"{

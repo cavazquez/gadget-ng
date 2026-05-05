@@ -440,11 +440,6 @@ fn phase53_density_profile_from_fof_halo() {
     );
 
     // ── Distancias radiales de las partículas del halo ────────────────────────
-    let halo_particle_idx: Vec<usize> = (0..particles.len())
-        .filter(|_| true) // en análisis real usaríamos las partículas miembro
-        .take(biggest.n_particles.min(particles.len()))
-        .collect();
-
     // Usar todas las partículas de la caja para medir el perfil alrededor del COM
     let radii: Vec<f64> = particles
         .iter()

@@ -28,10 +28,10 @@
 //! `nz_local = nm/P` y `nk_local = nm²/P`. Total por rank y alltoall: `nm³/P` f64.
 //! Esto es **P× menos** que el `allreduce` de Fase 19 (`nm³` f64 por rank).
 
+use crate::fft_backend::FftBackendKind;
 use gadget_ng_parallel::ParallelRuntime;
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Arc;
-use crate::fft_backend::FftBackendKind;
 
 // ── Layout de slabs ───────────────────────────────────────────────────────────
 
@@ -649,8 +649,8 @@ mod tests {
             for iy in 0..nm {
                 for ix in 0..nm {
                     let i = iz * nm * nm + iy * nm + ix;
-                    density[i] = 1.0
-                        + 0.2 * (2.0 * std::f64::consts::PI * ix as f64 / nm as f64).sin();
+                    density[i] =
+                        1.0 + 0.2 * (2.0 * std::f64::consts::PI * ix as f64 / nm as f64).sin();
                 }
             }
         }
@@ -676,7 +676,10 @@ mod tests {
             for i in 0..density.len() {
                 let den = a[c][i].abs().max(1e-12);
                 let rel = (a[c][i] - b[c][i]).abs() / den;
-                assert!(rel < 1e-10, "slab backend mismatch comp={c}, i={i}, rel={rel:.3e}");
+                assert!(
+                    rel < 1e-10,
+                    "slab backend mismatch comp={c}, i={i}, rel={rel:.3e}"
+                );
             }
         }
     }

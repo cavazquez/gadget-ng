@@ -309,7 +309,7 @@ fn phase48_pk_vs_halofit_at_ics() {
     println!("  k[h/Mpc]   P_corr      P_halofit   ratio");
     let mut errors: Vec<f64> = Vec::new();
 
-    for (bin, (k_hmpc, p_hf)) in pk_corr.iter().zip(p_halofit.iter()) {
+    for (bin, (_k_hmpc, p_hf)) in pk_corr.iter().zip(p_halofit.iter()) {
         let k_hmpc_bin = bin.k * H_DIMLESS / BOX_MPC_H;
         if k_hmpc_bin > k_nyq_half_hmpc {
             break;

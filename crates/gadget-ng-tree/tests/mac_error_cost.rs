@@ -78,4 +78,3 @@ fn relative_mac_error_cost_is_competitive() {
         "MAC relativo abre demasiados nodos: c_rel={cost_rel:.1}, c_geom={cost_geom:.1}"
     );
 }
-

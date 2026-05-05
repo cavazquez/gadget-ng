@@ -82,7 +82,7 @@ fn direct_accel_single(pos_i: Vec3, all_pos: &[Vec3], masses: &[f64], g: f64, ep
         .iter()
         .zip(masses.iter())
         .enumerate()
-        .fold(Vec3::zero(), |acc, (j, (pj, &mj))| {
+        .fold(Vec3::zero(), |acc, (_j, (pj, &mj))| {
             let dr = *pj - pos_i;
             let r2 = dr.dot(dr) + eps2;
             let r3 = r2.sqrt() * r2;

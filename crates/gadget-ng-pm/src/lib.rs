@@ -35,9 +35,9 @@ pub use amr_mpi::{
 pub use amr_mpi::{
     amr_pm_accels_multilevel_mpi_real, broadcast_patch_forces_mpi, build_amr_hierarchy_mpi_real,
 };
-pub use pencil_fft::{PencilLayout2D, solve_forces_pencil2d};
-pub use fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
 #[cfg(feature = "fftw")]
 pub use fft_backend::FftwBackend;
+pub use fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
+pub use pencil_fft::{PencilLayout2D, solve_forces_pencil2d};
 pub use slab_fft::SlabLayout;
 pub use solver::PmSolver;

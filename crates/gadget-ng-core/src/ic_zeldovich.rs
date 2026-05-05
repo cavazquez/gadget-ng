@@ -147,7 +147,12 @@ impl TabulatedTransfer {
                     break;
                 }
             }
-            if vals.len() >= 2 && vals[0].is_finite() && vals[1].is_finite() && vals[0] > 0.0 && vals[1] > 0.0 {
+            if vals.len() >= 2
+                && vals[0].is_finite()
+                && vals[1].is_finite()
+                && vals[0] > 0.0
+                && vals[1] > 0.0
+            {
                 rows.push((vals[0], vals[1]));
             }
         }
@@ -232,7 +237,8 @@ fn pchip_slopes(x: &[f64], y: &[f64]) -> Vec<f64> {
         m[0] = 3.0 * d[0];
     }
 
-    m[n - 1] = ((2.0 * h[n - 2] + h[n - 3]) * d[n - 2] - h[n - 2] * d[n - 3]) / (h[n - 2] + h[n - 3]);
+    m[n - 1] =
+        ((2.0 * h[n - 2] + h[n - 3]) * d[n - 2] - h[n - 2] * d[n - 3]) / (h[n - 2] + h[n - 3]);
     if m[n - 1].signum() != d[n - 2].signum() {
         m[n - 1] = 0.0;
     } else if d[n - 2].signum() != d[n - 3].signum() && m[n - 1].abs() > 3.0 * d[n - 2].abs() {
@@ -1122,8 +1128,7 @@ mod tests {
             let n_abs = k_mid / (2.0 * std::f64::consts::PI * 0.674);
             let sigma = spec(n_abs);
             let tk_est = sigma / inv_sqrt_n3;
-            let tk_ref =
-                (1.0 + 0.02 * (1.5 * k_mid.ln()).sin()) * (1.0 + 20.0 * k_mid).powf(-0.8);
+            let tk_ref = (1.0 + 0.02 * (1.5 * k_mid.ln()).sin()) * (1.0 + 20.0 * k_mid).powf(-0.8);
             let rel = (tk_est - tk_ref).abs() / tk_ref.abs().max(1e-12);
             assert!(rel < 1e-3, "midpoint rel err={rel:.3e} at k={k_mid:.3e}");
         }

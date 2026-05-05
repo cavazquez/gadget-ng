@@ -144,7 +144,7 @@ fn sod_riemann_density(x: f64, t: f64) -> f64 {
 /// Las condiciones iniciales tienen la relación de densidades correcta.
 #[test]
 fn pf05_initial_density_ratio_is_8() {
-    let parts = setup_sod_gadget2(80, 10);
+    let _parts = setup_sod_gadget2(80, 10);
     let dx_l = 0.5 / 80.0_f64;
     let dx_r = 0.5 / 10.0_f64;
     let ratio = dx_r / dx_l;

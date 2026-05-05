@@ -381,22 +381,6 @@ mod tests {
     use super::*;
     use gadget_ng_core::Vec3;
 
-    fn make_halo_meta(id: usize, n: usize, mass: f64) -> FofHalo {
-        FofHalo {
-            halo_id: id,
-            n_particles: n,
-            mass,
-            x_com: 0.5,
-            y_com: 0.5,
-            z_com: 0.5,
-            vx_com: 0.0,
-            vy_com: 0.0,
-            vz_com: 0.0,
-            velocity_dispersion: 0.0,
-            r_vir: 1.0,
-        }
-    }
-
     #[test]
     fn local_density_uniform_positive() {
         // Retícula cúbica 4³: la densidad debe ser positiva para todas las partículas.

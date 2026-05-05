@@ -56,4 +56,3 @@ impl PmFftBackend for FftwBackend {
         fft_poisson::solve_forces_impl(density, g, nm, box_size, r_split, plummer_eps)
     }
 }
-

@@ -63,12 +63,6 @@ fn perturb_vx_sine(particles: &mut [Particle], amp: f64) {
     }
 }
 
-/// Mide la amplitud RMS de B_y (componente perturbada de la onda de Alfvén).
-fn amplitude_by(particles: &[Particle]) -> f64 {
-    let n = particles.len();
-    (particles.iter().map(|p| p.b_field.y.powi(2)).sum::<f64>() / n as f64).sqrt()
-}
-
 /// Mide la amplitud RMS de v_x (perturbación de velocidad para onda magnetosónica).
 fn amplitude_vx(particles: &[Particle]) -> f64 {
     let n = particles.len();
@@ -79,26 +73,6 @@ fn amplitude_vx(particles: &[Particle]) -> f64 {
 fn magnetic_flux_bz(particles: &[Particle]) -> f64 {
     let n = particles.len() as f64;
     particles.iter().map(|p| p.b_field.z).sum::<f64>() / n
-}
-
-/// Ajusta decaimiento exponencial ln(A) = ln(A0) - γ*t por regresión lineal.
-fn fit_exponential_decay(times: &[f64], amplitudes: &[f64]) -> f64 {
-    let n = times.len() as f64;
-    let ln_amps: Vec<f64> = amplitudes
-        .iter()
-        .map(|a| a.abs().max(1e-300).ln())
-        .collect();
-    let sum_t: f64 = times.iter().sum();
-    let sum_a: f64 = ln_amps.iter().sum();
-    let sum_tt: f64 = times.iter().map(|t| t * t).sum();
-    let sum_ta: f64 = times.iter().zip(ln_amps.iter()).map(|(t, a)| t * a).sum();
-    let denom = n * sum_tt - sum_t * sum_t;
-    if denom.abs() < 1e-300 {
-        return 0.0;
-    }
-    // slope = -γ
-    let slope = (n * sum_ta - sum_t * sum_a) / denom;
-    -slope
 }
 
 /// Avanza el sistema MHD un paso: inducción + fuerzas magnéticas + limpieza Dedner.

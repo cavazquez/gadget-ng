@@ -170,5 +170,8 @@ fn pancake_convergence_vs_dt() {
     let e1 = e(0.1);
     let e2 = e(0.05);
     let e3 = e(0.025);
-    assert!(e3 < e2 && e2 < e1, "Convergencia dt falló: [{e1:.3e}, {e2:.3e}, {e3:.3e}]");
+    assert!(
+        e3 < e2 && e2 < e1,
+        "Convergencia dt falló: [{e1:.3e}, {e2:.3e}, {e3:.3e}]"
+    );
 }

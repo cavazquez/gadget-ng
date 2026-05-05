@@ -228,10 +228,6 @@ mod tests {
         )
     }
 
-    fn neutral_chem() -> ChemState {
-        ChemState::neutral()
-    }
-
     fn warm_ionized_chem() -> ChemState {
         let mut s = ChemState::neutral();
         s.x_hii = 0.9;
