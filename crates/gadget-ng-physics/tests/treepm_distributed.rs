@@ -3,7 +3,7 @@
 //! Cubre:
 //! 1. `minimum_image_in_short_range` — partícula (0.01,0,0) interactúa con (0.99,0,0) box=1
 //! 2. `no_double_counting_pm_tree` — fuerza total ≈ Newton directo en sistema simple
-//! 3. `g_over_a_applied_in_both_parts` — PM y árbol usan mismo g_cosmo
+//! 3. `short_range_linear_in_effective_g` — aceleración SR lineal en parámetro `g`
 //! 4. `cosmo_treepm_distributed_no_explosion` — run EdS N=64, P=1, sin NaN/Inf
 //! 5. `serial_vs_distributed_forces_p1` — P=1: allgather ≈ distributed (misma física)
 //! 6. `halo_coverage_prevents_missing_interactions` — halo correcto → sin interacciones perdidas
@@ -154,12 +154,12 @@ fn no_double_counting_pm_tree() {
     );
 }
 
-// ── Test 3: G/a aplicado en ambas partes ─────────────────────────────────────
+// ── Test 3: linealidad del kernel SR en G efectiva ────────────────────────────
 
-/// Verificar que el escalado G/a se aplica consistentemente:
-/// si g_cosmo = g/a, las fuerzas SR deben escalar linealmente con g_cosmo.
+/// Las aceleraciones de corto alcance deben escalar linealmente con el parámetro `g`
+/// del slab (convención cosmológica QKSL va *fuera* de este test).
 #[test]
-fn g_over_a_applied_in_both_parts() {
+fn short_range_linear_in_effective_g() {
     let box_size = 1.0_f64;
     let r_split = 0.05_f64;
     let eps2 = 1e-8_f64;
@@ -167,16 +167,14 @@ fn g_over_a_applied_in_both_parts() {
     let local = make_particle(0, 0.5, 0.5, 0.3, 1.0);
     let halo = make_particle(1, 0.5, 0.5, 0.4, 1.0);
 
-    // g_cosmo con a=0.5: g_cosmo = g / a = 2.0
-    let a = 0.5_f64;
-    let g_base = 1.0_f64;
-    let g_cosmo = g_base / a;
+    let g_lo = 1.0_f64;
+    let g_hi = 2.0_f64;
 
     let params_g1 = SlabShortRangeParams {
         local_particles: &[local.clone()],
         halo_particles: &[halo.clone()],
         eps2,
-        g: g_base,
+        g: g_lo,
         r_split,
         box_size,
     };
@@ -184,7 +182,7 @@ fn g_over_a_applied_in_both_parts() {
         local_particles: &[local],
         halo_particles: &[halo],
         eps2,
-        g: g_cosmo,
+        g: g_hi,
         r_split,
         box_size,
     };
@@ -194,12 +192,11 @@ fn g_over_a_applied_in_both_parts() {
     short_range_accels_slab(&params_g1, &mut out1);
     short_range_accels_slab(&params_gcosmo, &mut out2);
 
-    // La razón de fuerzas debe ser g_cosmo / g_base = 1/a = 2.0.
     let ratio = out2[0].z / out1[0].z;
     assert!(
-        (ratio - g_cosmo / g_base).abs() < 1e-10,
-        "Test 3: ratio={ratio:.6} debe ser g_cosmo/g={:.6}",
-        g_cosmo / g_base
+        (ratio - g_hi / g_lo).abs() < 1e-10,
+        "Test 3: ratio={ratio:.6} debe ser g_hi/g_lo={:.6}",
+        g_hi / g_lo
     );
 }
 

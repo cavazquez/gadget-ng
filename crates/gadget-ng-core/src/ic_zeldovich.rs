@@ -229,6 +229,15 @@ pub fn generate_delta_kspace(
 ///
 /// La firma del closure retornado es `|n_abs: f64| -> f64`, compatible con
 /// `generate_delta_kspace`.
+///
+/// ## `PowerLaw` vs `EisensteinHu` (convenciones distintas)
+///
+/// - **PowerLaw (legacy Fase 26):** σ ∝ |n|^(n_s/4) en el grid → en la práctica
+///   **P(k) ∝ k^(n_s/2)** en el continuo discreto (p. ej. n_s = −2 da P ∝ k⁻¹, no k⁻²).
+///   Se mantiene por compatibilidad bit-a-bit; **no** coincide con el índice espectral
+///   de EH/CLASS para el mismo `n_s`.
+/// - **Eisenstein–Hu:** σ ∝ k^(n_s/2)·T(k) → **P(k) ∝ k^n_s·T²**, alineado con referencias
+///   externas. Unificar PowerLaw a n_s/2 rompería ICs históricas sin migración explícita.
 #[allow(clippy::too_many_arguments)]
 pub fn build_spectrum_fn(
     n: usize,

@@ -208,7 +208,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             ));
         }
         rt.root_eprintln(
-            "[gadget-ng] Cosmología PERIÓDICA activada: PM + G/a + wrap_position (Fase 18).",
+            "[gadget-ng] Cosmología PERIÓDICA activada: PM + QKSL (G·a³) + wrap_position (Fase 18).",
         );
         if cfg.gravity.treepm_slab && cfg.gravity.solver == SolverKind::TreePm {
             let r_s_log = if cfg.gravity.r_split > 0.0 {
@@ -258,7 +258,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
     if use_sfc_let_cosmo {
         rt.root_eprintln(
-            "[gadget-ng] SFC+LET COSMOLÓGICO activado: G/a scaling + LET distribuido (Fase 17b).",
+            "[gadget-ng] SFC+LET COSMOLÓGICO activado: coupling QKSL (G·a³) + LET distribuido (Fase 17b).",
         );
     } else if use_sfc_let {
         rt.root_eprintln(
@@ -1125,7 +1125,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         // ── SFC+LET + Cosmología: Fase 17b ─────────────────────────────────────────
         //
         // Integra la física comóvil (momentum canónico p = a² dx_c/dt) con el backend
-        // SFC+LET distribuido, aplicando la corrección G/a en cada evaluación de fuerza.
+        // SFC+LET distribuido, aplicando gravity_coupling_qksl (G·a³) en cada evaluación.
         //
         // Diferencias clave respecto al path allgather cosmológico (Fase 17a):
         //   • Comunicación O(log N) via LET en lugar de O(N) via allgather global.
@@ -1134,8 +1134,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         //
         // Restricciones de esta fase:
         //   • Caja no periódica (igual que Fase 17a).
-        //   • Soporta Leapfrog y Yoshida4; g_cosmo = g / a_inicio_paso para todos los
-        //     sub-pasos (correcto a primer orden en dt, consistente con Fase 17a).
+        //   • Soporta Leapfrog y Yoshida4; g_cosmo = gravity_coupling_qksl(g, a) al inicio
+        //     del paso para todos los sub-pasos (Phase 45).
         use gadget_ng_parallel::sfc::global_bbox;
 
         let (cosmo_params, _) = cosmo_state.unwrap();
@@ -1206,10 +1206,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             this_comm += t_domain.elapsed().as_nanos() as u64;
             scratch.resize(local.len(), Vec3::zero());
 
-            // ── Cierre de evaluación de fuerza con G/a (bloqueante) ───────────────
+            // ── Cierre de evaluación de fuerza cosmológica (bloqueante) ─────────────
             //
-            // Se captura `g_cosmo` fijo para este paso, consistente con el integrador:
-            // tanto Leapfrog como Yoshida4 cosmo usan g/a del inicio del paso.
+            // `g_cosmo` queda fijo para este paso (QKSL: G·a³ al inicio del paso), igual que
+            // en Leapfrog y Yoshida4 cosmo del path principal.
             let mut force_cosmo = |parts: &[Particle], acc: &mut [Vec3]| {
                 // 1. AABB allgather — para saber a qué rangos enviar nodos LET.
                 let my_aabb: Vec<f64> = if parts.is_empty() {
@@ -1283,9 +1283,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 let received = rt.alltoallv_f64(&sends);
                 this_comm += t_comm2.elapsed().as_nanos() as u64;
 
-                // 5. Calcular fuerzas locales + remotas usando g_cosmo = G/a.
-                //    `compute_forces_sfc_let` acepta `g` como parámetro explícito,
-                //    así que pasamos `g_cosmo` sin modificar la función auxiliar.
+                // 5. Fuerzas locales + remotas con `g_cosmo` (QKSL).
+                //    `compute_forces_sfc_let` recibe G efectiva como parámetro explícito.
                 let t_grav = Instant::now();
                 compute_forces_sfc_let(parts, &received, g_cosmo, eps2, acc, bh_walk, bh_parallel);
                 this_grav += t_grav.elapsed().as_nanos() as u64;
@@ -1307,7 +1306,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     });
                 }
                 IntegratorKind::Yoshida4 => {
-                    // g_cosmo = g / a_inicio_paso, aplicado a los 3 sub-pasos.
+                    // g_cosmo (QKSL) del inicio de paso, aplicado a los 3 sub-pasos.
                     // Los CosmoFactors se pre-calculan avanzando a_current por sub-paso.
                     let sub_dts = [YOSHIDA4_W1 * dt, YOSHIDA4_W0 * dt, YOSHIDA4_W1 * dt];
                     let mut cfs = [CosmoFactors::flat(0.0); 3];

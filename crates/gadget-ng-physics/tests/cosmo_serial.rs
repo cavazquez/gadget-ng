@@ -19,14 +19,18 @@
 //!    Sobre una retícula perturbada con amplitud finita, `delta_rms` debe
 //!    crecer bajo la atracción gravitacional.
 //!
-//! 5. `cosmo_g_scaling_sanity`:  
-//!    Con `a = 2`, la fuerza efectiva G/a debe ser exactamente la mitad
-//!    que con `a = 1` sobre el mismo par de partículas.
+//! 5. `gravity_linear_in_g`:  
+//!    La aceleración N² directa escala linealmente con la constante efectiva G
+//!    pasada al kernel (sanidad trivial, no prueba la convención QKSL).
+//!
+//! 6. `gravity_coupling_qksl_matches_ga_cubed`:  
+//!    `gravity_coupling_qksl(G, a) = G·a³` (Phase 45).
 
 use gadget_ng_core::{
     CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection, Particle,
     PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection, Vec3,
-    build_particles, build_particles_for_gid_range, cosmology::CosmologyParams,
+    build_particles, build_particles_for_gid_range,
+    cosmology::{CosmologyParams, gravity_coupling_qksl},
     density_contrast_rms, hubble_param, peculiar_vrms,
 };
 use gadget_ng_integrators::{CosmoFactors, leapfrog_cosmo_kdk_step};
@@ -166,7 +170,7 @@ fn run_cosmo_leapfrog(
     let mut a = a_init;
     let mut scratch = vec![Vec3::zero(); parts.len()];
     for _ in 0..n_steps {
-        let g_cosmo = g / a;
+        let g_cosmo = gravity_coupling_qksl(g, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors {
             drift,
@@ -339,12 +343,12 @@ fn cosmo_perturbed_lattice_grows() {
     );
 }
 
-// ── Test 5: sanidad del escalado G/a ─────────────────────────────────────────
+// ── Test 5: linealidad de la fuerza en G (kernel directo) ───────────────────
 
-/// Verifica que con a=2 la fuerza efectiva (G/a) es la mitad que con a=1
-/// sobre el mismo par de partículas.
+/// La magnitud de fuerza N² escala linealmente con la constante `g` pasada a
+/// [`direct_accel`] (no usa la convención cosmológica QKSL; es una sanidad algebraica).
 #[test]
-fn cosmo_g_scaling_sanity() {
+fn gravity_linear_in_g() {
     let m = 0.5_f64;
     let sep = 0.3_f64;
     let eps2 = 0.0_f64;
@@ -361,8 +365,20 @@ fn cosmo_g_scaling_sanity() {
     let ratio = f_a1 / f_a2;
     assert!(
         (ratio - 2.0).abs() < 1e-12,
-        "F(a=1)/F(a=2) = {:.12} ≠ 2.0 — el escalado G/a es incorrecto",
+        "F(G)/F(G/2) = {:.12} ≠ 2.0 — la fuerza no es lineal en G",
         ratio
+    );
+}
+
+#[test]
+fn gravity_coupling_qksl_matches_ga_cubed() {
+    assert!(
+        (gravity_coupling_qksl(1.0, 2.0) - 8.0).abs() < 1e-15,
+        "gravity_coupling_qksl(1,2) debe ser 8"
+    );
+    assert!(
+        (gravity_coupling_qksl(3.0, 0.5) - 3.0 * 0.125).abs() < 1e-14,
+        "gravity_coupling_qksl(3,0.5) debe ser 3/8"
     );
 }
 

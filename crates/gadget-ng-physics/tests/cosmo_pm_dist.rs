@@ -4,7 +4,7 @@
 //! produce resultados idénticos al PM serial, que la masa se conserva bajo la reducción,
 //! y que `allreduce_sum_f64_slice` en SerialRuntime es un no-op.
 
-use gadget_ng_core::{CosmologyParams, Vec3};
+use gadget_ng_core::{CosmologyParams, Vec3, cosmology::gravity_coupling_qksl};
 use gadget_ng_parallel::ParallelRuntime;
 use gadget_ng_parallel::SerialRuntime;
 use gadget_ng_pm::{cic, distributed as pm_dist, fft_poisson};
@@ -216,7 +216,7 @@ fn distributed_pm_no_explosion_eds() {
     let mut scratch: Vec<Vec3> = vec![Vec3::zero(); n];
 
     for _step in 0..num_steps {
-        let g_cosmo = g / a;
+        let g_cosmo = gravity_coupling_qksl(g, a);
         let (drift, kick_half, kick_half2) = cosmo.drift_kick_factors(a, dt);
         let cf = CosmoFactors {
             drift,

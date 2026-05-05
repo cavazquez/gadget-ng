@@ -156,13 +156,14 @@ Archivo: `crates/gadget-ng-physics/tests/cosmo_serial.rs`
 | `cosmo_stability_no_explosion` | 50 pasos ΛCDM, N=8 | Sin NaN/Inf | ✓ PASS |
 | `cosmo_newtonian_limit_a1_h0_small` | H₀→0: drift≈dt, kick≈dt/2 | `|err| < 1e-4` | ✓ PASS |
 | `cosmo_perturbed_lattice_grows` | delta_rms no colapsa | `delta_f ≥ 0.5·delta_0` | ✓ PASS |
-| `cosmo_g_scaling_sanity` | F(a=2)/F(a=1) = 1/2 | `|ratio - 2.0| < 1e-12` | ✓ PASS |
+| `gravity_linear_in_g` | Linealidad del kernel directo en `G` (no prueba QKSL) | `|ratio - 2.0| < 1e-12` | ✓ PASS |
+| `gravity_coupling_qksl_matches_ga_cubed` | `gravity_coupling_qksl(G,a) = G·a³` | exacto `f64` | ✓ PASS |
 | `cosmo_diagnostics_sanity` | v_rms, delta_rms, H(a) | Exactitud analítica | ✓ PASS |
 | `cosmo_perturbed_lattice_ic` | PerturbedLattice ICs | Posición, masa, velocidad | ✓ PASS |
 | `cosmo_perturbed_lattice_gid_range_consistent` | MPI range = full build | `|Δx| < 1e-14` | ✓ PASS |
 
 ```
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured
 ```
 
 ---
