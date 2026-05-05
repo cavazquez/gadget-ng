@@ -35,6 +35,7 @@ pub mod halo_mass_function;
 pub mod halo_spin;
 pub mod halofit;
 pub mod luminosity;
+pub mod lightcone;
 pub mod merger_tree;
 pub mod mock_catalog;
 pub mod nfw;
@@ -75,6 +76,9 @@ pub use halo_spin::{HaloSpin, SpinParams, compute_halo_spins, halo_spin};
 pub use halofit::{HalofitCosmo, halofit_pk, p_linear_eh};
 pub use luminosity::{
     LuminosityResult, SedResult, bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar,
+};
+pub use lightcone::{
+    LensingMap, LightconeConfig, LightconeHit, accumulate_born_lensing, detect_lightcone_crossings,
 };
 pub use merger_tree::{
     MassAccretionHistory, MergerForest, MergerTreeNode, ParticleSnapshot, build_merger_forest,
