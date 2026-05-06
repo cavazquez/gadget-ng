@@ -11,7 +11,7 @@ Esta suite de experimentos replica empíricamente 5 papers fundamentales de cosm
 
 1. **`01_zeldovich_pancake/`**: Colapso 1D y formación de cáusticas. Valida el integrador y conservación de fase.
 2. **`02_growth_of_structure/`**: Crecimiento lineal y no lineal del Espectro de Potencia $P(k)$. Valida el solver PM/TreePM.
-3. **`03_halo_mass_function/`**: Distribución de masa de halos (Press-Schechter/Sheth-Tormen). Valida FoF y clustering no lineal.
+3. **`03_halo_mass_function/`**: Distribución de masa de halos (Press-Schechter/Sheth-Tormen). Valida FoF y clustering no lineal. Ver **[`03_halo_mass_function/README.md`](03_halo_mass_function/README.md)** (resolución, \(b=0.2\), convergencia y referencias).
 4. **`04_millennium_cosmic_web/`**: Visualización de la red cósmica. Valida contrastes de alta densidad.
 5. **`05_bao_wiggles/`**: Oscilaciones Acústicas de Bariones. Valida la importación de `T(k)` tabular y la retención de la señal acústica.
 
