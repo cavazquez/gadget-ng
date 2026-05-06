@@ -32,3 +32,8 @@ __pycache__
 experiments/nbody/phase14_soa_simd/gadget-ng-baseline
 experiments/nbody/phase14_soa_simd/gadget-ng-soa-simd
 bench_results/*.json
+
+# experiments/validation_papers: corridas, IC generadas y figuras locales (configs/scripts sí van al repo)
+experiments/validation_papers/**/out_*/
+experiments/validation_papers/**/ic/
+experiments/validation_papers/**/*.png
