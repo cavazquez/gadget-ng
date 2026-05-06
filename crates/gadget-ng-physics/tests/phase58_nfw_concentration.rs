@@ -105,7 +105,7 @@ fn run_simulation() -> Phase58Result {
             num_steps: 1,
             softening: BOX / (N_GRID as f64 * 20.0),
             physical_softening: false,
-            gravitational_constant: g_code_consistent(OMEGA_M, H0),
+            gravitational_constant: g_code_consistent(OMEGA_M, H0, 1.0),
             particle_count: N_GRID * N_GRID * N_GRID,
             box_size: BOX,
             seed: SEED,
@@ -160,7 +160,7 @@ fn run_simulation() -> Phase58Result {
 
     let mut parts = build_particles(&cfg).expect("[phase58] ICs no deben fallar");
     let cosmo = cosmo_params();
-    let g_code = g_code_consistent(OMEGA_M, H0);
+    let g_code = g_code_consistent(OMEGA_M, H0, 1.0);
     let pm = PmSolver::new(N_GRID, BOX);
     let n = parts.len();
     let mut scratch = vec![Vec3::zero(); n];

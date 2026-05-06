@@ -87,7 +87,7 @@ const SIGMA8_TARGET: f64 = 0.8;
 
 #[inline]
 fn newton_g() -> f64 {
-    g_code_consistent(OMEGA_M, H0)
+    g_code_consistent(OMEGA_M, H0, 1.0)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

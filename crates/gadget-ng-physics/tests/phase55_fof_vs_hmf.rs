@@ -59,7 +59,7 @@ fn cosmo_params() -> CosmologyParams {
 }
 
 fn g_consistent() -> f64 {
-    g_code_consistent(OMEGA_M, H0)
+    g_code_consistent(OMEGA_M, H0, 1.0)
 }
 
 /// Masa de partícula en M_sun/h (unidades físicas)

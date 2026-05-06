@@ -471,8 +471,8 @@ pub fn adaptive_dt_cosmo(
 /// - `omega_m`: fracción de materia Ω_m (sin dimensiones).
 /// - `h0`: H₀ en unidades internas (1/t_sim). Debe ser la **misma** H₀ usada
 ///   en `CosmologyParams` para que la consistencia sea exacta.
-pub fn g_code_consistent(omega_m: f64, h0: f64) -> f64 {
-    3.0 * omega_m * h0 * h0 / (8.0 * std::f64::consts::PI)
+pub fn g_code_consistent(omega_m: f64, h0: f64, rho_bar: f64) -> f64 {
+    3.0 * omega_m * h0 * h0 / (8.0 * std::f64::consts::PI * rho_bar.max(1e-300))
 }
 
 /// Verifica la condición de consistencia cosmológica y devuelve el error relativo.

@@ -17,7 +17,7 @@
 //! ## Tests
 //!
 //! 1. **`phase50_consistency_formula`** — Test unitario: verifica que
-//!    `g_code_consistent(Ω_m, H₀)` satisface exactamente la ecuación de
+//!    `g_code_consistent(Ω_m, H₀, 1.0)` satisface exactamente la ecuación de
 //!    Friedmann y que `cosmo_consistency_error` da < 1e-12 para G correcto.
 //!
 //! 2. **`phase50_inconsistency_quantified`** — Cuantifica el error con G=1:
@@ -39,7 +39,7 @@
 //!
 //! ## Relación con UnitsSection
 //!
-//! La función `g_code_consistent(omega_m, h0)` es equivalente al G interno
+//! La función `g_code_consistent(omega_m, h0, 1.0)` es equivalente al G interno
 //! que calcula `UnitsSection::compute_g()` cuando se eligen:
 //!   - `length_in_kpc = L_box` (en kpc)
 //!   - `mass_in_msun = M_particle` (en M_sun)
@@ -82,7 +82,7 @@ const G_LEGACY: f64 = 1.0;
 // G consistente con H₀=0.1, Ω_m=0.315 para caja unitaria (ρ̄_m=1).
 // = 3 × 0.315 × 0.01 / (8π) ≈ 3.764e-4
 fn g_phys() -> f64 {
-    g_code_consistent(OMEGA_M, H0)
+    g_code_consistent(OMEGA_M, H0, 1.0)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -291,7 +291,7 @@ fn phase50_consistency_formula() {
     println!("[phase50_consistency] G_code = {g:.6e}  err = {err:.3e}");
 
     // EdS: Ω_m=1, Ω_Λ=0, H₀=1 → G = 3/(8π) ≈ 0.11937
-    let g_eds = g_code_consistent(1.0, 1.0);
+    let g_eds = g_code_consistent(1.0, 1.0, 1.0);
     let err_eds = cosmo_consistency_error(g_eds, 1.0, 1.0, 1.0);
     let g_eds_exact = 3.0 / (8.0 * PI);
     assert!(
@@ -302,7 +302,7 @@ fn phase50_consistency_formula() {
     println!("[EdS] G = {g_eds:.6e} = 3/(8π)={g_eds_exact:.6e}  err={err_eds:.3e}");
 
     // Planck 2018: H₀=0.1 code, Ω_m=0.315.
-    let g_planck = g_code_consistent(0.315, 0.1);
+    let g_planck = g_code_consistent(0.315, 0.1, 1.0);
     let expected_planck = 3.0 * 0.315 * 0.01 / (8.0 * PI);
     assert!(
         (g_planck - expected_planck).abs() / expected_planck < 1e-12,
@@ -312,7 +312,7 @@ fn phase50_consistency_formula() {
 
     // Verificar que G_legacy=1.0 es ~2660× inconsistente.
     let err_legacy = cosmo_consistency_error(G_LEGACY, OMEGA_M, H0, 1.0);
-    let factor_inconsistency = G_LEGACY / g_code_consistent(OMEGA_M, H0);
+    let factor_inconsistency = G_LEGACY / g_code_consistent(OMEGA_M, H0, 1.0);
     assert!(
         factor_inconsistency > 1000.0,
         "G_legacy debería ser >> G_consistente: factor={factor_inconsistency:.1}"

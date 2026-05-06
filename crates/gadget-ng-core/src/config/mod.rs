@@ -83,6 +83,16 @@ impl RunConfig {
         warnings
     }
 
+    /// Densidad media de materia en el cubo [0, box_size)³, asumiendo masa total = 1.
+    pub fn rho_bar(&self) -> f64 {
+        let l = self.simulation.box_size;
+        if l <= 0.0 {
+            1.0
+        } else {
+            1.0 / (l * l * l)
+        }
+    }
+
     /// Constante gravitacional efectiva en el modo de integración actual.
     ///
     /// Prioridad (de mayor a menor):
@@ -97,7 +107,11 @@ impl RunConfig {
         if self.units.enabled {
             self.units.compute_g()
         } else if self.cosmology.enabled && self.cosmology.auto_g {
-            crate::cosmology::g_code_consistent(self.cosmology.omega_m, self.cosmology.h0)
+            crate::cosmology::g_code_consistent(
+                self.cosmology.omega_m,
+                self.cosmology.h0,
+                self.rho_bar(),
+            )
         } else {
             self.simulation.gravitational_constant
         }
@@ -114,8 +128,11 @@ impl RunConfig {
         if !self.cosmology.enabled {
             return None;
         }
-        let g_consistent =
-            crate::cosmology::g_code_consistent(self.cosmology.omega_m, self.cosmology.h0);
+        let g_consistent = crate::cosmology::g_code_consistent(
+            self.cosmology.omega_m,
+            self.cosmology.h0,
+            self.rho_bar(),
+        );
         let g_used = self.effective_g();
         let rel_err = if g_consistent > 0.0 {
             (g_used - g_consistent).abs() / g_consistent

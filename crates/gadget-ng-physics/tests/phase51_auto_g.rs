@@ -12,13 +12,13 @@
 //! ## Tests
 //!
 //! 1. **`phase51_auto_g_effective_g`** — Verifica que con `auto_g=true`,
-//!    `effective_g()` devuelve `g_code_consistent(omega_m, h0)` exactamente.
+//!    `effective_g()` devuelve `g_code_consistent(omega_m, h0, 1.0)` exactamente.
 //!
 //! 2. **`phase51_legacy_g_diagnostic`** — Con `auto_g=false` y G=1 (legacy),
 //!    `cosmo_g_diagnostic()` devuelve error > 2000 %.
 //!
 //! 3. **`phase51_consistent_g_no_warning`** — Con G ya consistente manualmente
-//!    (`G = g_code_consistent(om, h0)`), `cosmo_g_diagnostic()` da error < 1e-10.
+//!    (`G = g_code_consistent(om, h0, 1.0)`), `cosmo_g_diagnostic()` da error < 1e-10.
 //!
 //! 4. **`phase51_units_priority`** — Cuando `units.enabled=true` y `auto_g=true`,
 //!    `effective_g()` prioriza `UnitsSection::compute_g()`.
@@ -107,12 +107,12 @@ fn base_cfg(g_override: f64, auto_g: bool) -> RunConfig {
 
 // ── TEST 1 — effective_g con auto_g=true ──────────────────────────────────────
 
-/// Con `auto_g=true`, `effective_g()` debe devolver `g_code_consistent(omega_m, h0)`.
+/// Con `auto_g=true`, `effective_g()` debe devolver `g_code_consistent(omega_m, h0, 1.0)`.
 #[test]
 fn phase51_auto_g_effective_g() {
     let cfg = base_cfg(1.0, true); // G=1 manual, pero auto_g lo ignora
     let g_effective = cfg.effective_g();
-    let g_expected = g_code_consistent(OMEGA_M, H0);
+    let g_expected = g_code_consistent(OMEGA_M, H0, 1.0);
 
     let err = (g_effective - g_expected).abs() / g_expected;
     println!(
@@ -166,7 +166,7 @@ fn phase51_legacy_g_diagnostic() {
 /// Con G manualmente puesto al valor consistente, el error debe ser < 1e-10.
 #[test]
 fn phase51_consistent_g_no_warning() {
-    let g_correct = g_code_consistent(OMEGA_M, H0);
+    let g_correct = g_code_consistent(OMEGA_M, H0, 1.0);
     let cfg = base_cfg(g_correct, false); // G correcto, auto_g desactivado
 
     let (g_consistent, rel_err) = cfg
@@ -210,7 +210,7 @@ fn phase51_units_priority() {
     println!(
         "[phase51_units_priority] G_units={g_units:.4e}  G_effective={g_effective:.4e}  \
          G_auto_g={:.4e}",
-        g_code_consistent(OMEGA_M, H0)
+        g_code_consistent(OMEGA_M, H0, 1.0)
     );
 
     assert!(
@@ -229,7 +229,7 @@ fn phase51_units_priority() {
 #[test]
 fn phase51_auto_g_simulation_stable() {
     let cfg = base_cfg(1.0, true); // G=1 manual ignorado; auto_g calcula G_cons
-    let g = cfg.effective_g(); // debe ser g_code_consistent(OMEGA_M, H0)
+    let g = cfg.effective_g(); // debe ser g_code_consistent(OMEGA_M, H0, 1.0)
 
     let mut parts = build_particles(&cfg).expect("ICs");
     let c = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
@@ -282,7 +282,7 @@ fn phase51_auto_g_simulation_stable() {
     assert!(v_rms < 1e3, "v_rms excesivo → inestabilidad: {v_rms:.3e}");
 
     // Confirmar que el G usado es el consistente, no 1.0.
-    let g_expected = g_code_consistent(OMEGA_M, H0);
+    let g_expected = g_code_consistent(OMEGA_M, H0, 1.0);
     assert!(
         (g - g_expected).abs() / g_expected < 1e-12,
         "G de la simulación debería ser g_code_consistent: {g:.4e} != {g_expected:.4e}"

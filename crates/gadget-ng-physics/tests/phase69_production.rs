@@ -215,7 +215,7 @@ fn g3_production_config_valid_params() {
 
     // G calculado de Friedmann es positivo
     let g_auto =
-        gadget_ng_core::cosmology::g_code_consistent(cfg.cosmology.omega_m, cfg.cosmology.h0);
+        gadget_ng_core::cosmology::g_code_consistent(cfg.cosmology.omega_m, cfg.cosmology.h0, 1.0);
     assert!(g_auto > 0.0, "G Friedmann negativo: {g_auto}");
     assert!(
         g_auto < 1.0,

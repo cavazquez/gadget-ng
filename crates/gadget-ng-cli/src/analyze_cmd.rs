@@ -105,14 +105,13 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         n, params.snapshot_dir
     );
 
-    // Longitud de enlace física.
+    // `AnalysisParams::b` es adimensional (típ. 0.2); `find_halos` hace ll = b × l̄.
+    // No multiplicar aquí por l̄: insitu y `analysis::analyse` ya pasan b sin escala.
     let rho_bg = n as f64 / (box_size * box_size * box_size);
-    let l_mean = rho_bg.cbrt().recip();
-    let b = params.fof_b * l_mean;
 
     let analysis_params = AnalysisParams {
         box_size,
-        b,
+        b: params.fof_b,
         min_particles: params.min_particles,
         rho_crit: rho_bg,
         pk_mesh: params.pk_mesh,

@@ -1,3 +1,4 @@
+use crate::SnapshotFormat;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,6 +219,16 @@ pub enum IcKind {
         /// para la derivación matemática, auditoría y recomendación final.
         #[serde(default)]
         normalization_mode: NormalizationMode,
+    },
+    /// Carga partículas desde un snapshot externo (JSONL, HDF5, etc.).
+    /// Útil para simulaciones que parten de ICs generadas por herramientas externas
+    /// (MUSIC, N-GenIC) o para tests de validación con configuraciones custom.
+    External {
+        /// Ruta al directorio del snapshot que contiene `particles.jsonl` o `snapshot.hdf5`.
+        path: String,
+        /// Formato del snapshot externo.
+        #[serde(default)]
+        format: SnapshotFormat,
     },
 }
 

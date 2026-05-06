@@ -180,6 +180,11 @@ pub fn build_particles_for_gid_range(
                 ))
             }
         }
+        IcKind::External { .. } => {
+            // Este path es manejado directamente por el motor (stepping.rs) 
+            // al detectar el variant External antes de llamar a esta funcion.
+            Ok(Vec::new())
+        }
     }
 }
 

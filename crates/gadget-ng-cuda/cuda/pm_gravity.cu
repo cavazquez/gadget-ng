@@ -69,6 +69,12 @@ struct CudaPmState {
     cufftHandle plan_z; /* batch N  por subbloque, eje z (stride N², idist 1) */
 };
 
+__device__ __forceinline__ int wrap_idx(int i, int N)
+{
+    int r = i % N;
+    return (r < 0) ? r + N : r;
+}
+
 __global__ void cic_assign_kernel(
     const float* __restrict__ x,
     const float* __restrict__ y,
@@ -80,9 +86,12 @@ __global__ void cic_assign_kernel(
     int pid = blockIdx.x * blockDim.x + threadIdx.x;
     if (pid >= n) return;
 
-    float px = x[pid] * inv_box * (float)N;
-    float py = y[pid] * inv_box * (float)N;
-    float pz = z[pid] * inv_box * (float)N;
+    float px = fmodf(x[pid] * inv_box * (float)N, (float)N);
+    if (px < 0.0f) px += (float)N;
+    float py = fmodf(y[pid] * inv_box * (float)N, (float)N);
+    if (py < 0.0f) py += (float)N;
+    float pz = fmodf(z[pid] * inv_box * (float)N, (float)N);
+    if (pz < 0.0f) pz += (float)N;
     float m  = mass[pid];
 
     int ix = (int)floorf(px);
@@ -96,7 +105,7 @@ __global__ void cic_assign_kernel(
     float ty = 1.0f - dy;
     float tz = 1.0f - dz;
 
-#define CELL(di,dj,dk) (((ix+(di)+N)%N) + ((iy+(dj)+N)%N)*N + ((iz+(dk)+N)%N)*N*N)
+#define CELL(di,dj,dk) (wrap_idx(ix+(di), N) + wrap_idx(iy+(dj), N)*N + wrap_idx(iz+(dk), N)*N*N)
     atomicAdd(&rho[CELL(0,0,0)], m * tx * ty * tz);
     atomicAdd(&rho[CELL(1,0,0)], m * dx * ty * tz);
     atomicAdd(&rho[CELL(0,1,0)], m * tx * dy * tz);
@@ -226,9 +235,12 @@ __global__ void cic_interp_kernel(
     int pid = blockIdx.x * blockDim.x + threadIdx.x;
     if (pid >= n) return;
 
-    float px = x[pid] * inv_box * (float)N;
-    float py = y[pid] * inv_box * (float)N;
-    float pz = z[pid] * inv_box * (float)N;
+    float px = fmodf(x[pid] * inv_box * (float)N, (float)N);
+    if (px < 0.0f) px += (float)N;
+    float py = fmodf(y[pid] * inv_box * (float)N, (float)N);
+    if (py < 0.0f) py += (float)N;
+    float pz = fmodf(z[pid] * inv_box * (float)N, (float)N);
+    if (pz < 0.0f) pz += (float)N;
 
     int ix = (int)floorf(px);
     int iy = (int)floorf(py);
@@ -241,7 +253,7 @@ __global__ void cic_interp_kernel(
     float ty = 1.0f - dy;
     float tz = 1.0f - dz;
 
-#define CELL(di,dj,dk) (((ix+(di)+N)%N) + ((iy+(dj)+N)%N)*N + ((iz+(dk)+N)%N)*N*N)
+#define CELL(di,dj,dk) (wrap_idx(ix+(di), N) + wrap_idx(iy+(dj), N)*N + wrap_idx(iz+(dk), N)*N*N)
 #define INTERP(grid) (                                         \
     grid[CELL(0,0,0)] * tx*ty*tz +                             \
     grid[CELL(1,0,0)] * dx*ty*tz +                             \
@@ -265,16 +277,19 @@ static int pm_fft3d_forward(CudaPmState* s, cuDoubleComplex* d)
     int N = s->N;
 
     CUFFT_CHECK(cufftExecZ2Z(s->plan_x, d, d, CUFFT_FORWARD));
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     for (int iz = 0; iz < N; ++iz) {
         cuDoubleComplex* base = d + (ptrdiff_t)iz * N * N;
         CUFFT_CHECK(cufftExecZ2Z(s->plan_y, base, base, CUFFT_FORWARD));
     }
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     for (int iy = 0; iy < N; ++iy) {
         cuDoubleComplex* base = d + (ptrdiff_t)iy * N;
         CUFFT_CHECK(cufftExecZ2Z(s->plan_z, base, base, CUFFT_FORWARD));
     }
+    CUDA_CHECK(cudaDeviceSynchronize());
     return 0;
 }
 
@@ -287,13 +302,16 @@ static int pm_fft3d_inverse(CudaPmState* s, cuDoubleComplex* d)
         cuDoubleComplex* base = d + (ptrdiff_t)iy * N;
         CUFFT_CHECK(cufftExecZ2Z(s->plan_z, base, base, CUFFT_INVERSE));
     }
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     for (int iz = 0; iz < N; ++iz) {
         cuDoubleComplex* base = d + (ptrdiff_t)iz * N * N;
         CUFFT_CHECK(cufftExecZ2Z(s->plan_y, base, base, CUFFT_INVERSE));
     }
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     CUFFT_CHECK(cufftExecZ2Z(s->plan_x, d, d, CUFFT_INVERSE));
+    CUDA_CHECK(cudaDeviceSynchronize());
     return 0;
 }
 

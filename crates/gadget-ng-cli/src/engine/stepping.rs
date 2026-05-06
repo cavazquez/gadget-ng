@@ -120,6 +120,21 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             resume_agn_bhs = agn_opt;
             resume_chem_states = chem_opt;
             (p, completed + 1, a, hs)
+        } else if let gadget_ng_core::IcKind::External { path, format } = &cfg.initial_conditions.kind {
+            let ic_path = Path::new(path);
+            rt.root_eprintln(&format!(
+                "[gadget-ng] Cargando ICs externas desde {:?} (formato: {:?})",
+                ic_path, format
+            ));
+            let data = gadget_ng_io::read_snapshot_formatted(*format, ic_path)
+                .map_err(CliError::Snapshot)?;
+            
+            // Filtrar por rango de GID para soporte MPI
+            let mut p = data.particles;
+            p.retain(|part| part.global_id >= lo && part.global_id < hi);
+            
+            let a0 = data.time;
+            (p, 1u64, a0, None)
         } else {
             let p = build_particles_for_gid_range(cfg, lo, hi)?;
             let a0 = if cfg.cosmology.enabled {

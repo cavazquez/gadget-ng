@@ -75,7 +75,7 @@ const SIGMA8_STD: f64 = 0.8; // ΛCDM estándar
 
 #[inline]
 fn newton_g() -> f64 {
-    g_code_consistent(OMEGA_M, H0)
+    g_code_consistent(OMEGA_M, H0, 1.0)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

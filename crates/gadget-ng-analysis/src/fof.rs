@@ -221,6 +221,8 @@ pub fn find_halos(
         groups.entry(uf.find(i)).or_default().push(i);
     }
 
+    let max_group = groups.values().map(|g| g.len()).max().unwrap_or(0);
+
     // Calcular propiedades de cada grupo y filtrar por min_particles.
     let mut halos: Vec<FofHalo> = groups
         .values()
@@ -232,6 +234,16 @@ pub fn find_halos(
             )
         })
         .collect();
+
+    if halos.is_empty() && n > 0 {
+        eprintln!(
+            "[fof] Sin halos con N ≥ {}: mayor grupo FoF = {} partículas; b={} l̄={:.6} ll={:.6}",
+            min_particles, max_group, b, l_mean, ll
+        );
+        eprintln!(
+            "[fof] Si todos los grupos son ≤1–7 partículas con b≈0.2, suele ser campo tipo rejilla/glass (ll ≪ separación entre vecinos de la malla). Prueba mayor --fof-b o más evolución no lineal."
+        );
+    }
 
     // Ordenar por masa descendente y reasignar IDs.
     halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap());
@@ -308,6 +320,8 @@ pub fn find_halos_with_membership(
         groups.entry(uf.find(i)).or_default().push(i);
     }
 
+    let max_group = groups.values().map(|g| g.len()).max().unwrap_or(0);
+
     // Calcular propiedades y filtrar.
     let mut halos_with_members: Vec<(FofHalo, Vec<usize>)> = groups
         .values()
@@ -320,6 +334,16 @@ pub fn find_halos_with_membership(
             (h, members.clone())
         })
         .collect();
+
+    if halos_with_members.is_empty() && n > 0 {
+        eprintln!(
+            "[fof] Sin halos con N ≥ {}: mayor grupo FoF = {} partículas; b={} l̄={:.6} ll={:.6}",
+            min_particles, max_group, b, l_mean, ll
+        );
+        eprintln!(
+            "[fof] Si todos los grupos son ≤1–7 partículas con b≈0.2, suele ser campo tipo rejilla/glass (ll ≪ separación entre vecinos de la malla). Prueba mayor --fof-b o más evolución no lineal."
+        );
+    }
 
     // Ordenar por masa descendente.
     halos_with_members.sort_by(|a, b| b.0.mass.partial_cmp(&a.0.mass).unwrap());

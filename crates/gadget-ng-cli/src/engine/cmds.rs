@@ -121,14 +121,12 @@ pub fn run_analyse(
         return Ok(());
     }
 
-    // Separación media entre partículas → longitud de enlace física.
+    // `linking_length` es adimensional (fracción de l̄); `find_halos` aplica ll = b × l̄.
     let rho_bg = (n as f64) / (box_size * box_size * box_size);
-    let l_mean = rho_bg.cbrt().recip();
-    let b = linking_length * l_mean;
 
     let params = AnalysisParams {
         box_size,
-        b,
+        b: linking_length,
         min_particles,
         rho_crit: rho_bg,
         pk_mesh,
