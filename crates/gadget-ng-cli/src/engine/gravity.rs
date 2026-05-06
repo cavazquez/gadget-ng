@@ -389,6 +389,28 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
         eprintln!("[gadget-ng] ADVERTENCIA: use_gpu=true pero no hay GPU disponible; usando CPU.");
     }
 
+    // Gravedad directa CUDA — `[performance] use_gpu_cuda = true`, solver Direct.
+    #[cfg(feature = "cuda")]
+    if cfg.performance.use_gpu_cuda && cfg.gravity.solver == SolverKind::Direct {
+        let eps = cfg.simulation.softening as f32;
+        if let Some(gpu) = gadget_ng_cuda::CudaDirectGravity::try_new(eps) {
+            eprintln!("[gadget-ng] CUDA direct gravity activado (f32).");
+            return Box::new(gpu);
+        }
+        eprintln!("[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible; usando CPU direct.");
+    }
+
+    // Gravedad directa HIP — `[performance] use_gpu_hip = true`, solver Direct.
+    #[cfg(feature = "hip")]
+    if cfg.performance.use_gpu_hip && cfg.gravity.solver == SolverKind::Direct {
+        let eps = cfg.simulation.softening as f32;
+        if let Some(gpu) = gadget_ng_hip::HipDirectGravity::try_new(eps) {
+            eprintln!("[gadget-ng] HIP direct gravity activado (f32).");
+            return Box::new(gpu);
+        }
+        eprintln!("[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP no disponible; usando CPU direct.");
+    }
+
     // Solver PM CUDA — activado con `[performance] use_gpu_cuda = true`.
     // Requiere `--features cuda`. Si nvcc no estaba disponible en build time o no hay
     // dispositivo CUDA, `try_new()` devuelve None y se continúa con el solver CPU.

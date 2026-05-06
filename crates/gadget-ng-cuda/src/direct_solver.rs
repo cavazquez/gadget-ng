@@ -153,6 +153,35 @@ impl CudaDirectGravity {
     }
 }
 
+// ── GravitySolver bridge ────────────────────────────────────────────────────
+
+impl gadget_ng_core::gravity::GravitySolver for CudaDirectGravity {
+    fn accelerations_for_indices(
+        &self,
+        global_positions: &[gadget_ng_core::Vec3],
+        global_masses: &[f64],
+        _eps2: f64,
+        _g: f64,
+        global_indices: &[usize],
+        out: &mut [gadget_ng_core::Vec3],
+    ) {
+        assert_eq!(global_indices.len(), out.len());
+        if global_indices.is_empty() {
+            return;
+        }
+        let pos_f32: Vec<[f32; 3]> = global_positions
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32, p.z as f32])
+            .collect();
+        let mass_f32: Vec<f32> = global_masses.iter().map(|&m| m as f32).collect();
+        let acc = self.compute(&pos_f32, &mass_f32);
+        for (k, &gi) in global_indices.iter().enumerate() {
+            let [ax, ay, az] = acc[gi];
+            out[k] = gadget_ng_core::Vec3::new(ax as f64, ay as f64, az as f64);
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests unitarios (sin hardware CUDA requerido)
 // ─────────────────────────────────────────────────────────────────────────────
