@@ -42,7 +42,8 @@ def main():
     cargo_cmd = ['cargo', 'run', '--release']
     if features:
         cargo_cmd += ['--features', ','.join(features)]
-    cargo_cmd += ['--', 'stepping', '--config', config_path, '--out', out_dir]
+    # `--snapshot`: escribe `<out>/snapshot_final` además de `frames/snap_*` (HDF5 para este experimento).
+    cargo_cmd += ['--', 'stepping', '--config', config_path, '--out', out_dir, '--snapshot']
     
     subprocess.run(cargo_cmd, cwd=ws_root, check=True)
 

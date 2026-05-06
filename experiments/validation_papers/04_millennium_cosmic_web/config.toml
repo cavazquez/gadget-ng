@@ -19,10 +19,10 @@ a_init = 0.02
 periodic = true
 auto_g = true
 
+# Claves canónicas RunConfig (interval/format/dir legacy se ignoraban → jsonl y sin frames).
 [output]
-interval = 150
-format = "hdf5"
-dir = "out"
+snapshot_interval = 150
+snapshot_format = "hdf5"
 
 [gravity]
 solver = "tree_pm"
