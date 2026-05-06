@@ -70,7 +70,7 @@ fn period(a: f64, m_total: f64) -> f64 {
     2.0 * std::f64::consts::PI * (a.powi(3) / (G * m_total)).sqrt()
 }
 
-fn integrate_orbit(particles: &mut Vec<Particle>, dt: f64, n_steps: usize) {
+fn integrate_orbit(particles: &mut [Particle], dt: f64, n_steps: usize) {
     let mut scratch = vec![Vec3::zero(); particles.len()];
     for _ in 0..n_steps {
         leapfrog_kdk_step(particles, dt, &mut scratch, |p, out| {

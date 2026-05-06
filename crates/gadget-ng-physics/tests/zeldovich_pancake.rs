@@ -31,7 +31,7 @@ fn analytic_rho(q: f64, box_size: f64, delta0: f64, d_growth: f64, rho0: f64) ->
 fn numerical_rho_from_spacing(x_sorted: &[f64], mass: f64, box_size: f64) -> Vec<f64> {
     let n = x_sorted.len();
     let mut rho = vec![0.0; n];
-    for i in 0..n {
+    for (i, rho_i) in rho.iter_mut().enumerate() {
         let im1 = if i == 0 { n - 1 } else { i - 1 };
         let ip1 = if i + 1 == n { 0 } else { i + 1 };
         let mut dx = x_sorted[ip1] - x_sorted[im1];
@@ -41,7 +41,7 @@ fn numerical_rho_from_spacing(x_sorted: &[f64], mass: f64, box_size: f64) -> Vec
         // Derivada centrada: dx/dq ≈ (x_{i+1}-x_{i-1})/(2 dq)
         // rho ≈ mass / local_spacing
         let local_spacing = 0.5 * dx;
-        rho[i] = mass / local_spacing.max(1e-14);
+        *rho_i = mass / local_spacing.max(1e-14);
     }
     rho
 }

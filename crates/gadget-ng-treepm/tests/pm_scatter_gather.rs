@@ -36,7 +36,7 @@ fn scatter_cic_mass_conservation() {
     let box_size = 1.0_f64;
     let layout = SlabLayout::new(nm, 0, 1); // P=1
 
-    let particles = vec![
+    let particles = [
         make_particle(0, 0.1, 0.2, 0.3, 1.5),
         make_particle(1, 0.5, 0.5, 0.5, 2.0),
         make_particle(2, 0.9, 0.8, 0.7, 0.5),

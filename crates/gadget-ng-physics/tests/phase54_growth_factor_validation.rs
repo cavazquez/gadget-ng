@@ -179,7 +179,7 @@ fn median(mut v: Vec<f64>) -> f64 {
 // ── Evolución PM adaptativa con G consistente ─────────────────────────────────
 
 fn evolve_pm_to_a_adaptive(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

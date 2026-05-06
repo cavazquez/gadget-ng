@@ -228,7 +228,7 @@ fn compute_treepm_accels(
 }
 
 fn evolve_fixed_dt(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

@@ -140,7 +140,7 @@ fn virial_ratio(particles: &[Particle], eps2: f64) -> f64 {
 }
 
 // ── Paso de integración ───────────────────────────────────────────────────────
-fn integrate(particles: &mut Vec<Particle>, n_steps: usize, dt: f64) {
+fn integrate(particles: &mut [Particle], n_steps: usize, dt: f64) {
     let eps2 = EPS * EPS;
     let bh = BarnesHutGravity {
         theta: THETA,

@@ -178,7 +178,7 @@ fn measure_pk(parts: &[gadget_ng_core::Particle], nm: usize) -> Vec<PkBin> {
 
 /// Evolución PM con a_init parametrizable.
 fn run_pm_n_a(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_steps: usize,
     dt: f64,
     nm: usize,
@@ -213,13 +213,13 @@ fn run_pm_n_a(
 }
 
 /// Evolución PM estándar (a_init=0.02).
-fn run_pm_n(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64, nm: usize) -> f64 {
+fn run_pm_n(parts: &mut [gadget_ng_core::Particle], n_steps: usize, dt: f64, nm: usize) -> f64 {
     run_pm_n_a(parts, n_steps, dt, nm, A_INIT_EARLY)
 }
 
 /// Evolución TreePM con a_init parametrizable.
 fn run_treepm_n_a(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_steps: usize,
     dt: f64,
     nm: usize,
@@ -258,7 +258,7 @@ fn run_treepm_n_a(
 }
 
 fn run_treepm_n(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_steps: usize,
     dt: f64,
     nm: usize,
@@ -318,7 +318,7 @@ fn theory_pk_at_k(k_hmpc: f64) -> f64 {
 /// Usado para validar crecimiento entre dos snapshots evolucionados,
 /// evitando el problema de baseline ≈ 0 del estado inicial.
 fn run_pm_n_checkpoint(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n1: usize,
     n2: usize,
     dt: f64,

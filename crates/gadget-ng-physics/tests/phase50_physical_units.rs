@@ -186,7 +186,7 @@ fn median_ratio(pk0: &[PkBin], pk1: &[PkBin]) -> f64 {
 }
 
 fn evolve_adaptive_g(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     g: f64,
     a_start: f64,
@@ -238,7 +238,7 @@ fn evolve_adaptive_g(
 }
 
 fn evolve_fixed_g(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     g: f64,
     a_start: f64,

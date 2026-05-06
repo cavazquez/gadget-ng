@@ -79,9 +79,11 @@ fn hubble_in_physical_limits() {
 #[test]
 fn config_toml_round_trip() {
     use gadget_ng_core::CosmologySection;
-    let mut cosmo = CosmologySection::default();
-    cosmo.w0 = -0.9;
-    cosmo.wa = 0.1;
+    let cosmo = CosmologySection {
+        w0: -0.9,
+        wa: 0.1,
+        ..Default::default()
+    };
     let toml_str = toml::to_string(&cosmo).expect("serialización TOML debe funcionar");
     let cosmo2: CosmologySection =
         toml::from_str(&toml_str).expect("deserialización TOML debe funcionar");

@@ -82,7 +82,7 @@ mod hdf5_mhd_tests {
     fn hdf5_writes_cr_energy_and_metallicity() {
         let dir = tempfile::tempdir().unwrap();
         let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
-        p.cr_energy = 3.14;
+        p.cr_energy = 3.15;
         p.metallicity = 0.025;
         Hdf5Writer
             .write(dir.path(), &[p], &make_prov(), &make_env())
@@ -91,7 +91,7 @@ mod hdf5_mhd_tests {
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
         let pt0 = file.group("PartType0").unwrap();
         let cr: Vec<f64> = pt0.dataset("CosmicRayEnergy").unwrap().read_raw().unwrap();
-        assert!((cr[0] - 3.14).abs() < 1e-12);
+        assert!((cr[0] - 3.15).abs() < 1e-12);
         let met: Vec<f64> = pt0.dataset("Metallicity").unwrap().read_raw().unwrap();
         assert!((met[0] - 0.025).abs() < 1e-12);
     }

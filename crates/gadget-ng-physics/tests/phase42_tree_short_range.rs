@@ -20,7 +20,7 @@
 //! - 4 corridas únicas:
 //!     - `pm_eps0`        → baseline `PmSolver` (réplica Phase 41).
 //!     - `treepm_eps001`  → PM filtrado + SR `short_range_accels_periodic`
-//!                          con `ε_phys = 0.01 Mpc/h`.
+//!       con `ε_phys = 0.01 Mpc/h`.
 //!     - `treepm_eps002`  → idem, `ε_phys = 0.02 Mpc/h`.
 //!     - `treepm_eps005`  → idem, `ε_phys = 0.05 Mpc/h`.
 //!
@@ -278,7 +278,7 @@ fn compute_accelerations(
 }
 
 fn evolve_to_a_with_variant(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

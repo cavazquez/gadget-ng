@@ -165,7 +165,7 @@ fn vrms(parts: &[gadget_ng_core::Particle]) -> f64 {
 
 /// Evoluciona con PM y coupling dado hasta a_target. Retorna a_final.
 fn evolve_fixed_dt(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,
@@ -203,7 +203,7 @@ fn evolve_fixed_dt(
 
 /// Evoluciona con dt adaptativo (Phase 49). Retorna a_final.
 fn evolve_adaptive(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     softening: f64,
     a_start: f64,

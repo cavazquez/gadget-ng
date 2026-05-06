@@ -25,6 +25,7 @@ use gadget_ng_tree::{SidmParams, apply_sidm_scattering, scatter_probability};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn dm_particle(id: usize, x: f64, y: f64, z: f64, vx: f64, vy: f64, vz: f64, h: f64) -> Particle {
     let mut p = Particle::new(
         id,

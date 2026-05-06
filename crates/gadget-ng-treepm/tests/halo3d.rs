@@ -202,9 +202,9 @@ fn compute_aabb_3d_correctness() {
     // Verificar que el AABB contiene todas las partículas.
     for p in &particles {
         let pos = [p.position.x, p.position.y, p.position.z];
-        for k in 0..3 {
-            assert!(pos[k] >= aabb.lo[k] - 1e-12, "posición debajo del AABB");
-            assert!(pos[k] <= aabb.hi[k] + 1e-12, "posición encima del AABB");
+        for (k, &pk) in pos.iter().enumerate() {
+            assert!(pk >= aabb.lo[k] - 1e-12, "posición debajo del AABB");
+            assert!(pk <= aabb.hi[k] + 1e-12, "posición encima del AABB");
         }
     }
 

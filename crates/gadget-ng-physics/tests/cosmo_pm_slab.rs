@@ -41,6 +41,7 @@ fn uniform_grid_positions(n_side: usize, box_size: f64) -> Vec<Vec3> {
 // ── Test 1: SlabLayout cubre todos los planos ─────────────────────────────────
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn slab_layout_covers_all_planes() {
     for nm in [8, 16, 32] {
         for n_ranks in [1, 2, 4, 8] {
@@ -232,6 +233,7 @@ fn slab_solve_matches_serial_pm() {
 // ── Test 7: Modo Poisson sinusoidal — fuerza con signo correcto ───────────────
 
 #[test]
+#[allow(clippy::erasing_op)]
 fn slab_poisson_sanity_sinusoidal_mode() {
     // ρ(x) = ρ_mean + A·cos(2πx/L)
     // Potencial: Φ̂(k=1) = -4πG·ρ̂(k=1)/k² = -4πG·(A/2)/(2π/L)²

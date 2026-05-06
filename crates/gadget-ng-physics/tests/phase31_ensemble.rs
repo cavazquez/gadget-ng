@@ -22,8 +22,8 @@
 //!
 //! CV (coeficiente de variación) del P(k) entre seeds mide la varianza cósmica
 //! + ruido numérico. Con 4 seeds la estimación de CV tiene ~40% de incertidumbre
-//! estadística (1-σ), por lo que las tolerancias son generosas para evitar
-//! fallos espurios. La mejora observable y robusta es la del número de bins de k.
+//!   estadística (1-σ), por lo que las tolerancias son generosas para evitar
+//!   fallos espurios. La mejora observable y robusta es la del número de bins de k.
 //!
 //! ## Cobertura de los 8 tests
 //!
@@ -165,7 +165,7 @@ fn measure_pk(parts: &[gadget_ng_core::Particle], nm: usize) -> Vec<PkBin> {
 }
 
 /// Evolución PM cosmológica con malla parametrizada.
-fn run_pm_n(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64, nm: usize) -> f64 {
+fn run_pm_n(parts: &mut [gadget_ng_core::Particle], n_steps: usize, dt: f64, nm: usize) -> f64 {
     let n = parts.len();
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
     let pm = PmSolver::new(nm, BOX);
@@ -196,7 +196,7 @@ fn run_pm_n(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64, 
 
 /// Evolución TreePM cosmológica con malla parametrizada.
 fn run_treepm_n(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_steps: usize,
     dt: f64,
     nm: usize,

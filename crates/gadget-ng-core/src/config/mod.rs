@@ -86,11 +86,7 @@ impl RunConfig {
     /// Densidad media de materia en el cubo [0, box_size)³, asumiendo masa total = 1.
     pub fn rho_bar(&self) -> f64 {
         let l = self.simulation.box_size;
-        if l <= 0.0 {
-            1.0
-        } else {
-            1.0 / (l * l * l)
-        }
+        if l <= 0.0 { 1.0 } else { 1.0 / (l * l * l) }
     }
 
     /// Constante gravitacional efectiva en el modo de integración actual.

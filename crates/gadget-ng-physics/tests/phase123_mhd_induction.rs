@@ -38,10 +38,9 @@ fn induction_changes_b_with_shear() {
     let db = (particles[0].b_field.x - b_before.x).abs()
         + (particles[0].b_field.y - b_before.y).abs()
         + (particles[0].b_field.z - b_before.z).abs();
-    assert!(
-        db > 0.0 || true,
-        "Puede no cambiar con esta geometría específica"
-    ); // soft check
+    // Soft check: B puede no cambiar con esta geometría específica.
+    // El test principal es que advance_induction no panic y que B siga siendo finita.
+    assert!(db.is_finite(), "B field debe seguir siendo finita tras induction");
 }
 
 // ── 3. Partículas en reposo, B uniforme → B constante ────────────────────

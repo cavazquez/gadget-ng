@@ -492,7 +492,7 @@ fn halo3d_no_double_counting() {
         .collect();
 
     // Compute AABB de la partícula local (usada para validar el criterio del halo 3D).
-    let aabb_center = compute_aabb_3d(&[local_center.clone()]);
+    let aabb_center = compute_aabb_3d(std::slice::from_ref(&local_center));
     assert!(
         aabb_center.is_valid(),
         "AABB de partícula central debe ser válida"

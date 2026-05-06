@@ -159,7 +159,7 @@ fn direct_accel(parts: &[Particle], g: f64, eps2: f64) -> Vec<Vec3> {
 
 /// Ejecuta `n_steps` pasos leapfrog cosmológico con el solver directo.
 fn run_cosmo_leapfrog(
-    parts: &mut Vec<Particle>,
+    parts: &mut [Particle],
     cosmo: CosmologyParams,
     a_init: f64,
     dt: f64,

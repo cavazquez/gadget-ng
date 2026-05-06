@@ -132,7 +132,7 @@ fn build_run_config(n: usize) -> RunConfig {
 // ── Evolución PM adaptativa ───────────────────────────────────────────────────
 
 fn evolve_pm_to_a_adaptive(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

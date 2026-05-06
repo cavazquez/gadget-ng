@@ -489,7 +489,7 @@ fn compute_treepm_accels(parts: &[Particle], n_mesh: usize, g_cosmo: f64, out: &
     tpm.accelerations_for_indices(&positions, &masses, eps2, g_cosmo, &indices, out);
 }
 
-fn evolve_short(parts: &mut Vec<Particle>, n_mesh: usize, a0: f64, a_target: f64, dt: f64) -> f64 {
+fn evolve_short(parts: &mut [Particle], n_mesh: usize, a0: f64, a_target: f64, dt: f64) -> f64 {
     let cosmo = cosmo_params();
     let mut a = a0;
     let mut scratch = vec![Vec3::zero(); parts.len()];

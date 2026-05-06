@@ -85,7 +85,7 @@ fn make_pm() -> PmSolver {
 }
 
 /// Computa fuerzas y las almacena en `scratch`.
-fn compute_forces(parts: &[Particle], scratch: &mut Vec<Vec3>) {
+fn compute_forces(parts: &[Particle], scratch: &mut [Vec3]) {
     let pm = make_pm();
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
     let m: Vec<f64> = parts.iter().map(|p| p.mass).collect();
@@ -95,7 +95,7 @@ fn compute_forces(parts: &[Particle], scratch: &mut Vec<Vec3>) {
 
 /// Ejecuta `n_steps` pasos leapfrog KDK desde el estado actual.
 /// Prerrequisito: `scratch` contiene las fuerzas correspondientes a `parts`.
-fn run_steps(parts: &mut Vec<Particle>, scratch: &mut Vec<Vec3>, n_steps: usize) {
+fn run_steps(parts: &mut [Particle], scratch: &mut [Vec3], n_steps: usize) {
     let pm = make_pm();
     for _ in 0..n_steps {
         leapfrog_kdk_step(parts, DT, scratch, |ps, acc| {

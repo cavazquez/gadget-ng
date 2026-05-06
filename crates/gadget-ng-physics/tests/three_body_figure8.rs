@@ -131,7 +131,7 @@ fn total_angular_momentum(particles: &[Particle]) -> Vec3 {
 }
 
 // ── Integración ───────────────────────────────────────────────────────────────
-fn integrate_figure8(particles: &mut Vec<Particle>, n_steps: usize, dt: f64) {
+fn integrate_figure8(particles: &mut [Particle], n_steps: usize, dt: f64) {
     let mut scratch = vec![Vec3::zero(); 3];
     for _ in 0..n_steps {
         leapfrog_kdk_step(particles, dt, &mut scratch, |ps, acc| {

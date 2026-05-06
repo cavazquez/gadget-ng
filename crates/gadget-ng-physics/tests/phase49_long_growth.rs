@@ -165,8 +165,9 @@ fn vrms(parts: &[gadget_ng_core::Particle]) -> f64 {
 }
 
 /// Evoluciona con dt adaptativo + G·a³. Retorna (a_final, n_steps).
+#[allow(clippy::too_many_arguments)]
 fn evolve_adaptive(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     softening: f64,
     a_start: f64,
@@ -220,7 +221,7 @@ fn evolve_adaptive(
 
 /// Evoluciona con dt fijo + G·a³. Retorna a_final.
 fn evolve_fixed(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

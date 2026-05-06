@@ -8,6 +8,7 @@
 //! 5. `serial_vs_distributed_forces_p1` — P=1: allgather ≈ distributed (misma física)
 //! 6. `halo_coverage_prevents_missing_interactions` — halo correcto → sin interacciones perdidas
 //! 7. `treepm_force_split_partition` — F_lr + F_sr = F_total (Newton) dentro de tolerancia
+#![allow(clippy::cloned_ref_to_slice_refs)]
 //! 8. `periodic_sr_stronger_than_aperiodic` — con minimum_image SR es más fuerte en borde
 
 use gadget_ng_core::{Particle, Vec3};

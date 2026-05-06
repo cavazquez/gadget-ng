@@ -1,4 +1,5 @@
 //! Análisis de normalización absoluta de P(k) — Fase 33.
+#![allow(clippy::doc_overindented_list_items)]
 //!
 //! ## Pregunta central
 //!

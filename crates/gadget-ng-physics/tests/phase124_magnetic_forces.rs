@@ -33,13 +33,14 @@ fn pressure_scales_b_squared() {
 fn maxwell_stress_symmetric() {
     let b = Vec3::new(1.0, 0.5, 0.3);
     let m = maxwell_stress(b);
-    for i in 0..3 {
-        for j in 0..3 {
+    for (i, mi) in m.iter().enumerate() {
+        for (j, &mij) in mi.iter().enumerate() {
+            let mji = m[j][i];
             assert!(
-                (m[i][j] - m[j][i]).abs() < 1e-12,
+                (mij - mji).abs() < 1e-12,
                 "Tensor no simétrico en ({i},{j}): {} vs {}",
-                m[i][j],
-                m[j][i]
+                mij,
+                mji
             );
         }
     }

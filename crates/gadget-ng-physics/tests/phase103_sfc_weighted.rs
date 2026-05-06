@@ -144,18 +144,18 @@ fn ema_converges_after_iterations() {
     }
 
     // Después de 20 iteraciones, el EMA debe haberse estabilizado
-    for i in 0..5 {
+    for &cost in costs.iter().take(5) {
         assert!(
-            costs[i] > 50.0,
+            cost > 50.0,
             "partícula costosa debe tener EMA alto: {:.1}",
-            costs[i]
+            cost
         );
     }
-    for i in 5..n {
+    for &cost in costs.iter().take(n).skip(5) {
         assert!(
-            costs[i] < 20.0,
+            cost < 20.0,
             "partícula barata debe tener EMA bajo: {:.1}",
-            costs[i]
+            cost
         );
     }
 }

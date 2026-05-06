@@ -192,7 +192,7 @@ fn measure_pk(parts: &[gadget_ng_core::Particle], n: usize) -> Vec<PkBin> {
 /// Evoluciona con PM o TreePM hasta (aprox.) `a_target` usando leapfrog KDK
 /// cosmológico. Devuelve el `a` final alcanzado.
 fn evolve_to_a(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     solver: Solver,
     a_start: f64,

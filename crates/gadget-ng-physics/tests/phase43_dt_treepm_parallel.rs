@@ -19,8 +19,8 @@
 //!     - `dt_1e-4`
 //!     - (opcional) `dt_5e-5` con `PHASE43_DT5E5=1`
 //!     - `adaptive_cosmo`   — `dt = min(η·√(ε/a_max), κ_h·a/H(a))`
-//!                            con `η = 0.1`, `κ_h = 0.04`,
-//!                            `dt ∈ [5·10⁻⁵, 4·10⁻⁴]`
+//!       con `η = 0.1`, `κ_h = 0.04`,
+//!       `dt ∈ [5·10⁻⁵, 4·10⁻⁴]`
 //! - `PHASE43_N=64` sube a `N = 64³` (coste ~8× respecto al smoke).
 //! - `PHASE43_THREADS="1,4,8"` define el barrido de hilos Rayon para la
 //!   medición de speedup (default `"1,4"`).
@@ -287,7 +287,7 @@ fn compute_treepm_accels(
 /// `(a_final, n_steps, dt_trace)`. `dt_trace` contiene el `dt` efectivo
 /// usado en cada paso (para el modo adaptativo).
 fn evolve_with_dt_mode(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

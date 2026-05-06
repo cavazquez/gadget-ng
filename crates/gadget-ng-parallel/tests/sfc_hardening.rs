@@ -153,7 +153,7 @@ fn halo_geometric_3d_filter() {
     let halo_width = 0.1f64;
 
     // Partículas del rango A (dominio [0,0.5)³).
-    let particles_a = vec![
+    let particles_a = [
         make_particle(0, 0.1, 0.1, 0.1),    // lejos del borde → NO enviar
         make_particle(1, 0.45, 0.45, 0.45), // dentro de la zona halo 3D → SÍ enviar
         make_particle(2, 0.48, 0.1, 0.1),   // cerca en x pero no en y/z → NO enviar

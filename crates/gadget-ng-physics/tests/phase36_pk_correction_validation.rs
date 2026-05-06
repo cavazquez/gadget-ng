@@ -132,7 +132,7 @@ fn measure_pk(parts: &[gadget_ng_core::Particle], n: usize) -> Vec<PkBin> {
 /// Evoluciona con PM hasta (aprox) `a_target`. Paso `dt` fijo; corta cuando
 /// `a ≥ a_target`. Devuelve el `a` final (puede pasarse ligeramente).
 fn evolve_pm_to_a(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

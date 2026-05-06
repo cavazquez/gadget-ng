@@ -134,7 +134,7 @@ fn build_config(n: usize, seed: u64) -> RunConfig {
 
 /// Evoluciona hasta `a_target` con PM + acoplamiento QKSL (Phase 45 fix).
 fn evolve_pm_qksl(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

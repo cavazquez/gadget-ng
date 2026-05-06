@@ -13,9 +13,10 @@ fn gas_particle_dense(rho: f64, x: f64, metallicity: f64) -> Particle {
 }
 
 fn sph_cfg() -> gadget_ng_core::config::SphSection {
-    let mut cfg = gadget_ng_core::config::SphSection::default();
-    cfg.gamma = 5.0 / 3.0;
-    cfg
+    gadget_ng_core::config::SphSection {
+        gamma: 5.0 / 3.0,
+        ..Default::default()
+    }
 }
 
 // T1: cluster masa > 0 para gas con densidad alta

@@ -192,7 +192,7 @@ fn psi1_rms(parts_1lpt: &[gadget_ng_core::Particle]) -> f64 {
 /// Evolución leapfrog cosmológico con PM durante `n_steps` pasos.
 ///
 /// Retorna el factor de escala final.
-fn run_pm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
+fn run_pm_evolution(parts: &mut [gadget_ng_core::Particle], n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
     let pm = PmSolver::new(NM, BOX);
     let mut scratch = vec![Vec3::zero(); N_PART];
@@ -223,7 +223,7 @@ fn run_pm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, d
 }
 
 /// Evolución leapfrog cosmológico con TreePM durante `n_steps` pasos.
-fn run_treepm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usize, dt: f64) -> f64 {
+fn run_treepm_evolution(parts: &mut [gadget_ng_core::Particle], n_steps: usize, dt: f64) -> f64 {
     let cosmo = CosmologyParams::new(OMEGA_M, OMEGA_L, H0);
     let treepm = TreePmSolver {
         grid_size: NM,
@@ -266,7 +266,7 @@ fn run_treepm_evolution(parts: &mut Vec<gadget_ng_core::Particle>, n_steps: usiz
 /// Ψ² se genera de la fuente cuadrática S(x) ∝ (Ψ¹)². Por tanto:
 /// - |Ψ²|_rms ∝ amplitude²  ∝ σ₈²
 /// - |Ψ¹|_rms ∝ amplitude   ∝ σ₈
-/// → ratio = |Ψ²|/|Ψ¹| ∝ σ₈
+///   → ratio = |Ψ²|/|Ψ¹| ∝ σ₈
 ///
 /// ## Nota sobre a_init
 ///

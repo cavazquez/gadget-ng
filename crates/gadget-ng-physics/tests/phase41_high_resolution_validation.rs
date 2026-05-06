@@ -187,7 +187,7 @@ fn measure_pk(parts: &[gadget_ng_core::Particle], n: usize) -> Vec<PkBin> {
 }
 
 fn evolve_pm_to_a(
-    parts: &mut Vec<gadget_ng_core::Particle>,
+    parts: &mut [gadget_ng_core::Particle],
     n_mesh: usize,
     a_start: f64,
     a_target: f64,

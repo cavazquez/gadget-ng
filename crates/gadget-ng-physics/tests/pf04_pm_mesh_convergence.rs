@@ -87,13 +87,13 @@ fn pm_uniform_density_zero_force() {
     let nm = 8usize;
     let density = vec![1.0_f64; nm * nm * nm];
     let forces = solve_forces(&density, 1.0, nm, 1.0);
-    for i in 0..forces[0].len() {
-        let fx = forces[0][i].abs();
-        let fy = forces[1][i].abs();
-        let fz = forces[2][i].abs();
+    for ((fx, fy), fz) in forces[0].iter().zip(forces[1].iter()).zip(forces[2].iter()) {
         assert!(
-            fx < 1e-10 && fy < 1e-10 && fz < 1e-10,
-            "Fuerza no nula para densidad uniforme: fx={fx:.3e}, fy={fy:.3e}, fz={fz:.3e}"
+            fx.abs() < 1e-10 && fy.abs() < 1e-10 && fz.abs() < 1e-10,
+            "Fuerza no nula para densidad uniforme: fx={:.3e}, fy={:.3e}, fz={:.3e}",
+            fx.abs(),
+            fy.abs(),
+            fz.abs()
         );
     }
 }
