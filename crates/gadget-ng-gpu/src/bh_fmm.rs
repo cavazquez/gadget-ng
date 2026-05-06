@@ -302,6 +302,19 @@ struct GpuBhFmmCtx {
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
+    // Persistent buffers (grow-on-demand)
+    buf_params: wgpu::Buffer,
+    buf_nodes: wgpu::Buffer,
+    buf_pos: wgpu::Buffer,
+    buf_mass: wgpu::Buffer,
+    buf_idx: wgpu::Buffer,
+    buf_out: wgpu::Buffer,
+    buf_rb: wgpu::Buffer,
+    buf_hex_w: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    max_n_all: usize,
+    max_n_query: usize,
+    max_n_nodes: usize,
 }
 
 unsafe impl Send for GpuBhFmmCtx {}
@@ -437,14 +450,146 @@ impl GpuBarnesHutFmm {
             cache: None,
         });
 
+        let (
+            buf_params, buf_nodes, buf_pos, buf_mass, buf_idx, buf_out, buf_rb, buf_hex_w,
+            bind_group,
+        ) = Self::create_buffers(&device, &bgl, 1, 1, 1);
+
         Some(Self {
             ctx: Arc::new(GpuBhFmmCtx {
                 device,
                 queue,
                 pipeline,
                 bgl,
+                buf_params,
+                buf_nodes,
+                buf_pos,
+                buf_mass,
+                buf_idx,
+                buf_out,
+                buf_rb,
+                buf_hex_w,
+                bind_group,
+                max_n_all: 1,
+                max_n_query: 1,
+                max_n_nodes: 1,
             }),
         })
+    }
+
+    fn create_buffers(
+        device: &wgpu::Device,
+        bgl: &wgpu::BindGroupLayout,
+        n_all: usize,
+        n_query: usize,
+        n_nodes: usize,
+    ) -> (
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::BindGroup,
+    ) {
+        let params_size = 48u64; // 12 × u32/f32
+        let nodes_size = (n_nodes.max(1) as u64) * std::mem::size_of::<BhFmmGpuNode>() as u64;
+        let pos_size = (3 * n_all).max(1) as u64 * 4;
+        let mass_size = n_all.max(1) as u64 * 4;
+        let idx_size = n_query.max(1) as u64 * 4;
+        let out_size = (3 * n_query).max(1) as u64 * 4;
+        let hex_w_size = (n_nodes.max(1) * 15) as u64 * 4;
+
+        let buf_params = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_params"),
+            size: params_size,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_nodes = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_nodes"),
+            size: nodes_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_pos = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_pos"),
+            size: pos_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_mass = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_mass"),
+            size: mass_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_idx = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_qidx"),
+            size: idx_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_out = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_out"),
+            size: out_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let buf_rb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_readback"),
+            size: out_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let buf_hex_w = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("bh_fmm_hex_w"),
+            size: hex_w_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bh_fmm_bg"),
+            layout: bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buf_params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buf_nodes.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buf_pos.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buf_mass.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: buf_idx.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: buf_out.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: buf_hex_w.as_entire_binding(),
+                },
+            ],
+        });
+
+        (
+            buf_params, buf_nodes, buf_pos, buf_mass, buf_idx, buf_out, buf_rb, buf_hex_w,
+            bind_group,
+        )
     }
 
     pub fn compute_accelerations_raw(
@@ -475,6 +620,43 @@ impl GpuBarnesHutFmm {
                 }
             }
         }
+
+        let ctx = &*self.ctx;
+        let n_all_us = n_all as usize;
+        let n_query_us = n_query as usize;
+        let n_nodes_us = n_nodes as usize;
+
+        let needs_resize = n_all_us > ctx.max_n_all
+            || n_query_us > ctx.max_n_query
+            || n_nodes_us > ctx.max_n_nodes;
+        if needs_resize {
+            let new_n_all = n_all_us.max(ctx.max_n_all * 2).max(1);
+            let new_n_query = n_query_us.max(ctx.max_n_query * 2).max(1);
+            let new_n_nodes = n_nodes_us.max(ctx.max_n_nodes * 2).max(1);
+            let (
+                buf_params, buf_nodes, buf_pos, buf_mass, buf_idx, buf_out, buf_rb, buf_hex_w,
+                bind_group,
+            ) = Self::create_buffers(&ctx.device, &ctx.bgl, new_n_all, new_n_query, new_n_nodes);
+            // SAFETY: exclusive access during resize; see solver.rs for rationale.
+            let ctx_mut = Arc::as_ptr(&self.ctx) as *mut GpuBhFmmCtx;
+            unsafe {
+                (*ctx_mut).buf_params = buf_params;
+                (*ctx_mut).buf_nodes = buf_nodes;
+                (*ctx_mut).buf_pos = buf_pos;
+                (*ctx_mut).buf_mass = buf_mass;
+                (*ctx_mut).buf_idx = buf_idx;
+                (*ctx_mut).buf_out = buf_out;
+                (*ctx_mut).buf_rb = buf_rb;
+                (*ctx_mut).buf_hex_w = buf_hex_w;
+                (*ctx_mut).bind_group = bind_group;
+                (*ctx_mut).max_n_all = new_n_all;
+                (*ctx_mut).max_n_query = new_n_query;
+                (*ctx_mut).max_n_nodes = new_n_nodes;
+            }
+        }
+
+        let ctx = &*self.ctx;
+        let out_bytes = 3 * n_query as u64 * 4;
 
         #[repr(C)]
         struct Params {
@@ -512,107 +694,20 @@ impl GpuBarnesHutFmm {
             )
             .to_vec()
         };
-
-        let ctx = &*self.ctx;
-        use wgpu::util::DeviceExt;
-
-        let buf_params = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bh_fmm_params"),
-                contents: &params_bytes,
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-
         let nodes_bytes = unsafe {
             std::slice::from_raw_parts(nodes.as_ptr() as *const u8, std::mem::size_of_val(nodes))
         };
-        let buf_nodes = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bh_fmm_nodes"),
-                contents: nodes_bytes,
-                usage: wgpu::BufferUsages::STORAGE,
-            });
 
-        let buf_pos = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bh_fmm_pos"),
-                contents: &f32s_to_bytes(positions_f32),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let buf_mass = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bh_fmm_mass"),
-                contents: &f32s_to_bytes(masses_f32),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let buf_idx = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bh_fmm_qidx"),
-                contents: &u32s_to_bytes(query_idx),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-
-        let buf_hex_w = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("bh_fmm_hex_w"),
-                contents: &f32s_to_bytes(&hex_w_flat),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-
-        let out_bytes = 3 * n_query as u64 * 4;
-        let buf_out = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("bh_fmm_out"),
-            size: out_bytes,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let buf_rb = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("bh_fmm_readback"),
-            size: out_bytes,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bh_fmm_bg"),
-            layout: &ctx.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buf_params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buf_nodes.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: buf_pos.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: buf_mass.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: buf_idx.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: buf_out.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: buf_hex_w.as_entire_binding(),
-                },
-            ],
-        });
+        ctx.queue.write_buffer(&ctx.buf_params, 0, &params_bytes);
+        ctx.queue.write_buffer(&ctx.buf_nodes, 0, &nodes_bytes);
+        ctx.queue
+            .write_buffer(&ctx.buf_pos, 0, &f32s_to_bytes(positions_f32));
+        ctx.queue
+            .write_buffer(&ctx.buf_mass, 0, &f32s_to_bytes(masses_f32));
+        ctx.queue
+            .write_buffer(&ctx.buf_idx, 0, &u32s_to_bytes(query_idx));
+        ctx.queue
+            .write_buffer(&ctx.buf_hex_w, 0, &f32s_to_bytes(&hex_w_flat));
 
         let mut encoder = ctx
             .device
@@ -625,15 +720,15 @@ impl GpuBarnesHutFmm {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&ctx.pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            pass.set_bind_group(0, &ctx.bind_group, &[]);
             let workgroups = n_query.div_ceil(64);
             pass.dispatch_workgroups(workgroups, 1, 1);
         }
-        encoder.copy_buffer_to_buffer(&buf_out, 0, &buf_rb, 0, out_bytes);
+        encoder.copy_buffer_to_buffer(&ctx.buf_out, 0, &ctx.buf_rb, 0, out_bytes);
         ctx.queue.submit(Some(encoder.finish()));
 
         let (tx, rx) = std::sync::mpsc::channel();
-        buf_rb
+        ctx.buf_rb
             .slice(..)
             .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
         ctx.device
@@ -643,10 +738,10 @@ impl GpuBarnesHutFmm {
             .expect("map_async recv")
             .expect("GPU buffer map failed");
 
-        let view = buf_rb.slice(..).get_mapped_range();
+        let view = ctx.buf_rb.slice(..).get_mapped_range();
         let result = bytes_to_f32s(&view);
         drop(view);
-        buf_rb.unmap();
+        ctx.buf_rb.unmap();
         result
     }
 }
