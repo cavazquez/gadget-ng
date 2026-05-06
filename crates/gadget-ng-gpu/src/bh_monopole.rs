@@ -482,7 +482,7 @@ impl GpuBarnesHutMonopole {
         };
 
         ctx.queue.write_buffer(&ctx.buf_params, 0, &params_bytes);
-        ctx.queue.write_buffer(&ctx.buf_nodes, 0, &nodes_bytes);
+        ctx.queue.write_buffer(&ctx.buf_nodes, 0, nodes_bytes);
         ctx.queue
             .write_buffer(&ctx.buf_pos, 0, &f32s_to_bytes(positions_f32));
         ctx.queue

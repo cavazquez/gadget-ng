@@ -9,6 +9,9 @@ export RUSTFLAGS="-D warnings"
 echo "== cargo fmt =="
 cargo fmt --all -- --check
 
+echo "== MSRV check =="
+rustup run 1.85 cargo check --workspace
+
 echo "== cargo clippy =="
 # Igual que job «Clippy» bloqueante en .github/workflows/ci.yml.
 cargo clippy --workspace -- -D warnings
