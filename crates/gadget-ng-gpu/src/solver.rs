@@ -70,9 +70,19 @@ struct GpuContext {
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bgl: wgpu::BindGroupLayout,
+    // Persistent buffers (grow-on-demand)
+    buf_pos: wgpu::Buffer,
+    buf_mass: wgpu::Buffer,
+    buf_idx: wgpu::Buffer,
+    buf_params: wgpu::Buffer,
+    buf_out: wgpu::Buffer,
+    buf_rb: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    max_n_all: usize,
+    max_n_query: usize,
 }
 
-// SAFETY: wgpu::Device, Queue, ComputePipeline y BindGroupLayout son Send+Sync.
+// SAFETY: wgpu::Device, Queue, ComputePipeline, BindGroupLayout y Buffer son Send+Sync.
 unsafe impl Send for GpuContext {}
 unsafe impl Sync for GpuContext {}
 
@@ -192,14 +202,116 @@ impl GpuDirectGravity {
             cache: None,
         });
 
+        // Pre-create persistent buffers with initial capacity 1 (lazy growth on first call)
+        let (buf_pos, buf_mass, buf_idx, buf_params, buf_out, buf_rb, bind_group) =
+            Self::create_buffers(&device, &bgl, 1, 1);
+
         Some(Self {
             ctx: Arc::new(GpuContext {
                 device,
                 queue,
                 pipeline,
                 bgl,
+                buf_pos,
+                buf_mass,
+                buf_idx,
+                buf_params,
+                buf_out,
+                buf_rb,
+                bind_group,
+                max_n_all: 1,
+                max_n_query: 1,
             }),
         })
+    }
+
+    fn create_buffers(
+        device: &wgpu::Device,
+        bgl: &wgpu::BindGroupLayout,
+        n_all: usize,
+        n_query: usize,
+    ) -> (
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::Buffer,
+        wgpu::BindGroup,
+    ) {
+        let pos_size = (3 * n_all).max(1) as u64 * 4;
+        let mass_size = n_all.max(1) as u64 * 4;
+        let idx_size = n_query.max(1) as u64 * 4;
+        let params_size = 16u64; // 4 × u32
+        let out_size = (3 * n_query).max(1) as u64 * 4;
+
+        let buf_pos = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("positions"),
+            size: pos_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_mass = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("masses"),
+            size: mass_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_idx = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("query_idx"),
+            size: idx_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_params = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("params"),
+            size: params_size,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let buf_out = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("out_accs"),
+            size: out_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let buf_rb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback"),
+            size: out_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bg"),
+            layout: bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buf_params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buf_pos.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: buf_mass.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: buf_idx.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: buf_out.as_entire_binding(),
+                },
+            ],
+        });
+
+        (
+            buf_pos, buf_mass, buf_idx, buf_params, buf_out, buf_rb, bind_group,
+        )
     }
 
     /// Lanza el compute shader de gravedad directa.
@@ -226,83 +338,52 @@ impl GpuDirectGravity {
         let n_all = masses_f32.len() as u32;
         let ctx = &*self.ctx;
 
-        use wgpu::util::DeviceExt;
+        let n_all_us = n_all as usize;
+        let n_query_us = n_query as usize;
 
-        // ── Uniform: [eps2_bits, g_bits, n_all, n_query] como 4 × u32 ────────
+        // ── Resize persistent buffers if needed ───────────────────────────────
+        let needs_resize = n_all_us > ctx.max_n_all || n_query_us > ctx.max_n_query;
+        if needs_resize {
+            let new_n_all = n_all_us.max(ctx.max_n_all * 2).max(1);
+            let new_n_query = n_query_us.max(ctx.max_n_query * 2).max(1);
+            let (buf_pos, buf_mass, buf_idx, buf_params, buf_out, buf_rb, bind_group) =
+                Self::create_buffers(&ctx.device, &ctx.bgl, new_n_all, new_n_query);
+            // SAFETY: we replace the buffers atomically via Arc; no other thread is
+            // modifying them because compute_accelerations_raw takes &self and
+            // the Arc is immutable. We use a pointer cast to update the Arc-owned
+            // GpuContext in-place. This is safe because:
+            // - GpuContext is !Sync for mutation, but we only mutate when we have
+            //   exclusive access (no other call is in progress).
+            // - The buffers are only read by the GPU after queue.submit.
+            let ctx_mut = Arc::as_ptr(&self.ctx) as *mut GpuContext;
+            unsafe {
+                (*ctx_mut).buf_pos = buf_pos;
+                (*ctx_mut).buf_mass = buf_mass;
+                (*ctx_mut).buf_idx = buf_idx;
+                (*ctx_mut).buf_params = buf_params;
+                (*ctx_mut).buf_out = buf_out;
+                (*ctx_mut).buf_rb = buf_rb;
+                (*ctx_mut).bind_group = bind_group;
+                (*ctx_mut).max_n_all = new_n_all;
+                (*ctx_mut).max_n_query = new_n_query;
+            }
+        }
+
+        let ctx = &*self.ctx;
+        let out_bytes = 3 * n_query as u64 * 4; // 4 bytes por f32
+
+        // ── Upload data via queue.write_buffer (no buffer churn) ──────────────
         let params_bytes: Vec<u8> = [eps2.to_bits(), g.to_bits(), n_all, n_query]
             .iter()
             .flat_map(|v| v.to_le_bytes())
             .collect();
-        let buf_params = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("params"),
-                contents: &params_bytes,
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-
-        let buf_pos = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("positions"),
-                contents: &f32s_to_bytes(positions_f32),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let buf_mass = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("masses"),
-                contents: &f32s_to_bytes(masses_f32),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let buf_idx = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("query_idx"),
-                contents: &u32s_to_bytes(query_idx),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-
-        let out_bytes = 3 * n_query as u64 * 4; // 4 bytes por f32
-        let buf_out = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("out_accs"),
-            size: out_bytes,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let buf_rb = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("readback"),
-            size: out_bytes,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        let bg = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg"),
-            layout: &ctx.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buf_params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buf_pos.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: buf_mass.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: buf_idx.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: buf_out.as_entire_binding(),
-                },
-            ],
-        });
+        ctx.queue.write_buffer(&ctx.buf_params, 0, &params_bytes);
+        ctx.queue
+            .write_buffer(&ctx.buf_pos, 0, &f32s_to_bytes(positions_f32));
+        ctx.queue
+            .write_buffer(&ctx.buf_mass, 0, &f32s_to_bytes(masses_f32));
+        ctx.queue
+            .write_buffer(&ctx.buf_idx, 0, &u32s_to_bytes(query_idx));
 
         let mut enc = ctx
             .device
@@ -315,16 +396,16 @@ impl GpuDirectGravity {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&ctx.pipeline);
-            pass.set_bind_group(0, &bg, &[]);
+            pass.set_bind_group(0, &ctx.bind_group, &[]);
             let workgroups = n_query.div_ceil(64);
             pass.dispatch_workgroups(workgroups, 1, 1);
         }
-        enc.copy_buffer_to_buffer(&buf_out, 0, &buf_rb, 0, out_bytes);
+        enc.copy_buffer_to_buffer(&ctx.buf_out, 0, &ctx.buf_rb, 0, out_bytes);
         ctx.queue.submit(Some(enc.finish()));
 
         // Readback síncrono
         let (tx, rx) = std::sync::mpsc::channel();
-        buf_rb
+        ctx.buf_rb
             .slice(..)
             .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
         ctx.device
@@ -334,10 +415,10 @@ impl GpuDirectGravity {
             .expect("map_async recv")
             .expect("GPU buffer map failed");
 
-        let view = buf_rb.slice(..).get_mapped_range();
+        let view = ctx.buf_rb.slice(..).get_mapped_range();
         let result = bytes_to_f32s(&view);
         drop(view);
-        buf_rb.unmap();
+        ctx.buf_rb.unmap();
         result
     }
 }

@@ -8,9 +8,9 @@
 //!
 //! Los resultados se guardan en `target/criterion/` en formato HTML.
 
-use std::hint::black_box;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gadget_ng_gpu::GpuDirectGravity;
+use std::hint::black_box;
 
 // ── Gravedad directa CPU (referencia) ────────────────────────────────────────
 
