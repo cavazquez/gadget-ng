@@ -4,7 +4,7 @@
 //! MAC geométrico y **MAC relativo** (estimación quad / mono) cuando `use_relative != 0`.
 
 use gadget_ng_gpu_layout::BhFmmGpuNode;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const BH_FMM_SHADER: &str = concat!(
     r#"
@@ -317,9 +317,6 @@ struct GpuBhFmmCtx {
     max_n_nodes: usize,
 }
 
-unsafe impl Send for GpuBhFmmCtx {}
-unsafe impl Sync for GpuBhFmmCtx {}
-
 /// Parámetros del kernel FMM (órdenes 1–4 en GPU; hex vía buffer auxiliar de pesos STF).
 #[derive(Clone, Copy, Debug)]
 pub struct BhFmmKernelParams {
@@ -338,7 +335,7 @@ pub struct BhFmmKernelParams {
 /// Walk Barnes–Hut multipolar en GPU (hasta orden 4).
 #[derive(Clone)]
 pub struct GpuBarnesHutFmm {
-    ctx: Arc<GpuBhFmmCtx>,
+    ctx: Arc<Mutex<GpuBhFmmCtx>>,
 }
 
 impl GpuBarnesHutFmm {
@@ -451,12 +448,19 @@ impl GpuBarnesHutFmm {
         });
 
         let (
-            buf_params, buf_nodes, buf_pos, buf_mass, buf_idx, buf_out, buf_rb, buf_hex_w,
+            buf_params,
+            buf_nodes,
+            buf_pos,
+            buf_mass,
+            buf_idx,
+            buf_out,
+            buf_rb,
+            buf_hex_w,
             bind_group,
         ) = Self::create_buffers(&device, &bgl, 1, 1, 1);
 
         Some(Self {
-            ctx: Arc::new(GpuBhFmmCtx {
+            ctx: Arc::new(Mutex::new(GpuBhFmmCtx {
                 device,
                 queue,
                 pipeline,
@@ -473,7 +477,7 @@ impl GpuBarnesHutFmm {
                 max_n_all: 1,
                 max_n_query: 1,
                 max_n_nodes: 1,
-            }),
+            })),
         })
     }
 
@@ -621,7 +625,7 @@ impl GpuBarnesHutFmm {
             }
         }
 
-        let ctx = &*self.ctx;
+        let mut ctx = self.ctx.lock().expect("GpuBhFmmCtx lock poisoned");
         let n_all_us = n_all as usize;
         let n_query_us = n_query as usize;
         let n_nodes_us = n_nodes as usize;
@@ -634,28 +638,30 @@ impl GpuBarnesHutFmm {
             let new_n_query = n_query_us.max(ctx.max_n_query * 2).max(1);
             let new_n_nodes = n_nodes_us.max(ctx.max_n_nodes * 2).max(1);
             let (
-                buf_params, buf_nodes, buf_pos, buf_mass, buf_idx, buf_out, buf_rb, buf_hex_w,
+                buf_params,
+                buf_nodes,
+                buf_pos,
+                buf_mass,
+                buf_idx,
+                buf_out,
+                buf_rb,
+                buf_hex_w,
                 bind_group,
             ) = Self::create_buffers(&ctx.device, &ctx.bgl, new_n_all, new_n_query, new_n_nodes);
-            // SAFETY: exclusive access during resize; see solver.rs for rationale.
-            let ctx_mut = Arc::as_ptr(&self.ctx) as *mut GpuBhFmmCtx;
-            unsafe {
-                (*ctx_mut).buf_params = buf_params;
-                (*ctx_mut).buf_nodes = buf_nodes;
-                (*ctx_mut).buf_pos = buf_pos;
-                (*ctx_mut).buf_mass = buf_mass;
-                (*ctx_mut).buf_idx = buf_idx;
-                (*ctx_mut).buf_out = buf_out;
-                (*ctx_mut).buf_rb = buf_rb;
-                (*ctx_mut).buf_hex_w = buf_hex_w;
-                (*ctx_mut).bind_group = bind_group;
-                (*ctx_mut).max_n_all = new_n_all;
-                (*ctx_mut).max_n_query = new_n_query;
-                (*ctx_mut).max_n_nodes = new_n_nodes;
-            }
+            ctx.buf_params = buf_params;
+            ctx.buf_nodes = buf_nodes;
+            ctx.buf_pos = buf_pos;
+            ctx.buf_mass = buf_mass;
+            ctx.buf_idx = buf_idx;
+            ctx.buf_out = buf_out;
+            ctx.buf_rb = buf_rb;
+            ctx.buf_hex_w = buf_hex_w;
+            ctx.bind_group = bind_group;
+            ctx.max_n_all = new_n_all;
+            ctx.max_n_query = new_n_query;
+            ctx.max_n_nodes = new_n_nodes;
         }
 
-        let ctx = &*self.ctx;
         let out_bytes = 3 * n_query as u64 * 4;
 
         #[repr(C)]

@@ -12,7 +12,7 @@
 //! [`GpuDirectGravity::try_new`] devuelve `None` si no hay adaptador GPU
 //! disponible (headless, CI, máquina sin GPU). El motor puede caer en CPU.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 // ── Shader WGSL ──────────────────────────────────────────────────────────────
 
@@ -82,10 +82,6 @@ struct GpuContext {
     max_n_query: usize,
 }
 
-// SAFETY: wgpu::Device, Queue, ComputePipeline, BindGroupLayout y Buffer son Send+Sync.
-unsafe impl Send for GpuContext {}
-unsafe impl Sync for GpuContext {}
-
 // ── GpuDirectGravity ─────────────────────────────────────────────────────────
 
 /// Solver de gravedad directa GPU usando wgpu (WGSL compute shader).
@@ -95,7 +91,7 @@ unsafe impl Sync for GpuContext {}
 /// la dependencia circular `gadget-ng-gpu ↔ gadget-ng-core`.
 #[derive(Clone)]
 pub struct GpuDirectGravity {
-    ctx: Arc<GpuContext>,
+    ctx: Arc<Mutex<GpuContext>>,
 }
 
 impl std::fmt::Debug for GpuDirectGravity {
@@ -207,7 +203,7 @@ impl GpuDirectGravity {
             Self::create_buffers(&device, &bgl, 1, 1);
 
         Some(Self {
-            ctx: Arc::new(GpuContext {
+            ctx: Arc::new(Mutex::new(GpuContext {
                 device,
                 queue,
                 pipeline,
@@ -221,7 +217,7 @@ impl GpuDirectGravity {
                 bind_group,
                 max_n_all: 1,
                 max_n_query: 1,
-            }),
+            })),
         })
     }
 
@@ -336,7 +332,7 @@ impl GpuDirectGravity {
             return Vec::new();
         }
         let n_all = masses_f32.len() as u32;
-        let ctx = &*self.ctx;
+        let mut ctx = self.ctx.lock().expect("GpuContext lock poisoned");
 
         let n_all_us = n_all as usize;
         let n_query_us = n_query as usize;
@@ -348,28 +344,17 @@ impl GpuDirectGravity {
             let new_n_query = n_query_us.max(ctx.max_n_query * 2).max(1);
             let (buf_pos, buf_mass, buf_idx, buf_params, buf_out, buf_rb, bind_group) =
                 Self::create_buffers(&ctx.device, &ctx.bgl, new_n_all, new_n_query);
-            // SAFETY: we replace the buffers atomically via Arc; no other thread is
-            // modifying them because compute_accelerations_raw takes &self and
-            // the Arc is immutable. We use a pointer cast to update the Arc-owned
-            // GpuContext in-place. This is safe because:
-            // - GpuContext is !Sync for mutation, but we only mutate when we have
-            //   exclusive access (no other call is in progress).
-            // - The buffers are only read by the GPU after queue.submit.
-            let ctx_mut = Arc::as_ptr(&self.ctx) as *mut GpuContext;
-            unsafe {
-                (*ctx_mut).buf_pos = buf_pos;
-                (*ctx_mut).buf_mass = buf_mass;
-                (*ctx_mut).buf_idx = buf_idx;
-                (*ctx_mut).buf_params = buf_params;
-                (*ctx_mut).buf_out = buf_out;
-                (*ctx_mut).buf_rb = buf_rb;
-                (*ctx_mut).bind_group = bind_group;
-                (*ctx_mut).max_n_all = new_n_all;
-                (*ctx_mut).max_n_query = new_n_query;
-            }
+            ctx.buf_pos = buf_pos;
+            ctx.buf_mass = buf_mass;
+            ctx.buf_idx = buf_idx;
+            ctx.buf_params = buf_params;
+            ctx.buf_out = buf_out;
+            ctx.buf_rb = buf_rb;
+            ctx.bind_group = bind_group;
+            ctx.max_n_all = new_n_all;
+            ctx.max_n_query = new_n_query;
         }
 
-        let ctx = &*self.ctx;
         let out_bytes = 3 * n_query as u64 * 4; // 4 bytes por f32
 
         // ── Upload data via queue.write_buffer (no buffer churn) ──────────────

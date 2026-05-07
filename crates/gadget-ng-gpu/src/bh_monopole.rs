@@ -4,7 +4,7 @@
 //! Multipolos superiores y criterio relativo **no** están en este kernel (pendiente).
 
 use gadget_ng_gpu_layout::BhMonopoleGpuNode;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const BH_MONO_SHADER: &str = r#"
 const MAX_STACK: u32 = 64u;
@@ -164,7 +164,7 @@ unsafe impl Sync for GpuBhCtx {}
 /// Recorrido Barnes–Hut monopolo en GPU (árbol ya construido en CPU y exportado).
 #[derive(Clone)]
 pub struct GpuBarnesHutMonopole {
-    ctx: Arc<GpuBhCtx>,
+    ctx: Arc<Mutex<GpuBhCtx>>,
 }
 
 impl GpuBarnesHutMonopole {
@@ -272,7 +272,7 @@ impl GpuBarnesHutMonopole {
             Self::create_buffers(&device, &bgl, 1, 1, 1);
 
         Some(Self {
-            ctx: Arc::new(GpuBhCtx {
+            ctx: Arc::new(Mutex::new(GpuBhCtx {
                 device,
                 queue,
                 pipeline,
@@ -288,7 +288,7 @@ impl GpuBarnesHutMonopole {
                 max_n_all: 1,
                 max_n_query: 1,
                 max_n_nodes: 1,
-            }),
+            })),
         })
     }
 
@@ -415,7 +415,7 @@ impl GpuBarnesHutMonopole {
         let n_nodes = nodes.len() as u32;
         assert_eq!(positions_f32.len(), 3 * n_all as usize);
 
-        let ctx = &*self.ctx;
+        let mut ctx = self.ctx.lock().expect("GpuBhCtx lock poisoned");
         let n_all_us = n_all as usize;
         let n_query_us = n_query as usize;
         let n_nodes_us = n_nodes as usize;
@@ -429,24 +429,19 @@ impl GpuBarnesHutMonopole {
             let new_n_nodes = n_nodes_us.max(ctx.max_n_nodes * 2).max(1);
             let (buf_params, buf_nodes, buf_pos, buf_mass, buf_idx, buf_out, buf_rb, bind_group) =
                 Self::create_buffers(&ctx.device, &ctx.bgl, new_n_all, new_n_query, new_n_nodes);
-            // SAFETY: exclusive access during resize; see solver.rs for rationale.
-            let ctx_mut = Arc::as_ptr(&self.ctx) as *mut GpuBhCtx;
-            unsafe {
-                (*ctx_mut).buf_params = buf_params;
-                (*ctx_mut).buf_nodes = buf_nodes;
-                (*ctx_mut).buf_pos = buf_pos;
-                (*ctx_mut).buf_mass = buf_mass;
-                (*ctx_mut).buf_idx = buf_idx;
-                (*ctx_mut).buf_out = buf_out;
-                (*ctx_mut).buf_rb = buf_rb;
-                (*ctx_mut).bind_group = bind_group;
-                (*ctx_mut).max_n_all = new_n_all;
-                (*ctx_mut).max_n_query = new_n_query;
-                (*ctx_mut).max_n_nodes = new_n_nodes;
-            }
+            ctx.buf_params = buf_params;
+            ctx.buf_nodes = buf_nodes;
+            ctx.buf_pos = buf_pos;
+            ctx.buf_mass = buf_mass;
+            ctx.buf_idx = buf_idx;
+            ctx.buf_out = buf_out;
+            ctx.buf_rb = buf_rb;
+            ctx.bind_group = bind_group;
+            ctx.max_n_all = new_n_all;
+            ctx.max_n_query = new_n_query;
+            ctx.max_n_nodes = new_n_nodes;
         }
 
-        let ctx = &*self.ctx;
         let out_bytes = 3 * n_query as u64 * 4;
 
         #[repr(C)]
