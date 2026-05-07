@@ -213,7 +213,7 @@ fn lin_edges(r_min: f64, r_max: f64, n: usize) -> Vec<f64> {
 }
 
 fn find_bin(edges: &[f64], r: f64) -> Option<usize> {
-    if r < edges[0] || r >= *edges.last().unwrap() {
+    if r < edges[0] || r >= *edges.last().expect("find_bin requires non-empty edges slice") {
         return None;
     }
     let b = edges.partition_point(|&e| e <= r).saturating_sub(1);

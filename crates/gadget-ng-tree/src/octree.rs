@@ -633,7 +633,7 @@ impl Octree {
     /// - `multipole_order`: 1=monopolo, 2=mono+quad, 3=mono+quad+oct, 4=+hexadecapolo
     /// - `opening_criterion`: `false`=geométrico (θ), `true`=relativo (ErrTolForceAcc)
     /// - `err_tol`: tolerancia de error para criterio relativo (ignorado si `opening_criterion=false`)
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn walk_accel(
         &self,
         pos_i: Vec3,
@@ -666,7 +666,7 @@ impl Octree {
     /// - `softened_multipoles`: si `true`, aplica el mismo softening Plummer en los términos
     ///   cuadrupolar y octupolar (reemplaza `r²` por `r² + ε²` en los denominadores).
     ///   Si `false` (default), usa los términos bare sin suavizado (compatibilidad hacia atrás).
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn walk_accel_multipole(
         &self,
         pos_i: Vec3,
@@ -704,7 +704,7 @@ impl Octree {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn walk_inner(
         &self,
         node_idx: u32,

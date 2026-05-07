@@ -83,6 +83,8 @@ impl HipDirectGravity {
             let eps2 = self.eps * self.eps;
             let g = 1.0_f32;
 
+            // SAFETY: hip_direct_create compilada con las mismas convenciones ABI.
+            // eps2 y workgroup_size son escalares válidos. Handle se verifica no-NULL.
             let handle: *mut c_void =
                 unsafe { ffi::hip_direct_create(eps2, self.workgroup_size as i32) };
             assert!(!handle.is_null(), "hip_direct_create devolvió NULL");
@@ -100,6 +102,8 @@ impl HipDirectGravity {
             let mut ay = vec![0.0_f32; n];
             let mut az = vec![0.0_f32; n];
 
+            // SAFETY: handle es no-NULL. Punteros de Vec<f32> válidos con longitud n.
+            // Los buffers de salida (ax, ay, az) tienen capacidad n.
             let ret = unsafe {
                 ffi::hip_direct_solve(
                     handle,
@@ -115,6 +119,8 @@ impl HipDirectGravity {
                 )
             };
 
+            // SAFETY: handle es válido y no se usará después de destroy.
+            // hip_direct_destroy libera todos los recursos GPU asociados.
             unsafe { ffi::hip_direct_destroy(handle) };
 
             assert_eq!(ret, 0, "hip_direct_solve falló con código {ret}");

@@ -1,11 +1,11 @@
-/// Benchmark del stack bariónico completo (Phase 120).
-///
-/// Mide el overhead combinado de ISM, CRs y vientos estelares sobre 1000 partículas.
-use std::hint::black_box;
 use criterion::{Criterion, criterion_group, criterion_main};
 use gadget_ng_core::Particle;
 use gadget_ng_core::{IsmSection, Vec3};
 use gadget_ng_sph::{diffuse_cr, inject_cr_from_sn, update_ism_phases};
+/// Benchmark del stack bariónico completo (Phase 120).
+///
+/// Mide el overhead combinado de ISM, CRs y vientos estelares sobre 1000 partículas.
+use std::hint::black_box;
 
 fn make_gas_particles(n: usize) -> Vec<Particle> {
     (0..n)
@@ -62,7 +62,14 @@ fn bench_cr_diffusion(c: &mut Criterion) {
         p.cr_energy = 1.0;
     }
     c.bench_function("diffuse_cr_100", |b| {
-        b.iter(|| diffuse_cr(black_box(&mut particles), black_box(3e-3), black_box(1.0), black_box(0.01)));
+        b.iter(|| {
+            diffuse_cr(
+                black_box(&mut particles),
+                black_box(3e-3),
+                black_box(1.0),
+                black_box(0.01),
+            )
+        });
     });
 }
 

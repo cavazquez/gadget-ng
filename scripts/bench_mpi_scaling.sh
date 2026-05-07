@@ -116,7 +116,7 @@ cat "${OUT_FILE}"
 
 echo ""
 echo "== Resumen de scaling =="
-python3 - <<'PYEOF' 2>/dev/null || echo "   (python3 no disponible para resumen)"
+python3 - 2>/dev/null <<PYEOF || echo "   (python3 no disponible para resumen)"
 import json, sys
 
 with open("${OUT_FILE}") as f:

@@ -264,7 +264,7 @@ pub struct StepStats {
 ///
 /// ## Retorno
 /// Devuelve [`StepStats`] con las métricas de instrumentación del paso.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn hierarchical_kdk_step(
     particles: &mut [Particle],
     state: &mut HierarchicalState,

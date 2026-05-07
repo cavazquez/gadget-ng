@@ -273,7 +273,7 @@ pub fn apply_agn_feedback_bimodal(
 }
 
 /// Igual que `apply_agn_feedback_bimodal`, usando imagen mínima si `periodic_box = Some(L)`.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn apply_agn_feedback_bimodal_periodic(
     particles: &mut [Particle],
     bhs: &[BlackHole],

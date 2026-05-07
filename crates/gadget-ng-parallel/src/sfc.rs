@@ -304,7 +304,7 @@ impl SfcDecomposition {
     ///     &positions, x_lo, x_hi, y_lo, y_hi, z_lo, z_hi, 2,
     /// );
     /// ```
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn build_with_bbox(
         positions: &[Vec3],
         x_lo: f64,
@@ -332,7 +332,7 @@ impl SfcDecomposition {
     ///
     /// Es la función base que usan todas las demás variantes.
     /// `kind` selecciona entre Morton Z-order o Peano-Hilbert 3D.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn build_with_bbox_and_kind(
         positions: &[Vec3],
         x_lo: f64,
@@ -408,7 +408,7 @@ impl SfcDecomposition {
     /// Todos los ranks deben ver exactamente la **misma** lista ordenada de
     /// `(key, weight)` globales. El caller es responsable de pasar los datos globales
     /// (ya reunidos con allgather o equivalente) en `positions` y `weights`.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn build_weighted(
         positions: &[Vec3],
         weights: &[f64],

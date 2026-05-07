@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 echo "== cargo fmt =="
-cargo fmt --all
+cargo fmt --all -- --check
 
 echo "== cargo clippy =="
 cargo clippy --workspace -- -D warnings

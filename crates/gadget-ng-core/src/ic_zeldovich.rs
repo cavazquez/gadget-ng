@@ -383,7 +383,7 @@ pub fn generate_delta_kspace(
 ///   de EH/CLASS para el mismo `n_s`.
 /// - **Eisenstein–Hu:** σ ∝ k^(n_s/2)·T(k) → **P(k) ∝ k^n_s·T²**, alineado con referencias
 ///   externas. Unificar PowerLaw a n_s/2 rompería ICs históricas sin migración explícita.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn build_spectrum_fn(
     n: usize,
     spectral_index: f64,
@@ -592,7 +592,7 @@ pub fn delta_to_displacement(delta: &[Complex<f64>], n: usize, box_size: f64) ->
 /// - Velocidades: momentum canónico `p = a²·f(a)·H(a)·Ψ` (estilo GADGET-4).
 ///
 /// Con `cosmology.enabled = false`, se usa `a=1`, `f=1`, `H=h0` como fallback.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn zeldovich_ics(
     cfg: &RunConfig,
     n: usize,
@@ -795,7 +795,7 @@ impl IcMomentumConvention {
 /// Salvo por el factor de velocidad según [`IcMomentumConvention`], debe coincidir con
 /// `zeldovich_ics` (misma cosmología CPL/Ω_ν, misma supresión de neutrinos en el espectro).
 /// En particular: `zeldovich_ics(...) == zeldovich_ics_with_convention(..., IcMomentumConvention::A2DxDt)`.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn zeldovich_ics_with_convention(
     cfg: &RunConfig,
     n: usize,

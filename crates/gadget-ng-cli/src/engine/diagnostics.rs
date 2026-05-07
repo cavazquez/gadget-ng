@@ -51,7 +51,7 @@ pub(crate) fn local_moments(parts: &[Particle]) -> LocalMoments {
     }
     m
 }
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     rt: &R,
     step: u64,
@@ -92,7 +92,7 @@ pub(crate) fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
         });
         // Si se proveen estadísticas del paso jerárquico, añadirlas como campos opcionales.
         if let Some(ss) = step_stats {
-            let map = obj.as_object_mut().unwrap();
+            let map = obj.as_object_mut().expect("serde_json::json! always produces an Object");
             map.insert(
                 "level_histogram".into(),
                 serde_json::Value::Array(
@@ -108,7 +108,7 @@ pub(crate) fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
             map.insert("dt_max_effective".into(), ss.dt_max_effective.into());
         }
         if let Some(hs) = hpc_stats {
-            let map = obj.as_object_mut().unwrap();
+            let map = obj.as_object_mut().expect("serde_json::json! always produces an Object");
             map.insert(
                 "hpc_stats".into(),
                 serde_json::to_value(hs).unwrap_or(serde_json::Value::Null),
@@ -116,7 +116,7 @@ pub(crate) fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
         }
         // Campos cosmológicos opcionales.
         if let Some(cd) = cosmo_diag {
-            let map = obj.as_object_mut().unwrap();
+            let map = obj.as_object_mut().expect("serde_json::json! always produces an Object");
             map.insert("a".into(), cd.a.into());
             map.insert("z".into(), cd.z.into());
             map.insert("v_rms".into(), cd.v_rms.into());

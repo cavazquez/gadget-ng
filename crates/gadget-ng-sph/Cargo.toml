@@ -11,7 +11,7 @@ rayon = "1.10"
 serde.workspace = true
 
 [dev-dependencies]
-approx = "0.5"
+approx.workspace = true
 criterion.workspace = true
 
 [[bench]]

@@ -71,6 +71,9 @@ impl CudaPmSolver {
 
         #[cfg(not(cuda_unavailable))]
         {
+            // SAFETY: FFI call compilada desde C++ CUDA con convenciones ABI compatibles.
+            // grid_size y box_size son valores escalares válidos. El handle se verifica
+            // no-NULL inmediatamente después.
             let handle = unsafe { crate::ffi::cuda_pm_create(grid_size as i32, box_size as f32) };
             if handle.is_null() {
                 return None;
@@ -103,6 +106,8 @@ impl CudaPmSolver {
 
 impl Drop for CudaPmSolver {
     fn drop(&mut self) {
+        // SAFETY: self.handle es no-NULL (verificado en try_new). cuda_pm_destroy
+        // libera recursos GPU y se llama exactamente una vez en Drop.
         #[cfg(not(cuda_unavailable))]
         unsafe {
             crate::ffi::cuda_pm_destroy(self.handle);
@@ -166,6 +171,9 @@ impl GravitySolver for CudaPmSolver {
             let mut ay: Vec<f32> = vec![0.0f32; n];
             let mut az: Vec<f32> = vec![0.0f32; n];
 
+            // SAFETY: handle es no-NULL (verificado en try_new). Todos los punteros
+            // provienen de Vec<f32> válidos con capacidad ≥ n. Las longitudes coinciden
+            // con n. La llamada se ejecuta en el device CUDA ya inicializado.
             let ret = unsafe {
                 crate::ffi::cuda_pm_solve(
                     self.handle,

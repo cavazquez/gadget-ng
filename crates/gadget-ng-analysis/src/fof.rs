@@ -246,7 +246,7 @@ pub fn find_halos(
     }
 
     // Ordenar por masa descendente y reasignar IDs.
-    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap());
+    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).expect("halo mass must be finite f64"));
     for (i, h) in halos.iter_mut().enumerate() {
         h.halo_id = i;
     }
@@ -346,7 +346,7 @@ pub fn find_halos_with_membership(
     }
 
     // Ordenar por masa descendente.
-    halos_with_members.sort_by(|a, b| b.0.mass.partial_cmp(&a.0.mass).unwrap());
+    halos_with_members.sort_by(|a, b| b.0.mass.partial_cmp(&a.0.mass).expect("halo mass must be finite f64"));
 
     // Construir membresía por partícula.
     let mut membership: Vec<Option<usize>> = vec![None; n];
@@ -422,7 +422,7 @@ pub fn particle_snapshots_from_catalog(
 /// let h2 = find_halos_combined(&pos, &vel, &mass, 2, 1.0, 0.2, 2, 0.0);
 /// assert_eq!(h1.len(), h2.len());
 /// ```
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn find_halos_combined(
     positions: &[Vec3],
     velocities: &[Vec3],
@@ -500,7 +500,7 @@ pub fn find_halos_combined(
         })
         .collect();
 
-    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).unwrap());
+    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).expect("halo mass must be finite f64"));
     for (i, h) in halos.iter_mut().enumerate() {
         h.halo_id = i;
     }

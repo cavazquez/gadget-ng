@@ -343,7 +343,7 @@ pub enum Psi2Variant {
 ///
 /// Con `use_2lpt = false` en la configuración se llama a `zeldovich_ics` (1LPT).
 /// Esta función solo se invoca cuando `use_2lpt = true`.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn zeldovich_2lpt_ics(
     cfg: &RunConfig,
     n: usize,
@@ -381,7 +381,7 @@ pub fn zeldovich_2lpt_ics(
 
 /// Variante A/B de [`zeldovich_2lpt_ics`] que permite seleccionar la versión
 /// de `Ψ²` (Fixed vs LegacyBuggy). Solo expuesta para auditoría Phase 44.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn zeldovich_2lpt_ics_with_variant(
     cfg: &RunConfig,
     n: usize,

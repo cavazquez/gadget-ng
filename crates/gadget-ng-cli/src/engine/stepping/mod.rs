@@ -22,9 +22,9 @@ use gadget_ng_integrators::{
 use gadget_ng_io::write_snapshot_formatted;
 use gadget_ng_parallel::{ParallelRuntime, SfcDecomposition, SlabDecomposition, gid_block_range};
 use gadget_ng_pm::distributed as pm_dist;
-use gadget_ng_pm::slab_fft::SlabLayout;
 use gadget_ng_pm::slab_pm;
-use gadget_ng_pm::{PencilLayout2D, solve_forces_pencil2d};
+use gadget_ng_pm::PencilLayout2D;
+use gadget_ng_pm::solve_forces_pencil2d;
 use gadget_ng_tree::{Octree, pack_let_nodes, unpack_let_nodes};
 use gadget_ng_treepm::distributed as treepm_dist;
 use std::fs;
@@ -42,6 +42,9 @@ use super::provenance::{provenance_for_run, snapshot_env_for};
 use super::timings::{
     CosmoDiag, HpcStepStats, HpcTimingsAggregate, TimingsReport, TreePmAggregate, TreePmStepDiag,
 };
+
+mod domain;
+use domain::PmTreepmDomain;
 
 pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     rt: &R,
@@ -1160,7 +1163,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         //     del paso para todos los sub-pasos (Phase 45).
         use gadget_ng_parallel::sfc::global_bbox;
 
-        let (cosmo_params, _) = cosmo_state.unwrap();
+        let (cosmo_params, _) = cosmo_state.expect("cosmo_state must be Some when use_sfc_let_cosmo is true");
         let sfc_kind = cfg.performance.sfc_kind;
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos_init: Vec<Vec3> = local.iter().map(|p| p.position).collect();
@@ -1420,132 +1423,23 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         let cosmo_periodic = cfg.cosmology.periodic;
         let box_size = cfg.simulation.box_size;
 
-        let pm_nm = cfg.gravity.pm_grid_size;
-
-        // Fase 19: PM distribuido. Activo cuando periodic=true, solver=PM y pm_distributed=true.
-        // En este path el allgather O(N·P) de partículas se reemplaza por un allreduce O(nm³)
-        // del grid de densidad, lo que elimina la dependencia de comunicación en N.
-        let use_pm_dist = cfg.gravity.pm_distributed
-            && !cfg.gravity.pm_slab  // pm_slab tiene prioridad
-            && cfg.cosmology.periodic
-            && cfg.gravity.solver == SolverKind::Pm;
-
-        // Fase 20: PM slab distribuido. FFT distribuida real mediante alltoall transposes.
-        // Cada rank posee nz_local = nm/P planos Z del grid; la FFT Z se distribuye.
-        // Solo activo cuando P ≤ nm; si P > nm la FFT slab 1D no tiene suficientes planos Z.
-        let use_pm_slab = cfg.gravity.pm_slab
-            && cfg.cosmology.periodic
-            && cfg.gravity.solver == SolverKind::Pm
-            && (rt.size() as usize) <= pm_nm;
-
-        // Fase 46: PM pencil 2D. Activado automáticamente cuando pm_slab=true pero P > nm.
-        // La descomposición pencil 2D usa una malla Py × Pz de procesos (P ≤ nm²),
-        // eliminando la restricción P ≤ nm del slab 1D.
-        let use_pm_pencil2d = cfg.gravity.pm_slab
-            && cfg.cosmology.periodic
-            && cfg.gravity.solver == SolverKind::Pm
-            && (rt.size() as usize) > pm_nm;
-
-        // Fase 21: TreePM slab distribuido.
-        // PM largo alcance: slab FFT con filtro Gaussiano (como Fase 20).
-        // Árbol corto alcance: árbol local + halos periódicos en z + minimum_image.
-        let use_treepm_slab = cfg.gravity.treepm_slab
-            && cfg.cosmology.periodic
-            && cfg.gravity.solver == SolverKind::TreePm;
-
-        // Fase 22: halo volumétrico 3D periódico para SR.
-        // Requiere treepm_slab=true. Usa AABBs reales + minimum_image 3D en vez de halo 1D-z.
-        let use_treepm_3d_halo = cfg.gravity.treepm_halo_3d && use_treepm_slab;
-
-        // Fase 23: dominio 3D/SFC para el árbol SR (desacoplado del slab-z PM).
-        // Requiere treepm_slab=true. El SR usa SfcDecomposition; el PM sigue en z-slab.
-        // Implica use_treepm_3d_halo (el halo 3D es necesario para SR-SFC correcto).
-        let use_treepm_sr_sfc = cfg.gravity.treepm_sr_sfc && use_treepm_slab;
-
-        // Fase 24: scatter/gather PM mínimo entre dominio SFC y slabs PM.
-        // Reemplaza el clone+migrate de Fase 23 por un alltoallv de datos mínimos.
-        // Solo activo si use_treepm_sr_sfc está habilitado.
-        let use_treepm_pm_scatter_gather =
-            cfg.gravity.treepm_pm_scatter_gather && use_treepm_sr_sfc;
-
-        // Precomputar límites de slab Z para Fase 20 (solo si pm_slab activo).
-        let slab_layout_opt: Option<SlabLayout> = if use_pm_slab {
-            Some(SlabLayout::new(
-                pm_nm,
-                rt.rank() as usize,
-                rt.size() as usize,
-            ))
-        } else {
-            None
-        };
-
-        // Fase 46: PencilLayout2D para PM pencil 2D (P > nm).
-        let pencil_layout_opt: Option<PencilLayout2D> = if use_pm_pencil2d {
-            let p = rt.size() as usize;
-            let (py, pz) = PencilLayout2D::factorize(pm_nm, p);
-            if py * pz != p || !pm_nm.is_multiple_of(py) || !pm_nm.is_multiple_of(pz) {
-                return Err(CliError::InvalidConfig(format!(
-                    "pencil_2d: no existe factorización válida para nm={pm_nm} y P={p}. \
-                     Se requiere P ≤ nm² con nm % py == 0 y nm % pz == 0."
-                )));
-            }
-            Some(PencilLayout2D::new(pm_nm, rt.rank() as usize, py, pz))
-        } else {
-            None
-        };
-
-        // Precomputar SlabLayout para Fase 21 TreePM distribuido.
-        let treepm_slab_layout_opt: Option<SlabLayout> = if use_treepm_slab {
-            let nm = pm_nm;
-            let p = rt.size() as usize;
-            if !nm.is_multiple_of(p) {
-                return Err(CliError::InvalidConfig(format!(
-                    "treepm_slab requiere pm_grid_size ({nm}) % n_ranks ({p}) == 0"
-                )));
-            }
-            Some(SlabLayout::new(nm, rt.rank() as usize, p))
-        } else {
-            None
-        };
-
-        // Radio de splitting efectivo para TreePM slab.
-        let treepm_r_split = if use_treepm_slab {
-            let r_s = cfg.gravity.r_split;
-            if r_s > 0.0 {
-                r_s
-            } else {
-                2.5 * box_size / pm_nm as f64
-            }
-        } else {
-            0.0
-        };
-        let treepm_r_cut = 5.0 * treepm_r_split;
-
-        // Fase 23: SfcDecomposition para el dominio SR.
-        // Se inicializa con la bbox global y se rebalanceará cada sfc_rebalance_interval pasos.
-        let sr_sfc_kind = cfg.performance.sfc_kind;
-        let sr_sfc_rebalance = cfg.performance.sfc_rebalance_interval;
-        let mut sr_sfc_decomp_opt: Option<gadget_ng_parallel::SfcDecomposition> =
-            if use_treepm_sr_sfc && rt.size() > 1 {
-                use gadget_ng_parallel::sfc::global_bbox;
-                let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
-                let pos_loc: Vec<Vec3> = local.iter().map(|p| p.position).collect();
-                Some(
-                    gadget_ng_parallel::SfcDecomposition::build_with_bbox_and_kind(
-                        &pos_loc,
-                        gxlo,
-                        gxhi,
-                        gylo,
-                        gyhi,
-                        gzlo,
-                        gzhi,
-                        rt.size(),
-                        sr_sfc_kind,
-                    ),
-                )
-            } else {
-                None
-            };
+        let domain = PmTreepmDomain::from_cfg(cfg, rt, &local)?;
+        let pm_nm = domain.pm_nm;
+        let use_pm_dist = domain.use_pm_dist;
+        let use_pm_slab = domain.use_pm_slab;
+        let use_pm_pencil2d = domain.use_pm_pencil2d;
+        let use_treepm_slab = domain.use_treepm_slab;
+        let use_treepm_3d_halo = domain.use_treepm_3d_halo;
+        let use_treepm_sr_sfc = domain.use_treepm_sr_sfc;
+        let use_treepm_pm_scatter_gather = domain.use_treepm_pm_scatter_gather;
+        let slab_layout_opt = domain.slab_layout_opt;
+        let pencil_layout_opt = domain.pencil_layout_opt;
+        let treepm_slab_layout_opt = domain.treepm_slab_layout_opt;
+        let treepm_r_split = domain.treepm_r_split;
+        let treepm_r_cut = domain.treepm_r_cut;
+        let mut sr_sfc_decomp_opt = domain.sr_sfc_decomp_opt;
+        let sr_sfc_rebalance = domain.sr_sfc_rebalance;
+        let sr_sfc_kind = domain.sr_sfc_kind;
 
         for step in start_step..=cfg.simulation.num_steps {
             let step_start = Instant::now();
@@ -1632,7 +1526,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     //   • PM LR:    slab-z sin cambios (Fase 20/21). Sincronización explícita.
                     //
                     // F_total = F_lr (PM slab + erf) + F_sr (árbol erfc, dominio SFC)
-                    let layout = treepm_slab_layout_opt.as_ref().unwrap();
+                    let layout = treepm_slab_layout_opt.as_ref().expect("treepm_slab_layout_opt must be set for TreePM SR SFC path");
                     let r_s = treepm_r_split;
                     let r_cut = treepm_r_cut;
                     let _t_tpm = Instant::now();
@@ -1773,7 +1667,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     //
                     // Fase 21: halo 1D en z.
                     // Fase 22 (use_treepm_3d_halo): halo volumétrico 3D periódico.
-                    let layout = treepm_slab_layout_opt.as_ref().unwrap();
+                    let layout = treepm_slab_layout_opt.as_ref().expect("treepm_slab_layout_opt must be set for TreePM slab distributed path");
                     let r_s = treepm_r_split;
                     let r_cut = treepm_r_cut;
                     let t_tpm = Instant::now();
@@ -1850,7 +1744,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     let _ = tpm_total_ns;
                 } else if use_pm_slab {
                     // ─ Fase 20: PM slab distribuido ──────────────────────────────────
-                    let layout = slab_layout_opt.as_ref().unwrap();
+                    let layout = slab_layout_opt.as_ref().expect("slab_layout_opt must be set for PM slab path");
                     let t0 = Instant::now();
 
                     let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
@@ -1896,7 +1790,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     //   3. solve_forces_pencil2d → fuerzas slab 2D local
                     //   4. Allgather fuerzas → reconstruir grid global nm³
                     //   5. Interpolación CIC local
-                    let pencil_layout = pencil_layout_opt.as_ref().unwrap();
+                    let pencil_layout = pencil_layout_opt.as_ref().expect("pencil_layout_opt must be set for PM pencil 2D path");
                     let nm = pm_nm;
                     let pz = pencil_layout.pz;
                     let ny_local = pencil_layout.ny_local;

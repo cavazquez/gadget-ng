@@ -1,6 +1,6 @@
 //! `HipPmSolver` — wrapper Rust sobre el solver PM HIP/ROCm.
 
-#![allow(clippy::needless_return)]
+#![expect(clippy::needless_return)]
 
 use std::ffi::c_void;
 
@@ -65,6 +65,9 @@ impl HipPmSolver {
 
         #[cfg(not(hip_unavailable))]
         {
+            // SAFETY: FFI call compilada desde HIP/ROCm con convenciones ABI compatibles.
+            // grid_size y box_size son escalares válidos. El handle se verifica
+            // no-NULL inmediatamente después.
             let handle = unsafe { crate::ffi::hip_pm_create(grid_size as i32, box_size as f32) };
             if handle.is_null() {
                 return None;
@@ -96,6 +99,8 @@ impl HipPmSolver {
 
 impl Drop for HipPmSolver {
     fn drop(&mut self) {
+        // SAFETY: self.handle es no-NULL (verificado en try_new). hip_pm_destroy
+        // libera recursos GPU y se llama exactamente una vez en Drop.
         #[cfg(not(hip_unavailable))]
         unsafe {
             crate::ffi::hip_pm_destroy(self.handle);
@@ -152,6 +157,9 @@ impl GravitySolver for HipPmSolver {
             let mut ay: Vec<f32> = vec![0.0f32; n];
             let mut az: Vec<f32> = vec![0.0f32; n];
 
+            // SAFETY: handle es no-NULL (verificado en try_new). Punteros de Vec<f32>
+            // válidos con capacidad ≥ n. Las longitudes coinciden con n. El dispositivo
+            // ROCm está inicializado.
             let ret = unsafe {
                 crate::ffi::hip_pm_solve(
                     self.handle,

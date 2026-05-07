@@ -121,6 +121,9 @@ pub struct LetTree {
     leaf_soa: RmnSoa,
 }
 
+// SAFETY: LetTree contiene Vec<LetNode>, Vec<RemoteMultipoleNode>, u32 y RmnSoa.
+// Todos los campos son Send + Sync. Las impls manuales son redundantes pero se
+// mantienen para garantizar la documentación explícita de thread-safety.
 unsafe impl Sync for LetTree {}
 unsafe impl Send for LetTree {}
 
@@ -519,13 +522,12 @@ impl<'a> BuildCtx<'a> {
         }
 
         let child_half = half_size * 0.5;
-        #[allow(clippy::needless_range_loop)]
-        for oct in 0..8usize {
-            if groups[oct].is_empty() {
+        for (oct, group) in groups.iter().enumerate() {
+            if group.is_empty() {
                 continue;
             }
             let child_center = child_center_of(center, child_half, oct);
-            let child_idx = self.build_node(&groups[oct], child_center, child_half, depth + 1);
+            let child_idx = self.build_node(group, child_center, child_half, depth + 1);
             self.nodes[node_idx as usize].children[oct] = child_idx;
         }
 

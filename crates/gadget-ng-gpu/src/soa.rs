@@ -38,7 +38,7 @@ impl GpuParticlesSoA {
     /// constructor entra en pánico. La conversión desde `&[Particle]` está en
     /// `gadget_ng_core::GpuParticlesSoA::from_particles` (cuando la feature `gpu`
     /// está activa en `gadget-ng-core`).
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn from_arrays(
         xs: Vec<f64>,
         ys: Vec<f64>,

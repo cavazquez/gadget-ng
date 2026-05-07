@@ -89,5 +89,8 @@ impl GravitySolver for PmSolver {
     }
 }
 
+// SAFETY: PmSolver contiene solo usize, f64 y Option<f64>, todos Send + Sync.
+// Las impls manuales son redundantes (el compilador las derivaría automáticamente)
+// pero se mantienen para documentar explícitamente que el tipo es thread-safe.
 unsafe impl Send for PmSolver {}
 unsafe impl Sync for PmSolver {}

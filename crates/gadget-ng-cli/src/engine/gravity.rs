@@ -56,7 +56,7 @@ pub(crate) fn local_bh_use_rayon(_cfg: &RunConfig) -> bool {
 }
 
 #[inline]
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn walk_accel_local(
     tree: &Octree,
     pos_i: Vec3,
@@ -146,7 +146,7 @@ pub(crate) fn compute_forces_local_tree(
 
 /// Variante de `compute_forces_local_tree` que además devuelve el coste de interacción
 /// (nodos abiertos del walk) por partícula local. Se usa para el balanceo SFC ponderado.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn compute_forces_local_tree_with_costs(
     parts: &[Particle],
     halos: &[Particle],
@@ -221,7 +221,7 @@ pub(crate) fn compute_forces_local_tree_with_costs(
 /// - `parts[active_local[j]]` → `acc[j]` (tamaño de `acc` = `active_local.len()`).
 /// - Índice de auto-exclusión: se pasa `active_local[j]` al walk para evitar la
 ///   auto-interacción con la partícula evaluada dentro del árbol local.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn compute_forces_hierarchical_let(
     parts: &[Particle],
     halos: &[Particle],
@@ -397,7 +397,9 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             eprintln!("[gadget-ng] CUDA direct gravity activado (f32).");
             return Box::new(gpu);
         }
-        eprintln!("[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible; usando CPU direct.");
+        eprintln!(
+            "[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible; usando CPU direct."
+        );
     }
 
     // Gravedad directa HIP — `[performance] use_gpu_hip = true`, solver Direct.
@@ -408,7 +410,9 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             eprintln!("[gadget-ng] HIP direct gravity activado (f32).");
             return Box::new(gpu);
         }
-        eprintln!("[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP no disponible; usando CPU direct.");
+        eprintln!(
+            "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP no disponible; usando CPU direct."
+        );
     }
 
     // Solver PM CUDA — activado con `[performance] use_gpu_cuda = true`.

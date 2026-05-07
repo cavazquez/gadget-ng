@@ -100,6 +100,9 @@ impl CudaDirectGravity {
             let g = 1.0_f32; // G en unidades internas (ajustar si se necesita otro valor)
 
             // Crear handle CUDA
+            // SAFETY: cuda_direct_create compilada con las mismas convenciones ABI.
+            // eps2 y block_size son valores escalares válidos. El handle se verifica
+            // no-NULL con assert inmediato.
             let handle: *mut c_void =
                 unsafe { ffi::cuda_direct_create(eps2, self.block_size as i32) };
             assert!(!handle.is_null(), "cuda_direct_create devolvió NULL");
@@ -118,6 +121,8 @@ impl CudaDirectGravity {
             let mut ay = vec![0.0_f32; n];
             let mut az = vec![0.0_f32; n];
 
+            // SAFETY: handle es no-NULL. Punteros de Vec<f32> válidos con longitud n.
+            // Los buffers de salida (ax, ay, az) tienen capacidad n.
             let ret = unsafe {
                 ffi::cuda_direct_solve(
                     handle,
@@ -134,6 +139,8 @@ impl CudaDirectGravity {
             };
 
             // Liberar handle antes de comprobar el error
+            // SAFETY: handle es válido y no se usará después de destroy.
+            // cuda_direct_destroy libera todos los recursos GPU asociados.
             unsafe { ffi::cuda_direct_destroy(handle) };
 
             assert_eq!(ret, 0, "cuda_direct_solve falló con código {ret}");

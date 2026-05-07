@@ -32,7 +32,7 @@ pub trait GravitySolver: Send + Sync {
     ///
     /// Implementaciones que soporten rastreo de coste deben rellenar `costs` con la
     /// métrica de trabajo por partícula (p. ej. `opened_nodes` del walk Barnes-Hut).
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn accelerations_with_costs(
         &self,
         global_positions: &[Vec3],

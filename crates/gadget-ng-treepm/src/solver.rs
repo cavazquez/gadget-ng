@@ -108,5 +108,8 @@ impl GravitySolver for TreePmSolver {
     }
 }
 
+// SAFETY: TreePmSolver contiene solo usize y f64, todos Send + Sync.
+// Las impls manuales son redundantes (el compilador las derivaría
+// automáticamente) pero se mantienen para documentar thread-safety.
 unsafe impl Send for TreePmSolver {}
 unsafe impl Sync for TreePmSolver {}

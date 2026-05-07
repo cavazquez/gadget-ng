@@ -17,4 +17,4 @@ mpi = { workspace = true, optional = true }
 rustfft = "6.4.1"
 
 [dev-dependencies]
-approx = "0.5"
+approx.workspace = true

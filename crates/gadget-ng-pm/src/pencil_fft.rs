@@ -1,5 +1,5 @@
 //! FFT 3D distribuida mediante descomposición pencil 2D (Brecha GADGET-4: P ≤ nm²).
-#![allow(clippy::needless_range_loop)]
+#![expect(clippy::needless_range_loop)]
 //!
 //! ## Motivación
 //!

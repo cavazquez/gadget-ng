@@ -2,7 +2,7 @@
 # Fase 4: Ejecutar todos los benchmarks de multipolos + softening
 # Requiere: cargo build --release completado
 
-set -e
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 RESULTS_DIR="$REPO_ROOT/experiments/nbody/phase4_multipole_softening/results"

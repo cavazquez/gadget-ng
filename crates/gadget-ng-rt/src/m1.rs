@@ -292,7 +292,7 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
 /// Usa el aproximador de Riemann de Harten-Lax-van Leer.
 /// Para el transporte a lo largo de x, el flujo de E es Fx,
 /// y el flujo de Fx es c_red² × f_edd × E.
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn hll_flux_x(
     el: f64,
     fxl: f64,

@@ -158,6 +158,10 @@ struct GpuTreePmSrCtx {
     bgl: wgpu::BindGroupLayout,
 }
 
+// SAFETY: GpuTreePmSrCtx se almacena en Arc<GpuTreePmSrCtx> dentro de
+// GpuTreePmShortRange. Send: Device, Queue, ComputePipeline y BindGroupLayout
+// implementan Send. Sync: el acceso es read-only compartido entre hilos; las
+// operaciones GPU se serializan mediante pollster::block_on.
 unsafe impl Send for GpuTreePmSrCtx {}
 unsafe impl Sync for GpuTreePmSrCtx {}
 
@@ -278,7 +282,7 @@ impl GpuTreePmShortRange {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn compute_accelerations_raw(
         &self,
         positions_f32: &[f32],
@@ -320,6 +324,9 @@ impl GpuTreePmShortRange {
             n_all,
             n_query,
         };
+        // SAFETY: `Params` es `#[repr(C)]` con campos f32/i32; size_of devuelve
+        // el tamaño exacto sin padding. El puntero se deriva de una referencia válida
+        // en stack y el slice se consume inmediatamente en create_buffer_init.
         let params_bytes: Vec<u8> = unsafe {
             std::slice::from_raw_parts(
                 &params as *const Params as *const u8,
@@ -339,6 +346,9 @@ impl GpuTreePmShortRange {
                 usage: wgpu::BufferUsages::UNIFORM,
             });
 
+        // SAFETY: `nodes` es un slice válido de `BhMonopoleGpuNode` (repr(C)).
+        // size_of_val produce el número exacto de bytes. El puntero as_ptr()
+        // es válido para esa longitud y nodes_bytes se consume en create_buffer_init.
         let nodes_bytes = unsafe {
             std::slice::from_raw_parts(nodes.as_ptr() as *const u8, std::mem::size_of_val(nodes))
         };
@@ -437,7 +447,7 @@ impl GpuTreePmShortRange {
         let (tx, rx) = std::sync::mpsc::channel();
         buf_rb
             .slice(..)
-            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
+            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).expect("GPU map_async channel send failed"));
         ctx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .expect("GPU device lost during poll");

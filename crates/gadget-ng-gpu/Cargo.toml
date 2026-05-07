@@ -17,7 +17,7 @@ wgpu = "29.0.3"
 gadget-ng-core = { path = "../gadget-ng-core", default-features = false }
 gadget-ng-tree = { path = "../gadget-ng-tree" }
 gadget-ng-treepm = { path = "../gadget-ng-treepm" }
-tempfile = "3"
+tempfile.workspace = true
 criterion.workspace = true
 gadget-ng-cuda = { path = "../gadget-ng-cuda" }
 gadget-ng-hip = { path = "../gadget-ng-hip" }

@@ -39,7 +39,7 @@ impl Default for BarnesHutGravity {
 }
 
 impl BarnesHutGravity {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn walk_one(
         &self,
         tree: &Octree,

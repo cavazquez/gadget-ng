@@ -1,5 +1,5 @@
 //! FFT 3D distribuida mediante descomposición de slabs en el eje Z (Fase 20).
-#![allow(clippy::needless_range_loop)]
+#![expect(clippy::needless_range_loop)]
 //!
 //! ## Arquitectura
 //!

@@ -60,3 +60,16 @@ chrono = { version = "0.4.40", features = ["serde"] }
 mpi = { version = "0.8.0", default-features = false }
 criterion = { version = "0.8", features = ["html_reports"] }
 rand = "0.10"
+approx = "0.5"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1

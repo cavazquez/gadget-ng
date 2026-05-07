@@ -137,10 +137,10 @@ impl SpsGrid {
     pub fn interpolate(&self, age_gyr: f64, metallicity: f64, band: Spsband) -> f64 {
         let age_safe = age_gyr
             .max(self.ages_gyr[0])
-            .min(*self.ages_gyr.last().unwrap());
+            .min(*self.ages_gyr.last().expect("SpsGrid ages_gyr is non-empty"));
         let z_safe = metallicity
             .max(self.metals[0])
-            .min(*self.metals.last().unwrap());
+            .min(*self.metals.last().expect("SpsGrid metals is non-empty"));
 
         // Encontrar índices en la grilla
         let ia = self

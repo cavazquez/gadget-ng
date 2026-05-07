@@ -288,7 +288,7 @@ pub fn deposit_to_patch(positions: &[Vec3], masses: &[f64], patch: &mut PatchGri
 ///
 /// Si `zero_pad = false`, trata el parche como periódico (válido para sistemas
 /// de alta densidad y parches aislados).
-#[allow(clippy::needless_range_loop)]
+#[expect(clippy::needless_range_loop)]
 pub fn solve_patch(patch: &mut PatchGrid, g: f64, zero_pad: bool) {
     let nm = patch.nm;
 
@@ -787,11 +787,11 @@ pub fn amr_pm_accels_multilevel(
                 );
                 // Peso: 1 en el centro del parche, suavizado en los bordes
                 let o = patch.origin();
-                let fx = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].x - o.x)
+                let fx = (sub_pos[sub_idx.iter().position(|&x| x == global_i).expect("global_i must be in sub_idx")].x - o.x)
                     / patch.size;
-                let fy = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].y - o.y)
+                let fy = (sub_pos[sub_idx.iter().position(|&x| x == global_i).expect("global_i must be in sub_idx")].y - o.y)
                     / patch.size;
-                let fz = (sub_pos[sub_idx.iter().position(|&x| x == global_i).unwrap()].z - o.z)
+                let fz = (sub_pos[sub_idx.iter().position(|&x| x == global_i).expect("global_i must be in sub_idx")].z - o.z)
                     / patch.size;
                 let w = ((1.0 - 2.0 * (fx - 0.5).abs())
                     * (1.0 - 2.0 * (fy - 0.5).abs())

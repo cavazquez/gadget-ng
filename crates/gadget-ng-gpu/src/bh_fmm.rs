@@ -693,6 +693,9 @@ impl GpuBarnesHutFmm {
             softened_multipoles: u32::from(kp.softened_multipoles),
             mac_softening: kp.mac_softening,
         };
+        // SAFETY: `Params` es `#[repr(C)]` con campos f32/i32/u32; size_of devuelve
+        // el tamaño exacto sin padding oculto. El puntero se deriva de una referencia
+        // válida en stack y el slice se consume inmediatamente en write_buffer.
         let params_bytes: Vec<u8> = unsafe {
             std::slice::from_raw_parts(
                 &params as *const Params as *const u8,
@@ -700,6 +703,9 @@ impl GpuBarnesHutFmm {
             )
             .to_vec()
         };
+        // SAFETY: `nodes` es un slice válido de `BhFmmGpuNode` (repr(C)).
+        // size_of_val produce el número exacto de bytes. El puntero as_ptr()
+        // es válido para esa longitud y nodes_bytes se consume en write_buffer.
         let nodes_bytes = unsafe {
             std::slice::from_raw_parts(nodes.as_ptr() as *const u8, std::mem::size_of_val(nodes))
         };
@@ -736,7 +742,7 @@ impl GpuBarnesHutFmm {
         let (tx, rx) = std::sync::mpsc::channel();
         ctx.buf_rb
             .slice(..)
-            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
+            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).expect("GPU map_async channel send failed"));
         ctx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .expect("GPU device lost during poll");

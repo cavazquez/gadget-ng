@@ -9,7 +9,8 @@ description = "Magnetohydrodynamics (MHD) for gadget-ng simulations"
 gadget-ng-core = { path = "../gadget-ng-core" }
 
 [dev-dependencies]
-approx = "0.5"
+approx.workspace = true
+criterion.workspace = true
 
 [[bench]]
 name = "alfven_bench"
@@ -18,7 +19,3 @@ harness = false
 [[bench]]
 name = "advanced_bench"
 harness = false
-
-[dev-dependencies.criterion]
-version = "0.8"
-features = ["html_reports"]

@@ -20,7 +20,7 @@ rayon = { version = "1.10", optional = true }
 gadget-ng-gpu = { path = "../gadget-ng-gpu", optional = true }
 
 [dev-dependencies]
-approx = "0.5"
+approx.workspace = true
 criterion.workspace = true
 
 [[bench]]

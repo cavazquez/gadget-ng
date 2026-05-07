@@ -43,7 +43,7 @@ pub(crate) struct CheckpointMeta {
 /// (siempre representa el último paso completado).
 ///
 /// Phase 106: incluye estado AGN (`agn_bhs.json`) y química (`chem_states.json`).
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) fn save_checkpoint<R: ParallelRuntime + ?Sized>(
     rt: &R,
     completed_step: u64,
@@ -108,7 +108,7 @@ pub(crate) fn save_checkpoint<R: ParallelRuntime + ?Sized>(
 ///           agn_bhs_opt, chem_states_opt)`.
 ///
 /// Phase 106: incluye estado AGN y química si fueron guardados.
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub(crate) fn load_checkpoint<R: ParallelRuntime + ?Sized>(
     rt: &R,
     resume_dir: &Path,

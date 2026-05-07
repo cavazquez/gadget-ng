@@ -17,7 +17,7 @@ rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
-approx = "0.5"
+approx.workspace = true
 criterion.workspace = true
 
 [[bench]]

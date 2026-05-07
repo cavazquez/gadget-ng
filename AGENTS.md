@@ -11,7 +11,7 @@
 It is conceptually inspired by GADGET-4 but contains no shared code or git history.
 
 - **Language:** Rust 1.85+, Edition 2024
-- **Build tool:** Cargo workspace with 22 crates
+- **Build tool:** Cargo workspace with 18 crates
 - **License:** GPL-3.0-or-later
 - **Primary binary:** `gadget-ng` (crate `gadget-ng-cli`)
 
@@ -22,6 +22,7 @@ It is conceptually inspired by GADGET-4 but contains no shared code or git histo
 ```
 gadget-ng/
 ├── crates/
+│   ├── gadget-ng-gpu-layout    # Wire types for CPU↔GPU (SoA layouts), zero deps
 │   ├── gadget-ng-core          # Vec3, Particle, RunConfig, cosmology, ICs (1LPT/2LPT)
 │   ├── gadget-ng-tree          # Octree, Barnes-Hut, FMM (mono/quad/octupole), LET
 │   ├── gadget-ng-integrators   # Leapfrog KDK, Yoshida4, hierarchical block timesteps

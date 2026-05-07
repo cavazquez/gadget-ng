@@ -2,7 +2,7 @@
 # Solo opciones estables (stable channel, Rust 1.74+)
 # Referencia: https://rust-lang.github.io/rustfmt/
 
-edition = "2021"
+edition = "2024"
 
 # Ancho máximo de línea (100 da margen para nombres científicos largos)
 max_width = 100

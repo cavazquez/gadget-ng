@@ -1,6 +1,6 @@
 #![allow(unused_unsafe)]
 //! Representación **SoA (Structure of Arrays)** para lotes de [`RemoteMultipoleNode`].
-#![allow(clippy::too_many_arguments)]
+#![expect(clippy::too_many_arguments)]
 //!
 //! ## Motivación
 //!
@@ -686,6 +686,9 @@ impl RmnSoa {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2 y FMA se verifican en runtime con is_x86_feature_detected!.
+                // accel_soa_avx2 está marcada #[target_feature(enable = "avx2,fma")] y los
+                // slices RmnSoa tienen longitud ≥ start + len garantizada por LetTree.
                 return unsafe {
                     accel_soa_avx2(pos_i.x, pos_i.y, pos_i.z, start, len, self, g, eps2)
                 };

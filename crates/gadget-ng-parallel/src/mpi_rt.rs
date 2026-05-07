@@ -17,7 +17,7 @@ const TAG_SFC_HALO_COUNT: mpi::Tag = 9001;
 
 impl MpiRuntime {
     /// Debe llamarse una sola vez al inicio del proceso MPI.
-    #[allow(clippy::new_without_default)]
+    #[expect(clippy::new_without_default)]
     pub fn new() -> Self {
         let universe = mpi::initialize().expect("MPI no inicializado; lanzar con mpiexec/mpirun");
         Self {
@@ -58,6 +58,10 @@ impl MpiRuntime {
                 }
                 let rlen = recv_counts[r] as usize;
                 if rlen > 0 {
+                    // SAFETY: flat_recv es un Vec<f64> con capacidad total roff (suma de
+                    // recv_counts). recv_offsets[r] + rlen ≤ roff por construcción, y los
+                    // offsets son disjuntos entre ranks. El slice se presta como &mut dentro
+                    // de un mpi::request::scope y se consume antes de que flat_recv se lea.
                     let slice: &mut [f64] = unsafe {
                         std::slice::from_raw_parts_mut(
                             flat_recv.as_mut_ptr().add(recv_offsets[r]),

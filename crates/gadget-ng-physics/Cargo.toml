@@ -28,5 +28,5 @@ rustfft = "6.4.1"
 serde_json = { workspace = true }
 toml = { workspace = true }
 rayon = "1.10"
-tempfile = "3"
+tempfile.workspace = true
 hdf5 = { package = "hdf5-metno", version = "0.12.4" }

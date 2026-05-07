@@ -415,7 +415,7 @@ pub fn apply_snia_feedback_periodic(
                     let r2 = d.dot(d);
                     (j, r2)
                 })
-                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).expect("squared distance must be finite f64"))
                 .unwrap_or((0, f64::MAX));
             if closest < n && particles[closest].ptype == gadget_ng_core::ParticleType::Gas {
                 delta_u[closest] += cfg.e_ia_code;

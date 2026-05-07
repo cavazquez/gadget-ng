@@ -318,13 +318,13 @@ else
     log "Output: runs/validation_128/"
 
     if [[ "$N_RANKS" -gt 1 ]]; then
-        RUN_CMD="N_RANKS=${N_RANKS} bash scripts/run_validation_128.sh"
+        RUN_CMD=(env N_RANKS="${N_RANKS}" bash scripts/run_validation_128.sh)
     else
-        RUN_CMD="bash scripts/run_validation_128.sh"
+        RUN_CMD=(bash scripts/run_validation_128.sh)
     fi
 
     T_VAL128_START=$(date +%s)
-    if eval "$RUN_CMD" 2>&1 | tee logs/bloque5_validation_128.log; then
+    if "${RUN_CMD[@]}" 2>&1 | tee logs/bloque5_validation_128.log; then
         T_VAL128=$(( $(date +%s) - T_VAL128_START ))
         pass "validación N=128³  ($(printf '%dh %02dm' $((T_VAL128/3600)) $(((T_VAL128%3600)/60))))"
     else
@@ -347,13 +347,13 @@ else
     log "  - Con ${N_RANKS} rank(s) MPI"
 
     if [[ "$N_RANKS" -gt 1 ]]; then
-        RUN_CMD="N_RANKS=${N_RANKS} bash scripts/run_production_256.sh"
+        RUN_CMD=(env N_RANKS="${N_RANKS}" bash scripts/run_production_256.sh)
     else
-        RUN_CMD="bash scripts/run_production_256.sh"
+        RUN_CMD=(bash scripts/run_production_256.sh)
     fi
 
     T_PROD_START=$(date +%s)
-    if eval "$RUN_CMD" 2>&1 | tee logs/bloque6_production_256.log; then
+    if "${RUN_CMD[@]}" 2>&1 | tee logs/bloque6_production_256.log; then
         T_PROD=$(( $(date +%s) - T_PROD_START ))
         pass "producción N=256³  ($(printf '%dh %02dm' $((T_PROD/3600)) $(((T_PROD%3600)/60))))"
 

@@ -257,12 +257,7 @@ fn run_treepm_n_a(
     a
 }
 
-fn run_treepm_n(
-    parts: &mut [gadget_ng_core::Particle],
-    n_steps: usize,
-    dt: f64,
-    nm: usize,
-) -> f64 {
+fn run_treepm_n(parts: &mut [gadget_ng_core::Particle], n_steps: usize, dt: f64, nm: usize) -> f64 {
     run_treepm_n_a(parts, n_steps, dt, nm, A_INIT_EARLY)
 }
 

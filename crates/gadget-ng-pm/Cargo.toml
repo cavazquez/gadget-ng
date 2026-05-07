@@ -19,7 +19,7 @@ rayon = { version = "1.10", optional = true }
 mpi = { workspace = true, optional = true }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true
 criterion.workspace = true
 
 [[bench]]
