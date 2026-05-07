@@ -187,3 +187,35 @@ jobs:
         with:
           files: cobertura.xml,tarpaulin-report.xml
         continue-on-error: true
+
+  # ── Auditoría de seguridad (semanal) ──────────────────────────────────────
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit --deny warnings
+
+  # ── Licencias y dependencias no permitidas ────────────────────────────────
+  deny:
+    name: License & dependency check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check licenses
+      - run: cargo deny check bans
+
+  # ── Linting de shell scripts ──────────────────────────────────────────────
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          format: tty
+          severity: warning
