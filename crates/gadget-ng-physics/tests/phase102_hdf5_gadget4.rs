@@ -7,6 +7,7 @@
 //! 4. El reader reconstruye todas las partículas (gas + DM) en orden correcto.
 //! 5. for_sph() produce NumPart_Total[0] = n_gas, NumPart_Total[1] = n_dm.
 
+use approx::assert_abs_diff_eq;
 use gadget_ng_io::gadget4_attrs::Gadget4Header;
 
 #[test]
@@ -48,24 +49,25 @@ fn header_mandatory_flags_present() {
 #[test]
 fn header_cosmological_params() {
     let h = Gadget4Header::for_sph(10, 10, 0.25, 100.0, 0.31, 0.69, 0.048, 0.677);
-    assert!((h.omega_m - 0.31).abs() < 1e-12, "Omega0");
-    assert!((h.omega_lambda - 0.69).abs() < 1e-12, "OmegaLambda");
-    assert!((h.omega_baryon - 0.048).abs() < 1e-12, "OmegaBaryon");
-    assert!((h.hubble_param - 0.677).abs() < 1e-12, "HubbleParam");
-    assert!((h.redshift - 3.0).abs() < 1e-10, "z = 1/0.25 - 1 = 3");
+    assert_abs_diff_eq!(h.omega_m, 0.31, epsilon = 1e-12);
+    assert_abs_diff_eq!(h.omega_lambda, 0.69, epsilon = 1e-12);
+    assert_abs_diff_eq!(h.omega_baryon, 0.048, epsilon = 1e-12);
+    assert_abs_diff_eq!(h.hubble_param, 0.677, epsilon = 1e-12);
+    assert_abs_diff_eq!(h.redshift, 3.0, epsilon = 1e-10);
 }
 
 #[test]
 fn header_unit_constants_set() {
     use gadget_ng_io::gadget4_attrs::{KMS_IN_CMS, KPC_IN_CM, MSUN_IN_G};
     let h = Gadget4Header::default();
-    assert!((h.unit_length_in_cm - KPC_IN_CM).abs() < 1.0);
-    assert!((h.unit_mass_in_g - MSUN_IN_G).abs() < 1e28);
-    assert!((h.unit_velocity_in_cm_per_s - KMS_IN_CMS).abs() < 1.0);
+    assert_abs_diff_eq!(h.unit_length_in_cm, KPC_IN_CM, epsilon = 1.0);
+    assert_abs_diff_eq!(h.unit_mass_in_g, MSUN_IN_G, epsilon = 1e28);
+    assert_abs_diff_eq!(h.unit_velocity_in_cm_per_s, KMS_IN_CMS, epsilon = 1.0);
 }
 
 // Tests HDF5 (gadget-ng-physics depende de gadget-ng-io con hdf5 habilitado).
 mod hdf5_tests {
+    use approx::assert_abs_diff_eq;
     use gadget_ng_core::{Particle, Vec3};
     use gadget_ng_io::{
         Hdf5Reader, Hdf5Writer, Provenance, SnapshotEnv, SnapshotReader, SnapshotWriter,
@@ -122,16 +124,16 @@ mod hdf5_tests {
         let pt0 = file.group("PartType0").unwrap();
         let u: Vec<f64> = pt0.dataset("InternalEnergy").unwrap().read_raw().unwrap();
         assert_eq!(u.len(), 3);
-        assert!((u[0] - 500.0).abs() < 1e-12);
+        assert_abs_diff_eq!(u[0], 500.0, epsilon = 1e-12);
 
         let h: Vec<f64> = pt0.dataset("SmoothingLength").unwrap().read_raw().unwrap();
-        assert!((h[0] - 0.3).abs() < 1e-12);
+        assert_abs_diff_eq!(h[0], 0.3, epsilon = 1e-12);
 
         // PartType1 debe existir con DM
         let pt1 = file.group("PartType1").unwrap();
         let masses: Vec<f64> = pt1.dataset("Masses").unwrap().read_raw().unwrap();
         assert_eq!(masses.len(), 2);
-        assert!((masses[0] - 2.0).abs() < 1e-12);
+        assert_abs_diff_eq!(masses[0], 2.0, epsilon = 1e-12);
     }
 
     #[test]
@@ -193,8 +195,8 @@ mod hdf5_tests {
             .find(|p| p.internal_energy > 0.0)
             .unwrap();
         assert_eq!(gas.global_id, 0);
-        assert!((gas.internal_energy - 250.0).abs() < 1e-12);
-        assert!((gas.smoothing_length - 0.5).abs() < 1e-12);
+        assert_abs_diff_eq!(gas.internal_energy, 250.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(gas.smoothing_length, 0.5, epsilon = 1e-12);
 
         // DM (id=1)
         let dm = data
@@ -203,7 +205,7 @@ mod hdf5_tests {
             .find(|p| p.internal_energy == 0.0)
             .unwrap();
         assert_eq!(dm.global_id, 1);
-        assert!((dm.mass - 3.0).abs() < 1e-12);
+        assert_abs_diff_eq!(dm.mass, 3.0, epsilon = 1e-12);
     }
 
     #[test]

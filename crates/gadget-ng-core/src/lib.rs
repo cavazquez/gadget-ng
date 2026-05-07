@@ -1,3 +1,5 @@
+//! Core types for gadget-ng: Vec3, Particle, RunConfig, cosmology, ICs (1LPT/2LPT).
+
 pub mod config;
 pub mod cosmology;
 #[cfg(feature = "gpu")]

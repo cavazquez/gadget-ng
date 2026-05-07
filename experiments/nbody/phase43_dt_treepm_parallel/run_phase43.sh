@@ -19,8 +19,9 @@
 # Uso: `bash experiments/nbody/phase43_dt_treepm_parallel/run_phase43.sh`
 
 set -euo pipefail
+trap 'echo "ERROR at line $LINENO"' ERR
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PHASE_DIR="$REPO_ROOT/experiments/nbody/phase43_dt_treepm_parallel"
 OUTPUTS="$PHASE_DIR/outputs"
 FIG_LOCAL="$PHASE_DIR/figures"

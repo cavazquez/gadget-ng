@@ -3,6 +3,7 @@
 /// Tests: disabled no modifica velocidades, enabled perturba velocidades,
 ///        amplitude=0 no-op, turbulence_stats con v=0 devuelve 0,
 ///        TurbulenceSection defaults, stats Mach positivo con v>0.
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{Particle, TurbulenceSection, Vec3};
 use gadget_ng_mhd::{apply_turbulent_forcing, turbulence_stats};
 
@@ -81,11 +82,11 @@ fn stats_zero_velocity() {
 fn turbulence_section_defaults() {
     let cfg = TurbulenceSection::default();
     assert!(!cfg.enabled);
-    assert!((cfg.amplitude - 1e-3).abs() < 1e-10);
-    assert!((cfg.correlation_time - 1.0).abs() < 1e-10);
-    assert!((cfg.k_min - 1.0).abs() < 1e-10);
-    assert!((cfg.k_max - 4.0).abs() < 1e-10);
-    assert!((cfg.spectral_index - 5.0 / 3.0).abs() < 1e-10);
+    assert_abs_diff_eq!(cfg.amplitude, 1e-3, epsilon = 1e-10);
+    assert_abs_diff_eq!(cfg.correlation_time, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(cfg.k_min, 1.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(cfg.k_max, 4.0, epsilon = 1e-10);
+    assert_abs_diff_eq!(cfg.spectral_index, 5.0 / 3.0, epsilon = 1e-10);
 }
 
 // ── 6. Mach positivo con partículas en movimiento ─────────────────────────

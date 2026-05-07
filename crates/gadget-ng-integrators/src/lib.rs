@@ -1,3 +1,5 @@
+//! Time integrators: leapfrog KDK, Yoshida4, hierarchical block timesteps.
+
 pub mod adaptive_dt;
 pub mod hierarchical;
 pub mod leapfrog;

@@ -10,7 +10,10 @@
 # Los resultados JSON se guardan en target/phase55/fof_results.json
 
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+trap 'echo "ERROR at line $LINENO"' ERR
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+mkdir -p logs
 
 echo "=== Phase 55: FoF vs HMF — N=64/128/256, BOX=300 Mpc/h ==="
 echo "Evolución desde a=0.02 hasta a=1.0 (z=0)"
@@ -21,7 +24,7 @@ TIME_START=$(date +%s)
 
 cargo test -p gadget-ng-physics --release \
     --test phase55_fof_vs_hmf \
-    -- --test-threads=1 --nocapture 2>&1 | tee /tmp/phase55_output.txt
+    -- --test-threads=1 --nocapture 2>&1 | tee logs/phase55_output.txt
 
 TIME_END=$(date +%s)
 ELAPSED=$((TIME_END - TIME_START))

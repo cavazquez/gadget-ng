@@ -9,6 +9,7 @@
 //! (funciones privadas de `gadget-ng-cli`) sino que valida la serialización
 //! de los tipos involucrados y el formato de los ficheros JSON generados.
 
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
 use gadget_ng_io::{
     JsonlReader, JsonlWriter, Provenance, SnapshotEnv, SnapshotReader, SnapshotWriter,
@@ -76,8 +77,8 @@ fn black_hole_serde_roundtrip() {
     let json = serde_json::to_string(&bh).unwrap();
     assert!(json.contains("mass"), "debe tener campo mass: {json}");
     let restored: BlackHole = serde_json::from_str(&json).unwrap();
-    assert!((restored.mass - 1e6).abs() < 1.0);
-    assert!((restored.pos.x - 1.0).abs() < 1e-14);
+    assert_abs_diff_eq!(restored.mass, 1e6, epsilon = 1.0);
+    assert_abs_diff_eq!(restored.pos.x, 1.0, epsilon = 1e-14);
     assert_eq!(restored.accretion_rate, 0.0);
 }
 
@@ -92,10 +93,10 @@ fn agn_bhs_checkpoint_roundtrip() {
     save_agn_bhs(dir.path(), &bhs);
     let restored = load_agn_bhs(dir.path());
     assert_eq!(restored.len(), 2);
-    assert!((restored[0].mass - 1e5).abs() < 1.0);
-    assert!((restored[1].mass - 2e6).abs() < 1.0);
-    assert!((restored[0].pos.x - 0.5).abs() < 1e-14);
-    assert!((restored[1].pos.z - 5.0).abs() < 1e-14);
+    assert_abs_diff_eq!(restored[0].mass, 1e5, epsilon = 1.0);
+    assert_abs_diff_eq!(restored[1].mass, 2e6, epsilon = 1.0);
+    assert_abs_diff_eq!(restored[0].pos.x, 0.5, epsilon = 1e-14);
+    assert_abs_diff_eq!(restored[1].pos.z, 5.0, epsilon = 1e-14);
 }
 
 /// ChemState se serializa y deserializa correctamente (Serde derive Phase 106).
@@ -105,8 +106,8 @@ fn chem_state_serde_roundtrip() {
     let json = serde_json::to_string(&cs).unwrap();
     assert!(json.contains("x_hi"), "debe tener campo x_hi: {json}");
     let restored: ChemState = serde_json::from_str(&json).unwrap();
-    assert!((restored.x_hi - cs.x_hi).abs() < 1e-15);
-    assert!((restored.x_hii - cs.x_hii).abs() < 1e-15);
+    assert_abs_diff_eq!(restored.x_hi, cs.x_hi, epsilon = 1e-15);
+    assert_abs_diff_eq!(restored.x_hii, cs.x_hii, epsilon = 1e-15);
 }
 
 /// Vector de ChemStates se persiste y restaura.
@@ -121,11 +122,8 @@ fn chem_states_checkpoint_roundtrip() {
     save_chem_states(dir.path(), &states);
     let restored = load_chem_states(dir.path());
     assert_eq!(restored.len(), 2);
-    assert!(
-        (restored[0].x_hii - 0.5).abs() < 1e-15,
-        "x_hii debe ser 0.5"
-    );
-    assert!((restored[1].x_hii - cs1.x_hii).abs() < 1e-15);
+    assert_abs_diff_eq!(restored[0].x_hii, 0.5, epsilon = 1e-15);
+    assert_abs_diff_eq!(restored[1].x_hii, cs1.x_hii, epsilon = 1e-15);
 }
 
 /// SPH particle fields (internal_energy, smoothing_length) se preservan en
@@ -141,8 +139,8 @@ fn sph_fields_in_checkpoint_jsonl() {
     assert_eq!(data.particles.len(), 3);
     for (orig, back) in particles.iter().zip(data.particles.iter()) {
         assert_eq!(back.ptype, ParticleType::Gas);
-        assert!((back.internal_energy - orig.internal_energy).abs() < 1e-14);
-        assert!((back.smoothing_length - orig.smoothing_length).abs() < 1e-14);
+        assert_abs_diff_eq!(back.internal_energy, orig.internal_energy, epsilon = 1e-14);
+        assert_abs_diff_eq!(back.smoothing_length, orig.smoothing_length, epsilon = 1e-14);
     }
 }
 
@@ -172,9 +170,9 @@ fn full_checkpoint_all_state() {
 
     assert_eq!(p_data.particles.len(), 2);
     assert_eq!(p_data.particles[0].ptype, ParticleType::Gas);
-    assert!((p_data.particles[0].internal_energy - 3.5).abs() < 1e-14);
+    assert_abs_diff_eq!(p_data.particles[0].internal_energy, 3.5, epsilon = 1e-14);
     assert_eq!(r_bhs.len(), 1);
-    assert!((r_bhs[0].mass - 1e6).abs() < 1.0);
+    assert_abs_diff_eq!(r_bhs[0].mass, 1e6, epsilon = 1.0);
     assert_eq!(r_chem.len(), 2);
-    assert!((r_chem[0].x_hii - 0.9).abs() < 1e-15);
+    assert_abs_diff_eq!(r_chem[0].x_hii, 0.9, epsilon = 1e-15);
 }

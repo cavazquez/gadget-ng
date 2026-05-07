@@ -6,6 +6,7 @@
 #   SKIP_PHASE37=1 bash scripts/check_release.sh  # omitir Phase 37
 #   RUN_PHASE41=1  bash scripts/check_release.sh  # incluir Phase 41 (~3-4 h)
 set -euo pipefail
+trap 'echo "ERROR at line $LINENO"' ERR
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 

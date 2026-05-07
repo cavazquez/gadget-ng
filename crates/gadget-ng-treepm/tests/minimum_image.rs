@@ -9,6 +9,7 @@
 //! 6. `sr_force_vs_direct_periodic` — fuerza SR periódica vs cálculo directo
 //! 7. `erfc_partition_of_unity` — erf + erfc = 1 en toda la gama de r/r_s
 
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_treepm::{
     distributed::{SlabShortRangeParams, short_range_accels_slab},
@@ -27,16 +28,16 @@ fn make_particle(id: usize, x: f64, y: f64, z: f64, mass: f64) -> Particle {
 fn minimum_image_basic() {
     let b = 1.0_f64;
     // Dentro de [-L/2, L/2]: sin cambio.
-    assert!((minimum_image(0.3, b) - 0.3).abs() < 1e-14);
-    assert!((minimum_image(-0.3, b) + 0.3).abs() < 1e-14);
-    assert!((minimum_image(0.0, b)).abs() < 1e-14);
+    assert_abs_diff_eq!(minimum_image(0.3, b), 0.3, epsilon = 1e-14);
+    assert_abs_diff_eq!(minimum_image(-0.3, b), -0.3, epsilon = 1e-14);
+    assert_abs_diff_eq!(minimum_image(0.0, b), 0.0, epsilon = 1e-14);
 
     // Más allá de L/2: imagen en [-L/2, L/2].
     let d1 = minimum_image(0.7, b);
-    assert!((d1 + 0.3).abs() < 1e-12, "0.7 → -0.3, got {d1}");
+    assert_abs_diff_eq!(d1, -0.3, epsilon = 1e-12);
 
     let d2 = minimum_image(-0.7, b);
-    assert!((d2 - 0.3).abs() < 1e-12, "-0.7 → +0.3, got {d2}");
+    assert_abs_diff_eq!(d2, 0.3, epsilon = 1e-12);
 
     // En el borde exacto L/2: |d| = 0.5.
     let d3 = minimum_image(0.5, b).abs();
@@ -151,7 +152,7 @@ fn minimum_image_no_double_counting() {
     let mut out = vec![Vec3::zero()];
     short_range_accels_slab(&params, &mut out);
     let fmag = (out[0].x * out[0].x + out[0].y * out[0].y + out[0].z * out[0].z).sqrt();
-    assert!(fmag < 1e-14, "auto-fuerza debe ser cero, got fmag={fmag}");
+    assert_abs_diff_eq!(fmag, 0.0, epsilon = 1e-14);
 }
 
 // ── Test 5: AABB periódica correcta ──────────────────────────────────────────
@@ -168,10 +169,7 @@ fn periodic_aabb_wrap() {
 
     let d2_periodic = min_dist2_to_aabb_periodic(xi, com, half, box_size);
     let expected = (0.1_f64 - half).powi(2); // (0.07)² = 0.0049
-    assert!(
-        (d2_periodic - expected).abs() < 1e-10,
-        "AABB periódica: d2={d2_periodic:.6e} vs esperado={expected:.6e}"
-    );
+    assert_abs_diff_eq!(d2_periodic, expected, epsilon = 1e-10);
 
     // La distancia directa sería mucho mayor.
     let d_direct = (0.95_f64 - 0.05 - half).max(0.0).powi(2);
@@ -216,15 +214,10 @@ fn sr_force_vs_direct_periodic() {
     let inv3 = g * 1.0 * w / (r2 * r);
     let fz_expected = dz * inv3;
 
-    assert!(
-        (out[0].z - fz_expected).abs() < 1e-9,
-        "Fz={:.6e} vs esperado={:.6e}",
-        out[0].z,
-        fz_expected
-    );
+    assert_abs_diff_eq!(out[0].z, fz_expected, epsilon = 1e-9);
     // Solo componente z no nula (partículas alineadas en z).
-    assert!(out[0].x.abs() < 1e-14, "Fx debe ser 0");
-    assert!(out[0].y.abs() < 1e-14, "Fy debe ser 0");
+    assert_abs_diff_eq!(out[0].x, 0.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(out[0].y, 0.0, epsilon = 1e-14);
 }
 
 // ── Test 7: erf + erfc = 1 ───────────────────────────────────────────────────
@@ -236,9 +229,6 @@ fn erfc_partition_of_unity() {
         let x = r / (std::f64::consts::SQRT_2 * r_split);
         let erfc_val = erfc_approx(x);
         let erf_val = 1.0 - erfc_val;
-        assert!(
-            (erf_val + erfc_val - 1.0).abs() < 1e-6,
-            "partición de unidad falla en r={r}: erf={erf_val:.6} erfc={erfc_val:.6}"
-        );
+        assert_abs_diff_eq!(erf_val + erfc_val, 1.0, epsilon = 1e-6);
     }
 }

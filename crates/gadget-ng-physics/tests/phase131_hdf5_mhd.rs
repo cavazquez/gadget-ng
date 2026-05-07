@@ -46,6 +46,7 @@ fn all_extended_fields_default_zero() {
 
 // Tests HDF5 (requieren feature "hdf5")
 mod hdf5_mhd_tests {
+    use approx::assert_abs_diff_eq;
     use gadget_ng_core::{Particle, Vec3};
     use gadget_ng_io::{Hdf5Writer, Provenance, SnapshotEnv, SnapshotWriter};
 
@@ -74,8 +75,8 @@ mod hdf5_mhd_tests {
         let pt0 = file.group("PartType0").unwrap();
         let bf: Vec<f64> = pt0.dataset("MagneticField").unwrap().read_raw().unwrap();
         assert_eq!(bf.len(), 3);
-        assert!((bf[0] - 2.0).abs() < 1e-12, "B.x = {}", bf[0]);
-        assert!((bf[1] - 1.0).abs() < 1e-12, "B.y = {}", bf[1]);
+        assert_abs_diff_eq!(bf[0], 2.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(bf[1], 1.0, epsilon = 1e-12);
     }
 
     #[test]
@@ -91,9 +92,9 @@ mod hdf5_mhd_tests {
         let file = hdf5::File::open(dir.path().join("snapshot.hdf5")).unwrap();
         let pt0 = file.group("PartType0").unwrap();
         let cr: Vec<f64> = pt0.dataset("CosmicRayEnergy").unwrap().read_raw().unwrap();
-        assert!((cr[0] - 3.15).abs() < 1e-12);
+        assert_abs_diff_eq!(cr[0], 3.15, epsilon = 1e-12);
         let met: Vec<f64> = pt0.dataset("Metallicity").unwrap().read_raw().unwrap();
-        assert!((met[0] - 0.025).abs() < 1e-12);
+        assert_abs_diff_eq!(met[0], 0.025, epsilon = 1e-12);
     }
 
     #[test]
@@ -110,6 +111,6 @@ mod hdf5_mhd_tests {
         let pt4 = file.group("PartType4").unwrap();
         let ages: Vec<f64> = pt4.dataset("StellarAge").unwrap().read_raw().unwrap();
         assert_eq!(ages.len(), 1);
-        assert!((ages[0] - 4.5).abs() < 1e-12, "StellarAge = {}", ages[0]);
+        assert_abs_diff_eq!(ages[0], 4.5, epsilon = 1e-12);
     }
 }

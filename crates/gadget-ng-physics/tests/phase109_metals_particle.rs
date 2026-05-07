@@ -2,6 +2,7 @@
 ///
 /// Tests: new_star constructor, metallicity serde, backward compat, is_star,
 ///        ptype variants, EnrichmentSection defaults.
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{EnrichmentSection, Particle, ParticleType, Vec3};
 
 fn pos() -> Vec3 {
@@ -22,7 +23,7 @@ fn new_star_sets_ptype_star() {
 #[test]
 fn new_star_stores_metallicity() {
     let s = Particle::new_star(0, 1.0, pos(), vel(), 0.05);
-    assert!((s.metallicity - 0.05).abs() < 1e-15);
+    assert_abs_diff_eq!(s.metallicity, 0.05, epsilon = 1e-15);
 }
 
 #[test]
@@ -76,8 +77,8 @@ fn metallicity_serde_roundtrip() {
     let json = serde_json::to_string(&p).unwrap();
     let p2: Particle = serde_json::from_str(&json).unwrap();
 
-    assert!((p2.metallicity - 0.03).abs() < 1e-15);
-    assert!((p2.stellar_age - 2.5).abs() < 1e-15);
+    assert_abs_diff_eq!(p2.metallicity, 0.03, epsilon = 1e-15);
+    assert_abs_diff_eq!(p2.stellar_age, 2.5, epsilon = 1e-15);
 }
 
 // ── 5. backward compat: missing metallicity/stellar_age defaults to 0 ─────
@@ -104,8 +105,8 @@ fn backward_compat_missing_metal_fields() {
 fn enrichment_section_defaults() {
     let cfg = EnrichmentSection::default();
     assert!(!cfg.enabled);
-    assert!((cfg.yield_snii - 0.02).abs() < 1e-15);
-    assert!((cfg.yield_agb - 0.04).abs() < 1e-15);
+    assert_abs_diff_eq!(cfg.yield_snii, 0.02, epsilon = 1e-15);
+    assert_abs_diff_eq!(cfg.yield_agb, 0.04, epsilon = 1e-15);
 }
 
 #[test]
@@ -118,6 +119,6 @@ fn enrichment_section_serde_roundtrip() {
     let json = serde_json::to_string(&cfg).unwrap();
     let cfg2: EnrichmentSection = serde_json::from_str(&json).unwrap();
     assert!(cfg2.enabled);
-    assert!((cfg2.yield_snii - 0.035).abs() < 1e-15);
-    assert!((cfg2.yield_agb - 0.06).abs() < 1e-15);
+    assert_abs_diff_eq!(cfg2.yield_snii, 0.035, epsilon = 1e-15);
+    assert_abs_diff_eq!(cfg2.yield_agb, 0.06, epsilon = 1e-15);
 }

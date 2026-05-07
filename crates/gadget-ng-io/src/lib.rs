@@ -1,3 +1,5 @@
+//! Snapshot I/O: JSONL, bincode, HDF5, msgpack, netcdf formats.
+
 #[cfg(feature = "bincode")]
 mod bincode_writer;
 mod error;

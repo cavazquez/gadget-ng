@@ -28,6 +28,7 @@
 //!    Para dos masas iguales en posiciones simétricas respecto al borde de caja,
 //!    las fuerzas PM son antisimétricas (igual magnitud, sentidos opuestos).
 
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{
     CosmologySection, GravitySection, GravitySolver, IcKind, InitialConditionsSection,
     OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection,
@@ -104,15 +105,15 @@ fn minimum_image_3d_correct() {
 
     // Caso trivial: dx < L/2 → sin cambio.
     let d = minimum_image(0.3, l);
-    assert!((d - 0.3).abs() < 1e-14, "dx=0.3 → {d}");
+    assert_abs_diff_eq!(d, 0.3, epsilon = 1e-14);
 
     // Cruzando el borde positivo: dx = 0.7 → imagen = -0.3.
     let d = minimum_image(0.7, l);
-    assert!((d + 0.3).abs() < 1e-14, "dx=0.7 → {d} (esperado -0.3)");
+    assert_abs_diff_eq!(d, -0.3, epsilon = 1e-14);
 
     // Cruzando el borde negativo: dx = -0.7 → imagen = 0.3.
     let d = minimum_image(-0.7, l);
-    assert!((d - 0.3).abs() < 1e-14, "dx=-0.7 → {d} (esperado 0.3)");
+    assert_abs_diff_eq!(d, 0.3, epsilon = 1e-14);
 
     // dx = 0.5 (exactamente en el límite) → 0.5 (o -0.5, depende del round).
     let d = minimum_image(0.5, l);
@@ -138,14 +139,15 @@ fn wrap_position_correct() {
     // Dentro: sin cambio.
     let p = Vec3::new(0.5, 0.3, 0.8);
     let w = wrap_position(p, l);
-    assert!((w.x - 0.5).abs() < 1e-14 && (w.y - 0.3).abs() < 1e-14);
+    assert_abs_diff_eq!(w.x, 0.5, epsilon = 1e-14);
+    assert_abs_diff_eq!(w.y, 0.3, epsilon = 1e-14);
 
     // Fuera por la derecha: x=1.2 → 0.2.
     let p = Vec3::new(1.2, -0.1, 2.7);
     let w = wrap_position(p, l);
-    assert!((w.x - 0.2).abs() < 1e-14, "x=1.2 → {} (esperado 0.2)", w.x);
-    assert!((w.y - 0.9).abs() < 1e-14, "y=-0.1 → {} (esperado 0.9)", w.y);
-    assert!((w.z - 0.7).abs() < 1e-13, "z=2.7 → {} (esperado 0.7)", w.z);
+    assert_abs_diff_eq!(w.x, 0.2, epsilon = 1e-14);
+    assert_abs_diff_eq!(w.y, 0.9, epsilon = 1e-14);
+    assert_abs_diff_eq!(w.z, 0.7, epsilon = 1e-13);
 
     // Resultado siempre en [0, l).
     let positions = [
@@ -242,10 +244,7 @@ fn pm_poisson_single_mode() {
 
     // Antisimetría: f(ix=0) ≈ -f(ix=nm/2).
     let ratio = f_at_zero / (-f_at_half);
-    assert!(
-        (ratio - 1.0).abs() < 0.01,
-        "f(0) / (-f(nm/2)) = {ratio:.4} (esperado ≈ 1.0)"
-    );
+    assert_abs_diff_eq!(ratio, 1.0, epsilon = 0.01);
 
     // En ix=nm/4 (máximo de densidad): fuerza ≈ 0.
     let f_at_max = fx[nm / 4]; // ix=nm/4, iy=0, iz=0

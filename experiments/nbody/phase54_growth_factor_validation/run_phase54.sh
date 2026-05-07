@@ -10,7 +10,10 @@
 # Los resultados JSON se guardan en target/phase54/snapshots.json
 
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+trap 'echo "ERROR at line $LINENO"' ERR
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+mkdir -p logs
 
 echo "=== Phase 54: D²(a) validation con G_consistent ==="
 echo "G_consistent = 3 × Ω_m × H₀² / 8π ≈ 3.76e-4"
@@ -21,7 +24,7 @@ TIME_START=$(date +%s)
 
 cargo test -p gadget-ng-physics --release \
     --test phase54_growth_factor_validation \
-    -- --test-threads=1 --nocapture 2>&1 | tee /tmp/phase54_output.txt
+    -- --test-threads=1 --nocapture 2>&1 | tee logs/phase54_output.txt
 
 TIME_END=$(date +%s)
 ELAPSED=$((TIME_END - TIME_START))

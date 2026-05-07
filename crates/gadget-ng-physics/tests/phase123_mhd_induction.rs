@@ -3,6 +3,7 @@
 /// Tests: campo B se inicializa a cero, inducción cambia B cuando hay shear,
 ///        partículas en reposo con B uniforme no cambian B, DM no afectada,
 ///        crate compila con los tres módulos, campo B se conserva globalmente.
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_mhd::{advance_induction, dedner_cleaning_step, magnetic_pressure, maxwell_stress};
 
@@ -59,10 +60,7 @@ fn uniform_b_no_velocity_constant() {
     let b_before: Vec<Vec3> = particles.iter().map(|p| p.b_field).collect();
     advance_induction(&mut particles, 0.1);
     for (i, p) in particles.iter().enumerate() {
-        assert!(
-            (p.b_field.x - b_before[i].x).abs() < 1e-12,
-            "B uniforme + v=0 → B debe permanecer constante, partícula {i}"
-        );
+        assert_abs_diff_eq!(p.b_field.x, b_before[i].x, epsilon = 1e-12);
     }
 }
 
@@ -87,18 +85,15 @@ fn dm_not_affected_by_induction() {
 fn magnetic_pressure_correct() {
     let b = Vec3::new(1.0, 0.0, 0.0);
     let p_b = magnetic_pressure(b);
-    assert!(
-        (p_b - 0.5).abs() < 1e-12,
-        "P_B = |B|²/(2μ₀) = 0.5 para B=(1,0,0): {p_b}"
-    );
+    assert_abs_diff_eq!(p_b, 0.5, epsilon = 1e-12);
 
     let m = maxwell_stress(b);
     // M_xx = B_x² / μ₀ - P_B = 1 - 0.5 = 0.5
-    assert!((m[0][0] - 0.5).abs() < 1e-12, "M_xx = 0.5: {}", m[0][0]);
+    assert_abs_diff_eq!(m[0][0], 0.5, epsilon = 1e-12);
     // M_yy = 0 - P_B = -0.5
-    assert!((m[1][1] + 0.5).abs() < 1e-12, "M_yy = -0.5: {}", m[1][1]);
+    assert_abs_diff_eq!(m[1][1], -0.5, epsilon = 1e-12);
     // M_xy = 0
-    assert!(m[0][1].abs() < 1e-12, "M_xy = 0: {}", m[0][1]);
+    assert_abs_diff_eq!(m[0][1], 0.0, epsilon = 1e-12);
 }
 
 // ── 6. dedner_cleaning_step no explota con B y ψ no nulos ─────────────────

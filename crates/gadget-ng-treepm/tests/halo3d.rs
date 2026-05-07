@@ -10,6 +10,7 @@
 //! 7. `halo_3d_catches_diagonal_periodic` — halo 3D incluye partícula diagonal
 //! 8. `compute_aabb_3d_correctness` — AABB real de un conjunto de partículas
 
+use approx::assert_abs_diff_eq;
 use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_parallel::halo3d::{
     Aabb3, compute_aabb_3d, is_in_periodic_halo, min_dist2_to_aabb_3d_periodic,
@@ -33,10 +34,7 @@ fn min_dist2_to_aabb_3d_trivial() {
     let aabb = make_aabb(0.0, 0.5, 0.0, 0.5, 0.0, 0.5);
     let p = [0.25, 0.25, 0.25];
     let d2 = min_dist2_to_aabb_3d_periodic(p, &aabb, 1.0);
-    assert!(
-        d2 < 1e-14,
-        "punto en interior del AABB debe tener distancia 0, got {d2}"
-    );
+    assert_abs_diff_eq!(d2, 0.0, epsilon = 1e-14);
 }
 
 // ── Test 2: distancia periódica en x ─────────────────────────────────────────
@@ -51,10 +49,7 @@ fn min_dist2_to_aabb_3d_along_x() {
     let p = [0.95, 0.25, 0.25];
     let d2 = min_dist2_to_aabb_3d_periodic(p, &aabb, 1.0);
     let expected = 0.05_f64.powi(2);
-    assert!(
-        (d2 - expected).abs() < 1e-10,
-        "distancia x periódica: d2={d2:.4e} vs expected={expected:.4e}"
-    );
+    assert_abs_diff_eq!(d2, expected, epsilon = 1e-10);
     assert!(
         is_in_periodic_halo(p, &aabb, 0.1, 1.0),
         "con r_cut=0.1 la partícula x=0.95 debe estar en el halo de AABB [0,0.5)"
@@ -69,10 +64,7 @@ fn min_dist2_to_aabb_3d_along_y() {
     let p = [0.25, 0.95, 0.25];
     let d2 = min_dist2_to_aabb_3d_periodic(p, &aabb, 1.0);
     let expected = 0.05_f64.powi(2);
-    assert!(
-        (d2 - expected).abs() < 1e-10,
-        "distancia y periódica: d2={d2:.4e}"
-    );
+    assert_abs_diff_eq!(d2, expected, epsilon = 1e-10);
     assert!(
         is_in_periodic_halo(p, &aabb, 0.1, 1.0),
         "con r_cut=0.1 la partícula y=0.95 debe estar en el halo"
@@ -87,10 +79,7 @@ fn min_dist2_to_aabb_3d_along_z() {
     let p = [0.25, 0.25, 0.95];
     let d2 = min_dist2_to_aabb_3d_periodic(p, &aabb, 1.0);
     let expected = 0.05_f64.powi(2);
-    assert!(
-        (d2 - expected).abs() < 1e-10,
-        "distancia z periódica: d2={d2:.4e}"
-    );
+    assert_abs_diff_eq!(d2, expected, epsilon = 1e-10);
     assert!(
         is_in_periodic_halo(p, &aabb, 0.1, 1.0),
         "con r_cut=0.1 la partícula z=0.95 debe estar en el halo"
@@ -108,10 +97,7 @@ fn min_dist2_to_aabb_3d_diagonal_xyz() {
     let p = [0.95, 0.95, 0.95];
     let d2 = min_dist2_to_aabb_3d_periodic(p, &aabb, 1.0);
     let expected = 3.0 * 0.05_f64.powi(2);
-    assert!(
-        (d2 - expected).abs() < 1e-10,
-        "diagonal periódico: d2={d2:.4e} vs expected={expected:.4e}"
-    );
+    assert_abs_diff_eq!(d2, expected, epsilon = 1e-10);
     let dist = d2.sqrt();
     assert!(
         dist < 0.1,
@@ -190,14 +176,14 @@ fn compute_aabb_3d_correctness() {
     let aabb = compute_aabb_3d(&particles);
 
     // xlo=0.0, xhi=1.0
-    assert!((aabb.lo[0] - 0.0).abs() < 1e-14, "xlo correcto");
-    assert!((aabb.hi[0] - 1.0).abs() < 1e-14, "xhi correcto");
+    assert_abs_diff_eq!(aabb.lo[0], 0.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(aabb.hi[0], 1.0, epsilon = 1e-14);
     // ylo=0.0, yhi=1.0
-    assert!((aabb.lo[1] - 0.0).abs() < 1e-14, "ylo correcto");
-    assert!((aabb.hi[1] - 1.0).abs() < 1e-14, "yhi correcto");
+    assert_abs_diff_eq!(aabb.lo[1], 0.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(aabb.hi[1], 1.0, epsilon = 1e-14);
     // zlo=0.0, zhi=1.0
-    assert!((aabb.lo[2] - 0.0).abs() < 1e-14, "zlo correcto");
-    assert!((aabb.hi[2] - 1.0).abs() < 1e-14, "zhi correcto");
+    assert_abs_diff_eq!(aabb.lo[2], 0.0, epsilon = 1e-14);
+    assert_abs_diff_eq!(aabb.hi[2], 1.0, epsilon = 1e-14);
 
     // Verificar que el AABB contiene todas las partículas.
     for p in &particles {
@@ -232,9 +218,5 @@ fn rectangular_aabb_periodic_distance() {
     let p = [0.5, 0.05, 0.5]; // p_y=0.05 está fuera del AABB en y
     let d2 = min_dist2_to_aabb_3d_periodic(p, &aabb, 1.0);
     let expected_excess_y = 0.35_f64;
-    assert!(
-        (d2 - expected_excess_y * expected_excess_y).abs() < 1e-10,
-        "AABB rectangular: d2={d2:.4e} expected {:.4e}",
-        expected_excess_y * expected_excess_y
-    );
+    assert_abs_diff_eq!(d2, expected_excess_y * expected_excess_y, epsilon = 1e-10);
 }
