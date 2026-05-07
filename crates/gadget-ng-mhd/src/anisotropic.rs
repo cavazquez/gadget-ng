@@ -225,3 +225,40 @@ pub fn beta_plasma(p_thermal: f64, b: Vec3) -> f64 {
     }
     2.0 * MU0 * p_thermal / b2
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn beta_plasma_infinite_when_b_zero() {
+        assert_eq!(beta_plasma(1.0, Vec3::zero()), f64::INFINITY);
+    }
+
+    #[test]
+    fn beta_plasma_one_at_equipartition() {
+        let b = Vec3::new(2.0, 0.0, 0.0);
+        let p_th = 4.0 / (2.0 * MU0);
+        assert_abs_diff_eq!(beta_plasma(p_th, b), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn beta_plasma_doubles_with_double_pth() {
+        let b = Vec3::new(1.0, 2.0, 3.0);
+        let p_th = 1.0;
+        assert_abs_diff_eq!(
+            beta_plasma(2.0 * p_th, b),
+            2.0 * beta_plasma(p_th, b),
+            epsilon = 1e-12
+        );
+    }
+
+    #[test]
+    fn beta_plasma_small_for_strong_b() {
+        let b = Vec3::new(100.0, 0.0, 0.0);
+        assert!(beta_plasma(1.0, b) < 1.0);
+    }
+}

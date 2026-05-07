@@ -139,3 +139,52 @@ pub fn magnetic_power_spectrum(
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::{Particle, Vec3};
+
+    fn make_gas_particle(b: Vec3, mass: f64) -> Particle {
+        let mut p = Particle::new_gas(0, mass, Vec3::zero(), Vec3::zero(), 0.0, 1.0);
+        p.b_field = b;
+        p
+    }
+
+    #[test]
+    fn b_field_stats_none_for_empty_slice() {
+        assert_eq!(b_field_stats(&[]), None);
+    }
+
+    #[test]
+    fn b_field_stats_single_gas_particle() {
+        let particles = vec![make_gas_particle(Vec3::new(3.0, 0.0, 4.0), 1.0)];
+        let stats = b_field_stats(&particles).unwrap();
+        assert_abs_diff_eq!(stats.b_mean, 5.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(stats.b_rms, 5.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(stats.b_max, 5.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn b_field_stats_ignores_dm() {
+        let gas = make_gas_particle(Vec3::new(3.0, 0.0, 4.0), 1.0);
+        let dm = Particle::new(1, 2.0, Vec3::zero(), Vec3::zero());
+        let particles = vec![gas, dm];
+        let stats = b_field_stats(&particles).unwrap();
+        assert_abs_diff_eq!(stats.b_mean, 5.0, epsilon = 1e-12);
+        assert_eq!(stats.n_gas, 1);
+    }
+
+    #[test]
+    fn b_field_stats_b_rms_gte_b_mean() {
+        let particles = vec![
+            make_gas_particle(Vec3::new(3.0, 0.0, 4.0), 1.0),
+            make_gas_particle(Vec3::new(1.0, 1.0, 1.0), 2.0),
+            make_gas_particle(Vec3::new(0.0, 5.0, 0.0), 1.5),
+        ];
+        let stats = b_field_stats(&particles).unwrap();
+        assert!(stats.b_rms >= stats.b_mean);
+    }
+}

@@ -80,3 +80,37 @@ pub fn flux_freeze_error(b_actual: f64, b0: f64, rho: f64, rho0: f64) -> f64 {
     let b_expected = b0 * (rho / rho0).powf(2.0 / 3.0);
     (b_actual / b_expected - 1.0).abs()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn flux_freeze_error_at_reference_is_zero() {
+        let b0 = 2.0;
+        let rho0 = 5.0;
+        assert_abs_diff_eq!(flux_freeze_error(b0, b0, rho0, rho0), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn flux_freeze_error_zero_when_bzero() {
+        assert_abs_diff_eq!(flux_freeze_error(0.0, 0.0, 100.0, 100.0), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn flux_freeze_error_doubled_density() {
+        let b0: f64 = 1.0;
+        let rho0: f64 = 1.0;
+        let rho: f64 = 8.0 * rho0;
+        let b_expected = b0 * (rho / rho0).powf(2.0 / 3.0);
+        assert_abs_diff_eq!(flux_freeze_error(b_expected, b0, rho, rho0), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn flux_freeze_error_known_mismatch() {
+        let err = flux_freeze_error(1.0, 1.0, 8.0, 1.0);
+        assert_abs_diff_eq!(err, 0.75, epsilon = 1e-12);
+    }
+}

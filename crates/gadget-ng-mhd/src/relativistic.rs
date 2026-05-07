@@ -269,3 +269,45 @@ pub fn inject_relativistic_jet(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn lorentz_factor_zero_velocity_is_one() {
+        let gamma = lorentz_factor(Vec3::zero(), C_LIGHT);
+        assert_abs_diff_eq!(gamma, 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn lorentz_factor_half_c() {
+        let v = Vec3::new(0.6 * C_LIGHT, 0.0, 0.0);
+        let gamma = lorentz_factor(v, C_LIGHT);
+        assert_abs_diff_eq!(gamma, 1.25, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn lorentz_factor_light_speed_is_infinite() {
+        let v = Vec3::new(C_LIGHT, 0.0, 0.0);
+        assert_eq!(lorentz_factor(v, C_LIGHT), f64::INFINITY);
+    }
+
+    #[test]
+    fn em_energy_density_zero_when_b_zero() {
+        assert_abs_diff_eq!(em_energy_density(Vec3::zero()), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn em_energy_density_matches_magnetic_pressure() {
+        let b = Vec3::new(1.0, 2.0, 3.0);
+        assert_abs_diff_eq!(
+            em_energy_density(b),
+            crate::magnetic_pressure(b),
+            epsilon = 1e-12
+        );
+    }
+}

@@ -141,3 +141,84 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
         particles[i].velocity.z += acc_mag[i].z * dt;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn magnetic_pressure_zero_when_b_zero() {
+        assert_abs_diff_eq!(magnetic_pressure(Vec3::zero()), 0.0, epsilon = 1e-15);
+    }
+
+    #[test]
+    fn magnetic_pressure_unit_b_equals_one_half() {
+        let pb = magnetic_pressure(Vec3::new(1.0, 0.0, 0.0));
+        assert_abs_diff_eq!(pb, 0.5, epsilon = 1e-15);
+    }
+
+    #[test]
+    fn magnetic_pressure_scales_with_b_squared() {
+        let pb1 = magnetic_pressure(Vec3::new(1.0, 0.0, 0.0));
+        let pb2 = magnetic_pressure(Vec3::new(2.0, 0.0, 0.0));
+        assert_abs_diff_eq!(pb1 * 4.0, pb2, epsilon = 1e-15);
+    }
+
+    #[test]
+    fn magnetic_pressure_sign_invariant() {
+        let pb1 = magnetic_pressure(Vec3::new(1.0, 2.0, 3.0));
+        let pb2 = magnetic_pressure(Vec3::new(-1.0, -2.0, -3.0));
+        assert_abs_diff_eq!(pb1, pb2, epsilon = 1e-15);
+    }
+
+    #[test]
+    fn magnetic_pressure_isotropic() {
+        let pb = magnetic_pressure(Vec3::new(1.0, 2.0, 3.0));
+        let expected = (1.0_f64 * 1.0 + 2.0 * 2.0 + 3.0 * 3.0) / (2.0 * MU0);
+        assert_abs_diff_eq!(pb, expected, epsilon = 1e-15);
+    }
+
+    #[test]
+    fn maxwell_stress_zero_when_b_zero() {
+        let m = maxwell_stress(Vec3::zero());
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_abs_diff_eq!(m[i][j], 0.0, epsilon = 1e-15);
+            }
+        }
+    }
+
+    #[test]
+    fn maxwell_stress_trace_equals_negative_pb() {
+        let b = Vec3::new(3.0, 4.0, 0.0);
+        let m = maxwell_stress(b);
+        let trace = m[0][0] + m[1][1] + m[2][2];
+        let pb = magnetic_pressure(b);
+        assert_abs_diff_eq!(trace, -pb, epsilon = 1e-14);
+    }
+
+    #[test]
+    fn maxwell_stress_is_symmetric() {
+        let b = Vec3::new(1.0, 2.0, 3.0);
+        let m = maxwell_stress(b);
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_abs_diff_eq!(m[i][j], m[j][i], epsilon = 1e-15);
+            }
+        }
+    }
+
+    #[test]
+    fn maxwell_stress_diagonal_for_b_along_x() {
+        let b = Vec3::new(5.0, 0.0, 0.0);
+        let m = maxwell_stress(b);
+        let pb = magnetic_pressure(b);
+        assert_abs_diff_eq!(m[0][0], b.x * b.x / MU0 - pb, epsilon = 1e-14);
+        assert_abs_diff_eq!(m[1][1], -pb, epsilon = 1e-14);
+        assert_abs_diff_eq!(m[2][2], -pb, epsilon = 1e-14);
+        assert_abs_diff_eq!(m[0][1], 0.0, epsilon = 1e-15);
+        assert_abs_diff_eq!(m[0][2], 0.0, epsilon = 1e-15);
+        assert_abs_diff_eq!(m[1][2], 0.0, epsilon = 1e-15);
+    }
+}
