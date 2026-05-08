@@ -1,0 +1,18 @@
+# Cargo configuration for gadget-ng
+# Build flags at workspace level are in Cargo.toml [profile.*] sections.
+
+[build]
+# Default target
+# target = "x86_64-unknown-linux-gnu"
+
+[target.'cfg(all())']
+# RUSTFLAGS are set via CI env (RUSTFLAGS: "-D warnings")
+# and per-profile in Cargo.toml. Do not duplicate here.
+rustflags = []
+
+[env]
+# Optional: set FFTW3 library path for pm/fftw feature
+# FFTW3_LIB_DIR = { value = "/usr/lib", relative = true }
+# Optional: skip CUDA/HIP builds if toolchain not available
+# CUDA_SKIP = "1"
+# HIP_SKIP = "1"

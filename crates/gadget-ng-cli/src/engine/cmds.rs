@@ -97,52 +97,5 @@ pub fn run_visualize(
     Ok(())
 }
 
-// ── Analyse ───────────────────────────────────────────────────────────────────
-
-/// Lee un snapshot JSONL y ejecuta análisis FoF + P(k).
-pub fn run_analyse(
-    snapshot_dir: &Path,
-    out_dir: &Path,
-    linking_length: f64,
-    min_particles: usize,
-    pk_mesh: usize,
-) -> Result<(), CliError> {
-    use gadget_ng_analysis::AnalysisParams;
-    use gadget_ng_analysis::catalog::{write_halo_catalog, write_power_spectrum};
-    use gadget_ng_core::SnapshotFormat;
-
-    let data = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, snapshot_dir)
-        .map_err(CliError::Snapshot)?;
-    let box_size = data.box_size;
-    let n = data.particles.len();
-
-    if n == 0 {
-        eprintln!("Advertencia: snapshot vacío en {:?}", snapshot_dir);
-        return Ok(());
-    }
-
-    // `linking_length` es adimensional (fracción de l̄); `find_halos` aplica ll = b × l̄.
-    let rho_bg = (n as f64) / (box_size * box_size * box_size);
-
-    let params = AnalysisParams {
-        box_size,
-        b: linking_length,
-        min_particles,
-        rho_crit: rho_bg,
-        pk_mesh,
-    };
-
-    let result = gadget_ng_analysis::analyse(&data.particles, &params);
-
-    fs::create_dir_all(out_dir).map_err(|e| CliError::io(out_dir, e))?;
-    write_halo_catalog(out_dir, &result.halos).map_err(|e| CliError::io(out_dir, e))?;
-    write_power_spectrum(out_dir, &result.power_spectrum).map_err(|e| CliError::io(out_dir, e))?;
-
-    println!(
-        "Análisis: {n} partículas, {} halos, {} bins P(k) → {:?}",
-        result.halos.len(),
-        result.power_spectrum.len(),
-        out_dir
-    );
-    Ok(())
-}
+// ── Analyse (legacy — reemplazado por Analyze) ─────────────────────────────────
+// `run_analyse` eliminado; usar `analyze_cmd::run_analyze` en su lugar.

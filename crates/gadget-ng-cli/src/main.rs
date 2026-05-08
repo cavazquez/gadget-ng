@@ -155,29 +155,6 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         luminosity: bool,
     },
-    /// Analiza un snapshot: Friends-of-Friends (halos) + espectro de potencia P(k).
-    ///
-    /// Escribe catálogos JSONL en `<out>/halos.jsonl` y `<out>/power_spectrum.jsonl`.
-    ///
-    /// Ejemplo:
-    ///   gadget-ng analyse --snapshot out/snapshot_final --out analysis/
-    Analyse {
-        /// Directorio del snapshot a analizar.
-        #[arg(long)]
-        snapshot: PathBuf,
-        /// Directorio de salida para catálogos.
-        #[arg(long)]
-        out: PathBuf,
-        /// Longitud de enlace FoF (en fracción de la separación media entre partículas).
-        #[arg(long, default_value_t = 0.2)]
-        linking_length: f64,
-        /// Número mínimo de partículas por halo.
-        #[arg(long, default_value_t = 8)]
-        min_particles: usize,
-        /// Tamaño del grid para P(k) (por lado; total = mesh³).
-        #[arg(long, default_value_t = 64)]
-        pk_mesh: usize,
-    },
     /// Construye el merger tree conectando catálogos FoF de snapshots consecutivos.
     ///
     /// Sigue partículas entre snapshots para identificar progenitores y mergers.
@@ -271,53 +248,9 @@ fn main() -> Result<(), CliError> {
             })?;
             // Si vis_snapshot > 0, renderizar el snapshot final.
             if vis_snapshot > 0 {
-                let snap_dir = out.join("snapshot_final");
-                if snap_dir.exists() {
-                    use gadget_ng_core::SnapshotFormat;
-                    use gadget_ng_vis::Projection;
-                    let data =
-                        gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, &snap_dir);
-                    if let Ok(data) = data {
-                        let positions: Vec<gadget_ng_core::Vec3> =
-                            data.particles.iter().map(|p| p.position).collect();
-                        let proj = match vis_proj.to_lowercase().as_str() {
-                            "xz" => Projection::XZ,
-                            "yz" => Projection::YZ,
-                            _ => Projection::XY,
-                        };
-                        let pixels = match vis_mode.to_lowercase().as_str() {
-                            "density" => gadget_ng_vis::render_density_ppm(
-                                &positions,
-                                data.box_size,
-                                1024,
-                                1024,
-                                proj,
-                            ),
-                            _ => gadget_ng_vis::render_ppm_projection(
-                                &positions,
-                                data.box_size,
-                                1024,
-                                1024,
-                                proj,
-                            ),
-                        };
-                        let ext = if vis_format.to_lowercase() == "png" {
-                            "png"
-                        } else {
-                            "ppm"
-                        };
-                        let out_path = out.join(format!("snapshot_final.{ext}"));
-                        let result = if ext == "png" {
-                            gadget_ng_vis::write_png(&out_path, &pixels, 1024, 1024)
-                        } else {
-                            gadget_ng_vis::write_ppm(&out_path, &pixels, 1024, 1024)
-                        };
-                        match result {
-                            Ok(()) => eprintln!("[vis] imagen escrita en {:?}", out_path),
-                            Err(e) => eprintln!("[vis] Error escribiendo imagen: {e}"),
-                        }
-                    }
-                }
+                engine::render_snapshot_visualization(
+                    &out, vis_snapshot, &vis_proj, &vis_mode, &vis_format,
+                );
             }
         }
         Commands::Snapshot { config, out } => {
@@ -372,15 +305,6 @@ fn main() -> Result<(), CliError> {
                 luminosity,
             };
             analyze_cmd::run_analyze(&params)?;
-        }
-        Commands::Analyse {
-            snapshot,
-            out,
-            linking_length,
-            min_particles,
-            pk_mesh,
-        } => {
-            engine::run_analyse(&snapshot, &out, linking_length, min_particles, pk_mesh)?;
         }
         Commands::MergeTree {
             snapshots,
