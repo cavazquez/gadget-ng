@@ -9,6 +9,9 @@ description = "Particle-Mesh (PM) gravity solver — FFT periódico 3D para gadg
 default = []
 rayon = ["dep:rayon"]
 mpi = ["dep:mpi"]
+# Habilita el backend FFTW3 como alternativa a rustfft para la FFT de Poisson.
+# Requiere libfftw3-dev instalado en el sistema y linking manual (pkg-config).
+# No tiene dependencia Cargo — el enlace es externo.
 fftw = []
 
 [dependencies]

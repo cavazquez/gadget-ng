@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [features]
 default = []
-mpi = ["gadget-ng-parallel/mpi"]
+mpi = ["gadget-ng-parallel/mpi", "gadget-ng-rt/mpi"]
 bincode = ["gadget-ng-io/bincode"]
 hdf5 = ["gadget-ng-io/hdf5"]
 gpu = ["dep:gadget-ng-gpu", "gadget-ng-core/gpu", "gadget-ng-tree/gpu"]
@@ -21,6 +21,8 @@ simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "dep:rayon"]
 pm-rayon = ["gadget-ng-pm/rayon", "gadget-ng-treepm/rayon"]
 msgpack = ["gadget-ng-io/msgpack"]
 netcdf = ["gadget-ng-io/netcdf"]
+# Nota: full NO incluye cuda, hip, pm/fftw, io/hdf5-parallel, pm/mpi — requieren
+# toolchains externos (CUDA Toolkit, ROCm, FFTW3, HDF5 con --enable-parallel).
 full = ["mpi", "bincode", "hdf5", "gpu", "simd", "pm-rayon", "msgpack", "netcdf"]
 
 [dependencies]

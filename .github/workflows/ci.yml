@@ -167,11 +167,10 @@ jobs:
             fi
           done
 
-  # ── Cobertura (opcional, requiere cargo-tarpaulin) ──────────────────────────
+  # ── Cobertura (tarpaulin, ~10 min) ──────────────────────────────────────
   coverage:
     name: Coverage (tarpaulin)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -179,14 +178,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
       - uses: Swatinem/rust-cache@v2
       - name: Instalar tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
       - name: Ejecutar cobertura
         run: cargo tarpaulin --workspace --out Xml --output-dir . --timeout 120
       - name: Subir a Codecov
         uses: codecov/codecov-action@v6
         with:
           files: cobertura.xml,tarpaulin-report.xml
-        continue-on-error: true
 
   # ── Auditoría de seguridad (semanal) ──────────────────────────────────────
   audit:
