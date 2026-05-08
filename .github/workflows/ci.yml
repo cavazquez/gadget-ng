@@ -122,6 +122,44 @@ jobs:
         run: |
           cargo bench --workspace -- --test 2>&1 | tail -20
 
+  # ── Feature matrix: compilación con combinaciones clave ──────────────────
+  feature-matrix:
+    name: Feature matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""           # default
+          - "full"       # todas las features no-externas
+          - "simd"       # SIMD + rayon
+          - "hdf5"       # HDF5 I/O
+          - "mpi,hdf5"   # MPI + HDF5 combinados
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Instalar dependencias de sistema
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev libopenmpi-dev openmpi-bin
+      - uses: Swatinem/rust-cache@v2
+      - name: Compilar CLI con features
+        run: |
+          if [ -z "$FEATURES" ]; then
+            cargo check -p gadget-ng-cli
+          else
+            cargo check -p gadget-ng-cli --features "$FEATURES"
+          fi
+        env:
+          FEATURES: ${{ matrix.features }}
+      - name: Test (solo si sin MPI)
+        if: ${{ !contains(matrix.features, 'mpi') }}
+        run: |
+          if [ -z "$FEATURES" ]; then
+            cargo test --workspace --no-run
+          else
+            cargo test --workspace --features "$FEATURES" --no-run
+          fi
+        env:
+          FEATURES: ${{ matrix.features }}
+
   # ── Smoke MPI (serial, sin mpirun real) ─────────────────────────────────────
   test-parallel:
     name: Tests parallel (serial runtime)
