@@ -46,6 +46,14 @@ use super::timings::{
 mod domain;
 use domain::PmTreepmDomain;
 
+// Ramas de solver — extracción progresiva (bloqueadas por macros que capturan scope).
+// TODO: inlinear maybe_*! macros → extraer cada rama a su módulo.
+mod cosmo_pm;
+mod hierarchical;
+mod legacy_sfc;
+mod legacy_slab;
+mod sfc_let;
+
 pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     rt: &R,
     cfg: &RunConfig,
