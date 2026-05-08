@@ -43,16 +43,15 @@ use super::timings::{
     CosmoDiag, HpcStepStats, HpcTimingsAggregate, TimingsReport, TreePmAggregate, TreePmStepDiag,
 };
 
-mod domain;
-use domain::PmTreepmDomain;
-
-// Ramas de solver — extracción progresiva (bloqueadas por macros que capturan scope).
-// TODO: inlinear maybe_*! macros → extraer cada rama a su módulo.
+mod context;
 mod cosmo_pm;
+mod domain;
 mod hierarchical;
 mod legacy_sfc;
 mod legacy_slab;
 mod sfc_let;
+
+use domain::PmTreepmDomain;
 
 pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     rt: &R,
