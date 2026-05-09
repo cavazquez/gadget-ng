@@ -215,6 +215,9 @@ pub(crate) fn step_insitu(
         } else {
             Some(sph_chem_states)
         },
+        cfg.cosmology.h0,
+        cfg.cosmology.omega_m,
+        cfg.cosmology.omega_lambda,
     );
     if insitu_ran && !insitu_fx.halo_centers.is_empty() {
         insitu_fx.halo_centers

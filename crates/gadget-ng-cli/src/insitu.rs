@@ -4,11 +4,13 @@
 //! escribiendo `insitu_NNNNNN.json` en `<output_dir>/`.
 
 use gadget_ng_analysis::{
-    AnalysisParams, AssemblyBiasParams, AssemblyBiasResult, BkBin, LosAxis, PkRsdParams, XiBin,
-    analyse, bispectrum_equilateral, compute_assembly_bias, compute_pk_multipoles,
+    AnalysisParams, AssemblyBiasParams, AssemblyBiasResult, BkBin, LosAxis, LyaCosmoParams,
+    LyaParams, PkRsdParams, XiBin, analyse, analyze_lya_forest,
+    bispectrum_equilateral, compute_assembly_bias, compute_pk_multipoles,
     two_point_correlation_fft,
 };
-use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin};
+use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin, SzParams,
+    compute_compton_y_map, compute_kinetic_sz_map};
 use gadget_ng_core::{InsituAnalysisSection, Particle, Vec3};
 use serde::Serialize;
 use std::path::Path;
@@ -41,6 +43,41 @@ pub struct InsituResult {
     /// Estadísticas 21cm (δT_b, P(k)₂₁cm). None si `cm21_enabled == false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cm21: Option<gadget_ng_rt::Cm21Output>,
+    /// Mapa Compton-y (tSZ). None si `sz_enabled == false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sz_compton_y: Option<SzComptonYOut>,
+    /// Mapa kinetic SZ. None si `sz_enabled == false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sz_kinetic: Option<SzKineticOut>,
+    /// Bosque Ly-α (τ, F, P(k)_F). None si `lya_enabled == false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lya: Option<LyaForestOut>,
+}
+
+/// Salida resumida del bosque Lyman-α.
+#[derive(Debug, Serialize)]
+pub struct LyaForestOut {
+    pub n_sightlines: usize,
+    pub mean_flux: f64,
+    pub tau_effective: f64,
+    pub n_pk_bins: usize,
+}
+
+/// Salida del mapa Compton-y (estadísticas resumidas).
+#[derive(Debug, Serialize)]
+pub struct SzComptonYOut {
+    pub n_pixels: usize,
+    pub pixel_size: f64,
+    pub mean_y: f64,
+    pub y_max: f64,
+}
+
+/// Salida del mapa kinetic SZ (estadísticas resumidas).
+#[derive(Debug, Serialize)]
+pub struct SzKineticOut {
+    pub n_pixels: usize,
+    pub pixel_size: f64,
+    pub rms_ksz: f64,
 }
 
 /// Salida de un bin del bispectrum.
@@ -161,6 +198,7 @@ pub struct InsituSideEffects {
     pub halo_centers: Vec<Vec3>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn maybe_run_insitu(
     particles: &[Particle],
     cfg: &InsituAnalysisSection,
@@ -169,6 +207,9 @@ pub fn maybe_run_insitu(
     step: u64,
     default_out_dir: &Path,
     chem_states_opt: Option<&[gadget_ng_rt::ChemState]>,
+    cosmo_h0: f64,
+    cosmo_omega_m: f64,
+    cosmo_omega_lambda: f64,
 ) -> (bool, InsituSideEffects) {
     let no_effects = InsituSideEffects {
         halo_centers: Vec::new(),
@@ -386,6 +427,64 @@ pub fn maybe_run_insitu(
             None
         };
 
+        // Phase 174: Efecto Sunyaev-Zel'dovich (Compton-y + kSZ)
+        let (sz_compton_y_out, sz_kinetic_out) = if cfg.sz_enabled {
+            let sz_params = SzParams {
+                n_pixels: cfg.sz_n_pixels.max(4),
+                axis: 'z',
+            };
+            let gamma = 5.0 / 3.0;
+            let compton_y_map = compute_compton_y_map(particles, box_size, &sz_params, gamma);
+            let kinetic_sz_map = compute_kinetic_sz_map(particles, box_size, &sz_params, gamma);
+            (
+                Some(SzComptonYOut {
+                    n_pixels: compton_y_map.n_pixels,
+                    pixel_size: compton_y_map.pixel_size,
+                    mean_y: compton_y_map.mean_y,
+                    y_max: compton_y_map.y_max,
+                }),
+                Some(SzKineticOut {
+                    n_pixels: kinetic_sz_map.n_pixels,
+                    pixel_size: kinetic_sz_map.pixel_size,
+                    rms_ksz: kinetic_sz_map.rms_ksz,
+                }),
+            )
+        } else {
+            (None, None)
+        };
+
+        // Phase 176: Bosque Lyman-α (τ_GP, F(v), P(k)_F)
+        let lya_out = if cfg.lya_enabled {
+            let lya_params = LyaParams {
+                n_sightlines: cfg.lya_n_sightlines.max(4),
+                n_velocity_cells: cfg.pk_mesh.max(4),
+                z_source: if a > 0.0 { 1.0 / a - 1.0 } else { 3.0 },
+                dv_kms: 25.0,
+                t_igm_kelvin: 1e4,
+            };
+            let cosmo = LyaCosmoParams {
+                h0: cosmo_h0,
+                omega_m: cosmo_omega_m,
+                omega_lambda: cosmo_omega_lambda,
+            };
+            let lya_result = analyze_lya_forest(
+                particles,
+                box_size,
+                &lya_params,
+                &cosmo,
+                'z',
+                None,
+            );
+            Some(LyaForestOut {
+                n_sightlines: lya_result.n_sightlines,
+                mean_flux: lya_result.mean_flux,
+                tau_effective: lya_result.tau_effective,
+                n_pk_bins: lya_result.pk_flux.len(),
+            })
+        } else {
+            None
+        };
+
         let insitu = InsituResult {
             step,
             a,
@@ -400,6 +499,9 @@ pub fn maybe_run_insitu(
             assembly_bias: assembly_bias_out,
             igm_temp: igm_temp_out,
             cm21: cm21_out,
+            sz_compton_y: sz_compton_y_out,
+            sz_kinetic: sz_kinetic_out,
+            lya: lya_out,
         };
 
         let path = out_dir.join(format!("insitu_{step:06}.json"));

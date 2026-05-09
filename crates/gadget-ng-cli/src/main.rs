@@ -2,6 +2,7 @@ mod analyze_cmd;
 mod config_load;
 mod engine;
 mod error;
+mod fisher_cmd;
 mod insitu;
 mod mah_cmd;
 mod merge_tree_cmd;
@@ -210,6 +211,54 @@ enum Commands {
         #[arg(long, default_value = "mah.json")]
         out: PathBuf,
     },
+    /// Compute Fisher matrix for cosmological parameter forecasting (Phase 173).
+    ///
+    /// Evaluates ∂P(k,z)/∂θ via central finite differences and assembles
+    /// F_{ij} = Σ_{k,z} (∂P/∂θ_i) C⁻¹ (∂P/∂θ_j) Δk for a fiducial cosmology.
+    ///
+    /// Example:
+    ///   gadget-ng fisher \
+    ///     --omega-m 0.315 --sigma8 0.8111 \
+    ///     --survey-volume 1e9 \
+    ///     --out runs/fisher/fisher_output.json
+    Fisher {
+        /// Ω_m: total matter density fraction (default: Planck 2018 = 0.315).
+        #[arg(long, default_value_t = 0.315)]
+        omega_m: f64,
+        /// Ω_b: baryon density fraction (default: 0.049).
+        #[arg(long, default_value_t = 0.049)]
+        omega_b: f64,
+        /// h: dimensionless Hubble parameter H₀/(100 km/s/Mpc) (default: 0.674).
+        #[arg(long, default_value_t = 0.674)]
+        h: f64,
+        /// n_s: scalar spectral index (default: 0.965).
+        #[arg(long, default_value_t = 0.965)]
+        n_s: f64,
+        /// σ₈: amplitude of matter fluctuations at 8 Mpc/h (default: 0.8111).
+        #[arg(long, default_value_t = 0.8111)]
+        sigma8: f64,
+        /// w₀: CPL dark energy equation of state (default: −1.0 for ΛCDM).
+        #[arg(long, default_value_t = -1.0)]
+        w0: f64,
+        /// wₐ: CPL dark energy evolution (default: 0.0 for ΛCDM).
+        #[arg(long, default_value_t = 0.0)]
+        wa: f64,
+        /// Σm_ν in eV (default: 0.06 for minimal hierarchy).
+        #[arg(long, default_value_t = 0.06)]
+        m_nu_ev: f64,
+        /// Fractional step for central finite differences (default: 0.01 = 1%).
+        #[arg(long, default_value_t = 0.01)]
+        step_frac: f64,
+        /// Survey volume in (Mpc/h)³ (default: 1e9 = 1 Gpc³).
+        #[arg(long, default_value_t = 1.0e9)]
+        survey_volume: f64,
+        /// Use nonlinear P(k) via Halofit instead of linear.
+        #[arg(long, default_value_t = true)]
+        use_nonlinear: bool,
+        /// Output JSON file path.
+        #[arg(long, default_value = "fisher_output.json")]
+        out: PathBuf,
+    },
 }
 
 fn run_with_runtime<F>(f: F) -> Result<(), CliError>
@@ -339,6 +388,35 @@ fn main() -> Result<(), CliError> {
                 .filter_map(|s| s.trim().parse().ok())
                 .collect();
             mah_cmd::run_mah(&merger_tree, &zs, root_id, alpha, beta, &out)?;
+        }
+        Commands::Fisher {
+            omega_m,
+            omega_b,
+            h,
+            n_s,
+            sigma8,
+            w0,
+            wa,
+            m_nu_ev,
+            step_frac,
+            survey_volume,
+            use_nonlinear,
+            out,
+        } => {
+            fisher_cmd::run_fisher(
+                omega_m,
+                omega_b,
+                h,
+                n_s,
+                sigma8,
+                w0,
+                wa,
+                m_nu_ev,
+                step_frac,
+                survey_volume,
+                use_nonlinear,
+                &out,
+            )?;
         }
     }
     Ok(())

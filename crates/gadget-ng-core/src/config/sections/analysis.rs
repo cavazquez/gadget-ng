@@ -54,6 +54,18 @@ pub struct InsituAnalysisSection {
     /// Activar estadísticas de la línea de 21cm (δT_b, P(k)₂₁cm). Default: false.
     #[serde(default)]
     pub cm21_enabled: bool,
+    /// Activar cálculo del efecto Sunyaev-Zel'dovich (Compton-y + kSZ). Default: false.
+    #[serde(default)]
+    pub sz_enabled: bool,
+    /// Resolución del mapa SZ (píxeles por lado). Default: 256.
+    #[serde(default = "default_sz_n_pixels")]
+    pub sz_n_pixels: usize,
+    /// Activar análisis del bosque Lyman-α (τ_GP, F(v), P(k)_F). Default: false.
+    #[serde(default)]
+    pub lya_enabled: bool,
+    /// Número de sightlines para el bosque Ly-α. Default: 256.
+    #[serde(default = "default_lya_n_sightlines")]
+    pub lya_n_sightlines: usize,
     /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
     /// Si es `None` se usa `<out_dir>/insitu/`.
     #[serde(default)]
@@ -75,6 +87,12 @@ fn default_fof_min_part() -> usize {
 fn default_ab_smooth_r() -> f64 {
     5.0
 }
+fn default_sz_n_pixels() -> usize {
+    256
+}
+fn default_lya_n_sightlines() -> usize {
+    256
+}
 
 impl Default for InsituAnalysisSection {
     fn default() -> Self {
@@ -91,6 +109,10 @@ impl Default for InsituAnalysisSection {
             assembly_bias_smooth_r: default_ab_smooth_r(),
             igm_temp_enabled: false,
             cm21_enabled: false,
+            sz_enabled: false,
+            sz_n_pixels: default_sz_n_pixels(),
+            lya_enabled: false,
+            lya_n_sightlines: default_lya_n_sightlines(),
             output_dir: None,
         }
     }
