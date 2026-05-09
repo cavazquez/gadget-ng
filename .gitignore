@@ -38,3 +38,10 @@ experiments/validation_papers/**/out/
 experiments/validation_papers/**/out_*/
 experiments/validation_papers/**/ic/
 experiments/validation_papers/**/*.png
+
+# Copilot / AI agent artifacts
+.agents/
+skills-lock.json
+
+# Proptest regression files
+*.proptest-regressions
