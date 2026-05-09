@@ -24,8 +24,10 @@
 //! ```
 
 pub mod assembly_bias;
+pub mod bao;
 pub mod bispectrum;
 pub mod catalog;
+pub mod cmb_lensing;
 pub mod correlation;
 pub mod emission_lines;
 pub mod fisher;
@@ -34,6 +36,7 @@ pub mod fof;
 pub mod fof_parallel;
 pub mod halo_mass_function;
 pub mod halo_spin;
+pub mod halo_statistics;
 pub mod halofit;
 pub mod lightcone;
 pub mod lya_forest;
@@ -53,12 +56,16 @@ pub mod xray;
 pub use assembly_bias::{
     AssemblyBiasParams, AssemblyBiasResult, compute_assembly_bias, spearman_correlation,
 };
+pub use bao::{BaoParams, BaoResult, bao_template, detect_bao_peak};
 pub use bispectrum::{
     BkBin, BkIsoscelesBin, bispectrum_equilateral, bispectrum_isosceles, reduced_bispectrum,
 };
 pub use catalog::{
     AnalysisParams, AnalysisResult, analyse, read_halo_catalog, read_power_spectrum,
     write_halo_catalog, write_power_spectrum,
+};
+pub use cmb_lensing::{
+    CmbClBin, CmbLensingMap, CmbLensingParams, compute_cmb_angular_cl, compute_cmb_convergence,
 };
 pub use correlation::{XiBin, two_point_correlation_fft, two_point_correlation_pairs};
 pub use emission_lines::{
@@ -81,6 +88,10 @@ pub use halo_mass_function::{
     total_halo_density,
 };
 pub use halo_spin::{HaloSpin, SpinParams, compute_halo_spins, halo_spin};
+pub use halo_statistics::{
+    ConcentrationMassBin, HaloStatsParams, ShmfBin,
+    concentration_mass_relation, subhalo_mass_function,
+};
 pub use halofit::{HalofitCosmo, halofit_pk, p_linear_eh};
 pub use lightcone::{
     ClBin, KsParams, KsResult, LensingMap, LightconeConfig, LightconeHit, TomographicLensingMap,
