@@ -21,9 +21,9 @@ use gadget_ng_integrators::{
 };
 use gadget_ng_io::write_snapshot_formatted;
 use gadget_ng_parallel::{ParallelRuntime, SfcDecomposition, SlabDecomposition, gid_block_range};
+use gadget_ng_pm::PencilLayout2D;
 use gadget_ng_pm::distributed as pm_dist;
 use gadget_ng_pm::slab_pm;
-use gadget_ng_pm::PencilLayout2D;
 use gadget_ng_pm::solve_forces_pencil2d;
 use gadget_ng_tree::{Octree, pack_let_nodes, unpack_let_nodes};
 use gadget_ng_treepm::distributed as treepm_dist;
@@ -31,7 +31,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use super::checkpoint::{load_checkpoint, save_checkpoint};
+use super::checkpoint::load_checkpoint;
 use super::diagnostics::{should_rebalance, write_diagnostic_line};
 use super::gravity::{
     compute_forces_hierarchical_let, compute_forces_local_tree,
@@ -370,13 +370,20 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // de scope en las distintas rutas del motor (jerárquico, TreePM, PM, etc.).
     macro_rules! maybe_checkpoint {
         ($step:expr, $hs:expr, $agn_bhs:expr, $chem:expr) => {
-            if checkpoint_interval > 0 && $step % checkpoint_interval == 0 {
-                save_checkpoint(
-                    rt, $step, a_current, &local, total, $hs, out_dir, &cfg_hash, $agn_bhs, $chem,
-                )?;
-            }
+            context::step_checkpoint(
+                rt,
+                $step,
+                a_current,
+                &local,
+                total,
+                $hs,
+                out_dir,
+                &cfg_hash,
+                $agn_bhs,
+                $chem,
+                checkpoint_interval,
+            )?;
         };
-        // Variante sin estado AGN/chem para rutas que no tienen SPH.
         ($step:expr, $hs:expr) => {
             maybe_checkpoint!($step, $hs, &[], &[]);
         };
@@ -385,26 +392,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Macro local para guardar frame de snapshot intermedio.
     macro_rules! maybe_snap_frame {
         ($step:expr) => {
-            if snapshot_interval > 0 && $step % snapshot_interval == 0 {
-                if let Some(all_parts) = rt.root_gather_particles(&local, total) {
-                    let frame_dir = out_dir.join("frames").join(format!("snap_{:06}", $step));
-                    fs::create_dir_all(&frame_dir).map_err(|e| CliError::io(&frame_dir, e))?;
-                    let t = $step as f64 * cfg.simulation.dt;
-                    let z = if cfg.cosmology.enabled {
-                        1.0 / a_current - 1.0
-                    } else {
-                        0.0
-                    };
-                    let env = snapshot_env_for(cfg, t, z);
-                    write_snapshot_formatted(
-                        cfg.output.snapshot_format,
-                        &frame_dir,
-                        &all_parts,
-                        &prov,
-                        &env,
-                    )?;
-                }
-            }
+            context::step_snap_frame(
+                rt,
+                $step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
         };
     }
 
@@ -416,21 +414,10 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Actualiza halo_centers con los centros de los N halos más masivos para maybe_agn!.
     macro_rules! maybe_insitu {
         ($step:expr) => {
-            let (_insitu_ran, _insitu_fx) = crate::insitu::maybe_run_insitu(
-                &local,
-                &cfg.insitu_analysis,
-                cfg.simulation.box_size,
-                a_current,
-                $step,
-                out_dir,
-                if sph_chem_states.is_empty() {
-                    None
-                } else {
-                    Some(&sph_chem_states)
-                },
-            );
-            if _insitu_ran && !_insitu_fx.halo_centers.is_empty() {
-                halo_centers = _insitu_fx.halo_centers;
+            let _insitu_halos =
+                context::step_insitu(&local, cfg, a_current, $step, out_dir, &sph_chem_states);
+            if !_insitu_halos.is_empty() {
+                halo_centers = _insitu_halos;
             }
         };
     }
@@ -441,206 +428,14 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // $sph_step: índice del paso actual (u64), usado para la semilla de feedback.
     macro_rules! maybe_sph {
         ($sph_step:expr) => {
-            if cfg.sph.enabled {
-                let cf_sph = match &cosmo_state {
-                    Some((cp, _)) => {
-                        let (d, k, k2) = cp.drift_kick_factors(a_current, cfg.simulation.dt);
-                        CosmoFactors { drift: d, kick_half: k, kick_half2: k2 }
-                    }
-                    None => CosmoFactors::flat(cfg.simulation.dt),
-                };
-                let gamma = cfg.sph.gamma;
-                let alpha = cfg.sph.alpha_visc;
-                let n_neigh = cfg.sph.n_neigh as f64;
-                let periodic_box = cfg.cosmology.periodic.then_some(cfg.simulation.box_size);
-                gadget_ng_sph::sph_cosmo_kdk_step(
-                    &mut local,
-                    cf_sph,
-                    gamma,
-                    alpha,
-                    n_neigh,
-                    periodic_box,
-                    |_parts| {},  // gravedad ya fue calculada por el solver principal
-                );
-                if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
-                    // Phase 134: supresión magnética de cooling si mag_suppress_cooling > 0
-                    if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
-                        gadget_ng_sph::apply_cooling_mhd(&mut local, &cfg.sph, cfg.simulation.dt);
-                    } else {
-                        gadget_ng_sph::apply_cooling(&mut local, &cfg.sph, cfg.simulation.dt);
-                    }
-                }
-                // Phase 130: Evolución del polvo intersticial
-                if cfg.sph.dust.enabled {
-                    gadget_ng_sph::update_dust(
-                        &mut local,
-                        &cfg.sph.dust,
-                        cfg.sph.gamma,
-                        cfg.simulation.dt,
-                    );
-                }
-                if cfg.sph.dust.enabled && cfg.sph.dust.radiation_pressure_enabled {
-                    let z_ref = 0.5 * cfg.simulation.box_size;
-                    gadget_ng_sph::apply_dust_radiation_pressure_kick(
-                        &mut local,
-                        &cfg.sph.dust,
-                        z_ref,
-                        cfg.simulation.dt,
-                    );
-                }
-
-                // Phase 121 + 133: Conducción térmica (Spitzer isótropo o anisótropa ∥B)
-                if cfg.sph.conduction.enabled {
-                    if cfg.sph.conduction.anisotropic {
-                        // Phase 133: difusión anisótropa D = κ_∥(B̂⊗B̂) + κ_⊥(I−B̂⊗B̂)
-                        gadget_ng_mhd::apply_anisotropic_conduction(
-                            &mut local,
-                            cfg.sph.conduction.kappa_par,
-                            cfg.sph.conduction.kappa_perp,
-                            cfg.sph.gamma,
-                            cfg.simulation.dt,
-                        );
-                    } else {
-                        gadget_ng_sph::apply_thermal_conduction_periodic(
-                            &mut local,
-                            &cfg.sph.conduction,
-                            cfg.sph.gamma,
-                            cfg.sph.t_floor_k,
-                            cfg.simulation.dt,
-                            periodic_box,
-                        );
-                    }
-                }
-                // Phase 122: Gas molecular H2
-                if cfg.sph.molecular.enabled {
-                    gadget_ng_sph::update_h2_fraction(
-                        &mut local,
-                        &cfg.sph.molecular,
-                        cfg.simulation.dt,
-                    );
-                }
-                // Phase 142: Forzado turbulento Ornstein-Uhlenbeck
-                if cfg.turbulence.enabled {
-                    gadget_ng_mhd::apply_turbulent_forcing(
-                        &mut local,
-                        &cfg.turbulence,
-                        cfg.simulation.dt,
-                        $sph_step as u64,
-                    );
-                }
-                // Phase 149: Acoplamiento electrón-ión (plasma de dos fluidos)
-                if cfg.two_fluid.enabled {
-                    gadget_ng_mhd::apply_electron_ion_coupling(
-                        &mut local, &cfg.two_fluid, cfg.simulation.dt,
-                    );
-                }
-                // Phase 114: ISM multifase fría-caliente (antes del feedback para P_eff correcta)
-                if cfg.sph.ism.enabled {
-                    let sfr_ism = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
-                    let rho_sf = cfg.sph.feedback.rho_sf;
-                    gadget_ng_sph::update_ism_phases(
-                        &mut local,
-                        &sfr_ism,
-                        rho_sf,
-                        &cfg.sph.ism,
-                        cfg.simulation.dt,
-                    );
-                }
-
-                // Phase 78: Feedback estelar estocástico
-                if cfg.sph.feedback.enabled {
-                    let sfr = gadget_ng_sph::compute_sfr(&local, &cfg.sph.feedback);
-                    // Semilla única por paso y rank.
-                    let mut fb_seed = ($sph_step as u64)
-                        .wrapping_mul(2654435761)
-                        .wrapping_add(rt.rank() as u64);
-                    gadget_ng_sph::apply_sn_feedback(
-                        &mut local,
-                        &sfr,
-                        &cfg.sph.feedback,
-                        cfg.simulation.dt,
-                        &mut fb_seed,
-                    );
-
-                    // Phase 115: Vientos estelares pre-SN (OB/Wolf-Rayet)
-                    if cfg.sph.feedback.stellar_wind_enabled {
-                        let mut wind_seed = fb_seed.wrapping_add(0xC0FFEE);
-                        gadget_ng_sph::apply_stellar_wind_feedback(
-                            &mut local,
-                            &sfr,
-                            &cfg.sph.feedback,
-                            cfg.simulation.dt,
-                            &mut wind_seed,
-                        );
-                    }
-
-                    // Phase 117: Inyección de rayos cósmicos desde SN II
-                    if cfg.sph.cr.enabled {
-                        gadget_ng_sph::inject_cr_from_sn(
-                            &mut local,
-                            &sfr,
-                            cfg.sph.cr.cr_fraction,
-                            cfg.simulation.dt,
-                        );
-                        if cfg.sph.cr.anisotropic_diffusion && cfg.mhd.enabled {
-                            gadget_ng_mhd::diffuse_cr_anisotropic(
-                                &mut local,
-                                cfg.sph.cr.kappa_cr,
-                                cfg.sph.cr.b_cr_suppress,
-                                cfg.simulation.dt,
-                            );
-                        } else {
-                            gadget_ng_sph::diffuse_cr_periodic(
-                                &mut local,
-                                cfg.sph.cr.kappa_cr,
-                                cfg.sph.cr.b_cr_suppress, // Phase 129
-                                cfg.simulation.dt,
-                                periodic_box,
-                            );
-                        }
-                        if cfg.sph.cr.hadronic_loss_coeff > 0.0 {
-                            gadget_ng_sph::apply_cr_hadronic_losses(
-                                &mut local,
-                                cfg.sph.cr.hadronic_loss_coeff,
-                                cfg.simulation.dt,
-                            );
-                        }
-                    }
-
-                    // Phase 112: Spawning de partículas estelares
-                    let mut spawn_seed = fb_seed.wrapping_add(0xDEAD_BEEF);
-                    let mut next_gid = local.iter().map(|p| p.global_id).max().unwrap_or(0) + 1;
-                    let (new_stars, to_remove) = gadget_ng_sph::spawn_star_particles(
-                        &mut local,
-                        &sfr,
-                        cfg.simulation.dt,
-                        &mut spawn_seed,
-                        &cfg.sph.feedback,
-                        &mut next_gid,
-                    );
-                    // Eliminar gas agotado (en orden inverso para preservar índices)
-                    let mut remove_sorted = to_remove;
-                    remove_sorted.sort_unstable_by(|a, b| b.cmp(a));
-                    remove_sorted.dedup();
-                    for idx in remove_sorted {
-                        local.swap_remove(idx);
-                    }
-                    // Agregar nuevas estrellas
-                    local.extend(new_stars);
-
-                    // Phase 113: Avanzar edad estelar y aplicar SN Ia
-                    let dt_gyr = cfg.simulation.dt * 1e-3; // conversión rough: 1 u.i. ~ 1 Myr
-                    gadget_ng_sph::advance_stellar_ages(&mut local, dt_gyr);
-                    let mut ia_seed = fb_seed.wrapping_add(0xF00D);
-                    gadget_ng_sph::apply_snia_feedback_periodic(
-                        &mut local,
-                        dt_gyr,
-                        &mut ia_seed,
-                        &cfg.sph.feedback,
-                        periodic_box,
-                    );
-                }
-            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                $sph_step as u64,
+            );
         };
     }
 
@@ -648,25 +443,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Solo actúa si `cfg.rt.enabled` es true; de lo contrario es un no-op.
     macro_rules! maybe_rt {
         () => {
-            if cfg.rt.enabled {
-                if let Some(ref mut rf) = rt_field_opt {
-                    let m1p = gadget_ng_rt::M1Params {
-                        c_red_factor: cfg.rt.c_red_factor,
-                        kappa_abs: cfg.rt.kappa_abs,
-                        kappa_scat: 0.0,
-                        substeps: cfg.rt.substeps,
-                        sigma_dust: 0.1,
-                    };
-                    gadget_ng_rt::m1_update(rf, cfg.simulation.dt, &m1p);
-                    gadget_ng_rt::radiation_gas_coupling_step(
-                        &mut local,
-                        rf,
-                        &m1p,
-                        cfg.simulation.dt,
-                        cfg.simulation.box_size,
-                    );
-                }
-            }
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
         };
     }
 
@@ -679,57 +456,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Fallback al centro de la caja si no hay halos identificados aún.
     macro_rules! maybe_agn {
         ($sph_step_agn:expr) => {
-            if cfg.sph.agn.enabled {
-                let periodic_box_agn = cfg.cosmology.periodic.then_some(cfg.simulation.box_size);
-                let agn_params = gadget_ng_sph::AgnParams {
-                    eps_feedback: cfg.sph.agn.eps_feedback,
-                    m_seed: cfg.sph.agn.m_seed,
-                    v_kick_agn: cfg.sph.agn.v_kick_agn,
-                    r_influence: cfg.sph.agn.r_influence,
-                };
-                let n_bh = cfg.sph.agn.n_agn_bh.max(1);
-                if !halo_centers.is_empty() {
-                    // Sincronizar BHs con centros de halos FoF más masivos
-                    let n_new = halo_centers.len().min(n_bh);
-                    if agn_bhs.len() != n_new {
-                        agn_bhs.resize_with(n_new, || {
-                            gadget_ng_sph::BlackHole::new(
-                                gadget_ng_core::Vec3::zero(),
-                                agn_params.m_seed,
-                            )
-                        });
-                    }
-                    for (bh, &pos) in agn_bhs.iter_mut().zip(halo_centers.iter()) {
-                        bh.pos = pos;
-                    }
-                } else if agn_bhs.is_empty() {
-                    // Fallback: semilla en el centro de la caja hasta que haya halos
-                    let center = cfg.simulation.box_size * 0.5;
-                    agn_bhs.push(gadget_ng_sph::BlackHole::new(
-                        gadget_ng_core::Vec3::new(center, center, center),
-                        agn_params.m_seed,
-                    ));
-                }
-                gadget_ng_sph::grow_black_holes_periodic(
-                    &mut agn_bhs,
-                    &local,
-                    &agn_params,
-                    cfg.simulation.dt,
-                    periodic_box_agn,
-                );
-                // Phase 116: Bifurcación modo quasar / modo radio AGN
-                gadget_ng_sph::apply_agn_feedback_bimodal_periodic(
-                    &mut local,
-                    &agn_bhs,
-                    &agn_params,
-                    cfg.sph.agn.f_edd_threshold,
-                    cfg.sph.agn.r_bubble,
-                    cfg.sph.agn.eps_radio,
-                    cfg.simulation.dt,
-                    periodic_box_agn,
-                );
-                let _ = $sph_step_agn;
-            }
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            let _ = $sph_step_agn;
         };
     }
 
@@ -738,103 +466,21 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Usa el mínimo entre dt global y dt_alfven (CFL magnético) para estabilidad.
     macro_rules! maybe_mhd {
         () => {
-            if cfg.mhd.enabled {
-                // Phase 127: límite CFL magnético
-                let dt_alfven = gadget_ng_mhd::alfven_dt(&local, cfg.mhd.cfl_mhd);
-                let dt_mhd = cfg.simulation.dt.min(dt_alfven);
-                gadget_ng_mhd::advance_induction(&mut local, dt_mhd);
-                // Phase 135: resistividad numérica artificial (Price 2008)
-                if cfg.mhd.alpha_b > 0.0 {
-                    gadget_ng_mhd::apply_artificial_resistivity(
-                        &mut local,
-                        cfg.mhd.alpha_b,
-                        dt_mhd,
-                    );
-                }
-                gadget_ng_mhd::apply_magnetic_forces(&mut local, dt_mhd);
-                gadget_ng_mhd::dedner_cleaning_step(&mut local, cfg.mhd.c_h, cfg.mhd.c_r, dt_mhd);
-                // Phase 142: correcciones SRMHD para partículas con |v|/c > threshold
-                if cfg.mhd.relativistic_mhd {
-                    gadget_ng_mhd::advance_srmhd(
-                        &mut local,
-                        dt_mhd,
-                        gadget_ng_mhd::C_LIGHT,
-                        cfg.mhd.v_rel_threshold,
-                    );
-                }
-                // Phase 142: flux-freeze ICM (B ∝ ρ^{2/3} para β > beta_freeze)
-                {
-                    let rho_ref_mhd = gadget_ng_mhd::mean_gas_density(&local);
-                    gadget_ng_mhd::apply_flux_freeze(
-                        &mut local,
-                        cfg.sph.gamma,
-                        cfg.mhd.beta_freeze,
-                        rho_ref_mhd,
-                    );
-                }
-                // Phase 146: viscosidad anisótropa Braginskii
-                if cfg.mhd.eta_braginskii > 0.0 {
-                    gadget_ng_mhd::apply_braginskii_viscosity(
-                        &mut local,
-                        cfg.mhd.eta_braginskii,
-                        dt_mhd,
-                    );
-                }
-                // Phase 145: reconexión magnética Sweet-Parker
-                if cfg.mhd.reconnection_enabled {
-                    gadget_ng_mhd::apply_magnetic_reconnection(
-                        &mut local,
-                        cfg.mhd.f_reconnection,
-                        cfg.sph.gamma,
-                        dt_mhd,
-                    );
-                }
-            }
+            context::step_mhd(&mut local, cfg);
         };
     }
 
     // Phase 157: hook SIDM — scattering elástico post-drift/kick
     macro_rules! maybe_sidm {
         ($step:expr) => {
-            if cfg.sidm.enabled {
-                let sidm_params = gadget_ng_tree::SidmParams {
-                    sigma_m: cfg.sidm.sigma_m,
-                    v_max: cfg.sidm.v_max,
-                };
-                gadget_ng_tree::apply_sidm_scattering(
-                    &mut local,
-                    &sidm_params,
-                    cfg.simulation.dt,
-                    cfg.simulation.seed + $step,
-                );
-            }
+            context::step_sidm(&mut local, cfg, $step);
         };
     }
 
     // Phase 158: hook gravedad modificada f(R) — post-cálculo de fuerzas
     macro_rules! maybe_fr {
         ($a_cur:expr) => {
-            if cfg.modified_gravity.enabled {
-                let fr_params = gadget_ng_core::FRParams {
-                    f_r0: cfg.modified_gravity.f_r0,
-                    n: cfg.modified_gravity.n,
-                };
-                let cosmo_params = gadget_ng_core::CosmologyParams::from_cosmology_toml(
-                    cfg.cosmology.omega_m,
-                    cfg.cosmology.omega_lambda,
-                    cfg.cosmology.h0,
-                    cfg.cosmology.w0,
-                    cfg.cosmology.wa,
-                    cfg.cosmology.m_nu_ev,
-                    cfg.cosmology.h0 * 10.0,
-                );
-                gadget_ng_core::apply_modified_gravity(
-                    &mut local,
-                    &fr_params,
-                    &cosmo_params,
-                    $a_cur,
-                );
-            }
+            context::step_fr(&mut local, cfg, $a_cur);
         };
     }
 
@@ -848,58 +494,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     // Usa sph_chem_states (un ChemState por partícula, sincronizado con local[]).
     macro_rules! maybe_reionization {
         ($a_cur:expr) => {
-            if cfg.reionization.enabled {
-                let _a_cur: f64 = $a_cur;
-                let _z_eor = if _a_cur > 0.0 { 1.0 / _a_cur - 1.0 } else { f64::INFINITY };
-                if _z_eor >= cfg.reionization.z_end && _z_eor <= cfg.reionization.z_start {
-                    if let Some(ref mut rf) = rt_field_opt {
-                        let m1p = gadget_ng_rt::M1Params {
-                            c_red_factor: cfg.rt.c_red_factor,
-                            kappa_abs: cfg.rt.kappa_abs,
-                            kappa_scat: 0.0,
-                            substeps: cfg.rt.substeps,
-                            sigma_dust: 0.1,
-                        };
-                        // Sincronizar longitud: si local creció (ej. partículas cargadas)
-                        // extender sph_chem_states con estados neutros
-                        if sph_chem_states.len() < local.len() {
-                            let extra = local.len() - sph_chem_states.len();
-                            sph_chem_states.extend(
-                                std::iter::repeat(gadget_ng_rt::ChemState::neutral()).take(extra)
-                            );
-                        } else if sph_chem_states.len() > local.len() {
-                            sph_chem_states.truncate(local.len());
-                        }
-
-                        // Fuentes UV: posiciones uniformes en la caja
-                        let n_src = cfg.reionization.n_sources.max(1);
-                        let lum = cfg.reionization.uv_luminosity;
-                        let bsz = cfg.simulation.box_size;
-                        let sources: Vec<gadget_ng_rt::UvSource> = (0..n_src)
-                            .map(|i| {
-                                let frac = (i as f64 + 0.5) / n_src as f64;
-                                gadget_ng_rt::UvSource {
-                                    pos: gadget_ng_core::Vec3::new(
-                                        frac * bsz, frac * bsz, frac * bsz,
-                                    ),
-                                    luminosity: lum,
-                                }
-                            })
-                            .collect();
-
-                        // Paso de reionización con química acoplada real
-                        let _reion_state = gadget_ng_rt::reionization_step(
-                            rf,
-                            &mut sph_chem_states,
-                            &sources,
-                            &m1p,
-                            cfg.simulation.dt,
-                            bsz,
-                            _z_eor,
-                        );
-                    }
-                }
-            }
+            context::step_reionization(&local, &mut rt_field_opt, &mut sph_chem_states, cfg, $a_cur);
         };
     }
 
@@ -1170,7 +765,8 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         //     del paso para todos los sub-pasos (Phase 45).
         use gadget_ng_parallel::sfc::global_bbox;
 
-        let (cosmo_params, _) = cosmo_state.expect("cosmo_state must be Some when use_sfc_let_cosmo is true");
+        let (cosmo_params, _) =
+            cosmo_state.expect("cosmo_state must be Some when use_sfc_let_cosmo is true");
         let sfc_kind = cfg.performance.sfc_kind;
         let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, &local);
         let all_pos_init: Vec<Vec3> = local.iter().map(|p| p.position).collect();
@@ -1533,7 +1129,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     //   • PM LR:    slab-z sin cambios (Fase 20/21). Sincronización explícita.
                     //
                     // F_total = F_lr (PM slab + erf) + F_sr (árbol erfc, dominio SFC)
-                    let layout = treepm_slab_layout_opt.as_ref().expect("treepm_slab_layout_opt must be set for TreePM SR SFC path");
+                    let layout = treepm_slab_layout_opt
+                        .as_ref()
+                        .expect("treepm_slab_layout_opt must be set for TreePM SR SFC path");
                     let r_s = treepm_r_split;
                     let r_cut = treepm_r_cut;
                     let _t_tpm = Instant::now();
@@ -1674,7 +1272,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     //
                     // Fase 21: halo 1D en z.
                     // Fase 22 (use_treepm_3d_halo): halo volumétrico 3D periódico.
-                    let layout = treepm_slab_layout_opt.as_ref().expect("treepm_slab_layout_opt must be set for TreePM slab distributed path");
+                    let layout = treepm_slab_layout_opt.as_ref().expect(
+                        "treepm_slab_layout_opt must be set for TreePM slab distributed path",
+                    );
                     let r_s = treepm_r_split;
                     let r_cut = treepm_r_cut;
                     let t_tpm = Instant::now();
@@ -1751,7 +1351,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     let _ = tpm_total_ns;
                 } else if use_pm_slab {
                     // ─ Fase 20: PM slab distribuido ──────────────────────────────────
-                    let layout = slab_layout_opt.as_ref().expect("slab_layout_opt must be set for PM slab path");
+                    let layout = slab_layout_opt
+                        .as_ref()
+                        .expect("slab_layout_opt must be set for PM slab path");
                     let t0 = Instant::now();
 
                     let local_pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
@@ -1797,7 +1399,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                     //   3. solve_forces_pencil2d → fuerzas slab 2D local
                     //   4. Allgather fuerzas → reconstruir grid global nm³
                     //   5. Interpolación CIC local
-                    let pencil_layout = pencil_layout_opt.as_ref().expect("pencil_layout_opt must be set for PM pencil 2D path");
+                    let pencil_layout = pencil_layout_opt
+                        .as_ref()
+                        .expect("pencil_layout_opt must be set for PM pencil 2D path");
                     let nm = pm_nm;
                     let pz = pencil_layout.pz;
                     let ny_local = pencil_layout.ny_local;

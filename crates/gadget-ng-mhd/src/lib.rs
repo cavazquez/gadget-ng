@@ -20,18 +20,24 @@
 pub mod anisotropic;
 pub mod braginskii;
 pub mod cleaning;
+pub mod dynamo;
 pub mod flux_freeze;
 pub mod induction;
 pub mod pressure;
 pub mod reconnection;
 pub mod relativistic;
 pub mod stats;
+pub mod streaming;
 pub mod turbulence;
 pub mod two_fluid;
 
 pub use anisotropic::{apply_anisotropic_conduction, beta_plasma, diffuse_cr_anisotropic};
 pub use braginskii::apply_braginskii_viscosity;
 pub use cleaning::dedner_cleaning_step;
+pub use dynamo::{
+    alpha_coefficient, apply_turbulent_dynamo, dynamo_growth_rate, magnetic_energy_ratio,
+    maxwell_stress_tensor,
+};
 pub use flux_freeze::{apply_flux_freeze, flux_freeze_error, mean_gas_density};
 pub use induction::{advance_induction, alfven_dt, apply_artificial_resistivity, init_b_field};
 pub use pressure::{apply_magnetic_forces, magnetic_pressure, maxwell_stress};
@@ -41,6 +47,7 @@ pub use relativistic::{
     srmhd_conserved_to_primitive,
 };
 pub use stats::{b_field_stats, magnetic_power_spectrum};
+pub use streaming::{cr_pressure_backreaction, streaming_crk};
 pub use turbulence::{apply_turbulent_forcing, turbulence_stats};
 pub use two_fluid::{apply_electron_ion_coupling, mean_te_over_ti};
 

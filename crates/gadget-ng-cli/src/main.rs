@@ -249,7 +249,11 @@ fn main() -> Result<(), CliError> {
             // Si vis_snapshot > 0, renderizar el snapshot final.
             if vis_snapshot > 0 {
                 engine::render_snapshot_visualization(
-                    &out, vis_snapshot, &vis_proj, &vis_mode, &vis_format,
+                    &out,
+                    vis_snapshot,
+                    &vis_proj,
+                    &vis_mode,
+                    &vis_format,
                 );
             }
         }

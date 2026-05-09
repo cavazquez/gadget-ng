@@ -96,7 +96,11 @@ mod tests {
 
     #[test]
     fn flux_freeze_error_zero_when_bzero() {
-        assert_abs_diff_eq!(flux_freeze_error(0.0, 0.0, 100.0, 100.0), 0.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(
+            flux_freeze_error(0.0, 0.0, 100.0, 100.0),
+            0.0,
+            epsilon = 1e-12
+        );
     }
 
     #[test]
@@ -105,7 +109,11 @@ mod tests {
         let rho0: f64 = 1.0;
         let rho: f64 = 8.0 * rho0;
         let b_expected = b0 * (rho / rho0).powf(2.0 / 3.0);
-        assert_abs_diff_eq!(flux_freeze_error(b_expected, b0, rho, rho0), 0.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(
+            flux_freeze_error(b_expected, b0, rho, rho0),
+            0.0,
+            epsilon = 1e-12
+        );
     }
 
     #[test]

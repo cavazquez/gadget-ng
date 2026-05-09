@@ -1,8 +1,9 @@
 # Roadmap
 
-> **Estado al 23 de abril de 2026:** Phases 1–164 completadas.  
-> Phases 161–163: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).  
-> Phase 164: Documentación final HPC.  
+> **Estado al 8 de mayo de 2026:** Phases 1–170 completadas.
+> Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
+> Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
+> Phase 170: CR Transport (streaming lungo B + backreaction).
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -177,3 +178,14 @@ Posibles extensiones:
 - (164) 3 reportes técnicos, CHANGELOG, roadmap actualizados. `run_all_validations.sh` extendido.
 
 **Estado final:** Phases 1–164 completadas. Física completa + HPC Engineering con tests para GPU/cosmo-jerárquico/MHD-ICs.
+
+**Phases 165–172 (2026-05-08):**
+
+- (165) **GPU CUDA/HIP V1**: `v1_gpu_tests.rs` — 6/6 tests pasan con CPU fallback en CI.
+- (166) **SPH Gadget-2**: Entropía + Balsara + Colapso de Evrard — formulación completa Springel & Hernquist 2002.
+- (167) **Validaciones PF-01..PF-16**: 16 tests cuantitativos de validación física, runner Bloque 0.
+- (168) **Cierre criterios V1/V2/V3**: documentación y verificación de estados V1 GPU, V2 block timesteps+cosmo, V3 MHD analítico.
+- (169) **CI Fix**: `approx` dev-dependencies, dead code annotations, clippy fixes, proptest epsilon, MSRV check.
+- (170) **CR Transport**: `streaming_crk` + `cr_pressure_backreaction` en `gadget-ng-mhd/src/streaming.rs`.
+- (171) **Multi-Phase ISM**: `phase_transitions.rs` — tres fases, transiciones, Field length, criterio de inestabilidad.
+- (172) **Turbulent Dynamo**: `dynamo.rs` — α-effect, `dynamo_growth_rate`, `apply_turbulent_dynamo`, `magnetic_energy_ratio`, `maxwell_stress_tensor`.

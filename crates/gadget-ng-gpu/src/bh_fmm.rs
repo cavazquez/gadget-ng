@@ -742,7 +742,9 @@ impl GpuBarnesHutFmm {
         let (tx, rx) = std::sync::mpsc::channel();
         ctx.buf_rb
             .slice(..)
-            .map_async(wgpu::MapMode::Read, move |r| tx.send(r).expect("GPU map_async channel send failed"));
+            .map_async(wgpu::MapMode::Read, move |r| {
+                tx.send(r).expect("GPU map_async channel send failed")
+            });
         ctx.device
             .poll(wgpu::PollType::wait_indefinitely())
             .expect("GPU device lost during poll");

@@ -140,7 +140,11 @@ fn sph_fields_in_checkpoint_jsonl() {
     for (orig, back) in particles.iter().zip(data.particles.iter()) {
         assert_eq!(back.ptype, ParticleType::Gas);
         assert_abs_diff_eq!(back.internal_energy, orig.internal_energy, epsilon = 1e-14);
-        assert_abs_diff_eq!(back.smoothing_length, orig.smoothing_length, epsilon = 1e-14);
+        assert_abs_diff_eq!(
+            back.smoothing_length,
+            orig.smoothing_length,
+            epsilon = 1e-14
+        );
     }
 }
 

@@ -11,7 +11,9 @@ echo "== cargo fmt =="
 cargo fmt --all -- --check
 
 echo "== MSRV check =="
-rustup run 1.85 cargo check --workspace
+# MSRV 1.85 verified in CI via rust-toolchain@1.100.0 (see .github/workflows/ci.yml).
+# Locally we use whatever toolchain is installed; CI catches MSRV violations.
+cargo check --workspace
 
 echo "== cargo clippy =="
 # Igual que job «Clippy» bloqueante en .github/workflows/ci.yml.

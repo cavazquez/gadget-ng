@@ -246,7 +246,11 @@ pub fn find_halos(
     }
 
     // Ordenar por masa descendente y reasignar IDs.
-    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).expect("halo mass must be finite f64"));
+    halos.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .expect("halo mass must be finite f64")
+    });
     for (i, h) in halos.iter_mut().enumerate() {
         h.halo_id = i;
     }
@@ -346,7 +350,11 @@ pub fn find_halos_with_membership(
     }
 
     // Ordenar por masa descendente.
-    halos_with_members.sort_by(|a, b| b.0.mass.partial_cmp(&a.0.mass).expect("halo mass must be finite f64"));
+    halos_with_members.sort_by(|a, b| {
+        b.0.mass
+            .partial_cmp(&a.0.mass)
+            .expect("halo mass must be finite f64")
+    });
 
     // Construir membresía por partícula.
     let mut membership: Vec<Option<usize>> = vec![None; n];
@@ -500,7 +508,11 @@ pub fn find_halos_combined(
         })
         .collect();
 
-    halos.sort_by(|a, b| b.mass.partial_cmp(&a.mass).expect("halo mass must be finite f64"));
+    halos.sort_by(|a, b| {
+        b.mass
+            .partial_cmp(&a.mass)
+            .expect("halo mass must be finite f64")
+    });
     for (i, h) in halos.iter_mut().enumerate() {
         h.halo_id = i;
     }

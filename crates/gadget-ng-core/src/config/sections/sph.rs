@@ -484,6 +484,11 @@ pub struct CrSection {
     /// Pérdidas hadrónicas ~ `e_cr × exp(−coeff × ρ × dt)`; `0.0` desactiva (roadmap Fase A).
     #[serde(default)]
     pub hadronic_loss_coeff: f64,
+    /// Coeficiente de streaming lungo-B para rayos cósmicos (Phase 170). Default: `0.0` (desactivado).
+    ///
+    /// `streaming_coefficient > 0` activa `streaming_crk` + `cr_pressure_backreaction`.
+    #[serde(default)]
+    pub streaming_coefficient: f64,
 }
 
 fn default_cr_fraction() -> f64 {
@@ -505,6 +510,7 @@ impl Default for CrSection {
             b_cr_suppress: default_b_cr_suppress(),
             anisotropic_diffusion: false,
             hadronic_loss_coeff: 0.0,
+            streaming_coefficient: 0.0,
         }
     }
 }

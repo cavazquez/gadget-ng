@@ -81,6 +81,12 @@ pub struct MhdSection {
     /// Número de halos FoF que inyectan jets (Phase 148). Default: `1`.
     #[serde(default = "default_n_jet_halos")]
     pub n_jet_halos: usize,
+    /// Acta el dinamo turbulento α-effect (Phase 172). Default: `false`.
+    #[serde(default)]
+    pub dynamo_enabled: bool,
+    /// Tiempo de decaimiento del campo magnético en unidades internas (Phase 172). Default: `10.0`.
+    #[serde(default = "default_dynamo_decay_time")]
+    pub dynamo_decay_time: f64,
 }
 
 fn default_mhd_c_h() -> f64 {
@@ -110,6 +116,9 @@ fn default_v_jet() -> f64 {
 fn default_n_jet_halos() -> usize {
     1
 }
+fn default_dynamo_decay_time() -> f64 {
+    10.0
+}
 
 impl Default for MhdSection {
     fn default() -> Self {
@@ -131,6 +140,8 @@ impl Default for MhdSection {
             jet_enabled: false,
             v_jet: default_v_jet(),
             n_jet_halos: default_n_jet_halos(),
+            dynamo_enabled: false,
+            dynamo_decay_time: default_dynamo_decay_time(),
         }
     }
 }

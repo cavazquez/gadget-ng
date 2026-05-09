@@ -5,8 +5,8 @@
 
 use gadget_ng_core::{RunConfig, SolverKind};
 use gadget_ng_parallel::SfcDecomposition;
-use gadget_ng_pm::slab_fft::SlabLayout;
 use gadget_ng_pm::PencilLayout2D;
+use gadget_ng_pm::slab_fft::SlabLayout;
 
 use crate::error::CliError;
 
@@ -142,21 +142,24 @@ impl PmTreepmDomain {
         // ── SfcDecomposition para SR (Fase 23) ───────────────────────────────
         let sr_sfc_kind = cfg.performance.sfc_kind;
         let sr_sfc_rebalance = cfg.performance.sfc_rebalance_interval;
-        let sr_sfc_decomp_opt: Option<SfcDecomposition> =
-            if use_treepm_sr_sfc && rt.size() > 1 {
-                use gadget_ng_parallel::sfc::global_bbox;
-                let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, local);
-                let pos_loc: Vec<gadget_ng_core::Vec3> =
-                    local.iter().map(|p| p.position).collect();
-                Some(SfcDecomposition::build_with_bbox_and_kind(
-                    &pos_loc,
-                    gxlo, gxhi, gylo, gyhi, gzlo, gzhi,
-                    rt.size(),
-                    sr_sfc_kind,
-                ))
-            } else {
-                None
-            };
+        let sr_sfc_decomp_opt: Option<SfcDecomposition> = if use_treepm_sr_sfc && rt.size() > 1 {
+            use gadget_ng_parallel::sfc::global_bbox;
+            let (gxlo, gxhi, gylo, gyhi, gzlo, gzhi) = global_bbox(rt, local);
+            let pos_loc: Vec<gadget_ng_core::Vec3> = local.iter().map(|p| p.position).collect();
+            Some(SfcDecomposition::build_with_bbox_and_kind(
+                &pos_loc,
+                gxlo,
+                gxhi,
+                gylo,
+                gyhi,
+                gzlo,
+                gzhi,
+                rt.size(),
+                sr_sfc_kind,
+            ))
+        } else {
+            None
+        };
 
         Ok(Self {
             pm_nm,

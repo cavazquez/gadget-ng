@@ -8,6 +8,101 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 172 — Turbulent Dynamo α-Effect
+
+Implementa crecimiento de campo magnético a gran escala por dinamo turbulento (Federrath et al. 2011):
+
+#### Modelo de dinamo cinemático
+
+- **`alpha_coefficient`**: coeficiente α = (1/3) v_rms √(1 + M_A²) con M_A = v_rms/v_A.
+- **`dynamo_growth_rate`**: tasa de crecimiento γ = (v_rms/v_A) / Re_m (limitado a Re_m ≥ 1).
+- **`apply_turbulent_dynamo`**: paso de integración para la ecuación del dinamo, aplica
+  término de curling `α × |B|/h` y decaimiento exponencial `exp(-dt/τ_decay)`.
+- **`magnetic_energy_ratio`**: E_mag / E_kin para diagnóstico de saturación del dinamo.
+- **`maxwell_stress_tensor`**: σ_M = |B|² / (2μ₀ρ) para diagnóstico de tensiones magnéticas.
+
+#### Integración en el motor
+
+- **Config**: `MhdSection.dynamo_enabled` (default: `false`) y `dynamo_decay_time` (default: `10.0`).
+- **Hook**: `maybe_mhd!` → `apply_turbulent_dynamo` cuando `cfg.mhd.dynamo_enabled = true`.
+- **Config**: `CrSection.streaming_coefficient` (default: `0.0`) para activar CR streaming Phase 170.
+- **Hook**: `maybe_sph!` → `streaming_crk` + `cr_pressure_backreaction` cuando
+  `cfg.sph.cr.streaming_coefficient > 0` y `cfg.mhd.enabled`.
+- **Hook**: `maybe_sph!` → `apply_phase_transitions` cuando `cfg.sph.ism.enabled` (Phase 171).
+
+#### Tests
+
+- `alpha_coefficient_basic`: verifica α = (1/3) v_rms para M_A = 0.
+- `dynamo_growth_rate_positive`: velocidad finita produce tasa positiva.
+- `apply_turbulent_dynamo_no_panic`: gas con B ≠ 0 no pánico.
+- `magnetic_energy_ratio_zero_b`: sin campo B, ratio = 0.
+
+### Phase 170 — CR Transport: Streaming lungo B + Compressional + Backreaction
+
+Implementa transporte de rayos cósmicos más allá de la difusión simple:
+
+#### Modelo de streaming compressional
+
+- **`streaming_crk`**: término compressional `de_cr/dt = -(1/3) e_cr * (∇·v)` — los CRs ganan
+  energía en zonas de compresión (∇·v < 0) y pierden en expansión.
+- Pérdidas por streaming propiamente dicho: excitación de Alfvén waves con rate
+  `η_stream = v_A * e_cr / L_min` (activo con `streaming_coefficient > 0`).
+
+#### Backreaction de presión CR
+
+- **`cr_pressure_backreaction`**: gradiente de presión CR añadido a `acceleration`.
+  Formula: `∇P_cr = Σ_j m_j (P_cr,i + P_cr,j)/2 * ∇W(r_ij)`.
+  Implementa la respuesta de los CRs sobre el gas (efecto del virial).
+
+#### Tests
+
+- `streaming_no_compression_no_change`: sin divergencia, energía CR se conserva.
+- `cr_pressure_incompressible_zero_force`: con `e_cr = 0`, no hay fuerza.
+- `cr_pressure_symmetry`: acción-reacción, momentum conservado.
+
+#### Ubicación
+
+- `gadget-ng-mhd/src/streaming.rs` — nuevo módulo.
+- Exportado en `gadget-ng-mhd/src/lib.rs`.
+
+---
+
+### Phase 171 — Multi-Phase ISM: Phase Transitions + Field Length
+
+Implementa transiciones de fase y física térmica para el ISM de tres fases:
+
+#### Modelo de tres fases
+
+- **Cold (T < 10⁴ K)**: nubes moleculares, formación estelar
+- **Warm (10⁴ ≤ T < 3.2×10⁵ K)**: gas ionizado, fase intermedia  
+- **Hot (T ≥ 3.2×10⁵ K)**: ICM, gas en shocks
+
+#### Phase transitions
+
+- `classify_phase`: clasifica partícula en Cold/Warm/Hot según temperatura
+- `phase_fractions`: computa fracciones de masa por fase en el conjunto
+- `apply_phase_transitions`: relaja `u_cold` y `u` hacia equilibrio termal
+
+#### Thermal instability
+
+- `field_length`: longitud de Field λ_F = π^(1/2) κ^(1/2) / (ρ |dΛ/dT|)^(1/2)
+- `cooling_time`: tiempo de enfriamiento t_cool = u / (Λ n_H²)
+- `free_fall_time`: tiempo de caída libre
+- `thermal_instability_criterion`: criterio t_cool < t_ff → inestabilidad
+
+#### Tests
+
+- `temperature_conversion_roundtrip`: u → T → u preserva valor
+- `classify_cold_phase`, `classify_hot_phase`: clasificación correcta
+- `phase_transitions_run_without_panic`: función sin panics
+
+#### Ubicación
+
+- `gadget-ng-sph/src/phase_transitions.rs` — nuevo módulo.
+- Exportado en `gadget-ng-sph/src/lib.rs`.
+
+---
+
 ### Phase 168 — Cierre de criterios V1/V2/V3 (documentación y verificación)
 
 Verifica y documenta el estado real de los criterios globales **V1 (GPU)**, **V2 (block

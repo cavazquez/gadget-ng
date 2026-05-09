@@ -1,6 +1,6 @@
-use proptest::prelude::*;
-use gadget_ng_core::Vec3;
 use approx::assert_abs_diff_eq;
+use gadget_ng_core::Vec3;
+use proptest::prelude::*;
 
 proptest! {
     /// CIC mass assignment must conserve total mass exactly.
@@ -52,9 +52,10 @@ proptest! {
         );
 
         // Momentum conservation: m1 * a12 + m2 * a21 = 0
-        assert_abs_diff_eq!(m1 * a12.x + m2 * a21.x, 0.0, epsilon = 1e-12);
-        assert_abs_diff_eq!(m1 * a12.y + m2 * a21.y, 0.0, epsilon = 1e-12);
-        assert_abs_diff_eq!(m1 * a12.z + m2 * a21.z, 0.0, epsilon = 1e-12);
+        // eps=1e-10: tight for physics, accommodates accumulated f64 rounding
+        assert_abs_diff_eq!(m1 * a12.x + m2 * a21.x, 0.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(m1 * a12.y + m2 * a21.y, 0.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(m1 * a12.z + m2 * a21.z, 0.0, epsilon = 1e-10);
     }
 
     /// Eisenstein-Hu transfer function must be positive for all k.

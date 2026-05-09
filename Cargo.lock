@@ -852,6 +852,7 @@ dependencies = [
 name = "gadget-ng-physics"
 version = "0.1.0"
 dependencies = [
+ "approx",
  "gadget-ng-analysis",
  "gadget-ng-core",
  "gadget-ng-integrators",
@@ -926,6 +927,7 @@ dependencies = [
 name = "gadget-ng-treepm"
 version = "0.1.0"
 dependencies = [
+ "approx",
  "criterion",
  "gadget-ng-core",
  "gadget-ng-parallel",

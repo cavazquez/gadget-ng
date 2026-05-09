@@ -30,3 +30,4 @@ toml = { workspace = true }
 rayon = "1.10"
 tempfile.workspace = true
 hdf5 = { package = "hdf5-metno", version = "0.12.4" }
+approx.workspace = true

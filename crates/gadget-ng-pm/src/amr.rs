@@ -787,11 +787,23 @@ pub fn amr_pm_accels_multilevel(
                 );
                 // Peso: 1 en el centro del parche, suavizado en los bordes
                 let o = patch.origin();
-                let fx = (sub_pos[sub_idx.iter().position(|&x| x == global_i).expect("global_i must be in sub_idx")].x - o.x)
+                let fx = (sub_pos[sub_idx
+                    .iter()
+                    .position(|&x| x == global_i)
+                    .expect("global_i must be in sub_idx")]
+                .x - o.x)
                     / patch.size;
-                let fy = (sub_pos[sub_idx.iter().position(|&x| x == global_i).expect("global_i must be in sub_idx")].y - o.y)
+                let fy = (sub_pos[sub_idx
+                    .iter()
+                    .position(|&x| x == global_i)
+                    .expect("global_i must be in sub_idx")]
+                .y - o.y)
                     / patch.size;
-                let fz = (sub_pos[sub_idx.iter().position(|&x| x == global_i).expect("global_i must be in sub_idx")].z - o.z)
+                let fz = (sub_pos[sub_idx
+                    .iter()
+                    .position(|&x| x == global_i)
+                    .expect("global_i must be in sub_idx")]
+                .z - o.z)
                     / patch.size;
                 let w = ((1.0 - 2.0 * (fx - 0.5).abs())
                     * (1.0 - 2.0 * (fy - 0.5).abs())

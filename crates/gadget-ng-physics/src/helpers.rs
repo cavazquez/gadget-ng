@@ -155,7 +155,11 @@ pub fn plummer_sphere(n: usize, m_total: f64, r_scale: f64) -> Vec<Particle> {
                 r * cos_theta,
             );
 
-            let vel = Vec3::new(sigma * rng.gauss(), sigma * rng.gauss(), sigma * rng.gauss());
+            let vel = Vec3::new(
+                sigma * rng.gauss(),
+                sigma * rng.gauss(),
+                sigma * rng.gauss(),
+            );
 
             Particle::new(i, m_part, pos, vel)
         })
@@ -222,8 +226,7 @@ pub fn kepler_two_body(m1: f64, m2: f64, r: f64) -> (Vec<Particle>, f64) {
     let total_mass = m1 + m2;
     let separation = 2.0 * r;
     let v_circ = (g * total_mass / separation).sqrt();
-    let period =
-        2.0 * std::f64::consts::PI * (separation.powi(3) / (g * total_mass)).sqrt();
+    let period = 2.0 * std::f64::consts::PI * (separation.powi(3) / (g * total_mass)).sqrt();
     let vy1 = m2 / total_mass * v_circ;
     let vy2 = -m1 / total_mass * v_circ;
 

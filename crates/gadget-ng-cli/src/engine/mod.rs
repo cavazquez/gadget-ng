@@ -29,22 +29,21 @@ pub fn render_snapshot_visualization(
     use gadget_ng_vis::Projection;
     let data = gadget_ng_io::read_snapshot_formatted(SnapshotFormat::Jsonl, &snap_dir);
     let Ok(data) = data else { return };
-    let positions: Vec<gadget_ng_core::Vec3> =
-        data.particles.iter().map(|p| p.position).collect();
+    let positions: Vec<gadget_ng_core::Vec3> = data.particles.iter().map(|p| p.position).collect();
     let proj = match vis_proj.to_lowercase().as_str() {
         "xz" => Projection::XZ,
         "yz" => Projection::YZ,
         _ => Projection::XY,
     };
     let pixels = match vis_mode.to_lowercase().as_str() {
-        "density" => gadget_ng_vis::render_density_ppm(
-            &positions, data.box_size, 1024, 1024, proj,
-        ),
-        _ => gadget_ng_vis::render_ppm_projection(
-            &positions, data.box_size, 1024, 1024, proj,
-        ),
+        "density" => gadget_ng_vis::render_density_ppm(&positions, data.box_size, 1024, 1024, proj),
+        _ => gadget_ng_vis::render_ppm_projection(&positions, data.box_size, 1024, 1024, proj),
     };
-    let ext = if vis_format.to_lowercase() == "png" { "png" } else { "ppm" };
+    let ext = if vis_format.to_lowercase() == "png" {
+        "png"
+    } else {
+        "ppm"
+    };
     let out_path = out.join(format!("snapshot_final.{ext}"));
     let result = if ext == "png" {
         gadget_ng_vis::write_png(&out_path, &pixels, 1024, 1024)

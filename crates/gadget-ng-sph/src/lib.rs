@@ -44,6 +44,7 @@ pub mod ism;
 pub mod kernel;
 pub mod molecular_gas;
 pub mod particle;
+pub mod phase_transitions;
 pub mod thermal_conduction;
 pub mod viscosity;
 
@@ -81,5 +82,9 @@ pub use ism::{effective_pressure, effective_u, update_ism_phases};
 pub use kernel::{grad_w, w};
 pub use molecular_gas::update_h2_fraction;
 pub use particle::{GasData, ParticleType, SphParticle};
+pub use phase_transitions::{
+    apply_phase_transitions, classify_phase, cooling_time, field_length, free_fall_time,
+    phase_fractions, thermal_instability_criterion,
+};
 pub use thermal_conduction::{apply_thermal_conduction, apply_thermal_conduction_periodic};
 pub use viscosity::{compute_balsara_factors, compute_balsara_factors_with_periodic};

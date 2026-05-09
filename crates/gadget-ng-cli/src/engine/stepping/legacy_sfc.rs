@@ -23,4 +23,5 @@
 //!    won't compile. An alternative is to make `global_bbox` take `&dyn
 //!    ParallelRuntime` or add the blanket impl in serial mode.
 
+#[expect(dead_code)]
 pub(crate) const LEGACY_SFC_EXTRACTED: bool = false;

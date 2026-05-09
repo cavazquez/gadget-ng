@@ -20,6 +20,7 @@ rayon = { version = "1.10", optional = true }
 gadget-ng-core     = { path = "../gadget-ng-core" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel" }
 criterion.workspace = true
+approx.workspace = true
 
 [[bench]]
 name = "treepm_gravity"
