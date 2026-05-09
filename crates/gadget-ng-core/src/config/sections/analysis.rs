@@ -66,6 +66,18 @@ pub struct InsituAnalysisSection {
     /// Número de sightlines para el bosque Ly-α. Default: 256.
     #[serde(default = "default_lya_n_sightlines")]
     pub lya_n_sightlines: usize,
+    /// Activar análisis de lente débil in-situ (KS, C_ell). Default: false.
+    #[serde(default)]
+    pub wl_enabled: bool,
+    /// Resolución del mapa de convergencia (píxeles por lado). Default: 256.
+    #[serde(default = "default_wl_n_pixels")]
+    pub wl_n_pixels: usize,
+    /// Campo de visión para lente débil en radianes. Default: 0.1.
+    #[serde(default = "default_wl_fov_rad")]
+    pub wl_fov_rad: f64,
+    /// Bordes de redshift para tomografía de lente débil (vacío = sin tomografía).
+    #[serde(default)]
+    pub wl_z_edges: Vec<f64>,
     /// Directorio de salida para los archivos `insitu_NNNNNN.json`.
     /// Si es `None` se usa `<out_dir>/insitu/`.
     #[serde(default)]
@@ -93,6 +105,12 @@ fn default_sz_n_pixels() -> usize {
 fn default_lya_n_sightlines() -> usize {
     256
 }
+fn default_wl_n_pixels() -> usize {
+    256
+}
+fn default_wl_fov_rad() -> f64 {
+    0.1
+}
 
 impl Default for InsituAnalysisSection {
     fn default() -> Self {
@@ -113,6 +131,10 @@ impl Default for InsituAnalysisSection {
             sz_n_pixels: default_sz_n_pixels(),
             lya_enabled: false,
             lya_n_sightlines: default_lya_n_sightlines(),
+            wl_enabled: false,
+            wl_n_pixels: default_wl_n_pixels(),
+            wl_fov_rad: default_wl_fov_rad(),
+            wl_z_edges: Vec::new(),
             output_dir: None,
         }
     }

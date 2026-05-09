@@ -7,6 +7,7 @@ use gadget_ng_analysis::{
     AnalysisParams, AssemblyBiasParams, AssemblyBiasResult, BkBin, LosAxis, LyaCosmoParams,
     LyaParams, PkRsdParams, XiBin, analyse, analyze_lya_forest,
     bispectrum_equilateral, compute_assembly_bias, compute_pk_multipoles,
+    convergence_angular_cl,
     two_point_correlation_fft,
 };
 use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin, SzParams,
@@ -52,6 +53,9 @@ pub struct InsituResult {
     /// Bosque Ly-α (τ, F, P(k)_F). None si `lya_enabled == false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lya: Option<LyaForestOut>,
+    /// Lente débil (KS, C_ell). None si `wl_enabled == false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wl: Option<WeakLensingOut>,
 }
 
 /// Salida resumida del bosque Lyman-α.
@@ -61,6 +65,28 @@ pub struct LyaForestOut {
     pub mean_flux: f64,
     pub tau_effective: f64,
     pub n_pk_bins: usize,
+}
+
+/// Salida resumida del análisis de lente débil.
+#[derive(Debug, Serialize)]
+pub struct WeakLensingOut {
+    /// Número de píxeles del mapa de convergencia.
+    pub n_pixels: usize,
+    /// Campo de visión en radianes.
+    pub fov_rad: f64,
+    /// Valor medio de κ en el mapa.
+    pub mean_kappa: f64,
+    /// Número de bins de C_ell.
+    pub n_ell_bins: usize,
+    /// Bins de C_ell (ell, cl).
+    pub cl_bins: Vec<ClBinOut>,
+}
+
+/// Bin de C_ell serializable.
+#[derive(Debug, Serialize)]
+pub struct ClBinOut {
+    pub ell: f64,
+    pub cl: f64,
 }
 
 /// Salida del mapa Compton-y (estadísticas resumidas).
@@ -485,6 +511,40 @@ pub fn maybe_run_insitu(
             None
         };
 
+        // Phase 175: Weak lensing (Kaiser-Squires + C_ell)
+        let wl_out = if cfg.wl_enabled {
+            let _wl_lens_map = gadget_ng_analysis::LensingMap::new(cfg.wl_n_pixels.max(4));
+            // Use particle masses to fill Born lensing map
+            let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+            let observer = gadget_ng_core::Vec3::zero();
+            let hits: Vec<gadget_ng_analysis::LightconeHit> = particles
+                .iter()
+                .enumerate()
+                .map(|(i, p)| gadget_ng_analysis::LightconeHit {
+                    particle_index: i,
+                    position: p.position,
+                    distance: p.position.norm().max(1e-30),
+                })
+                .collect();
+            let full_map = gadget_ng_analysis::accumulate_born_lensing(
+                &hits, &masses, observer, cfg.wl_n_pixels.max(4),
+            );
+            let mean_kappa = if full_map.kappa.is_empty() { 0.0 } else {
+                full_map.kappa.iter().sum::<f64>() / full_map.kappa.len() as f64
+            };
+            let n_ell_bins = cfg.pk_mesh / 2;
+            let cl_bins = convergence_angular_cl(&full_map, cfg.wl_fov_rad, n_ell_bins);
+            Some(WeakLensingOut {
+                n_pixels: full_map.nside,
+                fov_rad: cfg.wl_fov_rad,
+                mean_kappa,
+                n_ell_bins: cl_bins.len(),
+                cl_bins: cl_bins.iter().map(|b| ClBinOut { ell: b.ell, cl: b.cl }).collect(),
+            })
+        } else {
+            None
+        };
+
         let insitu = InsituResult {
             step,
             a,
@@ -502,6 +562,7 @@ pub fn maybe_run_insitu(
             sz_compton_y: sz_compton_y_out,
             sz_kinetic: sz_kinetic_out,
             lya: lya_out,
+            wl: wl_out,
         };
 
         let path = out_dir.join(format!("insitu_{step:06}.json"));

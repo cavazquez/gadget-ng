@@ -1,0 +1,64 @@
+# ─── SZ Effect + Weak Lensing + Ly-α Forest in-situ analysis ───────────────────
+#
+# Cosmological simulation with in-situ:
+#   - Sunyaev-Zel'dovich maps (Compton-y + kSZ)
+#   - Weak lensing: Kaiser-Squires, C_ell, tomographic bins
+#   - Lyman-alpha forest: optical depth, transmitted flux, P(k)_F
+#
+# Usage:
+#   cargo run --release -p gadget-ng-cli -- stepping \
+#     --config examples/cosmo_insitu_sz_wl_lya.toml \
+#     --out runs/cosmo_insitu --snapshot
+# ─────────────────────────────────────────────────────────────────────────────
+
+[simulation]
+particle_count = 512
+box_size       = 100.0
+dt             = 0.0005
+num_steps      = 500
+softening      = 0.2
+seed           = 42
+
+[initial_conditions]
+kind = "lattice"
+
+[cosmology]
+enabled      = true
+periodic     = true
+omega_m      = 0.3
+omega_lambda = 0.7
+h0           = 0.1
+a_init       = 0.02
+auto_g       = true
+
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 32
+theta        = 0.5
+
+[output]
+snapshot_format     = "jsonl"
+checkpoint_interval = 100
+
+[insitu_analysis]
+enabled           = true
+interval          = 50
+pk_mesh           = 32
+fof_b             = 0.2
+fof_min_part      = 20
+xi_bins           = 10
+sz_enabled        = true
+sz_n_pixels       = 128
+lya_enabled       = true
+lya_n_sightlines  = 64
+wl_enabled        = true
+wl_n_pixels       = 128
+wl_fov_rad        = 0.1
+wl_z_edges        = [0.0, 0.5, 1.0, 2.0]
+output_dir        = "runs/cosmo_insitu/insitu"
+
+[sph]
+enabled = false
+
+[mhd]
+enabled = false
