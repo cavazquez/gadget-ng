@@ -365,137 +365,17 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         Vec::new()
     };
 
-    // Macro local para guardar checkpoint cuando toca.
-    // Phase 106: $agn_bhs y $chem son pasados explícitamente para evitar problemas
-    // de scope en las distintas rutas del motor (jerárquico, TreePM, PM, etc.).
-    macro_rules! maybe_checkpoint {
-        ($step:expr, $hs:expr, $agn_bhs:expr, $chem:expr) => {
-            context::step_checkpoint(
-                rt,
-                $step,
-                a_current,
-                &local,
-                total,
-                $hs,
-                out_dir,
-                &cfg_hash,
-                $agn_bhs,
-                $chem,
-                checkpoint_interval,
-            )?;
-        };
-        ($step:expr, $hs:expr) => {
-            maybe_checkpoint!($step, $hs, &[], &[]);
-        };
-    }
-
-    // Macro local para guardar frame de snapshot intermedio.
-    macro_rules! maybe_snap_frame {
-        ($step:expr) => {
-            context::step_snap_frame(
-                rt,
-                $step,
-                a_current,
-                &local,
-                total,
-                cfg,
-                out_dir,
-                &prov,
-                snapshot_interval,
-            )?;
-        };
-    }
-
     // ── Centros de halos FoF para AGN (Phase 100) ───────────────────────────────────
-    // Actualizados por maybe_insitu! y consumidos por maybe_agn!.
+    // Actualizados por context::step_insitu y consumidos por context::step_agn.
     let mut halo_centers: Vec<gadget_ng_core::Vec3> = Vec::new();
-
-    // Macro local para análisis in-situ (Phase 63 + química Phase 95 + AGN FoF Phase 100).
-    // Actualiza halo_centers con los centros de los N halos más masivos para maybe_agn!.
-    macro_rules! maybe_insitu {
-        ($step:expr) => {
-            let _insitu_halos =
-                context::step_insitu(&local, cfg, a_current, $step, out_dir, &sph_chem_states);
-            if !_insitu_halos.is_empty() {
-                halo_centers = _insitu_halos;
-            }
-        };
-    }
-
-    // Macro local para el paso SPH cosmológico (Phase 66, fix Phase 82a).
-    // Solo actúa si `cfg.sph.enabled` es true; de lo contrario es un no-op.
-    // Construye los CosmoFactors desde cosmo_state si está activo, o usa factores planos.
-    // $sph_step: índice del paso actual (u64), usado para la semilla de feedback.
-    macro_rules! maybe_sph {
-        ($sph_step:expr) => {
-            context::step_sph(
-                &mut local,
-                cfg,
-                &cosmo_state,
-                a_current,
-                rt.rank() as usize,
-                $sph_step as u64,
-            );
-        };
-    }
-
-    // Macro local para el solver de transferencia radiativa M1 (Phase 82b).
-    // Solo actúa si `cfg.rt.enabled` es true; de lo contrario es un no-op.
-    macro_rules! maybe_rt {
-        () => {
-            context::step_rt(&mut local, &mut rt_field_opt, cfg);
-        };
-    }
 
     // Agujeros negros activos durante la simulación (Phase 96 + FoF Phase 100).
     // Phase 106: si hay estado AGN en checkpoint, restaurarlo.
     let mut agn_bhs: Vec<gadget_ng_sph::BlackHole> = resume_agn_bhs.take().unwrap_or_default();
 
-    // Macro local para feedback AGN (Phase 96 + halos FoF Phase 100).
-    // Coloca BH seeds en los N centros de halos más masivos (Phase 100).
-    // Fallback al centro de la caja si no hay halos identificados aún.
-    macro_rules! maybe_agn {
-        ($sph_step_agn:expr) => {
-            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
-            let _ = $sph_step_agn;
-        };
-    }
-
-    // Macro local para MHD ideal (Phase 126 + CFL Phase 127 + Resistividad Phase 135).
-    // Activa inducción SPH, fuerzas magnéticas y limpieza de Dedner cuando [mhd] enabled = true.
-    // Usa el mínimo entre dt global y dt_alfven (CFL magnético) para estabilidad.
-    macro_rules! maybe_mhd {
-        () => {
-            context::step_mhd(&mut local, cfg);
-        };
-    }
-
-    // Phase 157: hook SIDM — scattering elástico post-drift/kick
-    macro_rules! maybe_sidm {
-        ($step:expr) => {
-            context::step_sidm(&mut local, cfg, $step);
-        };
-    }
-
-    // Phase 158: hook gravedad modificada f(R) — post-cálculo de fuerzas
-    macro_rules! maybe_fr {
-        ($a_cur:expr) => {
-            context::step_fr(&mut local, cfg, $a_cur);
-        };
-    }
-
     // Phase 127: inicializar campo B según b0_kind antes del primer paso
     if cfg.mhd.enabled && cfg.mhd.b0_kind != gadget_ng_core::BFieldKind::None {
         gadget_ng_mhd::init_b_field(&mut local, &cfg.mhd, cfg.simulation.box_size);
-    }
-
-    // Macro local para EoR completo z=6-12 (Phase 95).
-    // Integra reionización con fuentes UV y química SPH acoplada (Phase 95 v2).
-    // Usa sph_chem_states (un ChemState por partícula, sincronizado con local[]).
-    macro_rules! maybe_reionization {
-        ($a_cur:expr) => {
-            context::step_reionization(&local, &mut rt_field_opt, &mut sph_chem_states, cfg, $a_cur);
-        };
     }
 
     // ── Acumuladores de tiempos por fase ─────────────────────────────────────
@@ -736,16 +616,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 None,
                 hier_cosmo_diag.as_ref(),
             )?;
-            maybe_checkpoint!(step, Some(&h_state));
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                Some(&h_state),
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
         h_state_opt = Some(h_state);
     } else if use_sfc_let_cosmo {
@@ -1005,16 +926,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 None,
                 Some(&cd),
             )?;
-            maybe_checkpoint!(step, None);
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                None,
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
     } else if let Some((ref cosmo_params, _)) = cosmo_state {
         // Leapfrog / Yoshida4 cosmológico: factores drift/kick calculados por paso.
@@ -1600,16 +1562,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 None,
                 Some(&cd),
             )?;
-            maybe_checkpoint!(step, None);
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                None,
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
     } else if use_sfc_let {
         // ── SFC + LET: Fase 9 — overlap compute/comm + Rayon + HpcStepStats ──
@@ -2070,16 +2073,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 Some(&hpc),
                 None,
             )?;
-            maybe_checkpoint!(step, None);
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                None,
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
 
         // Construir resumen HPC que se pasará al bloque de timings.json genérico.
@@ -2314,16 +2358,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 None,
                 None,
             )?;
-            maybe_checkpoint!(step, None);
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                None,
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
     } else if use_dtree {
         // ── Árbol distribuido slab 1D: halos punto-a-punto en x ──────────────
@@ -2382,16 +2467,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 None,
                 None,
             )?;
-            maybe_checkpoint!(step, None);
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                None,
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
     } else {
         // ── Leapfrog Newtoniano: Allgather global de partículas ────────────────
@@ -2479,16 +2605,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 None,
                 None,
             )?;
-            maybe_checkpoint!(step, None);
-            maybe_snap_frame!(step);
-            maybe_insitu!(step);
-            maybe_sph!(step);
-            maybe_agn!(step);
-            maybe_rt!();
-            maybe_mhd!();
-            maybe_sidm!(step);
-            maybe_fr!(a_current);
-            maybe_reionization!(a_current);
+            context::step_checkpoint(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                None,
+                out_dir,
+                &cfg_hash,
+                &[],
+                &[],
+                checkpoint_interval,
+            )?;
+            context::step_snap_frame(
+                rt,
+                step,
+                a_current,
+                &local,
+                total,
+                cfg,
+                out_dir,
+                &prov,
+                snapshot_interval,
+            )?;
+            {
+                let _insitu_halos =
+                    context::step_insitu(&local, cfg, a_current, step, out_dir, &sph_chem_states);
+                if !_insitu_halos.is_empty() {
+                    halo_centers = _insitu_halos;
+                }
+            }
+            context::step_sph(
+                &mut local,
+                cfg,
+                &cosmo_state,
+                a_current,
+                rt.rank() as usize,
+                step,
+            );
+            context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
+            context::step_rt(&mut local, &mut rt_field_opt, cfg);
+            context::step_mhd(&mut local, cfg);
+            context::step_sidm(&mut local, cfg, step);
+            context::step_fr(&mut local, cfg, a_current);
+            context::step_reionization(
+                &local,
+                &mut rt_field_opt,
+                &mut sph_chem_states,
+                cfg,
+                a_current,
+            );
         }
     }
 
