@@ -177,9 +177,7 @@ pub fn detect_bao_peak(pk_bins: &[PkBin], params: &BaoParams) -> BaoResult {
     let mut best_dist = f64::INFINITY;
     for (i, &delta) in smoothed_residuals.iter().enumerate() {
         let dist = (window_bins[i].k - params.k_peak_expected).abs();
-        if delta > best_delta
-            || ((delta - best_delta).abs() < 1e-12 && dist < best_dist)
-        {
+        if delta > best_delta || ((delta - best_delta).abs() < 1e-12 && dist < best_dist) {
             best_delta = delta;
             best_idx = i;
             best_dist = dist;
@@ -270,9 +268,7 @@ mod tests {
         assert!(
             result.detected,
             "Should detect BAO peak at k={}; got k_peak={}, significance={}",
-            k_peak,
-            result.k_peak,
-            result.significance
+            k_peak, result.k_peak, result.significance
         );
         assert!(
             (result.k_peak - k_peak).abs() < 0.05,

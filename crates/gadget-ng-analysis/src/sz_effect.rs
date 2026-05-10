@@ -182,7 +182,13 @@ pub fn compute_compton_y_map(
         let v = p.position;
         let (px, py) = match proj0 {
             0 => (v.x, v.y),
-            1 => (v.x, match proj1 { 2 => v.z, _ => v.y }),
+            1 => (
+                v.x,
+                match proj1 {
+                    2 => v.z,
+                    _ => v.y,
+                },
+            ),
             _ => (v.y, v.z),
         };
 
@@ -194,7 +200,11 @@ pub fn compute_compton_y_map(
     }
 
     let total: f64 = map.iter().sum();
-    let mean_y = if n * n > 0 { total / (n * n) as f64 } else { 0.0 };
+    let mean_y = if n * n > 0 {
+        total / (n * n) as f64
+    } else {
+        0.0
+    };
     let y_max = map.iter().cloned().fold(0.0f64, f64::max);
 
     ComptonYMap {
@@ -249,7 +259,13 @@ pub fn compute_kinetic_sz_map(
         let v = p.position;
         let (px, py) = match proj0 {
             0 => (v.x, v.y),
-            1 => (v.x, match proj1 { 2 => v.z, _ => v.y }),
+            1 => (
+                v.x,
+                match proj1 {
+                    2 => v.z,
+                    _ => v.y,
+                },
+            ),
             _ => (v.y, v.z),
         };
 
@@ -261,7 +277,8 @@ pub fn compute_kinetic_sz_map(
     }
 
     let mean: f64 = map.iter().sum::<f64>() / (n * n).max(1) as f64;
-    let variance: f64 = map.iter().map(|&v| (v - mean) * (v - mean)).sum::<f64>() / (n * n).max(1) as f64;
+    let variance: f64 =
+        map.iter().map(|&v| (v - mean) * (v - mean)).sum::<f64>() / (n * n).max(1) as f64;
     let rms = variance.sqrt();
 
     KineticSzMap {
@@ -277,7 +294,16 @@ mod tests {
     use super::*;
     use gadget_ng_core::{Particle, ParticleType, Vec3};
 
-    fn make_gas_particle(x: f64, y: f64, z: f64, mass: f64, u: f64, h: f64, vx: f64, id: usize) -> Particle {
+    fn make_gas_particle(
+        x: f64,
+        y: f64,
+        z: f64,
+        mass: f64,
+        u: f64,
+        h: f64,
+        vx: f64,
+        id: usize,
+    ) -> Particle {
         Particle::new_gas(id, mass, Vec3::new(x, y, z), Vec3::new(vx, 0.0, 0.0), u, h)
     }
 
@@ -286,7 +312,10 @@ mod tests {
         let particles: Vec<Particle> = Vec::new();
         let params = SzParams::default();
         let result = compute_compton_y_map(&particles, 100.0, &params, 5.0 / 3.0);
-        assert!(result.map.iter().all(|&y| y == 0.0), "Empty particles should give zero y");
+        assert!(
+            result.map.iter().all(|&y| y == 0.0),
+            "Empty particles should give zero y"
+        );
         assert_eq!(result.mean_y, 0.0);
     }
 
@@ -296,7 +325,10 @@ mod tests {
         let p2 = make_gas_particle(50.0, 50.0, 50.0, 1.0, 4.0, 10.0, 0.0, 1);
         let pe1 = electron_pressure(&p1, 5.0 / 3.0);
         let pe2 = electron_pressure(&p2, 5.0 / 3.0);
-        assert!(pe2 > pe1, "Higher internal_energy should give higher P_e: {pe2} > {pe1}");
+        assert!(
+            pe2 > pe1,
+            "Higher internal_energy should give higher P_e: {pe2} > {pe1}"
+        );
     }
 
     #[test]
@@ -312,6 +344,10 @@ mod tests {
 
         let p2 = make_gas_particle(50.0, 50.0, 50.0, 1.0, 100.0, 5.0, 10.0, 1);
         let result_ksz = compute_kinetic_sz_map(&[p2], 100.0, &params, 5.0 / 3.0);
-        assert_eq!(result_ksz.map.len(), 64 * 64, "kSZ map should be n_pixels^2");
+        assert_eq!(
+            result_ksz.map.len(),
+            64 * 64,
+            "kSZ map should be n_pixels^2"
+        );
     }
 }

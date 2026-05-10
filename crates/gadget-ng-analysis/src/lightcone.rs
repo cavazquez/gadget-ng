@@ -221,9 +221,17 @@ pub fn kaiser_squires_reconstruct(map: &LensingMap, fov_rad: f64) -> KsResult {
     let dl = 2.0 * std::f64::consts::PI / fov_rad;
     let mut kappa_freq: Vec<Complex<f64>> = vec![Complex::new(0.0, 0.0); nn];
     for row in 0..n {
-        let l2_row = if row <= n / 2 { row as f64 } else { (row as f64) - n as f64 };
+        let l2_row = if row <= n / 2 {
+            row as f64
+        } else {
+            (row as f64) - n as f64
+        };
         for col in 0..n {
-            let l1_col = if col <= n / 2 { col as f64 } else { (col as f64) - n as f64 };
+            let l1_col = if col <= n / 2 {
+                col as f64
+            } else {
+                (col as f64) - n as f64
+            };
             let ell1 = l1_col * dl;
             let ell2 = l2_row * dl;
             let ell_sq = ell1 * ell1 + ell2 * ell2;
@@ -232,25 +240,22 @@ pub fn kaiser_squires_reconstruct(map: &LensingMap, fov_rad: f64) -> KsResult {
             }
             let gamma_hat = gamma1_freq_2d[row * n + col]
                 + Complex::new(0.0, 1.0) * gamma2_freq_2d[row * n + col];
-            let kernel = (-(ell1 * ell1 - ell2 * ell2)
-                + Complex::new(0.0, 2.0) * ell1 * ell2)
-                / ell_sq;
+            let kernel =
+                (-(ell1 * ell1 - ell2 * ell2) + Complex::new(0.0, 2.0) * ell1 * ell2) / ell_sq;
             kappa_freq[row * n + col] = kernel * gamma_hat;
         }
     }
 
     // IFFT 2D inversa
     for row in 0..n {
-        let mut row_k: Vec<Complex<f64>> =
-            (0..n).map(|col| kappa_freq[row * n + col]).collect();
+        let mut row_k: Vec<Complex<f64>> = (0..n).map(|col| kappa_freq[row * n + col]).collect();
         ifft.process(&mut row_k);
         for col in 0..n {
             kappa_freq[row * n + col] = row_k[col];
         }
     }
     for col in 0..n {
-        let mut col_k: Vec<Complex<f64>> =
-            (0..n).map(|row| kappa_freq[row * n + col]).collect();
+        let mut col_k: Vec<Complex<f64>> = (0..n).map(|row| kappa_freq[row * n + col]).collect();
         ifft.process(&mut col_k);
         for row in 0..n {
             kappa_freq[row * n + col] = col_k[row];
@@ -278,16 +283,16 @@ pub fn convergence_angular_cl(map: &LensingMap, fov_rad: f64, n_ell_bins: usize)
     // FFT 2D de κ
     let mut kappa_freq: Vec<Complex<f64>> = vec![Complex::new(0.0, 0.0); n * n];
     for row in 0..n {
-        let mut row_k: Vec<Complex<f64>> =
-            (0..n).map(|col| Complex::new(map.kappa[row * n + col], 0.0)).collect();
+        let mut row_k: Vec<Complex<f64>> = (0..n)
+            .map(|col| Complex::new(map.kappa[row * n + col], 0.0))
+            .collect();
         fft.process(&mut row_k);
         for col in 0..n {
             kappa_freq[row * n + col] = row_k[col];
         }
     }
     for col in 0..n {
-        let mut col_k: Vec<Complex<f64>> =
-            (0..n).map(|row| kappa_freq[row * n + col]).collect();
+        let mut col_k: Vec<Complex<f64>> = (0..n).map(|row| kappa_freq[row * n + col]).collect();
         fft.process(&mut col_k);
         for row in 0..n {
             kappa_freq[row * n + col] = col_k[row];
@@ -305,9 +310,17 @@ pub fn convergence_angular_cl(map: &LensingMap, fov_rad: f64, n_ell_bins: usize)
     let mut cl_count = vec![0usize; n_ell_bins];
 
     for row in 0..n {
-        let l2 = if row <= n / 2 { row as f64 } else { (row as f64) - n as f64 };
+        let l2 = if row <= n / 2 {
+            row as f64
+        } else {
+            (row as f64) - n as f64
+        };
         for col in 0..n {
-            let l1 = if col <= n / 2 { col as f64 } else { (col as f64) - n as f64 };
+            let l1 = if col <= n / 2 {
+                col as f64
+            } else {
+                (col as f64) - n as f64
+            };
             let ell = (l1 * l1 + l2 * l2).sqrt() * dl;
             let power = kappa_freq[row * n + col].norm_sqr() * omega_pixel * omega_pixel;
             let bin = ((ell / d_ell) as usize).min(n_ell_bins - 1);
@@ -353,7 +366,11 @@ pub fn accumulate_tomographic_lensing(
             continue;
         }
         let z = redshifts[h.particle_index];
-        let bin_idx = match params.z_edges.windows(2).position(|w| z >= w[0] && z < w[1]) {
+        let bin_idx = match params
+            .z_edges
+            .windows(2)
+            .position(|w| z >= w[0] && z < w[1])
+        {
             Some(i) => i,
             None => continue,
         };
@@ -400,8 +417,10 @@ mod tests {
     fn ks_reconstruct_identity_zero_shear() {
         let map = LensingMap::new(16);
         let result = kaiser_squires_reconstruct(&map, 0.1);
-        assert!(result.kappa.iter().all(|&k| k.abs() < 1e-10),
-            "Zero shear should give zero convergence");
+        assert!(
+            result.kappa.iter().all(|&k| k.abs() < 1e-10),
+            "Zero shear should give zero convergence"
+        );
     }
 
     #[test]
@@ -420,16 +439,31 @@ mod tests {
         map.kappa[8 * 16 + 8] = 1.0;
         let cl = convergence_angular_cl(&map, 0.1, 4);
         assert!(!cl.is_empty(), "C_ell should have bins");
-        assert!(cl.iter().all(|b| b.ell > 0.0), "All ell values should be positive");
+        assert!(
+            cl.iter().all(|b| b.ell > 0.0),
+            "All ell values should be positive"
+        );
     }
 
     #[test]
     fn tomographic_lensing_assigns_bins() {
         let observer = Vec3::zero();
         let hits = vec![
-            LightconeHit { particle_index: 0, position: Vec3::new(0.5, 0.0, 0.5), distance: (0.25_f64 + 0.25_f64).sqrt() },
-            LightconeHit { particle_index: 1, position: Vec3::new(0.0, 0.5, 0.5), distance: (0.25_f64 + 0.25_f64).sqrt() },
-            LightconeHit { particle_index: 2, position: Vec3::new(0.3, 0.3, 0.3), distance: (0.09_f64 * 3.0).sqrt() },
+            LightconeHit {
+                particle_index: 0,
+                position: Vec3::new(0.5, 0.0, 0.5),
+                distance: (0.25_f64 + 0.25_f64).sqrt(),
+            },
+            LightconeHit {
+                particle_index: 1,
+                position: Vec3::new(0.0, 0.5, 0.5),
+                distance: (0.25_f64 + 0.25_f64).sqrt(),
+            },
+            LightconeHit {
+                particle_index: 2,
+                position: Vec3::new(0.3, 0.3, 0.3),
+                distance: (0.09_f64 * 3.0).sqrt(),
+            },
         ];
         let masses = vec![1.0, 2.0, 1.5];
         let redshifts = vec![0.1, 0.7, 1.3];

@@ -20,7 +20,9 @@ use gadget_ng_analysis::{
 use gadget_ng_core::{SnapshotFormat, Vec3};
 #[cfg(feature = "hdf5")]
 use gadget_ng_io::SubhaloCatalogEntry;
-use gadget_ng_io::{HaloCatalogEntry, HaloCatalogHeader, write_halo_catalog_jsonl};
+#[cfg(not(feature = "hdf5"))]
+use gadget_ng_io::write_halo_catalog_jsonl;
+use gadget_ng_io::{HaloCatalogEntry, HaloCatalogHeader};
 use std::fs;
 use std::path::Path;
 
@@ -526,6 +528,7 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             .out_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
+        #[cfg(not(feature = "hdf5"))]
         let jsonl_path = cat_dir.join("halos.jsonl");
 
         #[cfg(feature = "hdf5")]

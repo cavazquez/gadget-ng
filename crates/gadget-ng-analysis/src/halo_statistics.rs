@@ -171,10 +171,7 @@ pub fn subhalo_mass_function(halos: &[FofHalo], params: &HaloStatsParams) -> Vec
         return build_shmf_bins(m_lo, m_hi, params.n_mass_bins, &parent_indices, halos, &[]);
     }
 
-    let m_lo = all_sub_masses
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min);
+    let m_lo = all_sub_masses.iter().copied().fold(f64::INFINITY, f64::min);
     let m_hi = all_sub_masses
         .iter()
         .copied()
@@ -252,11 +249,7 @@ fn build_shmf_bins(
     let avg_parent_mass: f64 = if parent_indices.is_empty() {
         0.0
     } else {
-        parent_indices
-            .iter()
-            .map(|&pi| halos[pi].mass)
-            .sum::<f64>()
-            / parent_indices.len() as f64
+        parent_indices.iter().map(|&pi| halos[pi].mass).sum::<f64>() / parent_indices.len() as f64
     };
     for bin in &mut bins {
         bin.parent_mass = avg_parent_mass;
@@ -338,7 +331,8 @@ pub fn concentration_mass_relation(
             let c_median = if n_halos == 0 {
                 0.0
             } else {
-                bin_c_values[i].sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                bin_c_values[i]
+                    .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let len = bin_c_values[i].len();
                 if len.is_multiple_of(2) {
                     (bin_c_values[i][len / 2 - 1] + bin_c_values[i][len / 2]) / 2.0
@@ -461,7 +455,10 @@ mod tests {
 
         // Total de halos en bins debe ser <= 5 (algunos pueden caer fuera del rango)
         let total: usize = result.iter().map(|b| b.n_halos).sum();
-        assert!(total <= 5 && total > 0, "Debe haber halos en bins: total = {total}");
+        assert!(
+            total <= 5 && total > 0,
+            "Debe haber halos en bins: total = {total}"
+        );
     }
 
     #[test]

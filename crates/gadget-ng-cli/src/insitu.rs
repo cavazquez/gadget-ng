@@ -5,13 +5,13 @@
 
 use gadget_ng_analysis::{
     AnalysisParams, AssemblyBiasParams, AssemblyBiasResult, BkBin, LosAxis, LyaCosmoParams,
-    LyaParams, PkRsdParams, XiBin, analyse, analyze_lya_forest,
-    bispectrum_equilateral, compute_assembly_bias, compute_pk_multipoles,
-    convergence_angular_cl,
+    LyaParams, PkRsdParams, XiBin, analyse, analyze_lya_forest, bispectrum_equilateral,
+    compute_assembly_bias, compute_pk_multipoles, convergence_angular_cl,
     two_point_correlation_fft,
 };
-use gadget_ng_analysis::{PkBin, PkMultipoleBin, PkRsdBin, SzParams,
-    compute_compton_y_map, compute_kinetic_sz_map};
+use gadget_ng_analysis::{
+    PkBin, PkMultipoleBin, PkRsdBin, SzParams, compute_compton_y_map, compute_kinetic_sz_map,
+};
 use gadget_ng_core::{InsituAnalysisSection, Particle, Vec3};
 use serde::Serialize;
 use std::path::Path;
@@ -493,14 +493,8 @@ pub fn maybe_run_insitu(
                 omega_m: cosmo_omega_m,
                 omega_lambda: cosmo_omega_lambda,
             };
-            let lya_result = analyze_lya_forest(
-                particles,
-                box_size,
-                &lya_params,
-                &cosmo,
-                'z',
-                None,
-            );
+            let lya_result =
+                analyze_lya_forest(particles, box_size, &lya_params, &cosmo, 'z', None);
             Some(LyaForestOut {
                 n_sightlines: lya_result.n_sightlines,
                 mean_flux: lya_result.mean_flux,
@@ -527,9 +521,14 @@ pub fn maybe_run_insitu(
                 })
                 .collect();
             let full_map = gadget_ng_analysis::accumulate_born_lensing(
-                &hits, &masses, observer, cfg.wl_n_pixels.max(4),
+                &hits,
+                &masses,
+                observer,
+                cfg.wl_n_pixels.max(4),
             );
-            let mean_kappa = if full_map.kappa.is_empty() { 0.0 } else {
+            let mean_kappa = if full_map.kappa.is_empty() {
+                0.0
+            } else {
                 full_map.kappa.iter().sum::<f64>() / full_map.kappa.len() as f64
             };
             let n_ell_bins = cfg.pk_mesh / 2;
@@ -539,7 +538,13 @@ pub fn maybe_run_insitu(
                 fov_rad: cfg.wl_fov_rad,
                 mean_kappa,
                 n_ell_bins: cl_bins.len(),
-                cl_bins: cl_bins.iter().map(|b| ClBinOut { ell: b.ell, cl: b.cl }).collect(),
+                cl_bins: cl_bins
+                    .iter()
+                    .map(|b| ClBinOut {
+                        ell: b.ell,
+                        cl: b.cl,
+                    })
+                    .collect(),
             })
         } else {
             None

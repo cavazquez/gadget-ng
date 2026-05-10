@@ -300,16 +300,14 @@ pub fn compute_cmb_angular_cl(
         .collect();
 
     for row in 0..n {
-        let mut row_k: Vec<Complex<f64>> =
-            (0..n).map(|col| kappa_freq[row * n + col]).collect();
+        let mut row_k: Vec<Complex<f64>> = (0..n).map(|col| kappa_freq[row * n + col]).collect();
         fft.process(&mut row_k);
         for col in 0..n {
             kappa_freq[row * n + col] = row_k[col];
         }
     }
     for col in 0..n {
-        let mut col_k: Vec<Complex<f64>> =
-            (0..n).map(|row| kappa_freq[row * n + col]).collect();
+        let mut col_k: Vec<Complex<f64>> = (0..n).map(|row| kappa_freq[row * n + col]).collect();
         fft.process(&mut col_k);
         for row in 0..n {
             kappa_freq[row * n + col] = col_k[row];

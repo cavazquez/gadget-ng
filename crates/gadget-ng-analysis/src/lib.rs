@@ -39,17 +39,17 @@ pub mod halo_spin;
 pub mod halo_statistics;
 pub mod halofit;
 pub mod lightcone;
-pub mod lya_forest;
 pub mod luminosity;
+pub mod lya_forest;
 pub mod merger_tree;
 pub mod mock_catalog;
 pub mod nfw;
 pub mod pk_correction;
 pub mod pk_rsd;
 pub mod power_spectrum;
-pub mod sz_effect;
 pub mod sps_tables;
 pub mod subfind;
+pub mod sz_effect;
 pub mod velocity_profile;
 pub mod xray;
 
@@ -89,8 +89,8 @@ pub use halo_mass_function::{
 };
 pub use halo_spin::{HaloSpin, SpinParams, compute_halo_spins, halo_spin};
 pub use halo_statistics::{
-    ConcentrationMassBin, HaloStatsParams, ShmfBin,
-    concentration_mass_relation, subhalo_mass_function,
+    ConcentrationMassBin, HaloStatsParams, ShmfBin, concentration_mass_relation,
+    subhalo_mass_function,
 };
 pub use halofit::{HalofitCosmo, halofit_pk, p_linear_eh};
 pub use lightcone::{
@@ -98,12 +98,12 @@ pub use lightcone::{
     TomographyParams, accumulate_born_lensing, accumulate_tomographic_lensing,
     convergence_angular_cl, detect_lightcone_crossings, kaiser_squires_reconstruct,
 };
+pub use luminosity::{
+    LuminosityResult, SedResult, bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar,
+};
 pub use lya_forest::{
     LyaChemState, LyaCosmoParams, LyaForestResult, LyaParams, LyaPkBin, LyaSightline,
     analyze_lya_forest, compute_lya_pk_1d, compute_tau_along_sightline, generate_impact_positions,
-};
-pub use luminosity::{
-    LuminosityResult, SedResult, bv_color, galaxy_luminosity, gr_color, stellar_luminosity_solar,
 };
 pub use merger_tree::{
     MassAccretionHistory, MergerForest, MergerTreeNode, ParticleSnapshot, build_merger_forest,
@@ -124,11 +124,11 @@ pub use pk_rsd::{
     pk_multipoles, pk_redshift_space,
 };
 pub use power_spectrum::PkBin;
+pub use sps_tables::{SpsGrid, Spsband, sps_luminosity};
+pub use subfind::{SubfindParams, SubhaloRecord, find_subhalos, local_density_sph};
 pub use sz_effect::{
     ComptonYMap, KineticSzMap, SzParams, compute_compton_y_map, compute_kinetic_sz_map,
 };
-pub use sps_tables::{SpsGrid, Spsband, sps_luminosity};
-pub use subfind::{SubfindParams, SubhaloRecord, find_subhalos, local_density_sph};
 pub use velocity_profile::{
     VelocityProfileBin, VelocityProfileParams, sigma_1d, velocity_anisotropy, velocity_profile,
 };

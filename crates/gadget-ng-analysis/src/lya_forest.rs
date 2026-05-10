@@ -275,7 +275,11 @@ pub fn compute_tau_along_sightline(
         }
 
         let x_hi = if let Some(chem) = chem_states {
-            if idx < chem.len() { chem[idx].x_hi } else { 1.0 }
+            if idx < chem.len() {
+                chem[idx].x_hi
+            } else {
+                1.0
+            }
         } else {
             1.0
         };
@@ -299,14 +303,23 @@ pub fn compute_tau_along_sightline(
 
         // Sobredensidad local
         let rho_local = p.mass / h.powi(3).max(1e-60);
-        let overdensity = if rho_mean > 0.0 { rho_local / rho_mean } else { 1.0 };
+        let overdensity = if rho_mean > 0.0 {
+            rho_local / rho_mean
+        } else {
+            1.0
+        };
 
         // Peso transversal SPH (kernel gaussiano 2D)
         let weight_perp = (-0.5 * d_perp_sq / (h * h)).exp();
 
         // Redshift de la partícula
         let z_p = (params.z_source * pos_los / box_size).max(0.0);
-        let tau_z = tau_prefactor * (1.0 + z_p).powf(1.5) * omega_b_factor * x_hi * overdensity * weight_perp;
+        let tau_z = tau_prefactor
+            * (1.0 + z_p).powf(1.5)
+            * omega_b_factor
+            * x_hi
+            * overdensity
+            * weight_perp;
 
         // Velocidad peculiar de la partícula (reservado para extensión futura con perfiles Voigt)
         let _v_pec = match axis_los {
@@ -335,12 +348,23 @@ pub fn compute_tau_along_sightline(
     }
 
     let flux: Vec<f64> = tau.iter().map(|&t| (-t).exp()).collect();
-    let mean_flux = if flux.is_empty() { 0.0 } else { flux.iter().sum::<f64>() / flux.len() as f64 };
-    let sigma_flux = if flux.is_empty() { 0.0 } else {
-        let var = flux.iter().map(|f| (f - mean_flux).powi(2)).sum::<f64>() / flux.len().max(1) as f64;
+    let mean_flux = if flux.is_empty() {
+        0.0
+    } else {
+        flux.iter().sum::<f64>() / flux.len() as f64
+    };
+    let sigma_flux = if flux.is_empty() {
+        0.0
+    } else {
+        let var =
+            flux.iter().map(|f| (f - mean_flux).powi(2)).sum::<f64>() / flux.len().max(1) as f64;
         var.sqrt()
     };
-    let tau_effective = if mean_flux > 0.0 { -mean_flux.ln() } else { f64::INFINITY };
+    let tau_effective = if mean_flux > 0.0 {
+        -mean_flux.ln()
+    } else {
+        f64::INFINITY
+    };
     let z_mean = params.z_source * 0.5;
 
     LyaSightline {
@@ -360,10 +384,7 @@ pub fn compute_tau_along_sightline(
 ///
 /// `δ_F = F / ⟨F⟩ - 1`, y se calcula el power spectrum 1D:
 /// `P_F(k) = ⟨|δ̃_F(k)|²⟩` prome diado sobre sightlines.
-pub fn compute_lya_pk_1d(
-    sightlines: &[LyaSightline],
-    n_k_bins: usize,
-) -> LyaForestResult {
+pub fn compute_lya_pk_1d(sightlines: &[LyaSightline], n_k_bins: usize) -> LyaForestResult {
     if sightlines.is_empty() {
         return LyaForestResult {
             n_sightlines: 0,
@@ -383,8 +404,13 @@ pub fn compute_lya_pk_1d(
         };
     }
 
-    let global_mean: f64 = sightlines.iter().map(|s| s.mean_flux).sum::<f64>() / sightlines.len() as f64;
-    let global_tau_eff = if global_mean > 0.0 { -global_mean.ln() } else { f64::INFINITY };
+    let global_mean: f64 =
+        sightlines.iter().map(|s| s.mean_flux).sum::<f64>() / sightlines.len() as f64;
+    let global_tau_eff = if global_mean > 0.0 {
+        -global_mean.ln()
+    } else {
+        f64::INFINITY
+    };
 
     let dv = if n_cells > 1 {
         sightlines[0].velocity[1] - sightlines[0].velocity[0]
@@ -420,7 +446,11 @@ pub fn compute_lya_pk_1d(
 
         let norm = 1.0 / (n_cells as f64);
         for (i, c) in delta_f.iter().enumerate() {
-            let ki = if i <= n_cells / 2 { i as f64 } else { (i as isize - n_cells as isize) as f64 };
+            let ki = if i <= n_cells / 2 {
+                i as f64
+            } else {
+                (i as isize - n_cells as isize) as f64
+            };
             let k = (ki * k_fund).abs();
             if k < k_fund * 0.5 || k > k_max {
                 continue;
@@ -522,21 +552,15 @@ mod tests {
     fn empty_particles_zero_flux() {
         let params = LyaParams::default();
         let cosmo = LyaCosmoParams::default();
-        let result = compute_tau_along_sightline(
-            &[],
-            'z',
-            50.0,
-            50.0,
-            100.0,
-            &params,
-            &cosmo,
-            None,
+        let result =
+            compute_tau_along_sightline(&[], 'z', 50.0, 50.0, 100.0, &params, &cosmo, None);
+        assert!(
+            result.flux.iter().all(|&f| (f - 1.0).abs() < 1e-10),
+            "Empty gas should have F=1 (τ=0)"
         );
-        assert!(result.flux.iter().all(|&f| (f - 1.0).abs() < 1e-10),
-            "Empty gas should have F=1 (τ=0)");
     }
 
-#[test]
+    #[test]
     fn neutral_gas_produces_absorption() {
         let params = LyaParams {
             n_sightlines: 4,
@@ -548,18 +572,13 @@ mod tests {
         let cosmo = LyaCosmoParams::default();
         let h = 5.0;
         let p = make_gas_particle(50.0, 50.0, 50.0, 1e10, 1e4, h);
-        let result = compute_tau_along_sightline(
-            &[p],
-            'z',
-            50.0,
-            50.0,
-            100.0,
-            &params,
-            &cosmo,
-            None,
-        );
+        let result =
+            compute_tau_along_sightline(&[p], 'z', 50.0, 50.0, 100.0, &params, &cosmo, None);
         let min_flux = result.flux.iter().cloned().fold(1.0f64, f64::min);
-        assert!(min_flux < 1.0, "Neutral gas should absorb: min F = {min_flux}");
+        assert!(
+            min_flux < 1.0,
+            "Neutral gas should absorb: min F = {min_flux}"
+        );
     }
 
     #[test]
@@ -586,7 +605,10 @@ mod tests {
             Some(&[chem]),
         );
         let mean_flux = result.mean_flux;
-        assert!(mean_flux > 0.99, "Fully ionized should be transparent: <F> = {mean_flux}");
+        assert!(
+            mean_flux > 0.99,
+            "Fully ionized should be transparent: <F> = {mean_flux}"
+        );
     }
 
     #[test]
