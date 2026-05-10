@@ -1,0 +1,37 @@
+name: gadgetng
+base: core24
+version: "0.1.0"
+summary: Cosmological N-body + SPH + MHD simulator
+description: |
+  gadget-ng is a cosmological N-body / SPH / MHD simulation code written
+  in Rust, conceptually inspired by GADGET-4. It supports gravity (Tree,
+  PM, TreePM), smoothed particle hydrodynamics, ideal MHD, radiative
+  transfer (M1), on-the-fly group finding (FoF/Subfind), and analysis
+  (P(k), HMF, correlation functions, BAO, weak lensing, SZ, Ly-a forest).
+
+grade: stable
+confinement: strict
+
+apps:
+  gadget-ng:
+    command: bin/gadget-ng
+    plugs:
+      - home
+      - network
+      - removable-media
+
+parts:
+  gadget-ng:
+    plugin: rust
+    source: .
+    rust-path:
+      - crates/gadget-ng-cli
+    rust-features:
+      - bincode
+      - hdf5
+      - simd
+    build-packages:
+      - libhdf5-dev
+      - pkg-config
+    stage-packages:
+      - libhdf5-103-1
