@@ -1,6 +1,9 @@
 name: gadgetng
 base: core24
 version: "0.1.0"
+architectures:
+  - build-on: amd64
+  - build-on: arm64
 summary: Cosmological N-body + SPH + MHD simulator
 description: |
   gadget-ng is a cosmological N-body / SPH / MHD simulation code written
@@ -19,6 +22,7 @@ apps:
       - home
       - network
       - removable-media
+      - opengl
 
 parts:
   gadget-ng:
@@ -30,8 +34,12 @@ parts:
       - bincode
       - hdf5
       - simd
+      - gpu
     build-packages:
       - libhdf5-dev
+      - libclang-dev
       - pkg-config
     stage-packages:
       - libhdf5-103-1
+      - libvulkan1
+      - mesa-vulkan-drivers
