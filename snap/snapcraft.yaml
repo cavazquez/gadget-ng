@@ -1,10 +1,10 @@
 name: gadgetng
 base: core24
 version: "0.1.0"
-architectures:
-  - build-on: amd64
-  - build-on: arm64
-  - build-on: ppc64el
+platforms:
+  amd64:
+  arm64:
+  ppc64el:
 summary: Cosmological N-body + SPH + MHD simulator
 description: |
   gadget-ng is a cosmological N-body / SPH / MHD simulation code written
