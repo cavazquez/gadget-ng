@@ -49,9 +49,9 @@ Las simulaciones de formación estelar e ISM a alta resolución requieren ir má
 
 | Fase Propuesta | Descripción | Complejidad | Impacto |
 | :--- | :--- | :--- | :--- |
-| **Phase 190** | **PBH Seeding para JWST:** Semillas de PBH en ICs y fusión/crecimiento de SMBHs tempranos. | Media | Alto (Papers JWST) |
+| **Phase 190** | **PBH Seeding para JWST:** Semillas de PBH en ICs y fusión/crecimiento de SMBHs tempranos. | Cerrada | Alto (Papers JWST) |
 | **Phase 191** | **Acoplamiento AGN-Stellar Turbulence:** Modificación de `agn.rs` para depender de $v_{disp}$ local. | Baja | Medio |
-| **Phase 192** | **Polvo Activo (COLIBRE):** Especies de polvo y acoplamiento termodinámico profundo. | Alta | Alto |
+| **Phase 192** | **Polvo Activo (COLIBRE):** Especies de polvo y acoplamiento termodinámico profundo. | Parcial cerrada | Alto |
 | **Phase 193** | **Emuladores ML (Proof of Concept):** Neural Net en `gadget-ng-physics` para cooling rates rápidos. | Media | Experimental |
-| **Phase 194** | **MHD No-Ideal:** Difusión ambipolar dependiente de química. | Muy Alta | Medio |
+| **Phase 194** | **MHD No-Ideal:** Difusión ambipolar dependiente de química. | Parcial cerrada | Medio |
 | **Phase 195** | **MFM (Meshless Finite Mass):** Solver hidrodinámico alternativo a SPH. | Extrema | Transformacional |

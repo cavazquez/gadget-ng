@@ -29,8 +29,8 @@ pub use simulation_ic::{
     TransferKind,
 };
 pub use sph::{
-    AgnSection, ConductionSection, CoolingKind, CrSection, DustSection, EnrichmentSection,
-    FeedbackSection, IsmSection, MolecularSection, PopIIISection, SphSection, StarFormationModel,
-    StellarFeedbackMode, UvBackgroundModel, WindParams,
+    AgnSection, ConductionSection, CoolingKind, CrSection, DustSection, DustSpeciesModel,
+    EnrichmentSection, FeedbackSection, IsmSection, MolecularSection, PbhHostKind, PopIIISection,
+    SphSection, StarFormationModel, StellarFeedbackMode, UvBackgroundModel, WindParams,
 };
 pub use timestep::{TimestepCriterion, TimestepSection};

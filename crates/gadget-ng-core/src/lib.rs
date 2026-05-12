@@ -25,11 +25,11 @@ pub use gpu_bridge::GpuParticlesSoAExt;
 pub use config::{
     AgnSection, BFieldKind, ConductionSection, ConfigError, CoolingKind, CosmologySection,
     CrSection, DarkMatterModel, DarkMatterSection, DecompositionConfig, DustSection,
-    EnrichmentSection, FeedbackSection, G_KPC_MSUN_KMPS, GravitySection, IcKind,
+    DustSpeciesModel, EnrichmentSection, FeedbackSection, G_KPC_MSUN_KMPS, GravitySection, IcKind,
     InitialConditionsSection, InsituAnalysisSection, IntegratorKind, IsmSection, MacSoftening,
     MhdSection, ModifiedGravitySection, MolecularSection, NormalizationMode, OpeningCriterion,
-    OutputSection, PerformanceSection, PopIIISection, RtSection, RunConfig, SfcKind, SidmSection,
-    SimulationSection, SnapshotFormat, SolverKind, SphSection, StarFormationModel,
+    OutputSection, PbhHostKind, PerformanceSection, PopIIISection, RtSection, RunConfig, SfcKind,
+    SidmSection, SimulationSection, SnapshotFormat, SolverKind, SphSection, StarFormationModel,
     StellarFeedbackMode, TimestepCriterion, TimestepSection, TransferKind, TurbulenceSection,
     TwoFluidSection, UnitsSection, UvBackgroundModel, WindParams,
 };

@@ -1,0 +1,43 @@
+# Phase 191 alternative-gravity / dark-matter preset.
+
+[simulation]
+particle_count = 512
+box_size = 25.0
+dt = 0.0005
+num_steps = 4
+softening = 0.05
+seed = 193
+
+[initial_conditions]
+kind = "lattice"
+
+[cosmology]
+enabled = true
+periodic = true
+omega_m = 0.315
+omega_lambda = 0.685
+h0 = 0.1
+a_init = 0.05
+auto_g = true
+
+[gravity]
+solver = "pm"
+pm_grid_size = 16
+
+[sidm]
+enabled = true
+sigma_m = 1e-5
+
+[modified_gravity]
+enabled = true
+f_r0 = 1e-5
+n = 1.0
+nonlinear_mesh = true
+
+[dark_matter]
+enabled = true
+model = "warm"
+m_wdm_kev = 3.0
+
+[output]
+snapshot_format = "jsonl"

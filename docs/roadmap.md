@@ -13,6 +13,10 @@
 > Phase 183: AGN spin + mergers con eficiencia Kerr, fusiones BH y recoil.
 > Phase 184: WDM/FDM con cutoff de transferencia en ICs y proxy de presión cuántica.
 > Phase 185: f(R) no lineal en malla PM con screening chameleon espacial.
+> Phase 190: PBH seeding para SMBHs tempranos, integrado al stack AGN.
+> Phase 191: Runtime UX — overrides CLI, validación de combinaciones y matriz de experimentos.
+> Phase 192: Polvo activo silicato/grafito con shielding H₂.
+> Phase 194: MHD no ideal — difusión ambipolar dependiente de ionización.
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -208,3 +212,7 @@ Posibles extensiones:
 - (183) **AGN spin + mergers**: `BlackHole::spin`, eficiencia Kerr, crecimiento por acreción, fusiones BH con recoil y tests `phase183_agn_spin_mergers.rs`.
 - (184) **Warm / fuzzy dark matter**: `[dark_matter]`, transfer WDM/FDM, half-mode, proxy de presión cuántica y cutoff en ICs ZA/2LPT con tests `phase184_wdm_fdm.rs`.
 - (185) **f(R) no lineal en malla**: `[modified_gravity].nonlinear_mesh`, screening chameleon por celda PM, quinta fuerza `ρ×S(x)/3` y tests `phase185_fr_nonlinear_mesh.rs`.
+- (190) **PBH seeding para JWST**: `[sph.agn] pbh_seeding_enabled`, selección determinista de hosts DM por hash de `global_id`, semillas ligeras `pbh_m_seed` que crecen con el modelo AGN existente.
+- (191) **Runtime UX + experimentos**: overrides CLI para física 100–190, validación de combinaciones, presets bajo `configs/experiments/`, matriz `experiments/phase191_runtime_matrix.toml` y runner `scripts/run_phase191_experiments.sh`.
+- (192) **Polvo activo COLIBRE-like**: especies `single`/`silicate_graphite`, opacidad UV efectiva por mezcla y shielding dinámico de H₂ vía `update_h2_fraction_with_dust`.
+- (194) **MHD no ideal**: difusión ambipolar local dependiente de ionización/polvo, calentamiento por disipación magnética y flags `--ambipolar-*`.

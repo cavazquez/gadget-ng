@@ -6,7 +6,7 @@
 //! 3. **Feedback térmico**: E_fb = ε_feedback × Ṁ × c² depositada en gas vecino
 
 use crate::periodic_delta;
-use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_core::{Particle, PbhHostKind, Vec3};
 
 /// Agujero negro supermasivo (SMBH) en la simulación.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -58,6 +58,23 @@ pub struct AgnParams {
     pub r_influence: f64,
 }
 
+/// Parámetros para seeding de primordial black holes (PBH) (Phase 190).
+#[derive(Debug, Clone)]
+pub struct PbhSeedingParams {
+    /// Número máximo de PBHs a crear.
+    pub n_seeds: usize,
+    /// Masa de cada semilla PBH.
+    pub m_seed: f64,
+    /// Masa mínima de partícula candidata.
+    pub min_host_mass: f64,
+    /// Semilla determinista para seleccionar hosts.
+    pub seed: u64,
+    /// Spin inicial Kerr de las semillas PBH.
+    pub initial_spin: f64,
+    /// Tipo de host elegible.
+    pub host_kind: PbhHostKind,
+}
+
 impl Default for AgnParams {
     fn default() -> Self {
         Self {
@@ -93,6 +110,56 @@ pub fn radiative_efficiency_from_spin(spin: f64) -> f64 {
 pub fn spin_dependent_feedback_efficiency(eps_feedback: f64, spin: f64) -> f64 {
     let eps0 = radiative_efficiency_from_spin(0.0);
     eps_feedback.max(0.0) * radiative_efficiency_from_spin(spin) / eps0
+}
+
+#[inline]
+fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = x;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Crea semillas PBH en hosts deterministas de las ICs.
+///
+/// Este camino modela PBHs masivos tempranos como semillas ligeras de SMBH:
+/// selecciona partículas candidatas por hash estable `(seed, global_id)` y crea
+/// BHs en sus posiciones. Si `bhs` ya contiene elementos, no agrega PBHs para
+/// preservar restart/reproducibilidad.
+pub fn seed_primordial_black_holes(
+    bhs: &mut Vec<BlackHole>,
+    particles: &[Particle],
+    params: &PbhSeedingParams,
+) -> usize {
+    if !bhs.is_empty() || params.n_seeds == 0 || params.m_seed <= 0.0 {
+        return 0;
+    }
+
+    let mut candidates: Vec<(u64, &Particle)> = particles
+        .iter()
+        .filter(|p| {
+            p.mass >= params.min_host_mass
+                && match params.host_kind {
+                    PbhHostKind::DarkMatter => p.ptype == gadget_ng_core::ParticleType::DarkMatter,
+                    PbhHostKind::Star => p.ptype == gadget_ng_core::ParticleType::Star,
+                    PbhHostKind::Collisionless => p.ptype != gadget_ng_core::ParticleType::Gas,
+                }
+        })
+        .map(|p| {
+            let key = splitmix64(params.seed ^ p.global_id as u64);
+            (key, p)
+        })
+        .collect();
+    candidates.sort_by_key(|(key, p)| (*key, p.global_id));
+
+    let n_new = params.n_seeds.min(candidates.len());
+    for (_, host) in candidates.into_iter().take(n_new) {
+        let mut bh = BlackHole::with_spin(host.position, params.m_seed, params.initial_spin);
+        bh.velocity = host.velocity;
+        bhs.push(bh);
+    }
+    n_new
 }
 
 /// Actualiza el spin por acreción coherente durante `dt`.
@@ -517,6 +584,57 @@ mod tests {
             spin: 0.0,
             velocity: Vec3::zero(),
         }
+    }
+
+    #[test]
+    fn pbh_seeding_is_deterministic_and_uses_dm_hosts() {
+        let mut particles: Vec<Particle> = (0..8)
+            .map(|i| Particle::new(i, 1.0, Vec3::new(i as f64, 0.0, 0.0), Vec3::zero()))
+            .collect();
+        particles[3].ptype = gadget_ng_core::ParticleType::Gas;
+
+        let params = PbhSeedingParams {
+            n_seeds: 3,
+            m_seed: 1.0e3,
+            min_host_mass: 0.0,
+            seed: 42,
+            initial_spin: 0.2,
+            host_kind: PbhHostKind::DarkMatter,
+        };
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+
+        assert_eq!(seed_primordial_black_holes(&mut a, &particles, &params), 3);
+        assert_eq!(seed_primordial_black_holes(&mut b, &particles, &params), 3);
+
+        let ids_a: Vec<f64> = a.iter().map(|bh| bh.pos.x).collect();
+        let ids_b: Vec<f64> = b.iter().map(|bh| bh.pos.x).collect();
+        assert_eq!(ids_a, ids_b);
+        assert!(!ids_a.contains(&3.0), "gas particles are not PBH hosts");
+        assert!(
+            a.iter()
+                .all(|bh| bh.mass == params.m_seed && bh.spin == 0.2)
+        );
+    }
+
+    #[test]
+    fn pbh_seeding_does_not_duplicate_existing_bhs() {
+        let particles = vec![Particle::new(0, 1.0, Vec3::zero(), Vec3::zero())];
+        let params = PbhSeedingParams {
+            n_seeds: 1,
+            m_seed: 1.0e3,
+            min_host_mass: 0.0,
+            seed: 1,
+            initial_spin: 0.0,
+            host_kind: PbhHostKind::DarkMatter,
+        };
+        let mut bhs = vec![BlackHole::new(Vec3::new(1.0, 0.0, 0.0), 1e5)];
+        assert_eq!(
+            seed_primordial_black_holes(&mut bhs, &particles, &params),
+            0
+        );
+        assert_eq!(bhs.len(), 1);
+        assert_eq!(bhs[0].mass, 1e5);
     }
 
     /// Ṁ ∝ M_BH² verificado numéricamente.

@@ -50,11 +50,11 @@ pub mod thermal_conduction;
 pub mod viscosity;
 
 pub use agn::{
-    AgnParams, BlackHole, apply_agn_feedback, apply_agn_feedback_bimodal,
+    AgnParams, BlackHole, PbhSeedingParams, apply_agn_feedback, apply_agn_feedback_bimodal,
     apply_agn_feedback_bimodal_periodic, apply_agn_feedback_periodic, bondi_accretion_rate,
     bubble_feedback_radio, bubble_feedback_radio_periodic, grow_black_holes,
     grow_black_holes_periodic, merge_black_holes, radiative_efficiency_from_spin,
-    spin_dependent_feedback_efficiency, spin_up_by_accretion,
+    seed_primordial_black_holes, spin_dependent_feedback_efficiency, spin_up_by_accretion,
 };
 pub use cooling::{
     apply_cooling, apply_cooling_mhd, apply_cooling_mhd_with_redshift, apply_cooling_with_redshift,
@@ -65,8 +65,9 @@ pub use cosmic_rays::diffuse_cr_periodic;
 pub use cosmic_rays::{apply_cr_hadronic_losses, cr_pressure, diffuse_cr, inject_cr_from_sn};
 pub use density::{GAMMA, compute_density, compute_density_with_periodic};
 pub use dust::{
-    apply_dust_radiation_pressure_kick, dust_equilibrium_temperature, dust_ir_luminosity,
-    dust_uv_opacity, update_dust,
+    apply_dust_radiation_pressure_kick, dust_equilibrium_temperature, dust_h2_shielding_factor,
+    dust_ir_luminosity, dust_species_fractions, dust_uv_opacity, dust_uv_opacity_active,
+    effective_dust_uv_opacity, update_dust,
 };
 pub use enrichment::apply_enrichment;
 pub use enrichment::apply_enrichment_periodic;
@@ -86,7 +87,7 @@ pub use gmc::{GmcCluster, KroupaImf, collapse_gmc, inject_sn_from_cluster, sampl
 pub use integrator::{courant_dt, sph_cosmo_kdk_step, sph_kdk_step, sph_kdk_step_gadget2};
 pub use ism::{effective_pressure, effective_u, update_ism_phases};
 pub use kernel::{grad_w, w};
-pub use molecular_gas::update_h2_fraction;
+pub use molecular_gas::{update_h2_fraction, update_h2_fraction_with_dust};
 pub use particle::{GasData, ParticleType, SphParticle};
 pub use phase_transitions::{
     apply_phase_transitions, classify_phase, cooling_time, field_length, free_fall_time,

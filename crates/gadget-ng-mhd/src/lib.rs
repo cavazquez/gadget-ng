@@ -23,6 +23,7 @@ pub mod cleaning;
 pub mod dynamo;
 pub mod flux_freeze;
 pub mod induction;
+pub mod nonideal;
 pub mod pressure;
 pub mod reconnection;
 pub mod relativistic;
@@ -40,6 +41,7 @@ pub use dynamo::{
 };
 pub use flux_freeze::{apply_flux_freeze, flux_freeze_error, mean_gas_density};
 pub use induction::{advance_induction, alfven_dt, apply_artificial_resistivity, init_b_field};
+pub use nonideal::{apply_ambipolar_diffusion, ionization_fraction_proxy};
 pub use pressure::{apply_magnetic_forces, magnetic_pressure, maxwell_stress};
 pub use reconnection::{apply_magnetic_reconnection, sweet_parker_rate};
 pub use relativistic::{

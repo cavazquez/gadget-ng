@@ -59,6 +59,30 @@ pub enum StellarFeedbackMode {
     ThermalStochastic,
 }
 
+/// Tipo de partícula que puede alojar una semilla PBH (Phase 190).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PbhHostKind {
+    /// Sólo partículas de materia oscura: opción física recomendada para ICs cosmológicas.
+    #[default]
+    DarkMatter,
+    /// Sólo partículas estelares.
+    Star,
+    /// Cualquier partícula collisionless: materia oscura o estrellas.
+    Collisionless,
+}
+
+/// Mezcla subgrid de especies de polvo (Phase 192).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DustSpeciesModel {
+    /// Una sola población efectiva, compatible con Phases 130/137/182.
+    #[default]
+    Single,
+    /// Mezcla de silicatos y grafitos con opacidades diferenciadas.
+    SilicateGraphite,
+}
+
 /// Configuración del módulo SPH cosmológico (Phase 66).
 ///
 /// Añadir `[sph]` al TOML:
@@ -781,6 +805,24 @@ pub struct AgnSection {
     /// Escala de recoil gravitacional tras merger [km/s] (default: `500.0`).
     #[serde(default = "default_bh_recoil_velocity")]
     pub recoil_velocity_scale: f64,
+    /// Activa semillas de primordial black holes (PBH) en ICs/primer paso (Phase 190).
+    #[serde(default)]
+    pub pbh_seeding_enabled: bool,
+    /// Número máximo de semillas PBH a crear antes del seeding AGN por halos.
+    #[serde(default = "default_pbh_n_seeds")]
+    pub pbh_n_seeds: usize,
+    /// Masa semilla PBH [M_sol/h] (default: 1e3), menor que SMBH seeds clásicas.
+    #[serde(default = "default_pbh_m_seed")]
+    pub pbh_m_seed: f64,
+    /// Masa mínima de partícula candidata para alojar una PBH.
+    #[serde(default)]
+    pub pbh_min_host_mass: f64,
+    /// Semilla determinista para seleccionar hosts PBH de forma reproducible.
+    #[serde(default = "default_pbh_seed")]
+    pub pbh_seed: u64,
+    /// Tipo de host elegible para semillas PBH.
+    #[serde(default)]
+    pub pbh_host_kind: PbhHostKind,
 }
 
 fn default_eps_feedback() -> f64 {
@@ -813,6 +855,15 @@ fn default_bh_merger_radius() -> f64 {
 fn default_bh_recoil_velocity() -> f64 {
     500.0
 }
+fn default_pbh_n_seeds() -> usize {
+    1
+}
+fn default_pbh_m_seed() -> f64 {
+    1e3
+}
+fn default_pbh_seed() -> u64 {
+    19_019
+}
 
 impl Default for AgnSection {
     fn default() -> Self {
@@ -831,6 +882,12 @@ impl Default for AgnSection {
             mergers_enabled: false,
             merger_radius: default_bh_merger_radius(),
             recoil_velocity_scale: default_bh_recoil_velocity(),
+            pbh_seeding_enabled: false,
+            pbh_n_seeds: default_pbh_n_seeds(),
+            pbh_m_seed: default_pbh_m_seed(),
+            pbh_min_host_mass: 0.0,
+            pbh_seed: default_pbh_seed(),
+            pbh_host_kind: PbhHostKind::default(),
         }
     }
 }
@@ -886,6 +943,24 @@ pub struct DustSection {
     /// Techo numérico de temperatura de polvo antes de sublimación (default: `2000` K).
     #[serde(default = "default_dust_temperature_cap_k")]
     pub dust_temperature_cap_k: f64,
+    /// Modelo de especies de polvo activo (Phase 192).
+    #[serde(default)]
+    pub species_model: DustSpeciesModel,
+    /// Fracción de masa de polvo en silicatos Mg/Fe (default: `0.54`).
+    #[serde(default = "default_silicate_fraction")]
+    pub silicate_fraction: f64,
+    /// Fracción de masa de polvo en grafitos/carbonáceos (default: `0.46`).
+    #[serde(default = "default_graphite_fraction")]
+    pub graphite_fraction: f64,
+    /// Opacidad UV de silicatos [cm²/g].
+    #[serde(default = "default_kappa_silicate_uv")]
+    pub kappa_silicate_uv: f64,
+    /// Opacidad UV de grafitos [cm²/g].
+    #[serde(default = "default_kappa_graphite_uv")]
+    pub kappa_graphite_uv: f64,
+    /// Boost máximo de formación/supervivencia H2 por shielding de polvo.
+    #[serde(default = "default_h2_shielding_boost")]
+    pub h2_shielding_boost: f64,
 }
 
 fn default_d_to_g_max() -> f64 {
@@ -912,6 +987,21 @@ fn default_dust_temperature_floor_k() -> f64 {
 fn default_dust_temperature_cap_k() -> f64 {
     2000.0
 }
+fn default_silicate_fraction() -> f64 {
+    0.54
+}
+fn default_graphite_fraction() -> f64 {
+    0.46
+}
+fn default_kappa_silicate_uv() -> f64 {
+    800.0
+}
+fn default_kappa_graphite_uv() -> f64 {
+    1400.0
+}
+fn default_h2_shielding_boost() -> f64 {
+    2.0
+}
 
 impl Default for DustSection {
     fn default() -> Self {
@@ -929,6 +1019,12 @@ impl Default for DustSection {
             ir_emissivity: default_ir_emissivity(),
             dust_temperature_floor_k: default_dust_temperature_floor_k(),
             dust_temperature_cap_k: default_dust_temperature_cap_k(),
+            species_model: DustSpeciesModel::default(),
+            silicate_fraction: default_silicate_fraction(),
+            graphite_fraction: default_graphite_fraction(),
+            kappa_silicate_uv: default_kappa_silicate_uv(),
+            kappa_graphite_uv: default_kappa_graphite_uv(),
+            h2_shielding_boost: default_h2_shielding_boost(),
         }
     }
 }

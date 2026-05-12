@@ -20,6 +20,16 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
     if cfg.mhd.alpha_b > 0.0 {
         gadget_ng_mhd::apply_artificial_resistivity(local, cfg.mhd.alpha_b, dt_mhd);
     }
+    if cfg.mhd.ambipolar_diffusion_enabled {
+        gadget_ng_mhd::apply_ambipolar_diffusion(
+            local,
+            cfg.mhd.ambipolar_eta,
+            cfg.mhd.ambipolar_ion_floor,
+            cfg.mhd.ambipolar_dust_coupling,
+            cfg.sph.gamma,
+            dt_mhd,
+        );
+    }
     gadget_ng_mhd::apply_magnetic_forces(local, dt_mhd);
     gadget_ng_mhd::dedner_cleaning_step(local, cfg.mhd.c_h, cfg.mhd.c_r, dt_mhd);
 
@@ -163,8 +173,19 @@ pub(crate) fn step_agn(
         v_kick_agn: cfg.sph.agn.v_kick_agn,
         r_influence: cfg.sph.agn.r_influence,
     };
+    if cfg.sph.agn.pbh_seeding_enabled && agn_bhs.is_empty() {
+        let pbh_params = gadget_ng_sph::PbhSeedingParams {
+            n_seeds: cfg.sph.agn.pbh_n_seeds,
+            m_seed: cfg.sph.agn.pbh_m_seed,
+            min_host_mass: cfg.sph.agn.pbh_min_host_mass,
+            seed: cfg.sph.agn.pbh_seed,
+            initial_spin: cfg.sph.agn.initial_spin,
+            host_kind: cfg.sph.agn.pbh_host_kind,
+        };
+        gadget_ng_sph::seed_primordial_black_holes(agn_bhs, local, &pbh_params);
+    }
     let n_bh = cfg.sph.agn.n_agn_bh.max(1);
-    if !halo_centers.is_empty() {
+    if !halo_centers.is_empty() && (!cfg.sph.agn.pbh_seeding_enabled || agn_bhs.is_empty()) {
         let n_new = halo_centers.len().min(n_bh);
         if agn_bhs.len() != n_new {
             agn_bhs.resize_with(n_new, || {
@@ -407,7 +428,13 @@ pub(crate) fn step_sph(
     }
 
     if cfg.sph.molecular.enabled {
-        gadget_ng_sph::update_h2_fraction(local, &cfg.sph.molecular, cfg.simulation.dt);
+        let dust_cfg = cfg.sph.dust.enabled.then_some(&cfg.sph.dust);
+        gadget_ng_sph::update_h2_fraction_with_dust(
+            local,
+            &cfg.sph.molecular,
+            dust_cfg,
+            cfg.simulation.dt,
+        );
     }
 
     if cfg.turbulence.enabled {

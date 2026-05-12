@@ -9,6 +9,10 @@ mod merge_tree_cmd;
 
 use clap::{Parser, Subcommand};
 use error::CliError;
+use gadget_ng_core::{
+    BFieldKind, CoolingKind, DarkMatterModel, DustSpeciesModel, PbhHostKind, RunConfig,
+    StarFormationModel, StellarFeedbackMode,
+};
 use gadget_ng_parallel::ParallelRuntime;
 #[cfg(not(feature = "mpi"))]
 use gadget_ng_parallel::SerialRuntime;
@@ -26,6 +30,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+#[expect(clippy::large_enum_variant)]
 enum Commands {
     /// Valida y muestra la configuración efectiva (TOML + env `GADGET_NG_`).
     Config {
@@ -59,6 +64,177 @@ enum Commands {
         /// Formato de salida: `ppm` o `png`.
         #[arg(long, default_value = "ppm")]
         vis_format: String,
+        /// Activar PBH seeding en `[sph.agn]` para esta corrida.
+        #[arg(long)]
+        pbh_seeding: bool,
+        /// Número de semillas PBH a crear.
+        #[arg(long)]
+        pbh_n_seeds: Option<usize>,
+        /// Masa de cada semilla PBH [M_sol/h].
+        #[arg(long)]
+        pbh_m_seed: Option<f64>,
+        /// Masa mínima de partícula host para alojar una PBH.
+        #[arg(long)]
+        pbh_min_host_mass: Option<f64>,
+        /// Semilla determinista para seleccionar hosts PBH.
+        #[arg(long)]
+        pbh_seed: Option<u64>,
+        /// Tipo de host PBH: `dark_matter`, `star` o `collisionless`.
+        #[arg(long)]
+        pbh_host_kind: Option<String>,
+        /// Activar SPH para esta corrida.
+        #[arg(long)]
+        sph: bool,
+        /// Sobrescribir fracción inicial de gas SPH.
+        #[arg(long)]
+        gas_fraction: Option<f64>,
+        /// Cooling SPH: none, atomic_h_he, metal_cooling, metal_tabular, uv_background.
+        #[arg(long)]
+        cooling: Option<String>,
+        /// Activar feedback estelar.
+        #[arg(long)]
+        feedback: bool,
+        /// Ley SF: density_law o pressure_law.
+        #[arg(long)]
+        sf_model: Option<String>,
+        /// Modo feedback: kinetic o thermal_stochastic.
+        #[arg(long)]
+        feedback_mode: Option<String>,
+        /// Activar vientos galácticos.
+        #[arg(long)]
+        winds: bool,
+        /// Velocidad de viento galáctico [km/s].
+        #[arg(long)]
+        wind_velocity: Option<f64>,
+        /// Activar AGN.
+        #[arg(long)]
+        agn: bool,
+        /// Número de BH AGN clásicos.
+        #[arg(long)]
+        agn_n_bh: Option<usize>,
+        /// Masa semilla AGN clásica [M_sol/h].
+        #[arg(long)]
+        agn_m_seed: Option<f64>,
+        /// Eficiencia de feedback AGN.
+        #[arg(long)]
+        agn_eps_feedback: Option<f64>,
+        /// Activar modo radio AGN.
+        #[arg(long)]
+        agn_radio: bool,
+        /// Umbral Eddington modo quasar/radio.
+        #[arg(long)]
+        agn_f_edd_threshold: Option<f64>,
+        /// Spin inicial de semillas BH.
+        #[arg(long)]
+        agn_spin: Option<f64>,
+        /// Activar mergers de BH.
+        #[arg(long)]
+        agn_mergers: bool,
+        /// Activar rayos cósmicos.
+        #[arg(long)]
+        cr: bool,
+        /// Coeficiente de difusión CR.
+        #[arg(long)]
+        cr_kappa: Option<f64>,
+        /// Activar difusión CR anisótropa (requiere MHD).
+        #[arg(long)]
+        cr_anisotropic: bool,
+        /// Coeficiente de streaming CR lungo-B (requiere MHD).
+        #[arg(long)]
+        cr_streaming: Option<f64>,
+        /// Activar MHD.
+        #[arg(long)]
+        mhd: bool,
+        /// Tipo de campo B inicial: none, uniform, random, spiral.
+        #[arg(long)]
+        bfield: Option<String>,
+        /// Amplitud uniforme de B en x.
+        #[arg(long)]
+        b0x: Option<f64>,
+        /// Amplitud uniforme de B en y.
+        #[arg(long)]
+        b0y: Option<f64>,
+        /// Amplitud uniforme de B en z.
+        #[arg(long)]
+        b0z: Option<f64>,
+        /// Activar turbulencia MHD OU.
+        #[arg(long)]
+        turbulence: bool,
+        /// Amplitud de forzado turbulento.
+        #[arg(long)]
+        turb_amplitude: Option<f64>,
+        /// Activar plasma de dos fluidos.
+        #[arg(long)]
+        two_fluid: bool,
+        /// Activar difusión ambipolar no-ideal (requiere MHD).
+        #[arg(long)]
+        ambipolar: bool,
+        /// Coeficiente base de difusión ambipolar.
+        #[arg(long)]
+        ambipolar_eta: Option<f64>,
+        /// Piso de ionización para difusión ambipolar.
+        #[arg(long)]
+        ambipolar_ion_floor: Option<f64>,
+        /// Acoplamiento polvo-ionización para difusión ambipolar.
+        #[arg(long)]
+        ambipolar_dust_coupling: Option<f64>,
+        /// Activar SIDM.
+        #[arg(long)]
+        sidm: bool,
+        /// Sección eficaz SIDM por masa.
+        #[arg(long)]
+        sidm_sigma_m: Option<f64>,
+        /// Activar f(R) Hu-Sawicki.
+        #[arg(long)]
+        fr: bool,
+        /// |f_R0| para f(R).
+        #[arg(long)]
+        fr_f_r0: Option<f64>,
+        /// Índice n para f(R).
+        #[arg(long)]
+        fr_n: Option<f64>,
+        /// Activar screening no lineal en malla f(R).
+        #[arg(long)]
+        fr_nonlinear_mesh: bool,
+        /// Activar RT M1.
+        #[arg(long)]
+        rt: bool,
+        /// Activar RT multifrecuencia.
+        #[arg(long)]
+        rt_multifrequency: bool,
+        /// Activar reionización.
+        #[arg(long)]
+        reionization: bool,
+        /// Activar WDM/FDM en ICs.
+        #[arg(long)]
+        dark_matter: Option<String>,
+        /// Masa WDM [keV].
+        #[arg(long)]
+        wdm_mass_kev: Option<f64>,
+        /// Masa FDM en 1e-22 eV.
+        #[arg(long)]
+        fdm_mass_22: Option<f64>,
+        /// Activar polvo SPH.
+        #[arg(long)]
+        dust: bool,
+        /// Modelo de especies de polvo: single o silicate_graphite.
+        #[arg(long)]
+        dust_species: Option<String>,
+        /// Fracción de masa de polvo en silicatos.
+        #[arg(long)]
+        dust_silicate_fraction: Option<f64>,
+        /// Fracción de masa de polvo en grafitos.
+        #[arg(long)]
+        dust_graphite_fraction: Option<f64>,
+        /// Opacidad UV de silicatos [cm²/g].
+        #[arg(long)]
+        dust_kappa_silicate_uv: Option<f64>,
+        /// Opacidad UV de grafitos [cm²/g].
+        #[arg(long)]
+        dust_kappa_graphite_uv: Option<f64>,
+        /// Boost máximo de shielding H2 por polvo activo.
+        #[arg(long)]
+        dust_h2_shielding_boost: Option<f64>,
     },
     /// Escribe un snapshot del estado inicial (IC) resuelto.
     Snapshot {
@@ -261,6 +437,388 @@ enum Commands {
     },
 }
 
+fn parse_pbh_host_kind(value: &str) -> Result<PbhHostKind, CliError> {
+    match value {
+        "dark_matter" | "dm" => Ok(PbhHostKind::DarkMatter),
+        "star" | "stars" => Ok(PbhHostKind::Star),
+        "collisionless" | "all_collisionless" => Ok(PbhHostKind::Collisionless),
+        other => Err(CliError::InvalidConfig(format!(
+            "pbh_host_kind inválido: {other}; usar dark_matter, star o collisionless"
+        ))),
+    }
+}
+
+fn parse_cooling_kind(value: &str) -> Result<CoolingKind, CliError> {
+    match value {
+        "none" => Ok(CoolingKind::None),
+        "atomic_h_he" | "atomic" | "atomic_hhe" => Ok(CoolingKind::AtomicHHe),
+        "metal_cooling" | "metal" => Ok(CoolingKind::MetalCooling),
+        "metal_tabular" | "tabular" => Ok(CoolingKind::MetalTabular),
+        "uv_background" | "uvb" => Ok(CoolingKind::UvBackground),
+        other => Err(CliError::InvalidConfig(format!(
+            "cooling inválido: {other}; usar none, atomic_h_he, metal_cooling, metal_tabular o uv_background"
+        ))),
+    }
+}
+
+fn parse_sf_model(value: &str) -> Result<StarFormationModel, CliError> {
+    match value {
+        "density_law" | "density" => Ok(StarFormationModel::DensityLaw),
+        "pressure_law" | "pressure" => Ok(StarFormationModel::PressureLaw),
+        other => Err(CliError::InvalidConfig(format!(
+            "sf_model inválido: {other}; usar density_law o pressure_law"
+        ))),
+    }
+}
+
+fn parse_feedback_mode(value: &str) -> Result<StellarFeedbackMode, CliError> {
+    match value {
+        "kinetic" => Ok(StellarFeedbackMode::Kinetic),
+        "thermal_stochastic" | "thermal" => Ok(StellarFeedbackMode::ThermalStochastic),
+        other => Err(CliError::InvalidConfig(format!(
+            "feedback_mode inválido: {other}; usar kinetic o thermal_stochastic"
+        ))),
+    }
+}
+
+fn parse_bfield_kind(value: &str) -> Result<BFieldKind, CliError> {
+    match value {
+        "none" => Ok(BFieldKind::None),
+        "uniform" => Ok(BFieldKind::Uniform),
+        "random" => Ok(BFieldKind::Random),
+        "spiral" => Ok(BFieldKind::Spiral),
+        other => Err(CliError::InvalidConfig(format!(
+            "bfield inválido: {other}; usar none, uniform, random o spiral"
+        ))),
+    }
+}
+
+fn parse_dark_matter_model(value: &str) -> Result<DarkMatterModel, CliError> {
+    match value {
+        "cold" | "cdm" => Ok(DarkMatterModel::Cold),
+        "warm" | "wdm" => Ok(DarkMatterModel::Warm),
+        "fuzzy" | "fdm" => Ok(DarkMatterModel::Fuzzy),
+        other => Err(CliError::InvalidConfig(format!(
+            "dark_matter inválido: {other}; usar cold, warm o fuzzy"
+        ))),
+    }
+}
+
+fn parse_dust_species_model(value: &str) -> Result<DustSpeciesModel, CliError> {
+    match value {
+        "single" => Ok(DustSpeciesModel::Single),
+        "silicate_graphite" | "active" | "colibre" => Ok(DustSpeciesModel::SilicateGraphite),
+        other => Err(CliError::InvalidConfig(format!(
+            "dust_species inválido: {other}; usar single o silicate_graphite"
+        ))),
+    }
+}
+
+#[expect(clippy::struct_excessive_bools)]
+struct RuntimeCliOverrides {
+    pbh_seeding: bool,
+    pbh_n_seeds: Option<usize>,
+    pbh_m_seed: Option<f64>,
+    pbh_min_host_mass: Option<f64>,
+    pbh_seed: Option<u64>,
+    pbh_host_kind: Option<String>,
+    sph: bool,
+    gas_fraction: Option<f64>,
+    cooling: Option<String>,
+    feedback: bool,
+    sf_model: Option<String>,
+    feedback_mode: Option<String>,
+    winds: bool,
+    wind_velocity: Option<f64>,
+    agn: bool,
+    agn_n_bh: Option<usize>,
+    agn_m_seed: Option<f64>,
+    agn_eps_feedback: Option<f64>,
+    agn_radio: bool,
+    agn_f_edd_threshold: Option<f64>,
+    agn_spin: Option<f64>,
+    agn_mergers: bool,
+    cr: bool,
+    cr_kappa: Option<f64>,
+    cr_anisotropic: bool,
+    cr_streaming: Option<f64>,
+    mhd: bool,
+    bfield: Option<String>,
+    b0x: Option<f64>,
+    b0y: Option<f64>,
+    b0z: Option<f64>,
+    turbulence: bool,
+    turb_amplitude: Option<f64>,
+    two_fluid: bool,
+    ambipolar: bool,
+    ambipolar_eta: Option<f64>,
+    ambipolar_ion_floor: Option<f64>,
+    ambipolar_dust_coupling: Option<f64>,
+    sidm: bool,
+    sidm_sigma_m: Option<f64>,
+    fr: bool,
+    fr_f_r0: Option<f64>,
+    fr_n: Option<f64>,
+    fr_nonlinear_mesh: bool,
+    rt: bool,
+    rt_multifrequency: bool,
+    reionization: bool,
+    dark_matter: Option<String>,
+    wdm_mass_kev: Option<f64>,
+    fdm_mass_22: Option<f64>,
+    dust: bool,
+    dust_species: Option<String>,
+    dust_silicate_fraction: Option<f64>,
+    dust_graphite_fraction: Option<f64>,
+    dust_kappa_silicate_uv: Option<f64>,
+    dust_kappa_graphite_uv: Option<f64>,
+    dust_h2_shielding_boost: Option<f64>,
+}
+
+fn apply_runtime_cli_overrides(
+    cfg: &mut RunConfig,
+    overrides: RuntimeCliOverrides,
+) -> Result<(), CliError> {
+    if overrides.sph {
+        cfg.sph.enabled = true;
+    }
+    if let Some(v) = overrides.gas_fraction {
+        cfg.sph.gas_fraction = v;
+    }
+    if let Some(v) = overrides.cooling {
+        cfg.sph.enabled = true;
+        cfg.sph.cooling = parse_cooling_kind(&v)?;
+    }
+    if overrides.feedback {
+        cfg.sph.enabled = true;
+        cfg.sph.feedback.enabled = true;
+    }
+    if let Some(v) = overrides.sf_model {
+        cfg.sph.enabled = true;
+        cfg.sph.feedback.enabled = true;
+        cfg.sph.feedback.sf_model = parse_sf_model(&v)?;
+    }
+    if let Some(v) = overrides.feedback_mode {
+        cfg.sph.enabled = true;
+        cfg.sph.feedback.enabled = true;
+        cfg.sph.feedback.feedback_mode = parse_feedback_mode(&v)?;
+    }
+    if overrides.winds {
+        cfg.sph.enabled = true;
+        cfg.sph.feedback.enabled = true;
+        cfg.sph.feedback.wind.enabled = true;
+    }
+    if let Some(v) = overrides.wind_velocity {
+        cfg.sph.enabled = true;
+        cfg.sph.feedback.enabled = true;
+        cfg.sph.feedback.wind.enabled = true;
+        cfg.sph.feedback.wind.v_wind_km_s = v;
+    }
+    if overrides.agn {
+        cfg.sph.agn.enabled = true;
+    }
+    if let Some(v) = overrides.agn_n_bh {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.n_agn_bh = v;
+    }
+    if let Some(v) = overrides.agn_m_seed {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.m_seed = v;
+    }
+    if let Some(v) = overrides.agn_eps_feedback {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.eps_feedback = v;
+    }
+    if overrides.agn_radio {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.eps_radio = cfg.sph.agn.eps_radio.max(0.0);
+    }
+    if let Some(v) = overrides.agn_f_edd_threshold {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.f_edd_threshold = v;
+    }
+    if let Some(v) = overrides.agn_spin {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.spin_enabled = true;
+        cfg.sph.agn.initial_spin = v;
+    }
+    if overrides.agn_mergers {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.mergers_enabled = true;
+    }
+    if overrides.pbh_seeding {
+        cfg.sph.agn.enabled = true;
+        cfg.sph.agn.pbh_seeding_enabled = true;
+    }
+    if let Some(v) = overrides.pbh_n_seeds {
+        cfg.sph.agn.pbh_n_seeds = v;
+    }
+    if let Some(v) = overrides.pbh_m_seed {
+        cfg.sph.agn.pbh_m_seed = v;
+    }
+    if let Some(v) = overrides.pbh_min_host_mass {
+        cfg.sph.agn.pbh_min_host_mass = v;
+    }
+    if let Some(v) = overrides.pbh_seed {
+        cfg.sph.agn.pbh_seed = v;
+    }
+    if let Some(v) = overrides.pbh_host_kind {
+        cfg.sph.agn.pbh_host_kind = parse_pbh_host_kind(&v)?;
+    }
+    if overrides.cr {
+        cfg.sph.enabled = true;
+        cfg.sph.cr.enabled = true;
+    }
+    if let Some(v) = overrides.cr_kappa {
+        cfg.sph.enabled = true;
+        cfg.sph.cr.enabled = true;
+        cfg.sph.cr.kappa_cr = v;
+    }
+    if overrides.cr_anisotropic {
+        cfg.sph.enabled = true;
+        cfg.sph.cr.enabled = true;
+        cfg.sph.cr.anisotropic_diffusion = true;
+    }
+    if let Some(v) = overrides.cr_streaming {
+        cfg.sph.enabled = true;
+        cfg.sph.cr.enabled = true;
+        cfg.sph.cr.streaming_coefficient = v;
+    }
+    if overrides.mhd {
+        cfg.mhd.enabled = true;
+    }
+    if let Some(v) = overrides.bfield {
+        cfg.mhd.enabled = true;
+        cfg.mhd.b0_kind = parse_bfield_kind(&v)?;
+    }
+    if let Some(v) = overrides.b0x {
+        cfg.mhd.enabled = true;
+        cfg.mhd.b0_uniform[0] = v;
+    }
+    if let Some(v) = overrides.b0y {
+        cfg.mhd.enabled = true;
+        cfg.mhd.b0_uniform[1] = v;
+    }
+    if let Some(v) = overrides.b0z {
+        cfg.mhd.enabled = true;
+        cfg.mhd.b0_uniform[2] = v;
+    }
+    if overrides.turbulence {
+        cfg.mhd.enabled = true;
+        cfg.turbulence.enabled = true;
+    }
+    if let Some(v) = overrides.turb_amplitude {
+        cfg.mhd.enabled = true;
+        cfg.turbulence.enabled = true;
+        cfg.turbulence.amplitude = v;
+    }
+    if overrides.two_fluid {
+        cfg.two_fluid.enabled = true;
+    }
+    if overrides.ambipolar {
+        cfg.mhd.enabled = true;
+        cfg.mhd.ambipolar_diffusion_enabled = true;
+    }
+    if let Some(v) = overrides.ambipolar_eta {
+        cfg.mhd.enabled = true;
+        cfg.mhd.ambipolar_diffusion_enabled = true;
+        cfg.mhd.ambipolar_eta = v;
+    }
+    if let Some(v) = overrides.ambipolar_ion_floor {
+        cfg.mhd.enabled = true;
+        cfg.mhd.ambipolar_diffusion_enabled = true;
+        cfg.mhd.ambipolar_ion_floor = v;
+    }
+    if let Some(v) = overrides.ambipolar_dust_coupling {
+        cfg.mhd.enabled = true;
+        cfg.mhd.ambipolar_diffusion_enabled = true;
+        cfg.mhd.ambipolar_dust_coupling = v;
+    }
+    if overrides.sidm {
+        cfg.sidm.enabled = true;
+    }
+    if let Some(v) = overrides.sidm_sigma_m {
+        cfg.sidm.enabled = true;
+        cfg.sidm.sigma_m = v;
+    }
+    if overrides.fr {
+        cfg.modified_gravity.enabled = true;
+    }
+    if let Some(v) = overrides.fr_f_r0 {
+        cfg.modified_gravity.enabled = true;
+        cfg.modified_gravity.f_r0 = v;
+    }
+    if let Some(v) = overrides.fr_n {
+        cfg.modified_gravity.enabled = true;
+        cfg.modified_gravity.n = v;
+    }
+    if overrides.fr_nonlinear_mesh {
+        cfg.modified_gravity.enabled = true;
+        cfg.modified_gravity.nonlinear_mesh = true;
+    }
+    if overrides.rt {
+        cfg.rt.enabled = true;
+    }
+    if overrides.rt_multifrequency {
+        cfg.rt.enabled = true;
+        cfg.rt.multifrequency_enabled = true;
+    }
+    if overrides.reionization {
+        cfg.rt.enabled = true;
+        cfg.reionization.enabled = true;
+    }
+    if let Some(v) = overrides.dark_matter {
+        cfg.dark_matter.enabled = true;
+        cfg.dark_matter.model = parse_dark_matter_model(&v)?;
+    }
+    if let Some(v) = overrides.wdm_mass_kev {
+        cfg.dark_matter.enabled = true;
+        cfg.dark_matter.model = DarkMatterModel::Warm;
+        cfg.dark_matter.m_wdm_kev = v;
+    }
+    if let Some(v) = overrides.fdm_mass_22 {
+        cfg.dark_matter.enabled = true;
+        cfg.dark_matter.model = DarkMatterModel::Fuzzy;
+        cfg.dark_matter.m_fdm_22 = v;
+    }
+    if overrides.dust {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+    }
+    if let Some(v) = overrides.dust_species {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+        cfg.sph.dust.species_model = parse_dust_species_model(&v)?;
+    }
+    if let Some(v) = overrides.dust_silicate_fraction {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+        cfg.sph.dust.silicate_fraction = v;
+    }
+    if let Some(v) = overrides.dust_graphite_fraction {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+        cfg.sph.dust.graphite_fraction = v;
+    }
+    if let Some(v) = overrides.dust_kappa_silicate_uv {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+        cfg.sph.dust.kappa_silicate_uv = v;
+    }
+    if let Some(v) = overrides.dust_kappa_graphite_uv {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+        cfg.sph.dust.kappa_graphite_uv = v;
+    }
+    if let Some(v) = overrides.dust_h2_shielding_boost {
+        cfg.sph.enabled = true;
+        cfg.sph.dust.enabled = true;
+        cfg.sph.dust.h2_shielding_boost = v;
+    }
+    cfg.validate()?;
+    Ok(())
+}
+
 fn run_with_runtime<F>(f: F) -> Result<(), CliError>
 where
     F: for<'a> FnOnce(&'a dyn ParallelRuntime) -> Result<(), CliError>,
@@ -290,8 +848,127 @@ fn main() -> Result<(), CliError> {
             vis_proj,
             vis_mode,
             vis_format,
+            pbh_seeding,
+            pbh_n_seeds,
+            pbh_m_seed,
+            pbh_min_host_mass,
+            pbh_seed,
+            pbh_host_kind,
+            sph,
+            gas_fraction,
+            cooling,
+            feedback,
+            sf_model,
+            feedback_mode,
+            winds,
+            wind_velocity,
+            agn,
+            agn_n_bh,
+            agn_m_seed,
+            agn_eps_feedback,
+            agn_radio,
+            agn_f_edd_threshold,
+            agn_spin,
+            agn_mergers,
+            cr,
+            cr_kappa,
+            cr_anisotropic,
+            cr_streaming,
+            mhd,
+            bfield,
+            b0x,
+            b0y,
+            b0z,
+            turbulence,
+            turb_amplitude,
+            two_fluid,
+            ambipolar,
+            ambipolar_eta,
+            ambipolar_ion_floor,
+            ambipolar_dust_coupling,
+            sidm,
+            sidm_sigma_m,
+            fr,
+            fr_f_r0,
+            fr_n,
+            fr_nonlinear_mesh,
+            rt,
+            rt_multifrequency,
+            reionization,
+            dark_matter,
+            wdm_mass_kev,
+            fdm_mass_22,
+            dust,
+            dust_species,
+            dust_silicate_fraction,
+            dust_graphite_fraction,
+            dust_kappa_silicate_uv,
+            dust_kappa_graphite_uv,
+            dust_h2_shielding_boost,
         } => {
-            let cfg = config_load::load_run_config(&config)?;
+            let mut cfg = config_load::load_run_config(&config)?;
+            apply_runtime_cli_overrides(
+                &mut cfg,
+                RuntimeCliOverrides {
+                    pbh_seeding,
+                    pbh_n_seeds,
+                    pbh_m_seed,
+                    pbh_min_host_mass,
+                    pbh_seed,
+                    pbh_host_kind,
+                    sph,
+                    gas_fraction,
+                    cooling,
+                    feedback,
+                    sf_model,
+                    feedback_mode,
+                    winds,
+                    wind_velocity,
+                    agn,
+                    agn_n_bh,
+                    agn_m_seed,
+                    agn_eps_feedback,
+                    agn_radio,
+                    agn_f_edd_threshold,
+                    agn_spin,
+                    agn_mergers,
+                    cr,
+                    cr_kappa,
+                    cr_anisotropic,
+                    cr_streaming,
+                    mhd,
+                    bfield,
+                    b0x,
+                    b0y,
+                    b0z,
+                    turbulence,
+                    turb_amplitude,
+                    two_fluid,
+                    ambipolar,
+                    ambipolar_eta,
+                    ambipolar_ion_floor,
+                    ambipolar_dust_coupling,
+                    sidm,
+                    sidm_sigma_m,
+                    fr,
+                    fr_f_r0,
+                    fr_n,
+                    fr_nonlinear_mesh,
+                    rt,
+                    rt_multifrequency,
+                    reionization,
+                    dark_matter,
+                    wdm_mass_kev,
+                    fdm_mass_22,
+                    dust,
+                    dust_species,
+                    dust_silicate_fraction,
+                    dust_graphite_fraction,
+                    dust_kappa_silicate_uv,
+                    dust_kappa_graphite_uv,
+                    dust_h2_shielding_boost,
+                },
+            )?;
             run_with_runtime(|rt| {
                 engine::run_stepping(rt, &cfg, &out, snapshot, resume.as_deref())
             })?;

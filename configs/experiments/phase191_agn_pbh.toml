@@ -1,0 +1,42 @@
+# Phase 191 AGN/PBH preset. Equivalent CLI flags are documented in the runbook.
+
+[simulation]
+particle_count = 512
+box_size = 25.0
+dt = 0.0005
+num_steps = 4
+softening = 0.05
+seed = 191
+
+[initial_conditions]
+kind = "lattice"
+
+[cosmology]
+enabled = true
+periodic = true
+omega_m = 0.315
+omega_lambda = 0.685
+h0 = 0.1
+a_init = 0.05
+auto_g = true
+
+[gravity]
+solver = "tree_pm"
+pm_grid_size = 16
+
+[sph]
+enabled = true
+gas_fraction = 0.1
+
+[sph.agn]
+enabled = true
+pbh_seeding_enabled = true
+pbh_n_seeds = 4
+pbh_m_seed = 1e3
+pbh_seed = 191
+pbh_host_kind = "dark_matter"
+initial_spin = 0.0
+mergers_enabled = true
+
+[output]
+snapshot_format = "jsonl"

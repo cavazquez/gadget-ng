@@ -1,0 +1,20 @@
+# Declarative runtime matrix for Phase 191 smoke experiments.
+
+base_config = "configs/experiments/phase191_base.toml"
+out_root = "runs/phase191"
+
+[[case]]
+name = "baseline"
+args = []
+
+[[case]]
+name = "agn_pbh"
+args = ["--sph", "--gas-fraction", "0.1", "--agn", "--agn-mergers", "--pbh-seeding", "--pbh-n-seeds", "4", "--pbh-m-seed", "1e3"]
+
+[[case]]
+name = "mhd_cr"
+args = ["--sph", "--gas-fraction", "0.1", "--feedback", "--cr", "--cr-anisotropic", "--cr-streaming", "1e-2", "--mhd", "--bfield", "uniform", "--b0x", "1e-9", "--turbulence"]
+
+[[case]]
+name = "sidm_fr"
+args = ["--sidm", "--sidm-sigma-m", "1e-5", "--fr", "--fr-f-r0", "1e-5", "--fr-nonlinear-mesh", "--dark-matter", "warm", "--wdm-mass-kev", "3.0"]

@@ -159,6 +159,185 @@ impl RunConfig {
         if self.simulation.softening < 0.0 {
             return Err(ConfigError::SofteningNonPositive(self.simulation.softening));
         }
+        if !(0.0..=1.0).contains(&self.sph.gas_fraction) {
+            return Err(ConfigError::GasFractionOutOfRange(self.sph.gas_fraction));
+        }
+        if self.sph.feedback.wind.enabled && !self.sph.feedback.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "sph.feedback.wind",
+                requires: "sph.feedback",
+            });
+        }
+        if self.sph.feedback.enabled && !self.sph.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "sph.feedback",
+                requires: "sph",
+            });
+        }
+        if self.sph.cr.enabled && !self.sph.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "sph.cr",
+                requires: "sph",
+            });
+        }
+        if self.sph.cr.anisotropic_diffusion && !self.mhd.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "sph.cr.anisotropic_diffusion",
+                requires: "mhd",
+            });
+        }
+        if self.sph.cr.streaming_coefficient > 0.0 && !self.mhd.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "sph.cr.streaming_coefficient",
+                requires: "mhd",
+            });
+        }
+        if self.turbulence.enabled && !self.mhd.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "turbulence",
+                requires: "mhd",
+            });
+        }
+        if self.mhd.ambipolar_diffusion_enabled && !self.mhd.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "mhd.ambipolar_diffusion",
+                requires: "mhd",
+            });
+        }
+        if self.rt.multifrequency_enabled && !self.rt.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "rt.multifrequency_enabled",
+                requires: "rt",
+            });
+        }
+        if self.reionization.enabled && !self.rt.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "reionization",
+                requires: "rt",
+            });
+        }
+        if self.sph.feedback.wind.v_wind_km_s < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "sph.feedback.wind.v_wind_km_s",
+                value: self.sph.feedback.wind.v_wind_km_s,
+            });
+        }
+        if self.sph.cr.kappa_cr < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "sph.cr.kappa_cr",
+                value: self.sph.cr.kappa_cr,
+            });
+        }
+        if self.turbulence.amplitude < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "turbulence.amplitude",
+                value: self.turbulence.amplitude,
+            });
+        }
+        if self.mhd.ambipolar_eta < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "mhd.ambipolar_eta",
+                value: self.mhd.ambipolar_eta,
+            });
+        }
+        if self.mhd.ambipolar_ion_floor <= 0.0 {
+            return Err(ConfigError::NonPositiveParameter {
+                field: "mhd.ambipolar_ion_floor",
+                value: self.mhd.ambipolar_ion_floor,
+            });
+        }
+        if self.mhd.ambipolar_dust_coupling < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "mhd.ambipolar_dust_coupling",
+                value: self.mhd.ambipolar_dust_coupling,
+            });
+        }
+        if self.sidm.enabled && self.sidm.sigma_m < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "sidm.sigma_m",
+                value: self.sidm.sigma_m,
+            });
+        }
+        if self.modified_gravity.enabled && self.modified_gravity.f_r0 <= 0.0 {
+            return Err(ConfigError::NonPositiveParameter {
+                field: "modified_gravity.f_r0",
+                value: self.modified_gravity.f_r0,
+            });
+        }
+        if self.dark_matter.enabled && self.dark_matter.m_wdm_kev <= 0.0 {
+            return Err(ConfigError::NonPositiveParameter {
+                field: "dark_matter.m_wdm_kev",
+                value: self.dark_matter.m_wdm_kev,
+            });
+        }
+        if self.dark_matter.enabled && self.dark_matter.m_fdm_22 <= 0.0 {
+            return Err(ConfigError::NonPositiveParameter {
+                field: "dark_matter.m_fdm_22",
+                value: self.dark_matter.m_fdm_22,
+            });
+        }
+        if self.sph.dust.enabled {
+            if self.sph.dust.d_to_g_max < 0.0 {
+                return Err(ConfigError::NegativeParameter {
+                    field: "sph.dust.d_to_g_max",
+                    value: self.sph.dust.d_to_g_max,
+                });
+            }
+            if self.sph.dust.silicate_fraction < 0.0 {
+                return Err(ConfigError::NegativeParameter {
+                    field: "sph.dust.silicate_fraction",
+                    value: self.sph.dust.silicate_fraction,
+                });
+            }
+            if self.sph.dust.graphite_fraction < 0.0 {
+                return Err(ConfigError::NegativeParameter {
+                    field: "sph.dust.graphite_fraction",
+                    value: self.sph.dust.graphite_fraction,
+                });
+            }
+            if self.sph.dust.silicate_fraction + self.sph.dust.graphite_fraction <= 0.0 {
+                return Err(ConfigError::NonPositiveParameter {
+                    field: "sph.dust.silicate_fraction + sph.dust.graphite_fraction",
+                    value: 0.0,
+                });
+            }
+            if self.sph.dust.kappa_silicate_uv < 0.0 {
+                return Err(ConfigError::NegativeParameter {
+                    field: "sph.dust.kappa_silicate_uv",
+                    value: self.sph.dust.kappa_silicate_uv,
+                });
+            }
+            if self.sph.dust.kappa_graphite_uv < 0.0 {
+                return Err(ConfigError::NegativeParameter {
+                    field: "sph.dust.kappa_graphite_uv",
+                    value: self.sph.dust.kappa_graphite_uv,
+                });
+            }
+            if self.sph.dust.h2_shielding_boost < 0.0 {
+                return Err(ConfigError::NegativeParameter {
+                    field: "sph.dust.h2_shielding_boost",
+                    value: self.sph.dust.h2_shielding_boost,
+                });
+            }
+        }
+        if self.sph.agn.pbh_seeding_enabled {
+            if self.sph.agn.pbh_n_seeds == 0 {
+                return Err(ConfigError::PbhSeedCountZero);
+            }
+            if self.sph.agn.pbh_m_seed <= 0.0 {
+                return Err(ConfigError::PbhSeedMassNonPositive(self.sph.agn.pbh_m_seed));
+            }
+            if self.sph.agn.pbh_min_host_mass < 0.0 {
+                return Err(ConfigError::PbhMinHostMassNegative(
+                    self.sph.agn.pbh_min_host_mass,
+                ));
+            }
+            if !(-0.998..=0.998).contains(&self.sph.agn.initial_spin) {
+                return Err(ConfigError::AgnInitialSpinOutOfRange(
+                    self.sph.agn.initial_spin,
+                ));
+            }
+        }
 
         let needs_cube = matches!(
             self.initial_conditions.kind,

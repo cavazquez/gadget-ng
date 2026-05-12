@@ -30,7 +30,7 @@
 //! Zhukovska et al. (2014), A&A 562, A76 — modelo D/G en SPH.
 
 use crate::cooling::u_to_temperature;
-use gadget_ng_core::{DustSection, Particle, ParticleType, Vec3};
+use gadget_ng_core::{DustSection, DustSpeciesModel, Particle, ParticleType, Vec3};
 
 /// Radiation constant in cgs, `a_rad` [erg cm^-3 K^-4].
 const A_RAD_CGS: f64 = 7.5657e-15;
@@ -90,6 +90,52 @@ pub fn dust_uv_opacity(kappa_dust_uv: f64, dust_to_gas: f64, rho: f64, h: f64) -
     kappa_dust_uv * dust_to_gas * rho * h
 }
 
+/// Fracciones normalizadas `(silicato, grafito)` para una mezcla activa.
+pub fn dust_species_fractions(cfg: &DustSection) -> (f64, f64) {
+    if cfg.species_model == DustSpeciesModel::Single {
+        return (1.0, 0.0);
+    }
+    let sil = cfg.silicate_fraction.max(0.0);
+    let gra = cfg.graphite_fraction.max(0.0);
+    let sum = sil + gra;
+    if sum <= 0.0 {
+        (1.0, 0.0)
+    } else {
+        (sil / sum, gra / sum)
+    }
+}
+
+/// Opacidad UV efectiva para el modelo de especies de polvo activo.
+pub fn effective_dust_uv_opacity(cfg: &DustSection) -> f64 {
+    match cfg.species_model {
+        DustSpeciesModel::Single => cfg.kappa_dust_uv.max(0.0),
+        DustSpeciesModel::SilicateGraphite => {
+            let (sil, gra) = dust_species_fractions(cfg);
+            sil * cfg.kappa_silicate_uv.max(0.0) + gra * cfg.kappa_graphite_uv.max(0.0)
+        }
+    }
+}
+
+/// Profundidad óptica UV local usando la mezcla activa de polvo.
+pub fn dust_uv_opacity_active(cfg: &DustSection, dust_to_gas: f64, rho: f64, h: f64) -> f64 {
+    dust_uv_opacity(effective_dust_uv_opacity(cfg), dust_to_gas, rho, h)
+}
+
+/// Factor de shielding para H2 producido por polvo activo.
+///
+/// Retorna `1 + boost × (1 − exp(−tau_dust))`, acotado y suave. El resultado
+/// multiplica la fracción de equilibrio H2 y alarga el tiempo efectivo de
+/// fotodisociación en [`update_h2_fraction_with_dust`].
+pub fn dust_h2_shielding_factor(p: &Particle, cfg: &DustSection) -> f64 {
+    if !cfg.enabled || p.ptype != ParticleType::Gas || p.dust_to_gas <= 0.0 {
+        return 1.0;
+    }
+    let h = p.smoothing_length.max(1e-30);
+    let rho = p.mass / (h * h * h).max(1e-100);
+    let tau = dust_uv_opacity_active(cfg, p.dust_to_gas, rho, h).max(0.0);
+    1.0 + cfg.h2_shielding_boost.max(0.0) * (1.0 - (-tau).exp())
+}
+
 /// Impulso de “presión de radiación” en el gas acoplado al polvo (modelo mínimo Fase A).
 ///
 /// Ajusta `velocity` (misma variable que el integrador SPH cosmológico) con
@@ -139,7 +185,7 @@ pub fn dust_equilibrium_temperature(radiation_energy_density: f64, cfg: &DustSec
     }
 
     let e_rad = radiation_energy_density.max(0.0);
-    let opacity_ratio = (cfg.kappa_dust_uv / cfg.kappa_dust_ir.max(1e-30)).max(0.0);
+    let opacity_ratio = (effective_dust_uv_opacity(cfg) / cfg.kappa_dust_ir.max(1e-30)).max(0.0);
     let emissivity = cfg.ir_emissivity.max(1e-30);
     let t_rad = (e_rad * opacity_ratio / (A_RAD_CGS * emissivity)).powf(1.0 / 6.0);
     floor.max(t_rad).min(cap)

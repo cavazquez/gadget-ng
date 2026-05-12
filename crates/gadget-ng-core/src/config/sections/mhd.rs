@@ -87,6 +87,18 @@ pub struct MhdSection {
     /// Tiempo de decaimiento del campo magnético en unidades internas (Phase 172). Default: `10.0`.
     #[serde(default = "default_dynamo_decay_time")]
     pub dynamo_decay_time: f64,
+    /// Activa difusión ambipolar no-ideal dependiente de ionización (Phase 194).
+    #[serde(default)]
+    pub ambipolar_diffusion_enabled: bool,
+    /// Coeficiente base de difusión ambipolar (default: `0.0`, desactivado).
+    #[serde(default)]
+    pub ambipolar_eta: f64,
+    /// Piso de fracción ionizada para evitar divergencias numéricas (default: `1e-4`).
+    #[serde(default = "default_ambipolar_ion_floor")]
+    pub ambipolar_ion_floor: f64,
+    /// Factor de acoplamiento con polvo: más polvo reduce ionización efectiva (default: `1.0`).
+    #[serde(default = "default_ambipolar_dust_coupling")]
+    pub ambipolar_dust_coupling: f64,
 }
 
 fn default_mhd_c_h() -> f64 {
@@ -119,6 +131,12 @@ fn default_n_jet_halos() -> usize {
 fn default_dynamo_decay_time() -> f64 {
     10.0
 }
+fn default_ambipolar_ion_floor() -> f64 {
+    1e-4
+}
+fn default_ambipolar_dust_coupling() -> f64 {
+    1.0
+}
 
 impl Default for MhdSection {
     fn default() -> Self {
@@ -142,6 +160,10 @@ impl Default for MhdSection {
             n_jet_halos: default_n_jet_halos(),
             dynamo_enabled: false,
             dynamo_decay_time: default_dynamo_decay_time(),
+            ambipolar_diffusion_enabled: false,
+            ambipolar_eta: 0.0,
+            ambipolar_ion_floor: default_ambipolar_ion_floor(),
+            ambipolar_dust_coupling: default_ambipolar_dust_coupling(),
         }
     }
 }

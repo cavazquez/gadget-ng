@@ -1,0 +1,50 @@
+# Phase 191 MHD + cosmic-ray streaming preset.
+
+[simulation]
+particle_count = 512
+box_size = 25.0
+dt = 0.0005
+num_steps = 4
+softening = 0.05
+seed = 192
+
+[initial_conditions]
+kind = "lattice"
+
+[cosmology]
+enabled = true
+periodic = true
+omega_m = 0.315
+omega_lambda = 0.685
+h0 = 0.1
+a_init = 0.05
+auto_g = true
+
+[gravity]
+solver = "tree_pm"
+pm_grid_size = 16
+
+[sph]
+enabled = true
+gas_fraction = 0.1
+
+[sph.feedback]
+enabled = true
+
+[sph.cr]
+enabled = true
+kappa_cr = 3e-3
+anisotropic_diffusion = true
+streaming_coefficient = 1e-2
+
+[mhd]
+enabled = true
+b0_kind = "uniform"
+b0_uniform = [1e-9, 0.0, 0.0]
+
+[turbulence]
+enabled = true
+amplitude = 1e-3
+
+[output]
+snapshot_format = "jsonl"
