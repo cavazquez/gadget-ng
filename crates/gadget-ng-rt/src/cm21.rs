@@ -374,6 +374,12 @@ mod tests {
             x_heii: 0.0,
             x_heiii: 0.0,
             x_e: x_hii,
+            x_hm: 0.0,
+            x_h2: 0.0,
+            x_h2p: 0.0,
+            x_d: crate::F_D,
+            x_dp: 0.0,
+            x_hd: 0.0,
         }
     }
 

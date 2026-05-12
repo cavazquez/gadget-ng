@@ -45,6 +45,7 @@ pub mod kernel;
 pub mod molecular_gas;
 pub mod particle;
 pub mod phase_transitions;
+pub mod pop_iii;
 pub mod thermal_conduction;
 pub mod viscosity;
 
@@ -54,10 +55,10 @@ pub use agn::{
     bubble_feedback_radio, bubble_feedback_radio_periodic, grow_black_holes,
     grow_black_holes_periodic,
 };
-pub use cooling::apply_cooling_mhd;
 pub use cooling::{
-    apply_cooling, cooling_rate_atomic, cooling_rate_metal, cooling_rate_tabular, temperature_to_u,
-    u_to_temperature,
+    apply_cooling, apply_cooling_mhd, apply_cooling_mhd_with_redshift, apply_cooling_with_redshift,
+    cooling_rate_atomic, cooling_rate_hd, cooling_rate_metal, cooling_rate_tabular,
+    cooling_rate_uvb, temperature_to_u, u_to_temperature,
 };
 pub use cosmic_rays::diffuse_cr_periodic;
 pub use cosmic_rays::{apply_cr_hadronic_losses, cr_pressure, diffuse_cr, inject_cr_from_sn};
@@ -68,7 +69,8 @@ pub use enrichment::apply_enrichment_periodic;
 pub use feedback::compute_sfr_with_h2;
 pub use feedback::{
     advance_stellar_ages, apply_galactic_winds, apply_sn_feedback, apply_snia_feedback,
-    apply_snia_feedback_periodic, apply_stellar_wind_feedback, compute_sfr, spawn_star_particles,
+    apply_snia_feedback_periodic, apply_stellar_wind_feedback, apply_thermal_feedback_stochastic,
+    compute_sfr, compute_sfr_model, compute_sfr_pressure, spawn_star_particles,
     total_sn_energy_injection,
 };
 pub use forces::{
@@ -85,6 +87,10 @@ pub use particle::{GasData, ParticleType, SphParticle};
 pub use phase_transitions::{
     apply_phase_transitions, classify_phase, cooling_time, field_length, free_fall_time,
     phase_fractions, thermal_instability_criterion,
+};
+pub use pop_iii::{
+    PopIIICluster, apply_pop_iii_pisn_feedback, form_pop_iii_clusters, is_pop_iii_candidate,
+    sample_pop_iii_mass,
 };
 pub use thermal_conduction::{apply_thermal_conduction, apply_thermal_conduction_periodic};
 pub use viscosity::{compute_balsara_factors, compute_balsara_factors_with_periodic};

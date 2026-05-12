@@ -8,6 +8,61 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 180 — Pop III / primeras estrellas
+
+- Nueva configuración `[sph.pop_iii]` (`PopIIISection`) para gas primordial frío.
+- Nuevo módulo `gadget-ng-sph::pop_iii` con criterio Pop III, IMF top-heavy, formación de cúmulos y feedback PISN.
+- Nuevo test `phase180_pop_iii.rs` cubre criterio por H₂/HD, IMF, consumo de gas, enriquecimiento y serde.
+- Nuevo reporte: `docs/reports/2026-05-phase180-pop-iii-first-stars.md`.
+
+### Phase 179 — Química D/HD + cooling primordial
+
+- `ChemState` se extiende a 12 especies con `D`, `D+` y `HD`.
+- La red química incluye charge exchange `D + H+ <-> D+ + H` y formación/destrucción reducida de HD.
+- Nuevas funciones `cooling_rate_hd` en `gadget-ng-rt` y `gadget-ng-sph`.
+- Nuevo test `phase179_deuterium_hd.rs` cubre conservación H/D, formación de HD, cooling y serde legacy.
+- Nuevo reporte: `docs/reports/2026-05-phase179-deuterium-hd-cooling.md`.
+
+### Phase 177 — Cooling+SF+Feedback de producción
+
+Extiende la capa bariónica para corridas cosmológicas de producción con cooling/heating UVB,
+formación estelar por presión y feedback térmico estocástico.
+
+#### Configuración y modelos
+
+- Nuevo `CoolingKind::UvBackground`.
+- Nuevos enums en SPH:
+  - `UvBackgroundModel` (`none`, `hm2012`)
+  - `StarFormationModel` (`density_law`, `pressure_law`)
+  - `StellarFeedbackMode` (`kinetic`, `thermal_stochastic`)
+- Nuevos parámetros:
+  - `[sph]`: `uv_background_model`, `reionization_redshift`, `self_shielding_nh_cm3`
+  - `[sph.feedback]`: `sf_model`, `sf_pressure_norm`, `sf_pressure_index`,
+    `feedback_mode`, `delta_t_heat_k`, `n_heat_neighbors`
+
+#### Física implementada
+
+- `cooling_rate_uvb`: `Lambda_net = Lambda_cool - Gamma_photo` con transición de
+  reionización y auto-apantallamiento.
+- `compute_sfr_pressure` y `compute_sfr_model` para ley de SF por presión.
+- `apply_thermal_feedback_stochastic` con inyección térmica estocástica configurable.
+- Integración en `step_sph`:
+  - cooling con redshift explícito (`apply_cooling_with_redshift`)
+  - selección de SF model y modo de feedback (`kinetic` vs `thermal_stochastic`)
+
+#### Tests
+
+- Nuevo test de física: `phase177_cooling_sf_feedback.rs` (3/3 OK):
+  - UVB reduce cooling neto post-reionización
+  - SFR por presión crece con presión
+  - feedback térmico estocástico inyecta energía positiva
+- No regresión ejecutada:
+  - `phase108_galactic_winds`
+  - `phase111_metal_cooling`
+  - `phase112_stellar_spawning`
+  - `phase114_ism_multiphase`
+  - `phase115_stellar_winds`
+
 ### Phase 172 — Turbulent Dynamo α-Effect
 
 Implementa crecimiento de campo magnético a gran escala por dinamo turbulento (Federrath et al. 2011):

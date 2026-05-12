@@ -34,7 +34,7 @@
 //! En unidades internas gadget-ng (L=kpc, M=10¹⁰ M☉, V=km/s) los factores de
 //! conversión son: `k_B/m_H ≈ 8.254 × 10⁻³ (km/s)² / K`.
 
-use gadget_ng_core::{CoolingKind, Particle, ParticleType, SphSection};
+use gadget_ng_core::{CoolingKind, Particle, ParticleType, SphSection, UvBackgroundModel};
 
 /// k_B / (m_H · μ) en (km/s)² / K.
 /// μ = 0.6 (gas completamente ionizado H+He), k_B/m_H = 8.254 × 10⁻³ km²/s²/K.
@@ -248,6 +248,62 @@ pub fn cooling_rate_tabular(
     lambda.max(0.0)
 }
 
+/// Factor de fotoionización suave para la transición de reionización.
+#[inline]
+fn reionization_switch(redshift: f64, z_reion: f64) -> f64 {
+    let width = 0.8_f64;
+    1.0 / (1.0 + ((redshift - z_reion) / width).exp())
+}
+
+/// Foto-calentamiento simplificado Γ_photo(z, n_H) en unidades internas.
+#[inline]
+fn photo_heating_rate_uvb(rho_local: f64, cfg: &SphSection, redshift: f64) -> f64 {
+    let uv_norm = match cfg.uv_background_model {
+        UvBackgroundModel::None => 0.0,
+        UvBackgroundModel::Hm2012 => 4.0e-5,
+    };
+    if uv_norm <= 0.0 {
+        return 0.0;
+    }
+    // Proxy de n_H en cm^-3 a partir de densidad interna.
+    let n_h_proxy = (X_H * rho_local).max(0.0);
+    let n_ss = cfg.self_shielding_nh_cm3.max(1e-12);
+    let shielding = 1.0 / (1.0 + (n_h_proxy / n_ss).powi(2));
+    let rei = reionization_switch(redshift, cfg.reionization_redshift);
+    uv_norm * rei * shielding
+}
+
+/// Tasa neta de cooling/heating con fondo UV cosmológico.
+///
+/// `Λ_net = Λ_cool(T, Z) - Γ_photo(z, n_H)`.
+pub fn cooling_rate_uvb(
+    u: f64,
+    rho_local: f64,
+    metallicity: f64,
+    gamma: f64,
+    t_floor_k: f64,
+    cfg: &SphSection,
+    redshift: f64,
+) -> f64 {
+    let lambda_cool = cooling_rate_tabular(u, rho_local, metallicity, gamma, t_floor_k);
+    let gamma_photo = photo_heating_rate_uvb(rho_local, cfg, redshift);
+    lambda_cool - gamma_photo
+}
+
+/// Cooling primordial HD en unidades internas aproximadas (Phase 179).
+///
+/// `x_hd` es la abundancia HD/H por número. El término está pensado para acoplarse
+/// a la red química primordial de `gadget-ng-rt`; aquí se expone como función
+/// independiente para tests, diagnósticos y futuros caminos SPH con `ChemState`.
+pub fn cooling_rate_hd(t_k: f64, n_h: f64, x_hd: f64) -> f64 {
+    let t = t_k.max(1.0);
+    let n_h = n_h.max(0.0);
+    let x_hd = x_hd.max(0.0);
+    let rotational = (-128.0 / t).exp();
+    let low_t_boost = (t / 100.0).powf(2.0) / (1.0 + (t / 1.0e4).powf(2.0));
+    5.0e-6 * n_h * n_h * x_hd * rotational * low_t_boost
+}
+
 /// Aplica enfriamiento radiativo a todas las partículas de gas.
 ///
 /// Usa un paso de Euler explícito: `u_new = max(u + du_dt * dt, u_floor)`.
@@ -258,6 +314,16 @@ pub fn cooling_rate_tabular(
 /// ```
 /// En unidades internas asumimos ρ ≈ m/h³_sml (estimación local de densidad).
 pub fn apply_cooling(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
+    apply_cooling_with_redshift(particles, cfg, dt, 0.0);
+}
+
+/// Igual que `apply_cooling` pero con redshift explícito para términos UVB.
+pub fn apply_cooling_with_redshift(
+    particles: &mut [Particle],
+    cfg: &SphSection,
+    dt: f64,
+    redshift: f64,
+) {
     let gamma = cfg.gamma;
     let t_floor_k = cfg.t_floor_k;
     let u_floor = temperature_to_u(t_floor_k, gamma);
@@ -289,11 +355,20 @@ pub fn apply_cooling(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
                 gamma,
                 t_floor_k,
             ),
+            CoolingKind::UvBackground => cooling_rate_uvb(
+                p.internal_energy,
+                rho_local,
+                p.metallicity,
+                gamma,
+                t_floor_k,
+                cfg,
+                redshift,
+            ),
         };
         if lambda == 0.0 {
             continue;
         }
-        // du/dt = -Λ · X_H² · ρ / m
+        // du/dt = -Λ_net · X_H² · ρ ; si Λ_net<0 domina heating y du/dt>0.
         let du_dt = -lambda * X_H * X_H * rho_local;
         // Subciclo: limitar dt para que Euler explícito no cruce u=0 de un salto no físico.
         let dt_eff = if du_dt < 0.0 {
@@ -313,6 +388,16 @@ pub fn apply_cooling(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
 /// Con `f_mag = 0` recupera `apply_cooling` estándar.
 /// Con `f_mag > 0` y B fuerte (β < 1): el cooling se suprime significativamente.
 pub fn apply_cooling_mhd(particles: &mut [Particle], cfg: &SphSection, dt: f64) {
+    apply_cooling_mhd_with_redshift(particles, cfg, dt, 0.0);
+}
+
+/// Cooling con supresión magnética y redshift explícito para términos UVB.
+pub fn apply_cooling_mhd_with_redshift(
+    particles: &mut [Particle],
+    cfg: &SphSection,
+    dt: f64,
+    redshift: f64,
+) {
     let gamma = cfg.gamma;
     let t_floor_k = cfg.t_floor_k;
     let u_floor = temperature_to_u(t_floor_k, gamma);
@@ -343,6 +428,15 @@ pub fn apply_cooling_mhd(particles: &mut [Particle], cfg: &SphSection, dt: f64) 
                 p.metallicity,
                 gamma,
                 t_floor_k,
+            ),
+            CoolingKind::UvBackground => cooling_rate_uvb(
+                p.internal_energy,
+                rho_local,
+                p.metallicity,
+                gamma,
+                t_floor_k,
+                cfg,
+                redshift,
             ),
         };
         if lambda == 0.0 {
@@ -401,5 +495,13 @@ mod tests {
         let u_hot = temperature_to_u(1e6, gamma);
         let rate = cooling_rate_atomic(u_hot, 1.0, gamma, 1e4);
         assert!(rate > 0.0, "Λ debe ser positiva para T > T_floor");
+    }
+
+    #[test]
+    fn hd_cooling_positive_and_abundance_scaled() {
+        let base = cooling_rate_hd(200.0, 1e-3, 1e-6);
+        let richer = cooling_rate_hd(200.0, 1e-3, 2e-6);
+        assert!(base > 0.0);
+        assert!((richer / base - 2.0).abs() < 1e-12);
     }
 }

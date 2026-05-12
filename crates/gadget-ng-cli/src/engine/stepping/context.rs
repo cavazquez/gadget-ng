@@ -126,6 +126,11 @@ pub(crate) fn step_fr(
     if !cfg.modified_gravity.enabled {
         return;
     }
+    if cfg.gravity.solver == gadget_ng_core::SolverKind::Pm {
+        // El solver PM CPU aplica el límite f(R) homogéneo en k-space.
+        // Evitamos escalar dos veces la aceleración en ese camino.
+        return;
+    }
     let fr_params = gadget_ng_core::FRParams {
         f_r0: cfg.modified_gravity.f_r0,
         n: cfg.modified_gravity.n,
@@ -332,10 +337,25 @@ pub(crate) fn step_sph(
     );
 
     if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
-        if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
-            gadget_ng_sph::apply_cooling_mhd(local, &cfg.sph, cfg.simulation.dt);
+        let redshift = if a_current > 0.0 {
+            1.0 / a_current - 1.0
         } else {
-            gadget_ng_sph::apply_cooling(local, &cfg.sph, cfg.simulation.dt);
+            0.0
+        };
+        if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
+            gadget_ng_sph::apply_cooling_mhd_with_redshift(
+                local,
+                &cfg.sph,
+                cfg.simulation.dt,
+                redshift,
+            );
+        } else {
+            gadget_ng_sph::apply_cooling_with_redshift(
+                local,
+                &cfg.sph,
+                cfg.simulation.dt,
+                redshift,
+            );
         }
     }
 
@@ -385,7 +405,7 @@ pub(crate) fn step_sph(
     }
 
     if cfg.sph.ism.enabled {
-        let sfr_ism = gadget_ng_sph::compute_sfr(local, &cfg.sph.feedback);
+        let sfr_ism = gadget_ng_sph::compute_sfr_model(local, &cfg.sph.feedback, cfg.sph.gamma);
         let rho_sf = cfg.sph.feedback.rho_sf;
         gadget_ng_sph::update_ism_phases(local, &sfr_ism, rho_sf, &cfg.sph.ism, cfg.simulation.dt);
         gadget_ng_sph::apply_phase_transitions(
@@ -397,17 +417,32 @@ pub(crate) fn step_sph(
     }
 
     if cfg.sph.feedback.enabled {
-        let sfr = gadget_ng_sph::compute_sfr(local, &cfg.sph.feedback);
+        let sfr = gadget_ng_sph::compute_sfr_model(local, &cfg.sph.feedback, cfg.sph.gamma);
         let mut fb_seed = sph_step
             .wrapping_mul(2654435761)
             .wrapping_add(rt_rank as u64);
-        gadget_ng_sph::apply_sn_feedback(
-            local,
-            &sfr,
-            &cfg.sph.feedback,
-            cfg.simulation.dt,
-            &mut fb_seed,
-        );
+        match cfg.sph.feedback.feedback_mode {
+            gadget_ng_core::StellarFeedbackMode::Kinetic => {
+                gadget_ng_sph::apply_sn_feedback(
+                    local,
+                    &sfr,
+                    &cfg.sph.feedback,
+                    cfg.simulation.dt,
+                    &mut fb_seed,
+                );
+            }
+            gadget_ng_core::StellarFeedbackMode::ThermalStochastic => {
+                gadget_ng_sph::apply_thermal_feedback_stochastic(
+                    local,
+                    &sfr,
+                    &cfg.sph.feedback,
+                    cfg.sph.gamma,
+                    cfg.simulation.dt,
+                    &mut fb_seed,
+                    periodic_box,
+                );
+            }
+        }
 
         if cfg.sph.feedback.stellar_wind_enabled {
             let mut wind_seed = fb_seed.wrapping_add(0xC0FFEE);

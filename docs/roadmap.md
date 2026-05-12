@@ -1,9 +1,13 @@
 # Roadmap
 
-> **Estado al 8 de mayo de 2026:** Phases 1–170 completadas.
+> **Estado al 12 de mayo de 2026:** Phases 1–180 completadas.
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
 > Phase 170: CR Transport (streaming lungo B + backreaction).
+> Phase 177: Cooling+SF+feedback de producción (UVB + pressure-law + thermal stochastic).
+> Phase 178: cierre de pendientes Physics Extensions — PM f(R), química primordial 9 especies y lightcones documentados.
+> Phase 179: química primordial D/HD + cooling molecular HD.
+> Phase 180: Pop III / primeras estrellas con IMF top-heavy y feedback PISN.
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -90,6 +94,7 @@ Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
+| Physics Phase 181+ | Siguientes candidatas: f(R) no lineal, polvo IR, AGN spin, WDM/FDM, RT multifrecuencia/Lyman-Werner. Ver [`roadmap-physics-extensions.md`](roadmap-physics-extensions.md). | 2–5 sesiones c/u |
 | Submission JOSS | Generar figuras, DOI Zenodo, completar ORCIDs, compilar PDF | 1–2 sesiones |
 | Validación producción N=128³ | Corrida completa hasta z=0, HMF vs Tinker, P(k) formal | 2–3 sesiones |
 | AGN con halos FoF | Colocar BHs en centros de halos FoF identificados in-situ | 1 sesión |
@@ -179,7 +184,7 @@ Posibles extensiones:
 
 **Estado final:** Phases 1–164 completadas. Física completa + HPC Engineering con tests para GPU/cosmo-jerárquico/MHD-ICs.
 
-**Phases 165–172 (2026-05-08):**
+**Phases 165–177 (2026-05-11):**
 
 - (165) **GPU CUDA/HIP V1**: `v1_gpu_tests.rs` — 6/6 tests pasan con CPU fallback en CI.
 - (166) **SPH Gadget-2**: Entropía + Balsara + Colapso de Evrard — formulación completa Springel & Hernquist 2002.
@@ -189,3 +194,7 @@ Posibles extensiones:
 - (170) **CR Transport**: `streaming_crk` + `cr_pressure_backreaction` en `gadget-ng-mhd/src/streaming.rs`.
 - (171) **Multi-Phase ISM**: `phase_transitions.rs` — tres fases, transiciones, Field length, criterio de inestabilidad.
 - (172) **Turbulent Dynamo**: `dynamo.rs` — α-effect, `dynamo_growth_rate`, `apply_turbulent_dynamo`, `magnetic_energy_ratio`, `maxwell_stress_tensor`.
+- (177) **Cooling+SF+feedback producción**: `CoolingKind::UvBackground`, `UvBackgroundModel`, ley SF por presión (`sf_model`), feedback térmico estocástico (`feedback_mode`), integración en `step_sph` y tests `phase177_cooling_sf_feedback.rs`.
+- (178) **Physics extensions closure**: PM f(R) homogéneo no-screened (`solve_forces_modified_gravity`), química primordial 9 especies (`H⁻`, `H₂`, `H₂⁺`) y estado documental de lightcones/Born actualizado.
+- (179) **Química D/HD + cooling primordial**: `ChemState` extiende a 12 especies (`D`, `D⁺`, `HD`), red reducida de charge exchange y formación HD, `cooling_rate_hd` en RT/SPH y tests `phase179_deuterium_hd.rs`.
+- (180) **Pop III / primeras estrellas**: `PopIIISection`, criterio de gas primordial frío por H₂/HD, IMF top-heavy, `form_pop_iii_clusters`, feedback PISN y tests `phase180_pop_iii.rs`.

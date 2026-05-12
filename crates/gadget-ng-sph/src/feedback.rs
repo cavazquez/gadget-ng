@@ -31,7 +31,9 @@
 //! Dalla Vecchia & Schaye (2012), MNRAS 426, 140.
 
 use crate::periodic_delta;
-use gadget_ng_core::{FeedbackSection, Particle, ParticleType, WindParams};
+use gadget_ng_core::{
+    FeedbackSection, Particle, ParticleType, StarFormationModel, StellarFeedbackMode, WindParams,
+};
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 
@@ -95,6 +97,38 @@ pub fn compute_sfr_with_h2(
             }
         })
         .collect()
+}
+
+/// Calcula la SFR basada en presión efectiva local (Phase 177).
+///
+/// Modelo: `SFR = A × (P / P0)^n` para gas con `ρ > ρ_sf`, con
+/// `P = (γ - 1) ρ u` como aproximación termodinámica local.
+pub fn compute_sfr_pressure(particles: &[Particle], cfg: &FeedbackSection, gamma: f64) -> Vec<f64> {
+    let p0 = cfg.sf_pressure_norm.max(1e-20);
+    let n = cfg.sf_pressure_index;
+    particles
+        .iter()
+        .map(|p| {
+            if p.ptype != ParticleType::Gas {
+                return 0.0;
+            }
+            let h = p.smoothing_length.max(1e-10);
+            let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+            if rho_approx < cfg.rho_sf {
+                return 0.0;
+            }
+            let pressure = ((gamma - 1.0) * rho_approx * p.internal_energy).max(0.0);
+            SFR_A * (pressure / p0).powf(n)
+        })
+        .collect()
+}
+
+/// Calcula SFR según el modelo elegido en configuración.
+pub fn compute_sfr_model(particles: &[Particle], cfg: &FeedbackSection, gamma: f64) -> Vec<f64> {
+    match cfg.sf_model {
+        StarFormationModel::DensityLaw => compute_sfr(particles, cfg),
+        StarFormationModel::PressureLaw => compute_sfr_pressure(particles, cfg, gamma),
+    }
 }
 
 #[inline]
@@ -163,6 +197,68 @@ pub fn apply_sn_feedback(
             particles[i].internal_energy += e_sn_per_m / m * sfr_i * dt;
         }
     }
+}
+
+/// Aplica feedback térmico estocástico (Dalla Vecchia & Schaye 2012-inspired).
+///
+/// Inyecta un salto de energía equivalente a `delta_t_heat_k` en hasta
+/// `n_heat_neighbors` vecinos de gas por evento estocástico.
+pub fn apply_thermal_feedback_stochastic(
+    particles: &mut [Particle],
+    sfr: &[f64],
+    cfg: &FeedbackSection,
+    gamma: f64,
+    dt: f64,
+    seed: &mut u64,
+    periodic_box: Option<f64>,
+) -> f64 {
+    if !cfg.enabled || cfg.feedback_mode != StellarFeedbackMode::ThermalStochastic {
+        return 0.0;
+    }
+    let du_heat = crate::cooling::temperature_to_u(cfg.delta_t_heat_k.max(0.0), gamma).max(0.0);
+    if du_heat <= 0.0 {
+        return 0.0;
+    }
+    let n_heat = cfg.n_heat_neighbors.max(1);
+    let mut total_injected = 0.0_f64;
+
+    for i in 0..particles.len() {
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
+        let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+        if sfr_i < cfg.sfr_min {
+            continue;
+        }
+
+        let m = particles[i].mass.max(1e-30);
+        let prob = 1.0 - (-sfr_i * dt / m).exp();
+        if rand01(seed) >= prob {
+            continue;
+        }
+
+        let h_i = particles[i].smoothing_length.max(1e-10);
+        let pos_i = particles[i].position;
+        let mut candidates: Vec<(usize, f64)> = (0..particles.len())
+            .filter(|&j| particles[j].ptype == ParticleType::Gas)
+            .map(|j| {
+                let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
+                (j, r)
+            })
+            .filter(|&(_, r)| r <= 2.0 * h_i)
+            .collect();
+
+        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        if candidates.is_empty() {
+            candidates.push((i, 0.0));
+        }
+        for (j, _) in candidates.into_iter().take(n_heat) {
+            particles[j].internal_energy += du_heat;
+            total_injected += du_heat * particles[j].mass;
+        }
+    }
+
+    total_injected
 }
 
 /// Genera un vector unitario aleatorio en la esfera usando un LCG.

@@ -38,6 +38,7 @@ pub use amr_mpi::{
 #[cfg(feature = "fftw")]
 pub use fft_backend::FftwBackend;
 pub use fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
+pub use fft_poisson::{pm_fifth_force_boost, solve_forces_modified_gravity};
 pub use pencil_fft::{PencilLayout2D, solve_forces_pencil2d};
 pub use slab_fft::SlabLayout;
 pub use solver::PmSolver;

@@ -105,6 +105,44 @@ pub fn solve_forces_softened(
     )
 }
 
+/// Resuelve PM con una quinta fuerza f(R) lineal no-screened en espacio-k.
+///
+/// Este camino cubre el régimen "MG solo PM": la modificación escalar se aplica
+/// como un refuerzo homogéneo `G_eff = G * (1 + 1/3)`. El screening chameleon
+/// local sigue viviendo en `gadget-ng-core::apply_modified_gravity`; esta función
+/// es la aproximación PM para modos cosmológicos de baja densidad.
+pub fn solve_forces_modified_gravity(
+    density: &[f64],
+    g: f64,
+    nm: usize,
+    box_size: f64,
+    params: &gadget_ng_core::FRParams,
+    plummer_eps: Option<f64>,
+) -> [Vec<f64>; 3] {
+    solve_forces_with_backend(
+        density,
+        g * pm_fifth_force_boost(params),
+        nm,
+        box_size,
+        None,
+        plummer_eps,
+        FftBackendKind::RustFft,
+    )
+}
+
+/// Factor multiplicativo homogéneo para la fuerza PM en Hu-Sawicki f(R).
+///
+/// `f_R0 = 0` recupera GR exactamente. Para un campo no-screened el máximo es
+/// `4/3`, el límite escalar estándar de f(R).
+#[inline]
+pub fn pm_fifth_force_boost(params: &gadget_ng_core::FRParams) -> f64 {
+    if params.f_r0.abs() <= 0.0 {
+        1.0
+    } else {
+        4.0 / 3.0
+    }
+}
+
 pub fn solve_forces_with_backend(
     density: &[f64],
     g: f64,
@@ -372,6 +410,49 @@ mod tests {
             let err = (d.re * norm - o.re).abs();
             assert!(err < 1e-10, "error en índice {i}: {err}");
         }
+    }
+
+    #[test]
+    fn modified_gravity_pm_zero_fr_matches_gr() {
+        let nm = 8usize;
+        let nm3 = nm * nm * nm;
+        let mut density = vec![0.0_f64; nm3];
+        density[1] = 1.0;
+        density[3 * nm * nm + 2 * nm + 4] = 0.5;
+        let gr = solve_forces(&density, 1.0, nm, 1.0);
+        let fr = solve_forces_modified_gravity(
+            &density,
+            1.0,
+            nm,
+            1.0,
+            &gadget_ng_core::FRParams { f_r0: 0.0, n: 1.0 },
+            None,
+        );
+        for c in 0..3 {
+            for i in 0..nm3 {
+                assert!((gr[c][i] - fr[c][i]).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn modified_gravity_pm_unscreened_scales_force_by_four_thirds() {
+        let nm = 8usize;
+        let nm3 = nm * nm * nm;
+        let mut density = vec![0.0_f64; nm3];
+        density[1] = 1.0;
+        density[5 * nm * nm + 2 * nm + 3] = 0.25;
+        let gr = solve_forces(&density, 1.0, nm, 1.0);
+        let fr = solve_forces_modified_gravity(
+            &density,
+            1.0,
+            nm,
+            1.0,
+            &gadget_ng_core::FRParams { f_r0: 1e-5, n: 1.0 },
+            None,
+        );
+        let idx = 2;
+        assert!((fr[0][idx] / gr[0][idx] - 4.0 / 3.0).abs() < 1e-10);
     }
 
     #[cfg(feature = "fftw")]

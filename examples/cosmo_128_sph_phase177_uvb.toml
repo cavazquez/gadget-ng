@@ -1,0 +1,61 @@
+# Ejemplo Phase 177: cooling UVB + SF por presión + feedback térmico estocástico.
+#
+# Ejecución:
+# cargo run --release -p gadget-ng-cli -- stepping \
+#   --config examples/cosmo_128_sph_phase177_uvb.toml \
+#   --out runs/phase177_uvb --snapshot
+
+[simulation]
+particle_count = 128
+box_size = 64.0
+dt = 0.0003
+num_steps = 200
+softening = 0.1
+seed = 177
+
+[initial_conditions]
+kind = "lattice"
+
+[cosmology]
+enabled = true
+periodic = true
+omega_m = 0.315
+omega_lambda = 0.685
+h0 = 0.1
+a_init = 0.02
+auto_g = true
+
+[gravity]
+solver = "tree_pm"
+pm_grid_size = 128
+theta = 0.5
+
+[output]
+snapshot_format = "jsonl"
+checkpoint_interval = 100
+
+[sph]
+enabled = true
+gamma = 1.6666666666666667
+alpha_visc = 1.0
+n_neigh = 48
+cooling = "uv_background"
+t_floor_k = 1.0e4
+uv_background_model = "hm2012"
+reionization_redshift = 8.0
+self_shielding_nh_cm3 = 1.0e-2
+
+[sph.feedback]
+enabled = true
+sf_model = "pressure_law"
+rho_sf = 0.1
+sf_pressure_norm = 1.0e-2
+sf_pressure_index = 1.0
+sfr_min = 1.0e-4
+feedback_mode = "thermal_stochastic"
+delta_t_heat_k = 1.0e7
+n_heat_neighbors = 1
+stellar_wind_enabled = true
+
+[mhd]
+enabled = false

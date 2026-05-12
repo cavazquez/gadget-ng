@@ -53,6 +53,12 @@ fn make_neutral_chem_states(n: usize) -> Vec<ChemState> {
             x_heii: 0.0,
             x_heiii: 0.0,
             x_e: 0.0,
+            x_hm: 0.0,
+            x_h2: 0.0,
+            x_h2p: 0.0,
+            x_d: gadget_ng_rt::F_D,
+            x_dp: 0.0,
+            x_hd: 0.0,
         })
         .collect()
 }
@@ -213,6 +219,12 @@ fn coupled_chem_reduces_21cm_signal() {
             x_heii: 0.0,
             x_heiii: 0.0,
             x_e: 0.0,
+            x_hm: 0.0,
+            x_h2: 0.0,
+            x_h2p: 0.0,
+            x_d: gadget_ng_rt::F_D,
+            x_dp: 0.0,
+            x_hd: 0.0,
         })
         .collect();
     let out_neutral =
@@ -227,6 +239,12 @@ fn coupled_chem_reduces_21cm_signal() {
             x_heii: 0.0,
             x_heiii: 0.0,
             x_e: 0.5,
+            x_hm: 0.0,
+            x_h2: 0.0,
+            x_h2p: 0.0,
+            x_d: gadget_ng_rt::F_D,
+            x_dp: 0.0,
+            x_hd: 0.0,
         })
         .collect();
     let out_half = compute_cm21_output(&particles, &chem_half, box_size, z, n_mesh, 4, &params);

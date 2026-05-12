@@ -20,6 +20,43 @@ pub enum CoolingKind {
     /// Tabla interna 7×20 derivada de Sutherland & Dopita (1993): 7 bins en Z/Z_sun
     /// y 20 bins en log10(T) de 4.0 a 8.5. Interpolación bilineal en (Z, log T).
     MetalTabular,
+    /// Cooling/heating neto con fondo UV cosmológico (Phase 177).
+    ///
+    /// `Λ_net = Λ_cooling(T, Z) - Γ_photo(z, n_H)` con transición de auto-apantallamiento.
+    UvBackground,
+}
+
+/// Modelo de fondo UV cosmológico para photo-heating (Phase 177).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UvBackgroundModel {
+    /// Sin foto-calentamiento externo.
+    #[default]
+    None,
+    /// Prescripción tipo Haardt & Madau (2012) simplificada.
+    Hm2012,
+}
+
+/// Modelo de ley de formación estelar subgrid (Phase 177).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StarFormationModel {
+    /// Ley de Schmidt-Kennicutt en densidad (comportamiento legacy).
+    #[default]
+    DensityLaw,
+    /// Ley de formación estelar basada en presión.
+    PressureLaw,
+}
+
+/// Modo de inyección de feedback estelar subgrid (Phase 177).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StellarFeedbackMode {
+    /// Kicks cinéticos estocásticos (comportamiento legacy).
+    #[default]
+    Kinetic,
+    /// Inyección térmica estocástica con salto de temperatura controlado.
+    ThermalStochastic,
 }
 
 /// Configuración del módulo SPH cosmológico (Phase 66).
@@ -56,6 +93,15 @@ pub struct SphSection {
     /// Temperatura de floor en Kelvin (default: 10⁴ K).
     #[serde(default = "default_t_floor_k")]
     pub t_floor_k: f64,
+    /// Modelo de fondo UV para photo-heating cosmológico.
+    #[serde(default)]
+    pub uv_background_model: UvBackgroundModel,
+    /// Redshift central de la transición de reionización (default: 8.0).
+    #[serde(default = "default_reionization_redshift")]
+    pub reionization_redshift: f64,
+    /// Densidad umbral n_H para auto-apantallamiento (cm⁻³, default: 1e-2).
+    #[serde(default = "default_self_shielding_nh_cm3")]
+    pub self_shielding_nh_cm3: f64,
     /// Fracción de partículas inicializadas como gas (default: 0.0).
     #[serde(default)]
     pub gas_fraction: f64,
@@ -83,6 +129,9 @@ pub struct SphSection {
     /// Configuración del polvo intersticial (Phase 130).
     #[serde(default)]
     pub dust: DustSection,
+    /// Configuración de formación estelar Pop III (Phase 180).
+    #[serde(default)]
+    pub pop_iii: PopIIISection,
     /// Factor de supresión del cooling por campo magnético (Phase 134).
     ///
     /// `Λ_eff = Λ(T) / (1 + mag_suppress_cooling / β)`.
@@ -103,6 +152,12 @@ fn default_n_neigh() -> usize {
 fn default_t_floor_k() -> f64 {
     1e4
 }
+fn default_reionization_redshift() -> f64 {
+    8.0
+}
+fn default_self_shielding_nh_cm3() -> f64 {
+    1e-2
+}
 
 impl Default for SphSection {
     fn default() -> Self {
@@ -113,6 +168,9 @@ impl Default for SphSection {
             n_neigh: default_n_neigh(),
             cooling: CoolingKind::None,
             t_floor_k: default_t_floor_k(),
+            uv_background_model: UvBackgroundModel::default(),
+            reionization_redshift: default_reionization_redshift(),
+            self_shielding_nh_cm3: default_self_shielding_nh_cm3(),
             gas_fraction: 0.0,
             feedback: FeedbackSection::default(),
             agn: AgnSection::default(),
@@ -122,7 +180,117 @@ impl Default for SphSection {
             conduction: ConductionSection::default(),
             molecular: MolecularSection::default(),
             dust: DustSection::default(),
+            pop_iii: PopIIISection::default(),
             mag_suppress_cooling: 0.0,
+        }
+    }
+}
+
+/// Configuración de formación estelar primordial Pop III (Phase 180).
+///
+/// ```toml
+/// [sph.pop_iii]
+/// enabled = true
+/// critical_metallicity = 1e-4
+/// min_h2_fraction = 1e-4
+/// min_hd_fraction = 1e-8
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PopIIISection {
+    /// Activa la formación estelar Pop III (default: false).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Metalicidad crítica Z para gas primordial (default: 1e-4).
+    #[serde(default = "default_pop3_critical_metallicity")]
+    pub critical_metallicity: f64,
+    /// Densidad mínima para colapso Pop III en unidades internas (default: 10).
+    #[serde(default = "default_pop3_density_threshold")]
+    pub density_threshold: f64,
+    /// Fracción mínima H₂/H para habilitar cooling primordial (default: 1e-4).
+    #[serde(default = "default_pop3_min_h2_fraction")]
+    pub min_h2_fraction: f64,
+    /// Fracción mínima HD/H alternativa para gas muy frío (default: 1e-8).
+    #[serde(default = "default_pop3_min_hd_fraction")]
+    pub min_hd_fraction: f64,
+    /// Temperatura máxima para formar Pop III [K] (default: 3000 K).
+    #[serde(default = "default_pop3_max_temperature_k")]
+    pub max_temperature_k: f64,
+    /// Fracción de masa de gas convertida en cluster Pop III por evento (default: 0.1).
+    #[serde(default = "default_pop3_cluster_efficiency")]
+    pub cluster_efficiency: f64,
+    /// Masa mínima de la IMF top-heavy [M_sun] (default: 10).
+    #[serde(default = "default_pop3_imf_m_min_msun")]
+    pub imf_m_min_msun: f64,
+    /// Masa máxima de la IMF top-heavy [M_sun] (default: 300).
+    #[serde(default = "default_pop3_imf_m_max_msun")]
+    pub imf_m_max_msun: f64,
+    /// Pendiente de la IMF top-heavy `dN/dm ∝ m^-alpha` (default: 1.7).
+    #[serde(default = "default_pop3_imf_alpha")]
+    pub imf_alpha: f64,
+    /// Energía PISN por cluster en unidades internas (default: 5e-3).
+    #[serde(default = "default_pop3_pisn_energy_code")]
+    pub pisn_energy_code: f64,
+    /// Yield metálico efectivo PISN (default: 0.5 de la masa estelar).
+    #[serde(default = "default_pop3_metal_yield")]
+    pub metal_yield: f64,
+    /// Radio de depósito de feedback en unidades internas (default: 0.5).
+    #[serde(default = "default_pop3_feedback_radius")]
+    pub feedback_radius: f64,
+}
+
+fn default_pop3_critical_metallicity() -> f64 {
+    1e-4
+}
+fn default_pop3_density_threshold() -> f64 {
+    10.0
+}
+fn default_pop3_min_h2_fraction() -> f64 {
+    1e-4
+}
+fn default_pop3_min_hd_fraction() -> f64 {
+    1e-8
+}
+fn default_pop3_max_temperature_k() -> f64 {
+    3.0e3
+}
+fn default_pop3_cluster_efficiency() -> f64 {
+    0.1
+}
+fn default_pop3_imf_m_min_msun() -> f64 {
+    10.0
+}
+fn default_pop3_imf_m_max_msun() -> f64 {
+    300.0
+}
+fn default_pop3_imf_alpha() -> f64 {
+    1.7
+}
+fn default_pop3_pisn_energy_code() -> f64 {
+    5.0e-3
+}
+fn default_pop3_metal_yield() -> f64 {
+    0.5
+}
+fn default_pop3_feedback_radius() -> f64 {
+    0.5
+}
+
+impl Default for PopIIISection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            critical_metallicity: default_pop3_critical_metallicity(),
+            density_threshold: default_pop3_density_threshold(),
+            min_h2_fraction: default_pop3_min_h2_fraction(),
+            min_hd_fraction: default_pop3_min_hd_fraction(),
+            max_temperature_k: default_pop3_max_temperature_k(),
+            cluster_efficiency: default_pop3_cluster_efficiency(),
+            imf_m_min_msun: default_pop3_imf_m_min_msun(),
+            imf_m_max_msun: default_pop3_imf_m_max_msun(),
+            imf_alpha: default_pop3_imf_alpha(),
+            pisn_energy_code: default_pop3_pisn_energy_code(),
+            metal_yield: default_pop3_metal_yield(),
+            feedback_radius: default_pop3_feedback_radius(),
         }
     }
 }
@@ -139,9 +307,18 @@ pub struct FeedbackSection {
     /// Eficiencia de energía SN ε_SN: fracción de E_SN=10⁵¹ erg transferida (default: 0.1).
     #[serde(default = "default_eps_sn")]
     pub eps_sn: f64,
+    /// Modelo de ley de formación estelar: densidad o presión (Phase 177).
+    #[serde(default)]
+    pub sf_model: StarFormationModel,
     /// Densidad umbral para SFR en unidades internas (default: 0.1).
     #[serde(default = "default_rho_sf")]
     pub rho_sf: f64,
+    /// Normalización de la ley de SF en presión `P0` (default: `1e-2`).
+    #[serde(default = "default_sf_pressure_norm")]
+    pub sf_pressure_norm: f64,
+    /// Exponente de la ley de SF en presión (default: `1.0`).
+    #[serde(default = "default_sf_pressure_index")]
+    pub sf_pressure_index: f64,
     /// SFR mínima para activar el feedback (default: 1e-4 en unidades internas).
     #[serde(default = "default_sfr_min")]
     pub sfr_min: f64,
@@ -168,6 +345,15 @@ pub struct FeedbackSection {
     /// E_Ia ≈ 1e51 erg × 1.3 en unidades gadget-ng.
     #[serde(default = "default_e_ia_code")]
     pub e_ia_code: f64,
+    /// Modo de feedback estelar: cinético o térmico estocástico (Phase 177).
+    #[serde(default)]
+    pub feedback_mode: StellarFeedbackMode,
+    /// Salto de temperatura objetivo ΔT [K] para feedback térmico estocástico (default: 1e7 K).
+    #[serde(default = "default_delta_t_heat_k")]
+    pub delta_t_heat_k: f64,
+    /// Número máximo de vecinos a calentar por evento (default: 1).
+    #[serde(default = "default_n_heat_neighbors")]
+    pub n_heat_neighbors: usize,
     /// Activa el feedback mecánico de vientos estelares pre-SN (Phase 115).
     /// Modela vientos de estrellas OB y Wolf-Rayet (~10-30 Myr antes de SN II).
     #[serde(default)]
@@ -229,6 +415,12 @@ fn default_eps_sn() -> f64 {
 fn default_rho_sf() -> f64 {
     0.1
 }
+fn default_sf_pressure_norm() -> f64 {
+    1e-2
+}
+fn default_sf_pressure_index() -> f64 {
+    1.0
+}
 fn default_sfr_min() -> f64 {
     1e-4
 }
@@ -247,6 +439,12 @@ fn default_t_ia_min_gyr() -> f64 {
 fn default_e_ia_code() -> f64 {
     1.54e-3 * 1.3
 } // E_Ia ≈ 1.3 × E_SN
+fn default_delta_t_heat_k() -> f64 {
+    1e7
+}
+fn default_n_heat_neighbors() -> usize {
+    1
+}
 fn default_v_stellar_wind() -> f64 {
     2000.0
 }
@@ -260,7 +458,10 @@ impl Default for FeedbackSection {
             enabled: false,
             v_kick_km_s: default_v_kick(),
             eps_sn: default_eps_sn(),
+            sf_model: StarFormationModel::default(),
             rho_sf: default_rho_sf(),
+            sf_pressure_norm: default_sf_pressure_norm(),
+            sf_pressure_index: default_sf_pressure_index(),
             sfr_min: default_sfr_min(),
             wind: WindParams::default(),
             m_star_fraction: default_m_star_fraction(),
@@ -268,6 +469,9 @@ impl Default for FeedbackSection {
             a_ia: default_a_ia(),
             t_ia_min_gyr: default_t_ia_min_gyr(),
             e_ia_code: default_e_ia_code(),
+            feedback_mode: StellarFeedbackMode::default(),
+            delta_t_heat_k: default_delta_t_heat_k(),
+            n_heat_neighbors: default_n_heat_neighbors(),
             stellar_wind_enabled: false,
             v_stellar_wind_km_s: default_v_stellar_wind(),
             eta_stellar_wind: default_eta_stellar_wind(),

@@ -488,6 +488,13 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             grid_size: cfg.gravity.pm_grid_size,
             box_size: cfg.simulation.box_size,
             plummer_eps,
+            modified_gravity: cfg
+                .modified_gravity
+                .enabled
+                .then_some(gadget_ng_core::FRParams {
+                    f_r0: cfg.modified_gravity.f_r0,
+                    n: cfg.modified_gravity.n,
+                }),
         });
     }
     if cfg.gravity.solver == SolverKind::TreePm {
