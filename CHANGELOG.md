@@ -8,6 +8,52 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Phase 185 — f(R) no lineal en malla
+
+- `[modified_gravity]` suma `nonlinear_mesh`, `mesh_iterations` y `screening_smoothing`.
+- Nuevo `fr_screening_field` en `gadget-ng-pm` para screening chameleon espacial.
+- Nuevo `solve_forces_fr_screened_mesh`: fuerza GR + quinta fuerza `ρ × S(x) / 3`.
+- `PmSolver` puede usar screening f(R) de malla cuando `nonlinear_mesh = true`.
+- Nuevo test `phase185_fr_nonlinear_mesh.rs`.
+- Nuevo reporte: `docs/reports/2026-05-phase185-fr-nonlinear-mesh.md`.
+
+### Phase 184 — Warm / fuzzy dark matter
+
+- Nueva sección `[dark_matter]` con modelos `cold`, `warm` y `fuzzy`.
+- Nuevo módulo `gadget-ng-core::dark_matter` con transfer functions WDM/FDM,
+  escalas half-mode y proxy de presión cuántica FDM.
+- Las ICs Zel'dovich 1LPT/2LPT aplican el cutoff WDM/FDM en amplitudes de modos.
+- Nuevo test `phase184_wdm_fdm.rs`.
+- Nuevo reporte: `docs/reports/2026-05-phase184-wdm-fdm.md`.
+
+### Phase 183 — AGN spin + mergers
+
+- `BlackHole` suma `spin` y `velocity` retrocompatibles con checkpoints legacy.
+- Nuevas APIs AGN: `radiative_efficiency_from_spin`, `spin_dependent_feedback_efficiency`,
+  `spin_up_by_accretion` y `merge_black_holes`.
+- `[sph.agn]` suma `spin_enabled`, `initial_spin`, `mergers_enabled`, `merger_radius`
+  y `recoil_velocity_scale`.
+- Nuevo test `phase183_agn_spin_mergers.rs`.
+- Nuevo reporte: `docs/reports/2026-05-phase183-agn-spin-mergers.md`.
+
+### Phase 182 — Polvo IR / emisión térmica
+
+- `[sph.dust]` suma `ir_emission_enabled`, `kappa_dust_ir`, `ir_emissivity`,
+  `dust_temperature_floor_k` y `dust_temperature_cap_k`.
+- Nuevas APIs `dust_equilibrium_temperature` y `dust_ir_luminosity` en `gadget-ng-sph`.
+- Nueva API `deposit_dust_ir_emission` en `gadget-ng-rt` para depositar emisión térmica
+  en `PhotonGroup::Infrared`.
+- Nuevo test `phase182_dust_ir_emission.rs`.
+- Nuevo reporte: `docs/reports/2026-05-phase182-dust-ir-thermal-emission.md`.
+
+### Phase 181 — RT multifrecuencia + Lyman-Werner
+
+- Nuevo módulo `gadget-ng-rt::multifrequency` con grupos HI/HeI/HeII/LW/IR.
+- Nuevas APIs `MultiFrequencyField`, `MultiFrequencyRates` y `apply_lw_photodissociation`.
+- `[rt]` suma `multifrequency_enabled`, `lw_h2_factor` y `lw_hd_factor`.
+- Nuevo test `phase181_multifrequency_lw.rs` cubre separación espectral, fotodisociación H₂/HD y serde.
+- Nuevo reporte: `docs/reports/2026-05-phase181-rt-multifrequency-lw.md`.
+
 ### Phase 180 — Pop III / primeras estrellas
 
 - Nueva configuración `[sph.pop_iii]` (`PopIIISection`) para gas primordial frío.

@@ -17,6 +17,12 @@ pub struct BlackHole {
     pub mass: f64,
     /// Tasa de acreción instantánea Ṁ [unidades internas/tiempo].
     pub accretion_rate: f64,
+    /// Spin adimensional Kerr `a_*` en [-0.998, 0.998].
+    #[serde(default)]
+    pub spin: f64,
+    /// Velocidad peculiar del BH, usada para kicks de recoil tras mergers.
+    #[serde(default)]
+    pub velocity: Vec3,
 }
 
 impl BlackHole {
@@ -26,7 +32,16 @@ impl BlackHole {
             pos,
             mass,
             accretion_rate: 0.0,
+            spin: 0.0,
+            velocity: Vec3::zero(),
         }
+    }
+
+    /// Crea un BH con spin inicial explícito.
+    pub fn with_spin(pos: Vec3, mass: f64, spin: f64) -> Self {
+        let mut bh = Self::new(pos, mass);
+        bh.spin = spin.clamp(-0.998, 0.998);
+        bh
     }
 }
 
@@ -60,6 +75,39 @@ const G_INTERNAL: f64 = 4.302e-3;
 
 /// Velocidad de la luz en km/s.
 const C_KMS: f64 = 2.998e5;
+
+/// Eficiencia radiativa aproximada de un disco delgado Kerr.
+///
+/// Usa una interpolación suave entre valores canónicos: retrogrado extremo
+/// ~3.8%, Schwarzschild 5.7%, progrado rápido ~32%.
+pub fn radiative_efficiency_from_spin(spin: f64) -> f64 {
+    let a = spin.clamp(-0.998, 0.998);
+    if a >= 0.0 {
+        0.057 + (0.32 - 0.057) * a.powf(0.7)
+    } else {
+        0.057 - (0.057 - 0.038) * (-a).powf(0.7)
+    }
+}
+
+/// Eficiencia de feedback AGN efectiva, escalada por el spin del BH.
+pub fn spin_dependent_feedback_efficiency(eps_feedback: f64, spin: f64) -> f64 {
+    let eps0 = radiative_efficiency_from_spin(0.0);
+    eps_feedback.max(0.0) * radiative_efficiency_from_spin(spin) / eps0
+}
+
+/// Actualiza el spin por acreción coherente durante `dt`.
+///
+/// El modelo acerca `a_*` al valor progrado máximo si `mdot > 0`, con escala de
+/// masa de Salpeter reducida `dm / M_BH`. Es deliberadamente estable y acotado.
+pub fn spin_up_by_accretion(bh: &mut BlackHole, dt: f64) {
+    if bh.mass <= 0.0 || bh.accretion_rate <= 0.0 || dt <= 0.0 {
+        return;
+    }
+    let dm_over_m = (bh.accretion_rate * dt / bh.mass).clamp(0.0, 1.0);
+    let target = 0.998;
+    bh.spin += (target - bh.spin) * (1.0 - (-3.0 * dm_over_m).exp());
+    bh.spin = bh.spin.clamp(-0.998, 0.998);
+}
 
 /// Calcula la tasa de acreción de Bondi-Hoyle para un agujero negro.
 ///
@@ -111,7 +159,8 @@ pub fn apply_agn_feedback_periodic(
 ) {
     for bh in bhs {
         // Energía de feedback disponible en este paso
-        let e_feedback = params.eps_feedback * bh.accretion_rate * C_KMS * C_KMS * dt;
+        let eps_feedback = spin_dependent_feedback_efficiency(params.eps_feedback, bh.spin);
+        let e_feedback = eps_feedback * bh.accretion_rate * C_KMS * C_KMS * dt;
         if e_feedback <= 0.0 {
             continue;
         }
@@ -381,9 +430,71 @@ pub fn grow_black_holes_periodic(
         let c_s = c_sound_local / n_gas as f64;
 
         bh.accretion_rate = bondi_accretion_rate(bh, rho_local, c_s);
-        let dm = bh.accretion_rate * dt * (1.0 - params.eps_feedback);
+        let eps_rad = spin_dependent_feedback_efficiency(params.eps_feedback, bh.spin);
+        let dm = bh.accretion_rate * dt * (1.0 - eps_rad.min(0.95));
         bh.mass += dm.max(0.0);
+        spin_up_by_accretion(bh, dt);
     }
+}
+
+/// Fusiona BHs separados menos que `merger_radius`, conservando masa y momento.
+///
+/// El remanente queda en el centro de masa, con spin promedio ponderado por
+/// masa y un recoil fenomenológico que crece con la asimetría de masas y spins.
+pub fn merge_black_holes(
+    bhs: &mut Vec<BlackHole>,
+    merger_radius: f64,
+    recoil_velocity_scale: f64,
+    periodic_box: Option<f64>,
+) -> usize {
+    if merger_radius <= 0.0 || bhs.len() < 2 {
+        return 0;
+    }
+
+    let mut merged = 0;
+    let mut i = 0;
+    while i < bhs.len() {
+        let mut j = i + 1;
+        while j < bhs.len() {
+            let d = periodic_delta(bhs[i].pos, bhs[j].pos, periodic_box);
+            if d.norm() > merger_radius {
+                j += 1;
+                continue;
+            }
+
+            let a = bhs[i].clone();
+            let b = bhs[j].clone();
+            let total_mass = (a.mass + b.mass).max(1e-30);
+            let q = a.mass.min(b.mass) / a.mass.max(b.mass).max(1e-30);
+            let eta = q / (1.0 + q).powi(2);
+            let spin_asym = (a.spin - b.spin).abs();
+            let recoil = recoil_velocity_scale.max(0.0) * eta * eta * (1.0 - q).abs()
+                + 0.1 * recoil_velocity_scale.max(0.0) * eta * spin_asym;
+
+            let pos = (a.pos * a.mass + b.pos * b.mass) / total_mass;
+            let mut velocity = (a.velocity * a.mass + b.velocity * b.mass) / total_mass;
+            if recoil > 0.0 {
+                let dir = if d.norm() > 1e-30 {
+                    d / d.norm()
+                } else {
+                    Vec3::new(1.0, 0.0, 0.0)
+                };
+                velocity += dir * recoil;
+            }
+
+            bhs[i] = BlackHole {
+                pos,
+                mass: total_mass,
+                accretion_rate: a.accretion_rate + b.accretion_rate,
+                spin: ((a.spin * a.mass + b.spin * b.mass) / total_mass).clamp(-0.998, 0.998),
+                velocity,
+            };
+            bhs.swap_remove(j);
+            merged += 1;
+        }
+        i += 1;
+    }
+    merged
 }
 
 #[cfg(test)]
@@ -403,6 +514,8 @@ mod tests {
             pos,
             mass,
             accretion_rate: mdot,
+            spin: 0.0,
+            velocity: Vec3::zero(),
         }
     }
 
@@ -478,7 +591,7 @@ mod tests {
 
         let u_after = particles[0].internal_energy * particles[0].mass;
         let e_deposited = u_after - u_before;
-        let e_expected = eps * mdot * C_KMS * C_KMS * dt;
+        let e_expected = spin_dependent_feedback_efficiency(eps, 0.0) * mdot * C_KMS * C_KMS * dt;
 
         assert!(
             (e_deposited - e_expected).abs() / e_expected < 1e-10,
@@ -530,5 +643,27 @@ mod tests {
         let bh = make_bh(Vec3::zero(), 1e6, 0.0);
         let mdot = bondi_accretion_rate(&bh, 1.0, 0.0);
         assert!(mdot.is_finite(), "Ṁ debe ser finito con c_s=0");
+    }
+
+    #[test]
+    fn radiative_efficiency_grows_with_prograde_spin() {
+        let retro = radiative_efficiency_from_spin(-0.9);
+        let zero = radiative_efficiency_from_spin(0.0);
+        let pro = radiative_efficiency_from_spin(0.9);
+        assert!(retro < zero);
+        assert!(pro > zero);
+    }
+
+    #[test]
+    fn merge_black_holes_conserves_mass_and_reduces_count() {
+        let mut bhs = vec![
+            BlackHole::with_spin(Vec3::new(0.0, 0.0, 0.0), 3.0, 0.5),
+            BlackHole::with_spin(Vec3::new(0.1, 0.0, 0.0), 1.0, -0.5),
+        ];
+        let n = merge_black_holes(&mut bhs, 0.2, 0.0, None);
+        assert_eq!(n, 1);
+        assert_eq!(bhs.len(), 1);
+        assert!((bhs[0].mass - 4.0).abs() < 1e-12);
+        assert!((bhs[0].spin - 0.25).abs() < 1e-12);
     }
 }

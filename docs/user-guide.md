@@ -14,12 +14,13 @@ MPI y GPU, y diferentes formatos de salida.
 4. [Solvers de gravedad](#solvers-de-gravedad)
 5. [Sistema de unidades físicas](#sistema-de-unidades-físicas)
 6. [Cosmología](#cosmología)
-7. [Pasos temporales jerárquicos](#pasos-temporales-jerárquicos)
-8. [Checkpointing y reanudación](#checkpointing-y-reanudación)
-9. [GPU y paralelismo](#gpu-y-paralelismo)
-10. [Árbol distribuido (MPI)](#árbol-distribuido-mpi)
-11. [Formatos de salida](#formatos-de-salida)
-12. [Benchmarks](#benchmarks)
+7. [Física avanzada](#física-avanzada)
+8. [Pasos temporales jerárquicos](#pasos-temporales-jerárquicos)
+9. [Checkpointing y reanudación](#checkpointing-y-reanudación)
+10. [GPU y paralelismo](#gpu-y-paralelismo)
+11. [Árbol distribuido (MPI)](#árbol-distribuido-mpi)
+12. [Formatos de salida](#formatos-de-salida)
+13. [Benchmarks](#benchmarks)
 
 ---
 
@@ -224,6 +225,84 @@ Con cosmología:
 - Las posiciones son coordenadas comóviles.
 - `velocity` almacena momentum canónico `p = a²·ẋ_c`.
 - El snapshot reporta `redshift = 1/a − 1`.
+
+---
+
+## Física avanzada
+
+Las secciones siguientes son opcionales y están desactivadas por defecto. Si no se
+incluyen, las corridas históricas conservan el comportamiento legacy.
+
+### Materia oscura warm / fuzzy
+
+Aplica un cutoff WDM/FDM en las amplitudes de las ICs Zel'dovich 1LPT/2LPT.
+
+```toml
+[dark_matter]
+enabled = true
+model = "warm"      # "cold" | "warm" | "fuzzy"
+m_wdm_kev = 3.0
+# m_fdm_22 = 1.0    # para model = "fuzzy"
+```
+
+### Gravedad modificada f(R)
+
+El camino PM soporta el boost homogéneo no-screened y, con `nonlinear_mesh`,
+screening chameleon espacial en la malla.
+
+```toml
+[modified_gravity]
+enabled = true
+f_r0 = 1.0e-6
+n = 1.0
+nonlinear_mesh = true
+mesh_iterations = 4
+screening_smoothing = 0.5
+```
+
+### RT multifrecuencia y Lyman-Werner
+
+```toml
+[rt]
+enabled = true
+multifrequency_enabled = true
+lw_h2_factor = 1.0
+lw_hd_factor = 1.0
+```
+
+### Polvo IR
+
+```toml
+[sph.dust]
+enabled = true
+ir_emission_enabled = true
+kappa_dust_ir = 10.0
+ir_emissivity = 1.0
+dust_temperature_floor_k = 2.725
+dust_temperature_cap_k = 2000.0
+```
+
+### AGN spin y mergers
+
+```toml
+[sph.agn]
+enabled = true
+spin_enabled = true
+initial_spin = 0.3
+mergers_enabled = true
+merger_radius = 0.1
+recoil_velocity_scale = 500.0
+```
+
+### Pop III
+
+```toml
+[sph.pop_iii]
+enabled = true
+critical_metallicity = 1.0e-4
+min_h2_fraction = 1.0e-6
+min_hd_fraction = 1.0e-9
+```
 
 ---
 
@@ -1026,4 +1105,3 @@ for bin in &table {
     println!("M={:.2e}: ST={:.3e}  PS={:.3e}", bin.m_msun_h, bin.n_st, bin.n_ps);
 }
 ```
-

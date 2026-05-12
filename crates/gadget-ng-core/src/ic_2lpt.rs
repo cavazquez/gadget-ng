@@ -66,6 +66,7 @@ use crate::{
     cosmology::{CosmologyParams, growth_factor_d_ratio, growth_rate_f, hubble_param},
     ic_zeldovich::{
         build_spectrum_fn, delta_to_displacement, fft3d, generate_delta_kspace, mode_int,
+        with_dark_matter_cutoff,
     },
     particle::Particle,
     vec3::Vec3,
@@ -469,6 +470,7 @@ pub fn zeldovich_2lpt_ics_with_variant(
         t_cmb,
         box_size_mpc_h,
     );
+    let spectrum_fn = with_dark_matter_cutoff(cfg, spectrum_fn, h_dimless, box_size_mpc_h);
 
     // ── Generar campo δ(k) (todos los rangos)
     let delta = generate_delta_kspace(n, seed, spectrum_fn);

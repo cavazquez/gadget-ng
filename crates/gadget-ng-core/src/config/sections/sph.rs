@@ -766,6 +766,21 @@ pub struct AgnSection {
     /// Fracción de la energía de acreción que va a kicks mecánicos. Default: 0.2.
     #[serde(default = "default_eps_radio")]
     pub eps_radio: f64,
+    /// Activa dependencia de feedback con spin Kerr y crecimiento de spin (Phase 183).
+    #[serde(default)]
+    pub spin_enabled: bool,
+    /// Spin inicial adimensional para BH semilla `a_*` (default: `0.0`).
+    #[serde(default)]
+    pub initial_spin: f64,
+    /// Activa mergers de BH por proximidad (Phase 183).
+    #[serde(default)]
+    pub mergers_enabled: bool,
+    /// Distancia máxima para fusionar dos BHs (default: `0.1`).
+    #[serde(default = "default_bh_merger_radius")]
+    pub merger_radius: f64,
+    /// Escala de recoil gravitacional tras merger [km/s] (default: `500.0`).
+    #[serde(default = "default_bh_recoil_velocity")]
+    pub recoil_velocity_scale: f64,
 }
 
 fn default_eps_feedback() -> f64 {
@@ -792,6 +807,12 @@ fn default_r_bubble() -> f64 {
 fn default_eps_radio() -> f64 {
     0.2
 }
+fn default_bh_merger_radius() -> f64 {
+    0.1
+}
+fn default_bh_recoil_velocity() -> f64 {
+    500.0
+}
 
 impl Default for AgnSection {
     fn default() -> Self {
@@ -805,6 +826,11 @@ impl Default for AgnSection {
             f_edd_threshold: default_f_edd_threshold(),
             r_bubble: default_r_bubble(),
             eps_radio: default_eps_radio(),
+            spin_enabled: false,
+            initial_spin: 0.0,
+            mergers_enabled: false,
+            merger_radius: default_bh_merger_radius(),
+            recoil_velocity_scale: default_bh_recoil_velocity(),
         }
     }
 }
@@ -845,6 +871,21 @@ pub struct DustSection {
     /// Intensidad UV media de referencia [unidades internas] (default 0).
     #[serde(default)]
     pub radiation_pressure_j_uv: f64,
+    /// Activa emisión térmica IR por polvo (Phase 182).
+    #[serde(default)]
+    pub ir_emission_enabled: bool,
+    /// Opacidad IR efectiva de los granos [cm²/g] (default: `10.0`).
+    #[serde(default = "default_kappa_dust_ir")]
+    pub kappa_dust_ir: f64,
+    /// Eficiencia de emisión IR modificada tipo cuerpo gris (default: `1.0`).
+    #[serde(default = "default_ir_emissivity")]
+    pub ir_emissivity: f64,
+    /// Piso de temperatura de polvo, normalmente CMB/local background (default: `2.725` K).
+    #[serde(default = "default_dust_temperature_floor_k")]
+    pub dust_temperature_floor_k: f64,
+    /// Techo numérico de temperatura de polvo antes de sublimación (default: `2000` K).
+    #[serde(default = "default_dust_temperature_cap_k")]
+    pub dust_temperature_cap_k: f64,
 }
 
 fn default_d_to_g_max() -> f64 {
@@ -859,6 +900,18 @@ fn default_tau_grow() -> f64 {
 fn default_kappa_dust_uv() -> f64 {
     1000.0
 }
+fn default_kappa_dust_ir() -> f64 {
+    10.0
+}
+fn default_ir_emissivity() -> f64 {
+    1.0
+}
+fn default_dust_temperature_floor_k() -> f64 {
+    2.725
+}
+fn default_dust_temperature_cap_k() -> f64 {
+    2000.0
+}
 
 impl Default for DustSection {
     fn default() -> Self {
@@ -871,6 +924,11 @@ impl Default for DustSection {
             radiation_pressure_enabled: false,
             radiation_pressure_kappa: 0.0,
             radiation_pressure_j_uv: 0.0,
+            ir_emission_enabled: false,
+            kappa_dust_ir: default_kappa_dust_ir(),
+            ir_emissivity: default_ir_emissivity(),
+            dust_temperature_floor_k: default_dust_temperature_floor_k(),
+            dust_temperature_cap_k: default_dust_temperature_cap_k(),
         }
     }
 }

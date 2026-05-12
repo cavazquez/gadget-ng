@@ -53,7 +53,8 @@ pub use agn::{
     AgnParams, BlackHole, apply_agn_feedback, apply_agn_feedback_bimodal,
     apply_agn_feedback_bimodal_periodic, apply_agn_feedback_periodic, bondi_accretion_rate,
     bubble_feedback_radio, bubble_feedback_radio_periodic, grow_black_holes,
-    grow_black_holes_periodic,
+    grow_black_holes_periodic, merge_black_holes, radiative_efficiency_from_spin,
+    spin_dependent_feedback_efficiency, spin_up_by_accretion,
 };
 pub use cooling::{
     apply_cooling, apply_cooling_mhd, apply_cooling_mhd_with_redshift, apply_cooling_with_redshift,
@@ -63,7 +64,10 @@ pub use cooling::{
 pub use cosmic_rays::diffuse_cr_periodic;
 pub use cosmic_rays::{apply_cr_hadronic_losses, cr_pressure, diffuse_cr, inject_cr_from_sn};
 pub use density::{GAMMA, compute_density, compute_density_with_periodic};
-pub use dust::{apply_dust_radiation_pressure_kick, dust_uv_opacity, update_dust};
+pub use dust::{
+    apply_dust_radiation_pressure_kick, dust_equilibrium_temperature, dust_ir_luminosity,
+    dust_uv_opacity, update_dust,
+};
 pub use enrichment::apply_enrichment;
 pub use enrichment::apply_enrichment_periodic;
 pub use feedback::compute_sfr_with_h2;

@@ -495,6 +495,9 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
                     f_r0: cfg.modified_gravity.f_r0,
                     n: cfg.modified_gravity.n,
                 }),
+            fr_nonlinear_mesh: cfg.modified_gravity.nonlinear_mesh,
+            fr_mesh_iterations: cfg.modified_gravity.mesh_iterations,
+            fr_screening_smoothing: cfg.modified_gravity.screening_smoothing,
         });
     }
     if cfg.gravity.solver == SolverKind::TreePm {

@@ -1,5 +1,53 @@
 use serde::{Deserialize, Serialize};
 
+/// Modelo de materia oscura para cutoff de pequeña escala (Phase 184).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DarkMatterModel {
+    /// CDM estándar, sin supresión adicional.
+    #[default]
+    Cold,
+    /// Warm dark matter con cutoff térmico.
+    Warm,
+    /// Fuzzy/ultralight dark matter con cutoff tipo presión cuántica.
+    Fuzzy,
+}
+
+/// Configuración de materia oscura no fría (Phase 184).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DarkMatterSection {
+    /// Activa la supresión WDM/FDM en ICs cosmológicas (default: `false`).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Modelo: `"cold"`, `"warm"` o `"fuzzy"` (default: `"cold"`).
+    #[serde(default)]
+    pub model: DarkMatterModel,
+    /// Masa térmica WDM en keV (default: `3.0`).
+    #[serde(default = "default_m_wdm_kev")]
+    pub m_wdm_kev: f64,
+    /// Masa FDM en unidades de `10^-22 eV` (default: `1.0`).
+    #[serde(default = "default_m_fdm_22")]
+    pub m_fdm_22: f64,
+}
+
+fn default_m_wdm_kev() -> f64 {
+    3.0
+}
+fn default_m_fdm_22() -> f64 {
+    1.0
+}
+
+impl Default for DarkMatterSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            model: DarkMatterModel::Cold,
+            m_wdm_kev: default_m_wdm_kev(),
+            m_fdm_22: default_m_fdm_22(),
+        }
+    }
+}
+
 /// Forzado de turbulencia MHD estocástico Ornstein-Uhlenbeck (Phase 140).
 ///
 /// Genera turbulencia Alfvénica con espectro de Kolmogorov `E(k) ∝ k^{-5/3}`
@@ -137,6 +185,15 @@ pub struct ModifiedGravitySection {
     /// Índice n del modelo Hu-Sawicki (default: 1).
     #[serde(default = "default_mg_n")]
     pub n: f64,
+    /// Activa screening f(R) espacial en malla PM en lugar del boost homogéneo (Phase 185).
+    #[serde(default)]
+    pub nonlinear_mesh: bool,
+    /// Iteraciones Jacobi para suavizar el campo chameleon de screening (default: `4`).
+    #[serde(default = "default_fr_mesh_iterations")]
+    pub mesh_iterations: usize,
+    /// Mezcla de suavizado por iteración para el screening en [0,1] (default: `0.5`).
+    #[serde(default = "default_fr_screening_smoothing")]
+    pub screening_smoothing: f64,
 }
 
 fn default_mg_model() -> String {
@@ -148,6 +205,12 @@ fn default_f_r0() -> f64 {
 fn default_mg_n() -> f64 {
     1.0
 }
+fn default_fr_mesh_iterations() -> usize {
+    4
+}
+fn default_fr_screening_smoothing() -> f64 {
+    0.5
+}
 
 impl Default for ModifiedGravitySection {
     fn default() -> Self {
@@ -156,6 +219,9 @@ impl Default for ModifiedGravitySection {
             model: default_mg_model(),
             f_r0: default_f_r0(),
             n: default_mg_n(),
+            nonlinear_mesh: false,
+            mesh_iterations: default_fr_mesh_iterations(),
+            screening_smoothing: default_fr_screening_smoothing(),
         }
     }
 }

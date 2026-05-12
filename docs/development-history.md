@@ -156,6 +156,21 @@ Para comenzar a **usar** el simulador, ve a [getting-started.md](getting-started
 | **150** | Reportes 142–149, CHANGELOG, roadmap, commit final | ✅ |
 | **165** | 🟢🔴 Kernels CUDA/HIP N² reales; MHD 3D solenoidal con ∇·B < 1e-14 | ✅ |
 | **166** | 🌊 **SPH Gadget-2**: entropía A=P/ρ^γ · limitador Balsara · viscosidad señal · test Sod + Evrard | ✅ |
+| **167** | Validaciones PF-01..PF-16 para física y criterios cuantitativos | ✅ |
+| **168** | Cierre de criterios V1/V2/V3 GPU, jerárquico-cosmo y MHD | ✅ |
+| **169** | CI fixes: deps, dead-code annotations, clippy/proptest/MSRV | ✅ |
+| **170** | CR transport: streaming lungo-B + backreaction de presión CR | ✅ |
+| **171** | ISM multifase: transiciones, Field length e inestabilidad térmica | ✅ |
+| **172** | Dinamo turbulento α-effect y diagnósticos Maxwell/P_B | ✅ |
+| **177** | Cooling+SF+feedback de producción: UVB, SF por presión, feedback térmico | ✅ |
+| **178** | Cierre Physics Extensions: PM f(R), química primordial 9 especies, lightcones | ✅ |
+| **179** | Química D/HD + cooling molecular HD | ✅ |
+| **180** | Pop III / primeras estrellas con IMF top-heavy y feedback PISN | ✅ |
+| **181** | RT multifrecuencia HI/HeI/HeII/LW/IR + fotodisociación LW H₂/HD | ✅ |
+| **182** | Polvo IR: temperatura de granos y emisión térmica | ✅ |
+| **183** | AGN spin + mergers: eficiencia Kerr, fusiones BH y recoil | ✅ |
+| **184** | Warm/fuzzy dark matter: cutoff en ICs y proxy de presión cuántica | ✅ |
+| **185** | f(R) no lineal en malla PM con screening chameleon espacial | ✅ |
 
 ---
 

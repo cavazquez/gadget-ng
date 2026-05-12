@@ -338,10 +338,40 @@ Nuevos campos `w0`, `wa` en `CosmologySection`.
 
 ---
 
-#### 4C. Gravedad modificada f(R) / DGP ✅ COMPLETADO — Phase 158
+#### 4C. Gravedad modificada f(R) / DGP ✅ COMPLETADO — Phases 158, 178, 185
 
 Modelo Hu-Sawicki f(R) con screening chameleon. Implementado en `modified_gravity.rs`.
-Hook `maybe_fr!` en engine. `ModifiedGravitySection` en config.
+Hook `maybe_fr!` en engine. `ModifiedGravitySection` en config. Desde Phase 178 el PM
+soporta el límite homogéneo no-screened `4/3`; desde Phase 185 el solver PM puede
+usar screening chameleon espacial de malla con `nonlinear_mesh = true`.
+
+**Estado:** Completo
+
+---
+
+#### 4F. Warm / fuzzy dark matter ✅ COMPLETADO — Phase 184
+
+`[dark_matter]` agrega modelos `cold`, `warm` y `fuzzy`. Las ICs ZA/2LPT aplican
+el cutoff WDM/FDM directamente sobre las amplitudes de modo; el módulo también
+expone half-mode y proxy de presión cuántica FDM.
+
+**Estado:** Completo
+
+---
+
+#### 4G. Pop III, D/HD y RT multifrecuencia ✅ COMPLETADO — Phases 179–181
+
+`ChemState` cubre 12 especies con D/D+/HD, cooling molecular HD, criterio Pop III
+por baja metalicidad + H₂/HD y grupos RT HI/HeI/HeII/LW/IR para fotodisociación.
+
+**Estado:** Completo
+
+---
+
+#### 4H. Polvo IR y AGN spin/mergers ✅ COMPLETADO — Phases 182–183
+
+El polvo estima temperatura de granos y deposita emisión térmica en el grupo IR.
+AGN suma spin Kerr escalar, eficiencia dependiente de spin, fusiones BH y recoil.
 
 **Estado:** Completo
 

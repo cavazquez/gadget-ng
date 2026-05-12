@@ -13,6 +13,11 @@ Este documento implementa la **cartera** descrita en el plan interno: prioriza *
 | MG solo PM / química 9 especies / light cones | Cerrado (Phase 178) | PM f(R) homogéneo en `gadget-ng-pm`, red primordial de 9 especies en `gadget-ng-rt`, lightcones/Born ya en `gadget-ng-analysis`. |
 | Química D/HD + cooling primordial | Cerrado (Phase 179) | `ChemState` de 12 especies con `D`, `D+`, `HD`; `cooling_rate_hd` en RT/SPH. |
 | Pop III / primeras estrellas | Cerrado (Phase 180) | `PopIIISection`, criterio H₂/HD + baja Z, IMF top-heavy y feedback PISN en `gadget-ng-sph`. |
+| RT multifrecuencia / Lyman-Werner | Cerrado (Phase 181) | Grupos HI/HeI/HeII/LW/IR, tasas por grupo y fotodisociación LW de H₂/HD. |
+| Polvo IR / emisión térmica | Cerrado (Phase 182) | Temperatura de granos, luminosidad IR y depósito en `PhotonGroup::Infrared`. |
+| AGN spin + mergers | Cerrado (Phase 183) | Spin Kerr escalar, eficiencia de feedback dependiente de spin, mergers BH y recoil. |
+| Warm / fuzzy dark matter | Cerrado (Phase 184) | Cutoff WDM/FDM en ICs, half-mode y proxy de presión cuántica FDM. |
+| f(R) no lineal en malla | Cerrado (Phase 185) | Screening chameleon espacial en PM vía `ρ × S(x)` y solver de quinta fuerza. |
 
 ## Referencias rápidas por tema
 
@@ -24,15 +29,15 @@ Este documento implementa la **cartera** descrita en el plan interno: prioriza *
 
 | Prioridad | Candidato | Qué agregaría | Crates probables | Estimación |
 |-----------|-----------|---------------|------------------|------------|
-| 1 | f(R) no lineal en malla | Solver iterativo del campo escalar con screening chameleon espacial, más allá del boost PM homogéneo `4/3 G`. | `gadget-ng-pm`, `gadget-ng-core`, `gadget-ng-physics` | 3–5 sesiones |
+| 1 | f(R) no lineal en malla | **Cerrado Phase 185.** Solver iterativo reducido del campo escalar con screening chameleon espacial, más allá del boost PM homogéneo `4/3 G`. | `gadget-ng-pm`, `gadget-ng-core`, `gadget-ng-physics` | Hecho |
 | 2 | Química D/HD + cooling primordial | **Cerrado Phase 179.** Especies `D`, `D+`, `HD`; cooling molecular HD y acoplamiento con la red H⁻/H₂/H₂⁺. | `gadget-ng-rt`, `gadget-ng-sph`, `gadget-ng-physics` | Hecho |
 | 3 | Pop III / primeras estrellas | **Cerrado Phase 180.** IMF top-heavy, criterio de formación con H₂/HD, feedback PISN. | `gadget-ng-sph`, `gadget-ng-rt`, `gadget-ng-core` | Hecho |
-| 4 | Polvo IR / emisión térmica | Temperatura de granos, emisión IR, opacidades dependientes de frecuencia y acoplamiento con RT. | `gadget-ng-sph`, `gadget-ng-rt`, `gadget-ng-analysis` | 2–3 sesiones |
-| 5 | AGN spin + mergers | Spin de BH, eficiencia radiativa dependiente de spin, mergers de BH y recoil gravitacional. | `gadget-ng-sph`, `gadget-ng-analysis`, `gadget-ng-core` | 2–4 sesiones |
-| 6 | Warm / fuzzy dark matter | Cutoff WDM en transferencia/ICs; presión cuántica efectiva para fuzzy DM como aproximación hidrodinámica. | `gadget-ng-core`, `gadget-ng-analysis`, `gadget-ng-physics` | 2–4 sesiones |
-| 7 | RT multifrecuencia | Grupos HI/HeI/HeII/LW/IR para fotoquímica y reionización espectralmente resuelta. | `gadget-ng-rt`, `gadget-ng-sph`, `gadget-ng-physics` | 3–5 sesiones |
+| 4 | Polvo IR / emisión térmica | **Cerrado Phase 182.** Temperatura de granos, luminosidad IR y depósito en el grupo IR multifrecuencia. | `gadget-ng-sph`, `gadget-ng-rt`, `gadget-ng-analysis` | Hecho |
+| 5 | AGN spin + mergers | **Cerrado Phase 183.** Spin de BH, eficiencia radiativa dependiente de spin, mergers de BH y recoil gravitacional. | `gadget-ng-sph`, `gadget-ng-analysis`, `gadget-ng-core` | Hecho |
+| 6 | Warm / fuzzy dark matter | **Cerrado Phase 184.** Cutoff WDM/FDM en transferencia/ICs; presión cuántica efectiva para fuzzy DM como aproximación. | `gadget-ng-core`, `gadget-ng-analysis`, `gadget-ng-physics` | Hecho |
+| 7 | RT multifrecuencia | **Cerrado Phase 181.** Grupos HI/HeI/HeII/LW/IR para fotoquímica y fotodisociación H₂/HD. | `gadget-ng-rt`, `gadget-ng-sph`, `gadget-ng-physics` | Hecho |
 
-**Recomendación inmediata:** seguir con **RT multifrecuencia / Lyman-Werner**, ahora que Pop III necesita fotodisociación H₂/HD y feedback radiativo espectral.
+**Estado cartera:** los 7 candidatos documentados quedaron cerrados en código entre Phases 179–185.
 
 ## Tests
 

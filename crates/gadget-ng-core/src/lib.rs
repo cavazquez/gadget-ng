@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod cosmology;
+pub mod dark_matter;
 #[cfg(feature = "gpu")]
 pub mod gpu_bridge;
 pub mod gravity;
@@ -23,13 +24,14 @@ pub use gpu_bridge::GpuParticlesSoAExt;
 
 pub use config::{
     AgnSection, BFieldKind, ConductionSection, ConfigError, CoolingKind, CosmologySection,
-    CrSection, DecompositionConfig, DustSection, EnrichmentSection, FeedbackSection,
-    G_KPC_MSUN_KMPS, GravitySection, IcKind, InitialConditionsSection, InsituAnalysisSection,
-    IntegratorKind, IsmSection, MacSoftening, MhdSection, ModifiedGravitySection, MolecularSection,
-    NormalizationMode, OpeningCriterion, OutputSection, PerformanceSection, PopIIISection,
-    RtSection, RunConfig, SfcKind, SidmSection, SimulationSection, SnapshotFormat, SolverKind,
-    SphSection, StarFormationModel, StellarFeedbackMode, TimestepCriterion, TimestepSection,
-    TransferKind, TurbulenceSection, TwoFluidSection, UnitsSection, UvBackgroundModel, WindParams,
+    CrSection, DarkMatterModel, DarkMatterSection, DecompositionConfig, DustSection,
+    EnrichmentSection, FeedbackSection, G_KPC_MSUN_KMPS, GravitySection, IcKind,
+    InitialConditionsSection, InsituAnalysisSection, IntegratorKind, IsmSection, MacSoftening,
+    MhdSection, ModifiedGravitySection, MolecularSection, NormalizationMode, OpeningCriterion,
+    OutputSection, PerformanceSection, PopIIISection, RtSection, RunConfig, SfcKind, SidmSection,
+    SimulationSection, SnapshotFormat, SolverKind, SphSection, StarFormationModel,
+    StellarFeedbackMode, TimestepCriterion, TimestepSection, TransferKind, TurbulenceSection,
+    TwoFluidSection, UnitsSection, UvBackgroundModel, WindParams,
 };
 pub use cosmology::{
     CosmologyParams, NeutrinoHierarchyKind, adaptive_dt_cosmo, cosmo_consistency_error,
@@ -37,6 +39,10 @@ pub use cosmology::{
     growth_factor_d, growth_factor_d_ratio, growth_rate_f, hubble_param, minimum_image,
     neutrino_suppression, omega_nu_from_mass, peculiar_vrms, split_m_nu_ev, wrap_coord,
     wrap_position,
+};
+pub use dark_matter::{
+    dark_matter_transfer_suppression, fdm_half_mode_k, fdm_quantum_pressure_cs2,
+    fdm_transfer_suppression, wdm_half_mode_k, wdm_transfer_suppression,
 };
 pub use gadget_ng_gpu_layout::{BH_GPU_NO_PARTICLE, BhFmmGpuNode, BhMonopoleGpuNode};
 #[cfg(feature = "simd")]

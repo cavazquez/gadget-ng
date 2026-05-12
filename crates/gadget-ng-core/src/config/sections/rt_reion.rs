@@ -18,6 +18,15 @@ pub struct RtSection {
     /// Número de sub-pasos del solver M1 por paso de simulación (default: 5).
     #[serde(default = "default_rt_substeps")]
     pub substeps: usize,
+    /// Activa grupos espectrales HI/HeI/HeII/LW/IR sobre el solver M1 (Phase 181).
+    #[serde(default)]
+    pub multifrequency_enabled: bool,
+    /// Factor multiplicativo para la tasa LW de fotodisociación H2 (default: 1.0).
+    #[serde(default = "default_lw_h2_factor")]
+    pub lw_h2_factor: f64,
+    /// Factor multiplicativo para la tasa LW de fotodisociación HD (default: 1.0).
+    #[serde(default = "default_lw_hd_factor")]
+    pub lw_hd_factor: f64,
 }
 
 fn default_c_red_factor() -> f64 {
@@ -32,6 +41,12 @@ fn default_rt_mesh() -> usize {
 fn default_rt_substeps() -> usize {
     5
 }
+fn default_lw_h2_factor() -> f64 {
+    1.0
+}
+fn default_lw_hd_factor() -> f64 {
+    1.0
+}
 
 impl Default for RtSection {
     fn default() -> Self {
@@ -41,6 +56,9 @@ impl Default for RtSection {
             kappa_abs: default_kappa_abs(),
             rt_mesh: default_rt_mesh(),
             substeps: default_rt_substeps(),
+            multifrequency_enabled: false,
+            lw_h2_factor: default_lw_h2_factor(),
+            lw_hd_factor: default_lw_hd_factor(),
         }
     }
 }

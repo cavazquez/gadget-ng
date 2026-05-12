@@ -12,8 +12,9 @@
 > → SPH cosmológico con gas + DM + estrellas + metales + SN feedback + AGN
 > → MHD ideal + SRMHD + turbulencia Ornstein-Uhlenbeck + reconexión Sweet-Parker
 >    + Braginskii + plasma de dos fluidos T_e ≠ T_i
-> → transferencia radiativa M1 + reionización EoR z=6–12 + estadísticas 21cm
-> → rayos cósmicos + conducción térmica anisótropa + polvo intersticial + RT UV
+> → transferencia radiativa M1 multifrecuencia + reionización EoR z=6–12 + estadísticas 21cm
+> → rayos cósmicos + conducción térmica anisótropa + polvo intersticial UV/IR
+> → Pop III, química D/HD, WDM/FDM y f(R) con screening PM
 > → análisis in-situ (FoF, P(k), P_B(k), HMF, ξ(r), c(M) Ludlow+2016)
 > → corrección absoluta de `P(k)` vía `pk_correction` (Phase 34–36)
 > → validación externa contra CLASS (Phase 38)
@@ -21,7 +22,7 @@
 > → solver PM GPU CUDA/HIP opcional (Phase 57)
 > → CLI `analyze` con pipeline completo FoF+P(k)+ξ(r)+c(M) y render PPM**.
 >
-> **Estado:** Phases 1–166 completadas · **SPH Gadget-2 completo** (entropía + Balsara + colapso de Evrard) ·
+> **Estado:** Phases 1–185 completadas · **cartera Physics Extensions cerrada** (D/HD, Pop III, RT multifrecuencia, polvo IR, AGN spin/mergers, WDM/FDM y f(R) no lineal PM) · **SPH Gadget-2 completo** (entropía + Balsara + colapso de Evrard) ·
 > GPU kernels reales CUDA/HIP N² · MHD 3D solenoidal · `cargo test -p gadget-ng-physics` en ~3.5 min.
 >
 > **Mayo 2026 — validación tipo paper:** transferencia **tabulada** CLASS/CAMB en ICs, **pancake** Zel’dovich analítico,
@@ -55,8 +56,9 @@
 | 🔴 **GPU HIP/ROCm** | Solver PM AMD HIP + rocFFT; misma arquitectura que CUDA; `CUDA_SKIP` / `HIP_SKIP` para CI |
 | 🧲 **MHD** | MHD ideal SPH, SRMHD, Braginskii, reconexión Sweet-Parker, turbulencia Ornstein-Uhlenbeck, flux-freeze ICM |
 | ⚛️ **Plasma 2 fluidos** | `T_e ≠ T_i`, acoplamiento Coulomb implícito, jets AGN relativistas, espectro P_B(k) |
-| 💫 **Física bariónica** | SPH Wendland C2, cooling metálico, SF estocástica, vientos, SN Ia+II, AGN bimodal, rayos cósmicos, polvo |
-| 🌅 **Radiación** | RT M1 (HLL + Levermore), reionización EoR z=6–12, señal 21cm δT_b, T(z) IGM, absorción UV por polvo |
+| 💫 **Física bariónica** | SPH Wendland C2, cooling metálico, SF estocástica, vientos, SN Ia+II, AGN bimodal + spin/mergers, rayos cósmicos, polvo UV/IR, Pop III |
+| 🌅 **Radiación** | RT M1 (HLL + Levermore), grupos HI/HeI/HeII/LW/IR, reionización EoR z=6–12, señal 21cm δT_b, T(z) IGM |
+| 🧬 **Física de frontera** | Química primordial 12 especies D/HD, WDM/FDM en ICs, f(R) Hu-Sawicki con boost PM y screening no lineal de malla |
 | 🗜️ **I/O** | JSONL, `bincode`, `hdf5` estilo GADGET-4 (22 attrs, yt/pynbody compatible), `msgpack`, `netcdf` |
 | 🔭 **Cosmología de referencia** | `classy` 3.3+ (CLASS) para validación externa (Phase 38), Eisenstein–Hu interno |
 | 📊 **Postproceso** | Python 3.10+, NumPy, SciPy, Matplotlib — mirrors de `pk_correction` y figuras por fase |
@@ -90,13 +92,14 @@
 14. [Estadísticas 21cm y EoR (Phases 94–95)](#estadísticas-21cm-y-eor-phases-9495)
 15. [Feedback AGN (Phase 96)](#feedback-agn-phase-96)
 16. [SPH Gadget-2 (Phase 166)](#sph-gadget-2-phase-166)
-17. [MHD Completo + Plasma 2F (Phases 123–150)](#mhd-completo--plasma-2f-phases-123150)
-18. [Tests automáticos](#tests-automáticos)
-19. [Reportes técnicos](#reportes-técnicos)
-20. [Features opcionales](#features-opcionales)
-21. [Calidad y CI](#calidad-y-ci)
-22. [Estructura de experimentos](#estructura-de-experimentos)
-23. [Licencia](#licencia)
+17. [Physics Extensions cerradas (Phases 177–185)](#physics-extensions-cerradas-phases-177185)
+18. [MHD Completo + Plasma 2F (Phases 123–150)](#mhd-completo--plasma-2f-phases-123150)
+19. [Tests automáticos](#tests-automáticos)
+20. [Reportes técnicos](#reportes-técnicos)
+21. [Features opcionales](#features-opcionales)
+22. [Calidad y CI](#calidad-y-ci)
+23. [Estructura de experimentos](#estructura-de-experimentos)
+24. [Licencia](#licencia)
 
 ---
 
@@ -127,6 +130,7 @@
 | **TreePM** | Barnes–Hut short-range + PM long-range; versión distribuida (Fase 21–25) con scatter-gather (Fase 24); softening Plummer absoluto `ε_phys` (Mpc/h) independiente de `N` (Phase 42) |
 | **Cosmología ΛCDM** | Friedmann ΛCDM, factor de escala `a(t)` por RK4, momentum canónico, diagnósticos `a/z/v_rms/δ_rms`; fallback EdS |
 | **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle**, **tabulada** (CLASS/CAMB) o ley de potencia; normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
+| **WDM/FDM en ICs** | `[dark_matter]` aplica cutoff warm/fuzzy sobre amplitudes ZA/2LPT; half-mode y proxy de presión cuántica FDM (Phase 184) |
 | **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta, validado vs 🔭 CLASS (Phase 38) y en alta resolución hasta `N=128³` (Phase 41) |
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
 | **SPH Gadget-2** | Kernel Wendland C2, densidad adaptativa; **entropía A=P/ρ^γ** (Springel & Hernquist 2002); **viscosidad de señal** + **limitador de Balsara** (∇·v, ∇×v); integrador KDK-entropía + `courant_dt`; validado en tubo de Sod + **colapso de Evrard** (Phase 166) |
@@ -150,7 +154,10 @@
 | **❄️ Flux-freeze ICM** | B ∝ ρ^{2/3} en celdas con β > β_freeze; conservación de flujo magnético en fases de baja ionización (Phase 138) |
 | **📡 P_B(k)** | Espectro de potencia magnético por bins logarítmicos de k ∝ 2π/h_i; diagnóstico de magnetogénesis primordial (Phase 147) |
 | **💥 Conducción anisótropa** | Difusión térmica y CR ∥B con factores kappa_par/kappa_perp; supresión CR por β_plasma (Phase 133) |
-| **🌑 Polvo + RT UV** | Ratio polvo/gas D/G, absorción UV kappa_dust×D/G×ρ×h, M1Params.sigma_dust; τ_dust en coupling (Phase 130 + 137) |
+| **🌑 Polvo + RT UV/IR** | Ratio polvo/gas D/G, absorción UV, presión radiativa, temperatura de granos y emisión IR a `PhotonGroup::Infrared` (Phases 130, 137, 182) |
+| **🧪 Química primordial + Pop III** | `ChemState` 12 especies con H⁻/H₂/H₂⁺/D/D⁺/HD, cooling HD, Pop III top-heavy + PISN y LW fotodisociación (Phases 178–181) |
+| **🕳️ AGN avanzado** | Bondi + modo radio/quasar, spin Kerr escalar, eficiencia dependiente de spin, mergers BH y recoil (Phases 96, 116, 183) |
+| **🌀 f(R) PM no lineal** | Hu-Sawicki f(R): boost PM homogéneo `4/3` y screening chameleon espacial en malla PM `ρ×S(x)/3` (Phases 178, 185) |
 
 ---
 
@@ -309,11 +316,33 @@ Transferencia tabulada (CLASS/CAMB u otra tabla `k[h/Mpc]  T(k)`):
 transfer = { tabulated = { path = "path/to/class_transfer.dat" } }
 ```
 
+Cutoff WDM/FDM en ICs cosmológicas:
+
+```toml
+[dark_matter]
+enabled = true
+model = "warm"   # "cold" | "warm" | "fuzzy"
+m_wdm_kev = 3.0
+# m_fdm_22 = 1.0  # para model = "fuzzy" en unidades de 10^-22 eV
+```
+
 Criterio de apertura **b_max** en Barnes–Hut / TreePM:
 
 ```toml
 [gravity]
 opening_criterion = "geometric_bmax"   # "geometric" | "geometric_bmax" | "relative"
+```
+
+f(R) Hu-Sawicki en PM con screening de malla:
+
+```toml
+[modified_gravity]
+enabled = true
+f_r0 = 1.0e-6
+n = 1.0
+nonlinear_mesh = true
+mesh_iterations = 4
+screening_smoothing = 0.5
 ```
 
 ### PM distribuido (Fase 19 — allreduce grid)
@@ -358,7 +387,7 @@ gadget-ng/
 ├── crates/
 │   ├── gadget-ng-core          # Vec3, Particle, RunConfig, CosmologyParams,
 │   │                           # wrap_position, ic_zeldovich (1LPT+2LPT),
-│   │                           # transfer EH no-wiggle + amplitude_for_sigma8;
+│   │                           # transfer EH no-wiggle + amplitude_for_sigma8; WDM/FDM cutoff;
 │   │                           # rebalance_imbalance_threshold (Phase 60)
 │   ├── gadget-ng-tree          # Octree + Barnes–Hut + FMM (cuadrupolo + octupolo STF),
 │   │                           # SoA + SIMD, LET; MAC geometric / bmax / relative
@@ -368,7 +397,8 @@ gadget-ng/
 │   ├── gadget-ng-parallel      # SerialRuntime / MpiRuntime, SFC Hilbert 3D,
 │   │                           # alltoallv, allreduce, exchange_domain_{x,z}, halos
 │   ├── gadget-ng-io            # Snapshots JSONL / Bincode / HDF5 estilo GADGET + Provenance
-│   ├── gadget-ng-pm            # PM: CIC, FFT Poisson periódica, slab_fft, slab_pm; feature `fftw`
+│   ├── gadget-ng-pm            # PM: CIC, FFT Poisson periódica, slab_fft, slab_pm; feature `fftw`;
+│   │                           # f(R) PM homogéneo + screening chameleon no lineal en malla
 │   ├── gadget-ng-treepm        # TreePM: BH short-range + PM long-range (serial + dist)
 │   ├── gadget-ng-gpu           # Compute shaders WGSL vía wgpu (Vulkan/Metal/DX12)
 │   ├── gadget-ng-cuda          # 🟢 Solver PM NVIDIA CUDA + cuFFT (Phase 57); CIC+Poisson+FFT 3D
@@ -377,7 +407,7 @@ gadget-ng/
 │   │                           # NFW + c(M) Duffy/Bhattacharya/Ludlow+2016 (Phase 53/58);
 │   │                           # ξ(r) FFT + pares Davis-Peebles (Phase 58); lightcone + Born κ/γ
 │   ├── gadget-ng-sph           # SPH: Wendland C2, densidad adaptativa, visc. Monaghan;
-│   │                           # ⭐ stellar feedback (Phase 78); AGN Bondi (Phase 96/100);
+│   │                           # ⭐ stellar feedback (Phase 78); AGN Bondi/spin/mergers (Phase 96/183);
 │   │                           # metales/SFR/SN Ia+II (Phase 109–115); CRs (Phase 117);
 │   │                           # conducción Spitzer (Phase 121); gas molecular (Phase 122);
 │   │                           # 🌊 entropía A=P/ρ^γ + Balsara + visc. señal (Phase 166)
@@ -387,7 +417,7 @@ gadget-ng/
 │   ├── gadget-ng-rt            # 🌅 Transferencia radiativa M1 (Phase 81):
 │   │                           # solver Godunov HLL, cierre Levermore 1984, acoplamiento SPH;
 │   │                           # reionización EoR + fuentes UV + 21cm + T(z) IGM (Phase 89–95);
-│   │                           # absorción UV por polvo (Phase 137)
+│   │                           # RT multifrecuencia HI/HeI/HeII/LW/IR + LW H2/HD (Phase 181)
 │   ├── gadget-ng-vis           # Visualización CPU: proyecciones, Viridis, PNG;
 │   │                           # 🖼️ render_ppm / write_ppm PPM sin dependencias (Phase Rápidas)
 │   ├── gadget-ng-physics       # Tests de validación física/cosmológica (Kepler,
@@ -406,8 +436,8 @@ gadget-ng/
 
 ## Hitos de desarrollo
 
-El proyecto lleva **166+ fases completadas** cubriendo N-body, cosmología, PM/TreePM,
-MPI/GPU, SPH, MHD, RT y física bariónica avanzada.
+El proyecto lleva **185 fases completadas** cubriendo N-body, cosmología, PM/TreePM,
+MPI/GPU, SPH, MHD, RT, física bariónica avanzada y la cartera Physics Extensions 2026.
 
 > Para el historial completo de fases y reportes técnicos asociados, ver
 > [docs/development-history.md](docs/development-history.md).
@@ -423,6 +453,21 @@ Resumen de bloques principales:
 | RT + Reionización | 81–95 | M1, EoR z=6–12, señal 21cm, química HII |
 | Física bariónica | 96–122 | AGN, feedback, metales, SN Ia, ISM multifase, CR |
 | MHD completo | 123–166 | Ideal, SRMHD, turbulencia O-U, Braginskii, SPH Gadget-2 |
+| Physics Extensions | 177–185 | Cooling/SF producción, D/HD, Pop III, RT multifrecuencia, polvo IR, AGN spin, WDM/FDM, f(R) no lineal PM |
+
+Phases recientes:
+
+| Fase | Descripción | Estado |
+|------|-------------|--------|
+| **177** | Cooling+SF+feedback de producción: UVB, ley de presión y feedback térmico estocástico | ✅ |
+| **178** | Cierre Physics Extensions: PM f(R) homogéneo, química primordial 9 especies, lightcones documentados | ✅ |
+| **179** | Química D/HD + cooling molecular HD | ✅ |
+| **180** | Pop III / primeras estrellas con IMF top-heavy y feedback PISN | ✅ |
+| **181** | RT multifrecuencia HI/HeI/HeII/LW/IR y fotodisociación LW de H₂/HD | ✅ |
+| **182** | Polvo IR: temperatura de granos, luminosidad greybody y depósito en `PhotonGroup::Infrared` | ✅ |
+| **183** | AGN spin + mergers: eficiencia Kerr, spin-up, fusiones BH y recoil | ✅ |
+| **184** | Warm/fuzzy dark matter: cutoff WDM/FDM en ICs ZA/2LPT y proxy de presión cuántica | ✅ |
+| **185** | f(R) no lineal en malla PM con screening chameleon espacial | ✅ |
 
 | Fase | Descripción | Estado |
 |------|-------------|--------|
@@ -1283,6 +1328,20 @@ metodología, resultados y limitaciones.
 | [`phase148-rmhd-jets`](docs/reports/2026-04-phase148-rmhd-jets.md) | 🕳️ Jets AGN relativistas desde halos FoF |
 | [`phase149-two-fluid`](docs/reports/2026-04-phase149-two-fluid.md) | ⚛️ Plasma 2F: T_e ≠ T_i, Coulomb implícito |
 
+### Physics Extensions 2026 (Phases 177–185)
+
+| Reporte | Tema |
+|---------|------|
+| [`phase177-cooling-sf-feedback-production`](docs/reports/2026-05-phase177-cooling-sf-feedback-production.md) | UVB, ley SF por presión y feedback térmico estocástico |
+| [`phase178-physics-extensions-closure`](docs/reports/2026-05-phase178-physics-extensions-closure.md) | PM f(R) homogéneo, química primordial 9 especies y lightcones |
+| [`phase179-deuterium-hd-cooling`](docs/reports/2026-05-phase179-deuterium-hd-cooling.md) | Química D/HD y cooling molecular HD |
+| [`phase180-pop-iii-first-stars`](docs/reports/2026-05-phase180-pop-iii-first-stars.md) | Pop III, IMF top-heavy y feedback PISN |
+| [`phase181-rt-multifrequency-lw`](docs/reports/2026-05-phase181-rt-multifrequency-lw.md) | Grupos HI/HeI/HeII/LW/IR y LW H₂/HD |
+| [`phase182-dust-ir-thermal-emission`](docs/reports/2026-05-phase182-dust-ir-thermal-emission.md) | Temperatura de granos y emisión IR |
+| [`phase183-agn-spin-mergers`](docs/reports/2026-05-phase183-agn-spin-mergers.md) | Spin Kerr, mergers BH y recoil |
+| [`phase184-wdm-fdm`](docs/reports/2026-05-phase184-wdm-fdm.md) | Cutoff WDM/FDM en ICs y presión cuántica FDM |
+| [`phase185-fr-nonlinear-mesh`](docs/reports/2026-05-phase185-fr-nonlinear-mesh.md) | f(R) no lineal en malla PM |
+
 ### Meta
 
 | Reporte | Tema |
@@ -1468,15 +1527,26 @@ enabled      = true
 eps_feedback = 0.05
 m_seed       = 1e5
 v_kick_agn   = 500.0
+spin_enabled = true
+initial_spin = 0.3
+mergers_enabled = true
+merger_radius = 0.1
+recoil_velocity_scale = 500.0
 ```
 
 Tasa de acreción de Bondi-Hoyle y depósito de energía térmica en partículas vecinas:
 
 ```rust
-use gadget_ng_sph::agn::{BlackHole, AgnParams, bondi_accretion_rate, apply_agn_feedback};
+use gadget_ng_core::Vec3;
+use gadget_ng_sph::{AgnParams, BlackHole, apply_agn_feedback, bondi_accretion_rate};
 
-let bh = BlackHole { pos: [0.0; 3], mass: 1e8, accretion_rate: 0.0 };
-let params = AgnParams { eps_feedback: 0.05, m_seed: 1e5, v_kick_agn: 500.0 };
+let bh = BlackHole::with_spin(Vec3::zero(), 1e8, 0.3);
+let params = AgnParams {
+    eps_feedback: 0.05,
+    m_seed: 1e5,
+    v_kick_agn: 500.0,
+    r_influence: 1.0,
+};
 let mdot = bondi_accretion_rate(&bh, rho_gas, c_sound);
 apply_agn_feedback(&mut particles, &[bh], &params, dt);
 ```
@@ -1537,6 +1607,58 @@ cargo test -p gadget-ng-physics --test gadget2_sph_validation --release -- --inc
 | `gadget2_entropy_monotonically_nondecreasing` *(ignore)* | 2ª ley: S no decrece en Sod |
 | `evrard_adiabatic_energy_conservation` *(ignore)* | colapso de Evrard: E_total acotada |
 | `evrard_central_density_increases` *(ignore)* | densidad central crece en colapso |
+
+---
+
+## Physics Extensions cerradas (Phases 177–185)
+
+La cartera documentada en [docs/roadmap-physics-extensions.md](docs/roadmap-physics-extensions.md)
+quedó cerrada en código. Los módulos nuevos son retrocompatibles por defecto:
+si las secciones TOML no se activan, las corridas legacy conservan su comportamiento.
+
+```toml
+[rt]
+enabled = true
+multifrequency_enabled = true
+lw_h2_factor = 1.0
+lw_hd_factor = 1.0
+
+[sph.dust]
+enabled = true
+ir_emission_enabled = true
+kappa_dust_ir = 10.0
+ir_emissivity = 1.0
+
+[sph.pop_iii]
+enabled = true
+critical_metallicity = 1.0e-4
+min_h2_fraction = 1.0e-6
+min_hd_fraction = 1.0e-9
+
+[dark_matter]
+enabled = true
+model = "warm"      # "cold" | "warm" | "fuzzy"
+m_wdm_kev = 3.0
+
+[modified_gravity]
+enabled = true
+f_r0 = 1.0e-6
+nonlinear_mesh = true
+mesh_iterations = 4
+screening_smoothing = 0.5
+```
+
+| Phase | API principal | Validación |
+|-------|---------------|------------|
+| 177 | `CoolingKind::UvBackground`, SF por presión, feedback térmico estocástico | `phase177_cooling_sf_feedback.rs` |
+| 178 | `solve_forces_modified_gravity`, química primordial 9 especies | `gadget-ng-pm`, `phase158_modified_gravity` |
+| 179 | `ChemState` 12 especies, `cooling_rate_hd` | `phase179_deuterium_hd.rs` |
+| 180 | `PopIIISection`, `form_pop_iii_clusters`, PISN | `phase180_pop_iii.rs` |
+| 181 | `MultiFrequencyField`, `PhotonGroup`, LW H₂/HD | `phase181_multifrequency_lw.rs` |
+| 182 | `dust_equilibrium_temperature`, `deposit_dust_ir_emission` | `phase182_dust_ir_emission.rs` |
+| 183 | `BlackHole::spin`, `merge_black_holes`, eficiencia Kerr | `phase183_agn_spin_mergers.rs` |
+| 184 | `[dark_matter]`, `wdm_transfer_suppression`, `fdm_transfer_suppression` | `phase184_wdm_fdm.rs` |
+| 185 | `solve_forces_fr_screened_mesh`, `fr_screening_field` | `phase185_fr_nonlinear_mesh.rs` |
 
 ---
 

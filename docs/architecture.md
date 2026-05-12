@@ -13,8 +13,8 @@ Implementación en Rust inspirada **conceptualmente** en GADGET-4 ([sitio oficia
 ## Capacidades actuales (visión de conjunto)
 
 - **Gravedad**: directa \(O(N^2)\), Barnes–Hut, PM periódico 3D, TreePM; rutas **MPI** con descomposición **SFC (Hilbert 3D)** y **LET** para el corto alcance, alternativa legacy `MPI_Allgatherv` cuando se fuerza explícitamente; PM distribuido con patrones allreduce / slab / lápiz / scatter–gather según configuración y fase.
-- **Cosmología**: \(\Omega_m\), \(\Omega_\Lambda\), CPL \(w_0,w_a\), masas de neutrinos (entrada en eV); **ICs** 1LPT/2LPT, transferencias Eisenstein–Hu, convenciones de normalización (`Legacy` / `Z0Sigma8`).
-- **Bariones y campos**: crates **SPH**, **MHD**, **RT** integrados en el workspace (gas, estrellas, radiación, etc., según features y TOML).
+- **Cosmología**: \(\Omega_m\), \(\Omega_\Lambda\), CPL \(w_0,w_a\), masas de neutrinos (entrada en eV); **ICs** 1LPT/2LPT, transferencias Eisenstein–Hu/tabuladas, convenciones de normalización (`Legacy` / `Z0Sigma8`) y cutoff WDM/FDM opcional.
+- **Bariones y campos**: crates **SPH**, **MHD**, **RT** integrados en el workspace: D/HD primordial, Pop III, polvo UV/IR, AGN spin/mergers, RT multifrecuencia y f(R) PM con screening de malla según TOML.
 - **GPU**: **wgpu** — gravedad directa (`GpuDirectGravity`), Barnes–Hut FMM hasta orden 3 (`GpuBarnesHutFmm` / `[performance] use_gpu_barnes_hut`), corto alcance TreePM (`GpuTreePmShortRange`, kernel listo; el solver compuesto sigue en CPU); **CUDA / HIP** — PM puro en GPU (`use_gpu_cuda` / `use_gpu_hip`). Ver [gpu-first-roadmap.md](gpu-first-roadmap.md).
 - **Paralelismo intra-rango**: Rayon, SIMD/AVX2 en directos y BH, opciones `pm-rayon` donde aplique.
 - **I/O**: JSONL, bincode, HDF5 estilo GADGET-4, MessagePack, NetCDF; siempre `meta.json` y `provenance.json`.
@@ -38,9 +38,9 @@ La sección [Flujo de `stepping` (MPI)](#flujo-de-stepping-mpi) resume el camino
 
 | Crate | Rol |
 |--------|-----|
-| `gadget-ng-core` | Tipos base (`Vec3`, `Particle`), `RunConfig`, ICs, traits de gravedad, cosmología y unidades |
+| `gadget-ng-core` | Tipos base (`Vec3`, `Particle`), `RunConfig`, ICs, traits de gravedad, cosmología, unidades, WDM/FDM |
 | `gadget-ng-tree` | Octree, Barnes–Hut |
-| `gadget-ng-pm` | PM periódico 3D (CIC, FFT, Poisson en *k*-space) |
+| `gadget-ng-pm` | PM periódico 3D (CIC, FFT, Poisson en *k*-space), f(R) homogéneo y screening chameleon de malla |
 | `gadget-ng-treepm` | `TreePmSolver`: splitting Gaussiano, corto alcance en árbol |
 | `gadget-ng-integrators` | KDK global, jerárquico, Yoshida |
 | `gadget-ng-parallel` | `ParallelRuntime`, MPI, descomposición SFC/slab, LET |
@@ -48,9 +48,9 @@ La sección [Flujo de `stepping` (MPI)](#flujo-de-stepping-mpi) resume el camino
 | `gadget-ng-gpu` | SoA GPU, direct/BH-FMM/TreePM-SR wgpu; puentes CUDA en otros crates |
 | `gadget-ng-cuda` / `gadget-ng-hip` | PM en GPU (NVIDIA / AMD) |
 | `gadget-ng-analysis` | P(k), utilidades de análisis |
-| `gadget-ng-sph` | Hidrodinámica SPH |
+| `gadget-ng-sph` | Hidrodinámica SPH, física bariónica, polvo, Pop III, AGN spin/mergers |
 | `gadget-ng-mhd` | MHD y extensiones de plasma |
-| `gadget-ng-rt` | Radiación transfer |
+| `gadget-ng-rt` | Radiación transfer M1, química primordial y RT multifrecuencia |
 | `gadget-ng-vis` | Visualización / render auxiliar |
 | `gadget-ng-physics` | Tests de integración física |
 | `gadget-ng-cli` | Binario `gadget-ng` (`stepping`, `snapshot`, `analyze`, …) |
@@ -99,7 +99,8 @@ El crate **`gadget-ng-pm`** implementa el PM periódico con `rustfft` en **f64**
 
 ### Extensiones de física (roadmap ejecutado)
 
-La cartera priorizada (CR anisótropo, polvo con impulso radiativo, neutrinos/jerarquía en cosmología de run) está descrita en [roadmap-physics-extensions.md](roadmap-physics-extensions.md).
+La cartera priorizada está descrita en [roadmap-physics-extensions.md](roadmap-physics-extensions.md) y quedó cerrada en Phases 177–185:
+cooling/SF/feedback de producción, química D/HD, Pop III, RT multifrecuencia/LW, polvo IR, AGN spin+mergers, WDM/FDM y f(R) no lineal en PM.
 
 ## Flujo de `stepping` (MPI)
 

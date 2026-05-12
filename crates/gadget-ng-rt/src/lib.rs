@@ -41,6 +41,7 @@ pub mod coupling;
 pub mod igm_temp;
 pub mod m1;
 pub mod mpi;
+pub mod multifrequency;
 pub mod reionization;
 
 pub use chemistry::{
@@ -67,6 +68,10 @@ pub use mpi::{
 };
 #[cfg(feature = "mpi")]
 pub use mpi::{allreduce_radiation_mpi, exchange_radiation_halos_mpi};
+pub use multifrequency::{
+    MultiFrequencyField, MultiFrequencyRates, N_PHOTON_GROUPS, PHOTON_GROUPS, PhotonGroup,
+    apply_lw_photodissociation, deposit_dust_ir_emission, single_group_rates,
+};
 pub use reionization::{
     ALPHA_B, ReionizationParams, ReionizationState, UvSource, compute_reionization_state,
     deposit_uv_sources, reionization_step, stromgren_radius,

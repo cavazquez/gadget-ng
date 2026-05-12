@@ -75,6 +75,7 @@ pub fn lcdm_config() -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
     }
 }
 
@@ -126,6 +127,7 @@ pub fn eds_config() -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
     }
 }
 

@@ -30,6 +30,12 @@ pub struct PmSolver {
     pub plummer_eps: Option<f64>,
     /// Parámetros f(R) para una quinta fuerza PM homogénea de largo alcance.
     pub modified_gravity: Option<gadget_ng_core::FRParams>,
+    /// Si true, usa screening f(R) espacial en malla.
+    pub fr_nonlinear_mesh: bool,
+    /// Iteraciones de suavizado para el screening f(R).
+    pub fr_mesh_iterations: usize,
+    /// Mezcla por iteración para el screening f(R).
+    pub fr_screening_smoothing: f64,
 }
 
 impl PmSolver {
@@ -40,6 +46,9 @@ impl PmSolver {
             box_size,
             plummer_eps: None,
             modified_gravity: None,
+            fr_nonlinear_mesh: false,
+            fr_mesh_iterations: 4,
+            fr_screening_smoothing: 0.5,
         }
     }
 }
@@ -71,14 +80,29 @@ impl GravitySolver for PmSolver {
 
         // ── 2. Resolver Poisson → fuerzas en el grid ──────────────────────────
         let [fx_grid, fy_grid, fz_grid] = if let Some(params) = &self.modified_gravity {
-            fft_poisson::solve_forces_modified_gravity(
-                &density,
-                g,
-                nm,
-                self.box_size,
-                params,
-                self.plummer_eps,
-            )
+            if self.fr_nonlinear_mesh {
+                fft_poisson::solve_forces_fr_screened_mesh(
+                    &density,
+                    g,
+                    nm,
+                    self.box_size,
+                    fft_poisson::FrMeshParams {
+                        fr: params,
+                        iterations: self.fr_mesh_iterations,
+                        smoothing: self.fr_screening_smoothing,
+                        plummer_eps: self.plummer_eps,
+                    },
+                )
+            } else {
+                fft_poisson::solve_forces_modified_gravity(
+                    &density,
+                    g,
+                    nm,
+                    self.box_size,
+                    params,
+                    self.plummer_eps,
+                )
+            }
         } else {
             match self.plummer_eps {
                 Some(eps) if eps > 0.0 => {

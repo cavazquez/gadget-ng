@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Estado al 12 de mayo de 2026:** Phases 1–180 completadas.
+> **Estado al 12 de mayo de 2026:** Phases 1–185 completadas.
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
 > Phase 170: CR Transport (streaming lungo B + backreaction).
@@ -8,6 +8,11 @@
 > Phase 178: cierre de pendientes Physics Extensions — PM f(R), química primordial 9 especies y lightcones documentados.
 > Phase 179: química primordial D/HD + cooling molecular HD.
 > Phase 180: Pop III / primeras estrellas con IMF top-heavy y feedback PISN.
+> Phase 181: RT multifrecuencia con grupos HI/HeI/HeII/LW/IR y fotodisociación H₂/HD.
+> Phase 182: polvo IR con temperatura de granos y emisión térmica al grupo `Infrared`.
+> Phase 183: AGN spin + mergers con eficiencia Kerr, fusiones BH y recoil.
+> Phase 184: WDM/FDM con cutoff de transferencia en ICs y proxy de presión cuántica.
+> Phase 185: f(R) no lineal en malla PM con screening chameleon espacial.
 > Trabajos de largo plazo: ver [`future-grandes.md`](reports/2026-04-future-grandes.md).
 
 ---
@@ -94,7 +99,7 @@ Posibles extensiones:
 
 | Tarea | Descripción | Estimación |
 |-------|-------------|-----------|
-| Physics Phase 181+ | Siguientes candidatas: f(R) no lineal, polvo IR, AGN spin, WDM/FDM, RT multifrecuencia/Lyman-Werner. Ver [`roadmap-physics-extensions.md`](roadmap-physics-extensions.md). | 2–5 sesiones c/u |
+| Physics Phase 186+ | Nueva cartera a definir: validaciones cuantitativas y acoplamientos de producción para las fases 181–185. | 2–5 sesiones |
 | Submission JOSS | Generar figuras, DOI Zenodo, completar ORCIDs, compilar PDF | 1–2 sesiones |
 | Validación producción N=128³ | Corrida completa hasta z=0, HMF vs Tinker, P(k) formal | 2–3 sesiones |
 | AGN con halos FoF | Colocar BHs en centros de halos FoF identificados in-situ | 1 sesión |
@@ -198,3 +203,8 @@ Posibles extensiones:
 - (178) **Physics extensions closure**: PM f(R) homogéneo no-screened (`solve_forces_modified_gravity`), química primordial 9 especies (`H⁻`, `H₂`, `H₂⁺`) y estado documental de lightcones/Born actualizado.
 - (179) **Química D/HD + cooling primordial**: `ChemState` extiende a 12 especies (`D`, `D⁺`, `HD`), red reducida de charge exchange y formación HD, `cooling_rate_hd` en RT/SPH y tests `phase179_deuterium_hd.rs`.
 - (180) **Pop III / primeras estrellas**: `PopIIISection`, criterio de gas primordial frío por H₂/HD, IMF top-heavy, `form_pop_iii_clusters`, feedback PISN y tests `phase180_pop_iii.rs`.
+- (181) **RT multifrecuencia + Lyman-Werner**: `PhotonGroup` HI/HeI/HeII/LW/IR, `MultiFrequencyField`, tasas espectrales y fotodisociación LW de H₂/HD con tests `phase181_multifrequency_lw.rs`.
+- (182) **Polvo IR / emisión térmica**: `DustSection` IR, temperatura de granos, luminosidad greybody y depósito en `PhotonGroup::Infrared` con tests `phase182_dust_ir_emission.rs`.
+- (183) **AGN spin + mergers**: `BlackHole::spin`, eficiencia Kerr, crecimiento por acreción, fusiones BH con recoil y tests `phase183_agn_spin_mergers.rs`.
+- (184) **Warm / fuzzy dark matter**: `[dark_matter]`, transfer WDM/FDM, half-mode, proxy de presión cuántica y cutoff en ICs ZA/2LPT con tests `phase184_wdm_fdm.rs`.
+- (185) **f(R) no lineal en malla**: `[modified_gravity].nonlinear_mesh`, screening chameleon por celda PM, quinta fuerza `ρ×S(x)/3` y tests `phase185_fr_nonlinear_mesh.rs`.

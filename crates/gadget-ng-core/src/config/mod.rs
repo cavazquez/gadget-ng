@@ -58,6 +58,9 @@ pub struct RunConfig {
     /// Gravedad modificada f(R) con screening chameleon (Phase 158; opcional; desactivado).
     #[serde(default)]
     pub modified_gravity: ModifiedGravitySection,
+    /// Materia oscura warm/fuzzy: cutoff de pequeña escala en ICs (Phase 184).
+    #[serde(default)]
+    pub dark_matter: DarkMatterSection,
 }
 
 // ── RunConfig ─────────────────────────────────────────────────────────────────

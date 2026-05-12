@@ -36,6 +36,19 @@ use rayon::prelude::*;
 type PmFftPlanPair = (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>);
 type PmFftPlanCache = Mutex<HashMap<usize, PmFftPlanPair>>;
 
+/// Parámetros del solver PM f(R) con screening espacial.
+#[derive(Debug, Clone, Copy)]
+pub struct FrMeshParams<'a> {
+    /// Parámetros Hu-Sawicki.
+    pub fr: &'a gadget_ng_core::FRParams,
+    /// Iteraciones Jacobi del screening.
+    pub iterations: usize,
+    /// Mezcla de suavizado por iteración.
+    pub smoothing: f64,
+    /// Suavizado Plummer opcional en k-space.
+    pub plummer_eps: Option<f64>,
+}
+
 /// Resuelve la ecuación de Poisson y devuelve las tres componentes de la fuerza
 /// en el grid como arrays planos de longitud `nm³`.
 ///
@@ -128,6 +141,114 @@ pub fn solve_forces_modified_gravity(
         plummer_eps,
         FftBackendKind::RustFft,
     )
+}
+
+/// Resuelve PM f(R) con screening chameleon espacial reducido.
+///
+/// La fuerza total se aproxima como:
+///
+/// `F = F_GR[ρ] + F_scalar[ρ × S(ρ)] / 3`
+///
+/// donde `S` es el factor local de quinta fuerza calculado desde el campo
+/// chameleon y suavizado por unas pocas iteraciones Jacobi en la malla. En baja
+/// densidad `S≈1` recupera el límite no-screened `4/3`; en celdas densas `S<<1`.
+pub fn solve_forces_fr_screened_mesh(
+    density: &[f64],
+    g: f64,
+    nm: usize,
+    box_size: f64,
+    params: FrMeshParams<'_>,
+) -> [Vec<f64>; 3] {
+    let gr = solve_forces_with_backend(
+        density,
+        g,
+        nm,
+        box_size,
+        None,
+        params.plummer_eps,
+        FftBackendKind::RustFft,
+    );
+    if params.fr.f_r0.abs() <= 0.0 {
+        return gr;
+    }
+
+    let screening = fr_screening_field(density, nm, params.fr, params.iterations, params.smoothing);
+    let scalar_density: Vec<f64> = density
+        .iter()
+        .zip(screening.iter())
+        .map(|(&rho, &screen)| rho * screen)
+        .collect();
+    let scalar = solve_forces_with_backend(
+        &scalar_density,
+        g / 3.0,
+        nm,
+        box_size,
+        None,
+        params.plummer_eps,
+        FftBackendKind::RustFft,
+    );
+
+    [
+        gr[0].iter().zip(&scalar[0]).map(|(a, b)| a + b).collect(),
+        gr[1].iter().zip(&scalar[1]).map(|(a, b)| a + b).collect(),
+        gr[2].iter().zip(&scalar[2]).map(|(a, b)| a + b).collect(),
+    ]
+}
+
+/// Campo de screening chameleon por celda, `S ∈ [0,1]`.
+pub fn fr_screening_field(
+    density: &[f64],
+    nm: usize,
+    params: &gadget_ng_core::FRParams,
+    iterations: usize,
+    smoothing: f64,
+) -> Vec<f64> {
+    let nm3 = nm * nm * nm;
+    assert_eq!(density.len(), nm3);
+    if params.f_r0.abs() <= 0.0 {
+        return vec![0.0; nm3];
+    }
+
+    let rho_bar = density.iter().sum::<f64>() / nm3 as f64;
+    let mut screen: Vec<f64> = density
+        .iter()
+        .map(|&rho| {
+            let delta = (rho - rho_bar) / rho_bar.max(1e-30);
+            let fr = gadget_ng_core::chameleon_field(delta, params.f_r0, params.n);
+            gadget_ng_core::fifth_force_factor(fr, params.f_r0)
+        })
+        .collect();
+
+    let mix = smoothing.clamp(0.0, 1.0);
+    if mix <= 0.0 || iterations == 0 {
+        return screen;
+    }
+
+    let idx = |ix: usize, iy: usize, iz: usize| -> usize { iz * nm * nm + iy * nm + ix };
+    for _ in 0..iterations {
+        let old = screen.clone();
+        for iz in 0..nm {
+            let izm = (iz + nm - 1) % nm;
+            let izp = (iz + 1) % nm;
+            for iy in 0..nm {
+                let iym = (iy + nm - 1) % nm;
+                let iyp = (iy + 1) % nm;
+                for ix in 0..nm {
+                    let ixm = (ix + nm - 1) % nm;
+                    let ixp = (ix + 1) % nm;
+                    let flat = idx(ix, iy, iz);
+                    let neigh = old[idx(ixm, iy, iz)]
+                        + old[idx(ixp, iy, iz)]
+                        + old[idx(ix, iym, iz)]
+                        + old[idx(ix, iyp, iz)]
+                        + old[idx(ix, iy, izm)]
+                        + old[idx(ix, iy, izp)];
+                    screen[flat] = ((1.0 - mix) * old[flat] + mix * neigh / 6.0).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
+    screen
 }
 
 /// Factor multiplicativo homogéneo para la fuerza PM en Hu-Sawicki f(R).

@@ -32,6 +32,11 @@
 use crate::cooling::u_to_temperature;
 use gadget_ng_core::{DustSection, Particle, ParticleType, Vec3};
 
+/// Radiation constant in cgs, `a_rad` [erg cm^-3 K^-4].
+const A_RAD_CGS: f64 = 7.5657e-15;
+/// Stefan-Boltzmann constant in cgs [erg cm^-2 s^-1 K^-4].
+const SIGMA_SB_CGS: f64 = 5.670_374_419e-5;
+
 /// Actualiza la relación polvo/gas D/G de cada partícula de gas (Phase 130).
 ///
 /// # Proceso
@@ -119,4 +124,47 @@ pub fn apply_dust_radiation_pressure_kick(
         };
         p.velocity += dir * (a_mag * dt);
     }
+}
+
+/// Equilibrium dust temperature for a greybody with emissivity index `beta=2`.
+///
+/// The model solves a reduced balance `E_rad κ_uv ~ a_rad T^(4+beta)` and clamps
+/// the result to the configured floor/cap. It is intentionally local and smooth:
+/// suitable for production diagnostics and for feeding the reduced IR RT group.
+pub fn dust_equilibrium_temperature(radiation_energy_density: f64, cfg: &DustSection) -> f64 {
+    let floor = cfg.dust_temperature_floor_k.max(0.0);
+    let cap = cfg.dust_temperature_cap_k.max(floor + 1e-12);
+    if !cfg.enabled || !cfg.ir_emission_enabled {
+        return floor;
+    }
+
+    let e_rad = radiation_energy_density.max(0.0);
+    let opacity_ratio = (cfg.kappa_dust_uv / cfg.kappa_dust_ir.max(1e-30)).max(0.0);
+    let emissivity = cfg.ir_emissivity.max(1e-30);
+    let t_rad = (e_rad * opacity_ratio / (A_RAD_CGS * emissivity)).powf(1.0 / 6.0);
+    floor.max(t_rad).min(cap)
+}
+
+/// Greybody IR luminosity proxy for one gas particle with dust.
+///
+/// Returns energy per unit time in internal RT units. The `T^6` dependence is the
+/// same modified-blackbody scaling used by [`dust_equilibrium_temperature`].
+pub fn dust_ir_luminosity(p: &Particle, dust_temperature_k: f64, cfg: &DustSection) -> f64 {
+    if !cfg.enabled || !cfg.ir_emission_enabled || p.ptype != ParticleType::Gas {
+        return 0.0;
+    }
+    if p.dust_to_gas <= 0.0 || p.mass <= 0.0 {
+        return 0.0;
+    }
+
+    let t = dust_temperature_k.clamp(
+        cfg.dust_temperature_floor_k.max(0.0),
+        cfg.dust_temperature_cap_k.max(0.0),
+    );
+    let modified_blackbody = SIGMA_SB_CGS * t.powi(6) / 100.0_f64.powi(2);
+    cfg.ir_emissivity.max(0.0)
+        * cfg.kappa_dust_ir.max(0.0)
+        * p.dust_to_gas.max(0.0)
+        * p.mass.max(0.0)
+        * modified_blackbody
 }

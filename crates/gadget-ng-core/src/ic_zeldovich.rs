@@ -464,6 +464,31 @@ pub fn build_spectrum_fn(
     }
 }
 
+/// Wraps a spectrum-amplitude closure with the configured WDM/FDM cutoff.
+pub fn with_dark_matter_cutoff(
+    cfg: &RunConfig,
+    spectrum_fn: Box<dyn Fn(f64) -> f64>,
+    h: f64,
+    box_size_mpc_h: Option<f64>,
+) -> Box<dyn Fn(f64) -> f64> {
+    if !cfg.dark_matter.enabled {
+        return spectrum_fn;
+    }
+
+    let bsm = box_size_mpc_h.unwrap_or(100.0);
+    let omega_m = cfg.cosmology.omega_m;
+    let dm_cfg = cfg.dark_matter.clone();
+    Box::new(move |n_abs: f64| {
+        if n_abs <= 0.0 {
+            return 0.0;
+        }
+        let k_hmpc = 2.0 * std::f64::consts::PI * h / bsm * n_abs;
+        let cutoff =
+            crate::dark_matter::dark_matter_transfer_suppression(&dm_cfg, k_hmpc, omega_m, h);
+        spectrum_fn(n_abs) * cutoff
+    })
+}
+
 // ── Campo de desplazamiento ───────────────────────────────────────────────────
 
 /// FFT 3D in-place sobre el array `buf` de tamaño `n³`.
@@ -683,6 +708,7 @@ pub fn zeldovich_ics(
     } else {
         spectrum_fn_base
     };
+    let spectrum_fn = with_dark_matter_cutoff(cfg, spectrum_fn, h_dimless, box_size_mpc_h);
 
     // ── Generar campo en k-space (todos los rangos).
     let delta = generate_delta_kspace(n, seed, spectrum_fn);
@@ -874,6 +900,7 @@ pub fn zeldovich_ics_with_convention(
     } else {
         spectrum_fn_base
     };
+    let spectrum_fn = with_dark_matter_cutoff(cfg, spectrum_fn, h_dimless, box_size_mpc_h);
 
     let delta = generate_delta_kspace(n, seed, spectrum_fn);
     let [mut psi_x, mut psi_y, mut psi_z] = delta_to_displacement(&delta, n, box_size);

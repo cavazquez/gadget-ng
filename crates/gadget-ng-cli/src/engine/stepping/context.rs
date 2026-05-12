@@ -127,7 +127,7 @@ pub(crate) fn step_fr(
         return;
     }
     if cfg.gravity.solver == gadget_ng_core::SolverKind::Pm {
-        // El solver PM CPU aplica el límite f(R) homogéneo en k-space.
+        // El solver PM CPU aplica f(R) homogéneo o screening de malla en k-space.
         // Evitamos escalar dos veces la aceleración en ese camino.
         return;
     }
@@ -168,7 +168,11 @@ pub(crate) fn step_agn(
         let n_new = halo_centers.len().min(n_bh);
         if agn_bhs.len() != n_new {
             agn_bhs.resize_with(n_new, || {
-                gadget_ng_sph::BlackHole::new(gadget_ng_core::Vec3::zero(), agn_params.m_seed)
+                gadget_ng_sph::BlackHole::with_spin(
+                    gadget_ng_core::Vec3::zero(),
+                    agn_params.m_seed,
+                    cfg.sph.agn.initial_spin,
+                )
             });
         }
         for (bh, &pos) in agn_bhs.iter_mut().zip(halo_centers.iter()) {
@@ -176,9 +180,10 @@ pub(crate) fn step_agn(
         }
     } else if agn_bhs.is_empty() {
         let center = cfg.simulation.box_size * 0.5;
-        agn_bhs.push(gadget_ng_sph::BlackHole::new(
+        agn_bhs.push(gadget_ng_sph::BlackHole::with_spin(
             gadget_ng_core::Vec3::new(center, center, center),
             agn_params.m_seed,
+            cfg.sph.agn.initial_spin,
         ));
     }
     gadget_ng_sph::grow_black_holes_periodic(
@@ -188,6 +193,14 @@ pub(crate) fn step_agn(
         cfg.simulation.dt,
         periodic_box_agn,
     );
+    if cfg.sph.agn.mergers_enabled {
+        gadget_ng_sph::merge_black_holes(
+            agn_bhs,
+            cfg.sph.agn.merger_radius,
+            cfg.sph.agn.recoil_velocity_scale,
+            periodic_box_agn,
+        );
+    }
     gadget_ng_sph::apply_agn_feedback_bimodal_periodic(
         local,
         agn_bhs,
