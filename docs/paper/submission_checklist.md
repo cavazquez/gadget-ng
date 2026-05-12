@@ -40,7 +40,7 @@ Referencia: [JOSS review criteria](https://joss.readthedocs.io/en/latest/review_
    ```
 
 3. **Zenodo DOI** (placeholder):
-   - Crear release en GitHub con tag `v0.1.0`
+   - Crear release en GitHub con tag `v0.2.0`
    - Activar integración Zenodo en el repositorio
    - DOI esperado: `10.5281/zenodo.XXXXXXX`
    - Agregar badge al README: `[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)`
@@ -61,4 +61,4 @@ Referencia: [JOSS review criteria](https://joss.readthedocs.io/en/latest/review_
 - [ ] ORCIDs y afiliaciones completados
 - [ ] `paper.md` compila a PDF sin errores
 - [ ] CI pasa en rama `main`
-- [ ] CHANGELOG actualizado con versión `v0.1.0`
+- [x] CHANGELOG actualizado con versión `v0.2.0`

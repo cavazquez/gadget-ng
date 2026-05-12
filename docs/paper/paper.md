@@ -14,7 +14,7 @@ authors:
 affiliations:
   - name: Independent
     index: 1
-date: 2026-04-23
+date: 2026-05-12
 bibliography: paper.bib
 ---
 
@@ -28,6 +28,8 @@ moment-based radiative transfer, non-equilibrium hydrogen and helium chemistry,
 and distributed-memory parallelism via MPI. The code is organized as a Rust
 workspace of specialized crates, enabling modular development, strong compile-time
 safety guarantees, and zero-cost abstractions for high-performance computing.
+
+The software version documented here is **0.2.0** of the Rust workspace (`Cargo.toml`).
 
 # Statement of Need
 

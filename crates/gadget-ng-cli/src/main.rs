@@ -7,7 +7,7 @@ mod insitu;
 mod mah_cmd;
 mod merge_tree_cmd;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use error::CliError;
 use gadget_ng_core::{
     BFieldKind, CoolingKind, DarkMatterModel, DustSpeciesModel, PbhHostKind, RunConfig,
@@ -18,11 +18,22 @@ use gadget_ng_parallel::ParallelRuntime;
 use gadget_ng_parallel::SerialRuntime;
 use std::path::PathBuf;
 
+/// Modelo de P(k) para el subcomando `fisher` (lineal vs Halofit).
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+enum FisherPkModel {
+    /// P(k) lineal (transfer Eisenstein–Hu y factor de crecimiento).
+    Linear,
+    /// P(k) no lineal con Halofit.
+    #[default]
+    Nonlinear,
+}
+
 #[derive(Parser)]
 #[command(
     name = "gadget-ng",
     version,
-    about = "Simulación N-body (MVP): configuración, pasos temporales y snapshots."
+    about = "Simulador cosmológico (N-body, SPH, MHD, RT, …): configuración, integración temporal, snapshots y análisis.",
+    after_help = "Comandos por grupo:\n  Preparación y corrida: config, stepping, snapshot\n  Post-proceso y viz: visualize, analyze, merge-tree, mah\n  Forecasting: fisher\n\nLa corrida principal y sus flags están en `gadget-ng stepping --help`; la física base se define en el TOML y variables `GADGET_NG_*`."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -33,11 +44,13 @@ struct Cli {
 #[expect(clippy::large_enum_variant)]
 enum Commands {
     /// Valida y muestra la configuración efectiva (TOML + env `GADGET_NG_`).
+    #[command(display_order = 0)]
     Config {
         #[arg(long, help = "Ruta al archivo TOML de experimento")]
         config: PathBuf,
     },
-    /// Ejecuta integración leapfrog KDK durante `num_steps` pasos.
+    /// Integración leapfrog KDK (`num_steps` en TOML); flags opcionales aquí sobrescriben el TOML para esta corrida.
+    #[command(display_order = 1)]
     Stepping {
         #[arg(long, help = "Ruta al archivo TOML de experimento")]
         config: PathBuf,
@@ -139,7 +152,7 @@ enum Commands {
         /// Activar difusión CR anisótropa (requiere MHD).
         #[arg(long)]
         cr_anisotropic: bool,
-        /// Coeficiente de streaming CR lungo-B (requiere MHD).
+        /// Coeficiente de streaming CR paralelo al campo B (requiere MHD).
         #[arg(long)]
         cr_streaming: Option<f64>,
         /// Activar MHD.
@@ -237,24 +250,25 @@ enum Commands {
         dust_h2_shielding_boost: Option<f64>,
     },
     /// Escribe un snapshot del estado inicial (IC) resuelto.
+    #[command(display_order = 2)]
     Snapshot {
         #[arg(long, help = "Ruta al archivo TOML de experimento")]
         config: PathBuf,
         #[arg(long, help = "Directorio de salida del snapshot")]
         out: PathBuf,
     },
-    /// Renderiza un snapshot de partículas a imagen PNG.
+    /// Renderiza un snapshot (JSONL) a imagen PNG con proyección y coloración configurables.
     ///
-    /// Lee las posiciones y velocidades del directorio de snapshot (JSONL)
-    /// y genera un PNG con el campo de partículas proyectado.
+    /// Lee posiciones y velocidades del directorio de snapshot y escribe un PNG.
     ///
     /// Ejemplo:
     ///   gadget-ng visualize --snapshot out/snapshot_final --output frame.png --color velocity
+    #[command(display_order = 10)]
     Visualize {
         /// Directorio del snapshot a renderizar.
         #[arg(long)]
         snapshot: PathBuf,
-        /// Archivo PNG de salida.
+        /// Ruta del archivo PNG de salida.
         #[arg(long)]
         output: PathBuf,
         /// Ancho en píxeles.
@@ -278,10 +292,11 @@ enum Commands {
     /// - Función de correlación de 2 puntos ξ(r) via transformada de Hankel.
     /// - Concentración c(M) NFW para halos con N ≥ nfw-min-part.
     ///
-    /// Escribe `results.json` en el directorio de salida.
+    /// Escribe el JSON principal en la ruta `--output` (por defecto `results.json` en el cwd).
     ///
     /// Ejemplo:
-    ///   gadget-ng analyze --snapshot out/snap --out analysis/ --fof-b 0.2 --xi-bins 20
+    ///   gadget-ng analyze --snapshot out/snap --output out/snap/results.json --fof-b 0.2 --xi-bins 20
+    #[command(display_order = 11)]
     Analyze {
         /// Directorio del snapshot a analizar.
         #[arg(long)]
@@ -335,13 +350,14 @@ enum Commands {
     /// Construye el merger tree conectando catálogos FoF de snapshots consecutivos.
     ///
     /// Sigue partículas entre snapshots para identificar progenitores y mergers.
-    /// Escribe `merger_tree.json` en el directorio de salida.
+    /// Escribe el JSON en la ruta `--out` (por defecto `merger_tree.json` en el cwd).
     ///
     /// Ejemplo:
     ///   gadget-ng merge-tree \
     ///     --catalogs "runs/cosmo/halos_000.jsonl,runs/cosmo/halos_001.jsonl" \
     ///     --snapshots "runs/cosmo/snap_000,runs/cosmo/snap_001" \
     ///     --out runs/cosmo/merger_tree.json
+    #[command(display_order = 12)]
     MergeTree {
         /// Lista de directorios de snapshot separados por coma (orden cronológico).
         #[arg(long)]
@@ -367,6 +383,7 @@ enum Commands {
     ///     --redshifts "49,10,5,2,1,0.5,0" \
     ///     --root-id 0 \
     ///     --out runs/cosmo/mah.json
+    #[command(display_order = 13)]
     Mah {
         /// Ruta al archivo JSON del merger tree (salida de `merge-tree`).
         #[arg(long)]
@@ -387,51 +404,52 @@ enum Commands {
         #[arg(long, default_value = "mah.json")]
         out: PathBuf,
     },
-    /// Compute Fisher matrix for cosmological parameter forecasting (Phase 173).
+    /// Matriz de Fisher para P(k) cosmológico (diferencias centrales en parámetros; fase 173).
     ///
-    /// Evaluates ∂P(k,z)/∂θ via central finite differences and assembles
-    /// F_{ij} = Σ_{k,z} (∂P/∂θ_i) C⁻¹ (∂P/∂θ_j) Δk for a fiducial cosmology.
+    /// Aproxima ∂P(k,z)/∂θ y arma F_ij con la covarianza del survey en (Mpc/h)³.
     ///
-    /// Example:
+    /// Ejemplo:
     ///   gadget-ng fisher \
     ///     --omega-m 0.315 --sigma8 0.8111 \
     ///     --survey-volume 1e9 \
+    ///     --pk-model nonlinear \
     ///     --out runs/fisher/fisher_output.json
+    #[command(display_order = 20)]
     Fisher {
-        /// Ω_m: total matter density fraction (default: Planck 2018 = 0.315).
+        /// Ω_m: fracción de densidad de materia total (Planck 2018 por defecto: 0.315).
         #[arg(long, default_value_t = 0.315)]
         omega_m: f64,
-        /// Ω_b: baryon density fraction (default: 0.049).
+        /// Ω_b: fracción de densidad bariónica (por defecto: 0.049).
         #[arg(long, default_value_t = 0.049)]
         omega_b: f64,
-        /// h: dimensionless Hubble parameter H₀/(100 km/s/Mpc) (default: 0.674).
+        /// h: parámetro de Hubble adimensional H₀/(100 km/s/Mpc) (por defecto: 0.674).
         #[arg(long, default_value_t = 0.674)]
         h: f64,
-        /// n_s: scalar spectral index (default: 0.965).
+        /// n_s: índice espectral escalar (por defecto: 0.965).
         #[arg(long, default_value_t = 0.965)]
         n_s: f64,
-        /// σ₈: amplitude of matter fluctuations at 8 Mpc/h (default: 0.8111).
+        /// σ₈: amplitud de fluctuaciones de materia a 8 Mpc/h (por defecto: 0.8111).
         #[arg(long, default_value_t = 0.8111)]
         sigma8: f64,
-        /// w₀: CPL dark energy equation of state (default: −1.0 for ΛCDM).
+        /// w₀: estado de ecuación energía oscura CPL (por defecto −1, ΛCDM).
         #[arg(long, default_value_t = -1.0)]
         w0: f64,
-        /// wₐ: CPL dark energy evolution (default: 0.0 for ΛCDM).
+        /// wₐ: evolución CPL de la energía oscura (por defecto 0, ΛCDM).
         #[arg(long, default_value_t = 0.0)]
         wa: f64,
-        /// Σm_ν in eV (default: 0.06 for minimal hierarchy).
+        /// Σm_ν en eV (por defecto 0.06, jerarquía mínima).
         #[arg(long, default_value_t = 0.06)]
         m_nu_ev: f64,
-        /// Fractional step for central finite differences (default: 0.01 = 1%).
+        /// Paso fraccional para diferencias centrales (por defecto 0.01 = 1 %).
         #[arg(long, default_value_t = 0.01)]
         step_frac: f64,
-        /// Survey volume in (Mpc/h)³ (default: 1e9 = 1 Gpc³).
+        /// Volumen del survey en (Mpc/h)³ (por defecto 1e9 ≈ 1 Gpc³).
         #[arg(long, default_value_t = 1.0e9)]
         survey_volume: f64,
-        /// Use nonlinear P(k) via Halofit instead of linear.
-        #[arg(long, default_value_t = true)]
-        use_nonlinear: bool,
-        /// Output JSON file path.
+        /// Modelo de P(k): lineal (EH + crecimiento) o `nonlinear` (Halofit).
+        #[arg(long, value_enum, default_value_t = FisherPkModel::Nonlinear)]
+        pk_model: FisherPkModel,
+        /// Ruta del JSON de salida.
         #[arg(long, default_value = "fisher_output.json")]
         out: PathBuf,
     },
@@ -1077,9 +1095,10 @@ fn main() -> Result<(), CliError> {
             m_nu_ev,
             step_frac,
             survey_volume,
-            use_nonlinear,
+            pk_model,
             out,
         } => {
+            let use_nonlinear = matches!(pk_model, FisherPkModel::Nonlinear);
             fisher_cmd::run_fisher(
                 omega_m,
                 omega_b,

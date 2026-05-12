@@ -8,6 +8,24 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CLI (`gadget-ng-cli`)
+
+- `gadget-ng fisher`: el flag `--use-nonlinear` se sustituye por `--pk-model linear|nonlinear`
+  (el JSON de salida mantiene el campo `config.use_nonlinear` para compatibilidad).
+- Ayuda global (`-h`): subcomandos agrupados en `after_help` y orden de ayuda vía
+  `display_order` (preparación/corrida, post-proceso, forecasting).
+- Nuevo reporte de auditoría: `docs/reports/2026-05-phase173-cli-pk-model-audit.md`.
+- Tests de integración: `crates/gadget-ng-cli/tests/fisher_pk_model.rs`.
+
+## [0.2.0] - 2026-05-12
+
+### Publicación
+
+- Versión del workspace **`0.2.0`**: `[workspace.package]` en `Cargo.toml`, crates con
+  `version.workspace = true`, `snap/snapcraft.yaml` y `Cargo.lock`.
+- CLI: ayuda raíz (`-h`) y subcomandos revisados (descripción del simulador, `fisher` y
+  ejemplos en español, pista a `stepping --help`).
+
 ### Phase 185 — f(R) no lineal en malla
 
 - `[modified_gravity]` suma `nonlinear_mesh`, `mesh_iterations` y `screening_smoothing`.

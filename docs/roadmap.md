@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Estado al 12 de mayo de 2026:** Phases 1–185 completadas.
+> **Estado al 12 de mayo de 2026:** Phases 1–185 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
 > Phase 170: CR Transport (streaming lungo B + backreaction).

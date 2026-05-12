@@ -7,7 +7,7 @@
 #   gadget-ng fisher --config examples/fisher_planck.toml
 #
 # Or with explicit parameters:
-#   gadget-ng fisher --omega-m 0.315 --sigma8 0.8111 --survey-volume 1e9 --out fisher_output.json
+#   gadget-ng fisher --omega-m 0.315 --sigma8 0.8111 --survey-volume 1e9 --pk-model nonlinear --out fisher_output.json
 
 # Fiducial cosmology (Planck 2018 TT,TE,EE+lowE+lensing)
 [fisher]

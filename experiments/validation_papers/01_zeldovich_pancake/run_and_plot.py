@@ -54,7 +54,7 @@ def generate_pancake_ic(path, n_part=128, box_size=100.0, a_init=0.02, a_collaps
     meta = {
         "schema_version": 1,
         "provenance": {
-            "crate_version": "0.1.0",
+            "crate_version": "0.2.0",
             "git_commit": None,
             "build_profile": "release",
             "enabled_features": [],

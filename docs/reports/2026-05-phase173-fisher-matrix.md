@@ -40,7 +40,7 @@ gadget-ng fisher \
   --n-s 0.965 --sigma8 0.8111 \
   --w0 -1.0 --wa 0.0 --m-nu-ev 0.06 \
   --survey-volume 1e9 --step-frac 0.01 \
-  --use-nonlinear --out fisher_output.json
+  --pk-model nonlinear --out fisher_output.json
 ```
 
 Sale: JSON con fiducial, config, F matrix, σ(θ_i), correlation matrix.
