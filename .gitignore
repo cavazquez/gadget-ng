@@ -45,3 +45,5 @@ skills-lock.json
 
 # Proptest regression files
 *.proptest-regressions
+
+*.snap
