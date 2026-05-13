@@ -201,6 +201,13 @@ y la cobertura detallada en
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
 
+Nota RT chemistry: `rates/cooling` está vectorizado con AVX2/AVX512 en la ruta
+CPU sin Rayon. El `stiff solver` queda separado porque `solve_chemistry_implicit`
+usa subciclado adaptativo por partícula, ramas moleculares/D/HD, clamps de
+conservación y salida temprana; cerrarlo requiere un diseño SIMD con máscaras de
+lanes activas y tests de paridad específicos. El detalle pendiente está en
+[`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md).
+
 ---
 
 ## Inicio rápido

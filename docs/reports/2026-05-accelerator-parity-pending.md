@@ -5,7 +5,9 @@ Date: 2026-05-13
 This document tracks the remaining work after Phase 200 closed the immediate
 AVX-512 Tree LET and CUDA MHD/Tree smoke-surface gaps, after Phase 201 split
 Rayon from explicit SIMD feature axes, after Phase 202 closed the remaining
-CPU Rayon coverage gaps, and after Phase 203 closed the prioritized SIMD-without-Rayon gaps.
+CPU Rayon coverage gaps, after Phase 203 closed the prioritized SIMD-without-Rayon gaps,
+and after the follow-up RT/SPH/analysis SIMD passes split green vectorized rows from
+the remaining scalar/stiff solver rows.
 
 ## Current backend matrix
 
@@ -18,13 +20,16 @@ CPU Rayon coverage gaps, and after Phase 203 closed the prioritized SIMD-without
 | Tree LET / RMN SoA | Complete | Complete | AVX2 + AVX-512 | No full LET traversal |
 | TreePM hybrid | Complete | Complete | AVX2 + AVX-512 short-range CPU kernel | Partial GPU hybrid |
 | SPH density/forces/Gadget-2 | Complete | Complete | Batch/tiling kernels | Smoke/parity kernels |
-| SPH cooling/dust/H2 | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
+| SPH cooling/dust/H2 | Complete | Complete | Dust growth/sputtering/radiation kick and H2+dust shielding AVX2 + AVX-512; cooling scalar | Smoke/parity kernels |
 | MHD induction/forces/cleaning | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
 | MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
-| RT diagnostics/photoheating | Complete | Complete | Partial explicit SIMD | Smoke/parity kernels |
+| RT diagnostics/photoheating | Complete | Complete | AVX2 + AVX-512 diagnostics/photoheating | Smoke/parity kernels |
 | RT full M1 advection | Complete | Complete advection + update | AVX2 + AVX-512 final update | Pending |
-| Analysis observables | Complete | Complete | No dedicated AVX | Pending |
-| SIDM | Complete | Complete density + pair evaluation | No dedicated AVX | Smoke/parity kernel |
+| RT chemistry rates/cooling | Complete | Complete | AVX2 + AVX-512 particle photoionization rates and cooling update | Pending |
+| RT chemistry stiff solver | Complete | Complete | Scalar implicit subcycling | Pending |
+| RT reionization state / 21cm | Complete | Complete | AVX2 + AVX-512 reductions and brightness field | Pending |
+| Analysis observables | Complete | Complete | AVX2 + AVX-512 spin/luminosity/SED reductions | Pending |
+| SIDM | Complete | Complete density + pair evaluation | AVX2 + AVX-512 density and pair prefilter | Smoke/parity kernel |
 
 ## Remaining implementation backlog
 
@@ -40,6 +45,27 @@ CPU Rayon coverage gaps, and after Phase 203 closed the prioritized SIMD-without
 | AP-06 | CUDA analysis kernels | Spin, luminosity, SED and related analysis paths remain CPU/Rayon only. | Analysis CUDA kernels exist only where benchmarks show material gain and match CPU outputs. | Pending |
 | AP-07 | Full GPU LET/tree traversal | CUDA Tree currently provides a direct monopole parity surface, not a full remote LET traversal. | GPU traversal consumes compact tree/LET buffers and matches CPU Barnes-Hut/LET within tolerance. | Pending |
 | AP-08 | Benchmarks beyond direct gravity | The direct CUDA-vs-SIMD benchmark exists; PM/SPH/MHD/RT/Tree need comparable benchmark targets. | Criterion/CSV benchmark groups cover each backend pair only for operations implemented on both sides. | Pending |
+| AP-09 | RT chemistry stiff solver SIMD design | The explicit SIMD path covers particle photoionization rates and the cooling update. The implicit chemistry solver still subcycles adaptively per particle, with divergent active lanes, molecular/deuterium branches, clamps, and convergence exits. | A masked-lane AVX2/AVX-512 solver matches scalar `solve_chemistry_implicit` within stated tolerances across neutral, ionized, molecular, HD, high-UV, and long-recombination cases. | Pending |
+
+## RT chemistry remaining scalar work
+
+The remaining non-green RT chemistry component is the stiff implicit solver,
+`solve_chemistry_implicit`. It is intentionally kept scalar for now because each
+particle may take a different number of chemistry substeps and may leave the loop
+through the early-convergence condition. A production SIMD implementation should
+therefore be a masked-lane solver, not a simple four-particle loop.
+
+The main pieces still required are:
+
+- active-lane masks for particles whose `t_elapsed < dt`;
+- per-lane `dt_chem` and convergence decisions;
+- vectorized updates for H/He, molecular H2 intermediates, D/HD exchange, and
+  charge-normalization bookkeeping;
+- scalar tail handling with exact fallback;
+- parity tests against scalar for neutral gas, fully ionized recombination,
+  high-UV ionization, trace H2 formation, trace HD formation, and conservation
+  of H/He/D nuclei;
+- benchmarks proving the masked solver pays for its extra control flow.
 
 ## Implementation policy
 
