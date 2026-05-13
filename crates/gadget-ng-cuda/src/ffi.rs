@@ -222,4 +222,83 @@ unsafe extern "C" {
         box_size: f32,
         dt: f32,
     ) -> i32;
+
+    // ── Kernels Cooling ─────────────────────────────────────────────────────
+
+    pub fn cuda_cooling_apply(
+        ptype: *const u8,
+        mass: *const f32,
+        smoothing_length: *const f32,
+        internal_energy: *mut f32,
+        metallicity: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        n: i32,
+        dt: f32,
+        gamma: f32,
+        t_floor_k: f32,
+        redshift: f32,
+        cooling_kind: i32,
+        f_mag: f32,
+        reionization_redshift: f32,
+        uv_background_model: i32,
+        self_shielding_nh: f32,
+    ) -> i32;
+
+    // ── Kernels Dust ────────────────────────────────────────────────────────
+
+    pub fn cuda_dust_update(
+        ptype: *const u8,
+        mass: *const f32,
+        smoothing_length: *const f32,
+        internal_energy: *const f32,
+        dust_to_gas: *mut f32,
+        metallicity: *const f32,
+        n: i32,
+        gamma: f32,
+        dt: f32,
+        d_to_g_max: f32,
+        tau_grow: f32,
+        t_destroy_k: f32,
+    ) -> i32;
+
+    pub fn cuda_dust_radiation_pressure(
+        ptype: *const u8,
+        mass: *const f32,
+        smoothing_length: *const f32,
+        dust_to_gas: *const f32,
+        vx: *mut f32,
+        vy: *mut f32,
+        vz: *mut f32,
+        pos_z: *mut f32,
+        n: i32,
+        dt: f32,
+        z_reference: f32,
+        kappa: f32,
+        j_uv: f32,
+        box_size: f32,
+    ) -> i32;
+
+    // ── Kernels Molecular Gas ───────────────────────────────────────────────
+
+    pub fn cuda_h2_update(
+        ptype: *const u8,
+        mass: *const f32,
+        smoothing_length: *const f32,
+        h2_fraction: *mut f32,
+        dust_to_gas: *const f32,
+        n: i32,
+        dt: f32,
+        rho_h2_threshold: f32,
+        t_dissoc: f32,
+        dust_enabled: i32,
+        h2_shielding_boost: f32,
+        kappa_dust_uv: f32,
+        kappa_silicate_uv: f32,
+        kappa_graphite_uv: f32,
+        silicate_fraction: f32,
+        graphite_fraction: f32,
+        species_model: i32,
+    ) -> i32;
 }

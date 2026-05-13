@@ -26,6 +26,9 @@ fn main() {
     println!("cargo:rerun-if-changed=cuda/sph_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/mhd_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/rt_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/cooling_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/dust_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/molecular_kernels.cu");
     println!("cargo:rerun-if-env-changed=CUDA_SKIP");
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_ARCH");
@@ -75,13 +78,16 @@ fn main() {
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
 
-    // Fuentes a compilar: pm_gravity.cu y direct_gravity.cu
+    // Fuentes a compilar
     let kernel_sources = [
         ("pm_gravity", "cuda/pm_gravity.cu"),
         ("direct_gravity", "cuda/direct_gravity.cu"),
         ("sph_kernels", "cuda/sph_kernels.cu"),
         ("mhd_kernels", "cuda/mhd_kernels.cu"),
         ("rt_kernels", "cuda/rt_kernels.cu"),
+        ("cooling_kernels", "cuda/cooling_kernels.cu"),
+        ("dust_kernels", "cuda/dust_kernels.cu"),
+        ("molecular_kernels", "cuda/molecular_kernels.cu"),
     ];
 
     let mut obj_paths: Vec<PathBuf> = Vec::new();

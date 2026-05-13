@@ -43,8 +43,42 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
     }
 
     {
-        let rho_ref_mhd = gadget_ng_mhd::mean_gas_density(local);
-        gadget_ng_mhd::apply_flux_freeze(local, cfg.sph.gamma, cfg.mhd.beta_freeze, rho_ref_mhd);
+        // Flux freeze: CPU path por defecto; CUDA si está disponible.
+        #[cfg(feature = "cuda")]
+        let cuda_ok = if cfg.performance.use_gpu_cuda {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_mean_gas_density(local)
+                    .ok()
+                    .and_then(|rho_ref| {
+                        solver
+                            .try_apply_flux_freeze(
+                                local,
+                                cfg.sph.gamma,
+                                cfg.mhd.beta_freeze,
+                                rho_ref,
+                            )
+                            .ok()
+                    })
+                    .is_some()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_ok = false;
+
+        if !cuda_ok {
+            let rho_ref_mhd = gadget_ng_mhd::mean_gas_density(local);
+            gadget_ng_mhd::apply_flux_freeze(
+                local,
+                cfg.sph.gamma,
+                cfg.mhd.beta_freeze,
+                rho_ref_mhd,
+            );
+        }
     }
 
     if cfg.mhd.eta_braginskii > 0.0 {
@@ -98,13 +132,39 @@ pub(crate) fn step_rt(
             sigma_dust: 0.1,
         };
         gadget_ng_rt::m1_update(rf, cfg.simulation.dt, &m1p);
-        gadget_ng_rt::radiation_gas_coupling_step(
-            local,
-            rf,
-            &m1p,
-            cfg.simulation.dt,
-            cfg.simulation.box_size,
-        );
+
+        // RT→gas coupling: CUDA path para photoheating si disponible.
+        #[cfg(feature = "cuda")]
+        let cuda_ok = if cfg.performance.use_gpu_cuda {
+            if let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked() {
+                let gamma = gadget_ng_rt::photoionization_rate(rf, &m1p);
+                solver
+                    .try_apply_photoheating(
+                        local,
+                        rf,
+                        &gamma,
+                        cfg.simulation.dt,
+                        cfg.simulation.box_size,
+                    )
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_ok = false;
+
+        if !cuda_ok {
+            gadget_ng_rt::radiation_gas_coupling_step(
+                local,
+                rf,
+                &m1p,
+                cfg.simulation.dt,
+                cfg.simulation.box_size,
+            );
+        }
     }
 }
 
@@ -376,25 +436,65 @@ pub(crate) fn step_sph(
         } else {
             0.0
         };
-        if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
-            gadget_ng_sph::apply_cooling_mhd_with_redshift(
-                local,
-                &cfg.sph,
-                cfg.simulation.dt,
-                redshift,
-            );
+        // CUDA path para cooling (reemplaza apply_cooling_*).
+        #[cfg(feature = "cuda")]
+        let cuda_cooling = if cfg.performance.use_gpu_cuda {
+            if let Ok(solver) = gadget_ng_cuda::CudaCoolingSolver::try_new_checked() {
+                let f_mag_method = if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
+                    cfg.sph.mag_suppress_cooling
+                } else {
+                    0.0
+                };
+                solver
+                    .try_apply_cooling(local, &cfg.sph, cfg.simulation.dt, redshift, f_mag_method)
+                    .is_ok()
+            } else {
+                false
+            }
         } else {
-            gadget_ng_sph::apply_cooling_with_redshift(
-                local,
-                &cfg.sph,
-                cfg.simulation.dt,
-                redshift,
-            );
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_cooling = false;
+
+        if !cuda_cooling {
+            if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
+                gadget_ng_sph::apply_cooling_mhd_with_redshift(
+                    local,
+                    &cfg.sph,
+                    cfg.simulation.dt,
+                    redshift,
+                );
+            } else {
+                gadget_ng_sph::apply_cooling_with_redshift(
+                    local,
+                    &cfg.sph,
+                    cfg.simulation.dt,
+                    redshift,
+                );
+            }
         }
     }
 
     if cfg.sph.dust.enabled {
-        gadget_ng_sph::update_dust(local, &cfg.sph.dust, cfg.sph.gamma, cfg.simulation.dt);
+        #[cfg(feature = "cuda")]
+        let cuda_dust = if cfg.performance.use_gpu_cuda {
+            if let Ok(solver) = gadget_ng_cuda::CudaDustSolver::try_new_checked() {
+                solver
+                    .try_update_dust(local, &cfg.sph.dust, cfg.sph.gamma, cfg.simulation.dt)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_dust = false;
+
+        if !cuda_dust {
+            gadget_ng_sph::update_dust(local, &cfg.sph.dust, cfg.sph.gamma, cfg.simulation.dt);
+        }
     }
     if cfg.sph.dust.enabled && cfg.sph.dust.radiation_pressure_enabled {
         let z_ref = 0.5 * cfg.simulation.box_size;
@@ -429,12 +529,29 @@ pub(crate) fn step_sph(
 
     if cfg.sph.molecular.enabled {
         let dust_cfg = cfg.sph.dust.enabled.then_some(&cfg.sph.dust);
-        gadget_ng_sph::update_h2_fraction_with_dust(
-            local,
-            &cfg.sph.molecular,
-            dust_cfg,
-            cfg.simulation.dt,
-        );
+        #[cfg(feature = "cuda")]
+        let cuda_h2 = if cfg.performance.use_gpu_cuda {
+            if let Ok(solver) = gadget_ng_cuda::CudaMolecularSolver::try_new_checked() {
+                solver
+                    .try_update_h2(local, &cfg.sph.molecular, dust_cfg, cfg.simulation.dt)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_h2 = false;
+
+        if !cuda_h2 {
+            gadget_ng_sph::update_h2_fraction_with_dust(
+                local,
+                &cfg.sph.molecular,
+                dust_cfg,
+                cfg.simulation.dt,
+            );
+        }
     }
 
     if cfg.turbulence.enabled {

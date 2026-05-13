@@ -34,16 +34,22 @@
 //! 5. **CIC interp** — interpolar fuerza en posiciones de partículas (trilineal)
 
 pub mod availability;
+pub mod cooling_solver;
 pub mod direct_solver;
+pub mod dust_solver;
 pub mod ffi;
 pub mod mhd_solver;
+pub mod molecular_solver;
 pub mod pm_solver;
 pub mod rt_solver;
 pub mod sph_solver;
 
 pub use availability::{CudaAvailability, CudaExecutionError, CudaUnavailable};
+pub use cooling_solver::CudaCoolingSolver;
 pub use direct_solver::CudaDirectGravity;
+pub use dust_solver::CudaDustSolver;
 pub use mhd_solver::CudaMhdSolver;
+pub use molecular_solver::CudaMolecularSolver;
 pub use pm_solver::CudaPmSolver;
 pub use rt_solver::CudaRtSolver;
 pub use sph_solver::CudaSphSolver;
