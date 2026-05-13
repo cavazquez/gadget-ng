@@ -292,7 +292,106 @@ unsafe fn apply_photoheating_avx2(
     ny: usize,
     nz: usize,
 ) {
-    apply_photoheating_scalar(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let inv_box = 1.0 / box_size;
+    let nx_v = _mm256_set1_pd(nx as f64 * inv_box);
+    let ny_v = _mm256_set1_pd(ny as f64 * inv_box);
+    let nz_v = _mm256_set1_pd(nz as f64 * inv_box);
+    let dt_over_u = _mm256_set1_pd(dt / U_CODE_TO_ERG_G);
+    let cap_factor = _mm256_set1_pd(10.0);
+
+    let mut i = 0;
+    while i < chunks {
+        if particles[i..i + lanes]
+            .iter()
+            .any(|p| p.ptype != ParticleType::Gas)
+        {
+            apply_photoheating_scalar(
+                &mut particles[i..i + lanes],
+                rad,
+                gamma_hi,
+                dt,
+                box_size,
+                nx,
+                ny,
+                nz,
+            );
+            i += lanes;
+            continue;
+        }
+
+        let x = _mm256_set_pd(
+            particles[i + 3].position.x,
+            particles[i + 2].position.x,
+            particles[i + 1].position.x,
+            particles[i].position.x,
+        );
+        let y = _mm256_set_pd(
+            particles[i + 3].position.y,
+            particles[i + 2].position.y,
+            particles[i + 1].position.y,
+            particles[i].position.y,
+        );
+        let z = _mm256_set_pd(
+            particles[i + 3].position.z,
+            particles[i + 2].position.z,
+            particles[i + 1].position.z,
+            particles[i].position.z,
+        );
+        let ix_f = _mm256_mul_pd(x, nx_v);
+        let iy_f = _mm256_mul_pd(y, ny_v);
+        let iz_f = _mm256_mul_pd(z, nz_v);
+        let mut ix_arr = [0.0; 4];
+        let mut iy_arr = [0.0; 4];
+        let mut iz_arr = [0.0; 4];
+        // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+        unsafe {
+            _mm256_storeu_pd(ix_arr.as_mut_ptr(), ix_f);
+            _mm256_storeu_pd(iy_arr.as_mut_ptr(), iy_f);
+            _mm256_storeu_pd(iz_arr.as_mut_ptr(), iz_f);
+        }
+
+        let mut gamma_arr = [0.0; 4];
+        for lane in 0..lanes {
+            let ix = (ix_arr[lane].floor() as usize).min(nx - 1);
+            let iy = (iy_arr[lane].floor() as usize).min(ny - 1);
+            let iz = (iz_arr[lane].floor() as usize).min(nz - 1);
+            let cell = rad.idx(ix, iy, iz);
+            let gamma = gamma_hi.get(cell).copied().unwrap_or(0.0);
+            gamma_arr[lane] = if gamma < 1e-30 { 0.0 } else { gamma };
+        }
+
+        // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+        let gamma = unsafe { _mm256_loadu_pd(gamma_arr.as_ptr()) };
+        let delta = _mm256_mul_pd(gamma, dt_over_u);
+        let u = _mm256_set_pd(
+            particles[i + 3].internal_energy,
+            particles[i + 2].internal_energy,
+            particles[i + 1].internal_energy,
+            particles[i].internal_energy,
+        );
+        let capped = _mm256_min_pd(delta, _mm256_mul_pd(u, cap_factor));
+        let u_new = _mm256_add_pd(u, capped);
+        let mut u_arr = [0.0; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(u_arr.as_mut_ptr(), u_new) };
+        for lane in 0..lanes {
+            particles[i + lane].internal_energy = u_arr[lane];
+        }
+        i += lanes;
+    }
+
+    apply_photoheating_scalar(
+        &mut particles[chunks..],
+        rad,
+        gamma_hi,
+        dt,
+        box_size,
+        nx,
+        ny,
+        nz,
+    );
 }
 
 #[cfg(all(
@@ -315,7 +414,122 @@ unsafe fn apply_photoheating_avx512(
     ny: usize,
     nz: usize,
 ) {
-    apply_photoheating_scalar(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
+    let lanes = 8;
+    let chunks = particles.len() / lanes * lanes;
+    let inv_box = 1.0 / box_size;
+    let nx_v = _mm512_set1_pd(nx as f64 * inv_box);
+    let ny_v = _mm512_set1_pd(ny as f64 * inv_box);
+    let nz_v = _mm512_set1_pd(nz as f64 * inv_box);
+    let dt_over_u = _mm512_set1_pd(dt / U_CODE_TO_ERG_G);
+    let cap_factor = _mm512_set1_pd(10.0);
+
+    let mut i = 0;
+    while i < chunks {
+        if particles[i..i + lanes]
+            .iter()
+            .any(|p| p.ptype != ParticleType::Gas)
+        {
+            apply_photoheating_scalar(
+                &mut particles[i..i + lanes],
+                rad,
+                gamma_hi,
+                dt,
+                box_size,
+                nx,
+                ny,
+                nz,
+            );
+            i += lanes;
+            continue;
+        }
+
+        let x = _mm512_set_pd(
+            particles[i + 7].position.x,
+            particles[i + 6].position.x,
+            particles[i + 5].position.x,
+            particles[i + 4].position.x,
+            particles[i + 3].position.x,
+            particles[i + 2].position.x,
+            particles[i + 1].position.x,
+            particles[i].position.x,
+        );
+        let y = _mm512_set_pd(
+            particles[i + 7].position.y,
+            particles[i + 6].position.y,
+            particles[i + 5].position.y,
+            particles[i + 4].position.y,
+            particles[i + 3].position.y,
+            particles[i + 2].position.y,
+            particles[i + 1].position.y,
+            particles[i].position.y,
+        );
+        let z = _mm512_set_pd(
+            particles[i + 7].position.z,
+            particles[i + 6].position.z,
+            particles[i + 5].position.z,
+            particles[i + 4].position.z,
+            particles[i + 3].position.z,
+            particles[i + 2].position.z,
+            particles[i + 1].position.z,
+            particles[i].position.z,
+        );
+        let ix_f = _mm512_mul_pd(x, nx_v);
+        let iy_f = _mm512_mul_pd(y, ny_v);
+        let iz_f = _mm512_mul_pd(z, nz_v);
+        let mut ix_arr = [0.0; 8];
+        let mut iy_arr = [0.0; 8];
+        let mut iz_arr = [0.0; 8];
+        // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
+        unsafe {
+            _mm512_storeu_pd(ix_arr.as_mut_ptr(), ix_f);
+            _mm512_storeu_pd(iy_arr.as_mut_ptr(), iy_f);
+            _mm512_storeu_pd(iz_arr.as_mut_ptr(), iz_f);
+        }
+
+        let mut gamma_arr = [0.0; 8];
+        for lane in 0..lanes {
+            let ix = (ix_arr[lane].floor() as usize).min(nx - 1);
+            let iy = (iy_arr[lane].floor() as usize).min(ny - 1);
+            let iz = (iz_arr[lane].floor() as usize).min(nz - 1);
+            let cell = rad.idx(ix, iy, iz);
+            let gamma = gamma_hi.get(cell).copied().unwrap_or(0.0);
+            gamma_arr[lane] = if gamma < 1e-30 { 0.0 } else { gamma };
+        }
+
+        // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
+        let gamma = unsafe { _mm512_loadu_pd(gamma_arr.as_ptr()) };
+        let delta = _mm512_mul_pd(gamma, dt_over_u);
+        let u = _mm512_set_pd(
+            particles[i + 7].internal_energy,
+            particles[i + 6].internal_energy,
+            particles[i + 5].internal_energy,
+            particles[i + 4].internal_energy,
+            particles[i + 3].internal_energy,
+            particles[i + 2].internal_energy,
+            particles[i + 1].internal_energy,
+            particles[i].internal_energy,
+        );
+        let capped = _mm512_min_pd(delta, _mm512_mul_pd(u, cap_factor));
+        let u_new = _mm512_add_pd(u, capped);
+        let mut u_arr = [0.0; 8];
+        // SAFETY: fixed-size stack array has exactly eight f64 lanes.
+        unsafe { _mm512_storeu_pd(u_arr.as_mut_ptr(), u_new) };
+        for lane in 0..lanes {
+            particles[i + lane].internal_energy = u_arr[lane];
+        }
+        i += lanes;
+    }
+
+    apply_photoheating_scalar(
+        &mut particles[chunks..],
+        rad,
+        gamma_hi,
+        dt,
+        box_size,
+        nx,
+        ny,
+        nz,
+    );
 }
 
 #[expect(

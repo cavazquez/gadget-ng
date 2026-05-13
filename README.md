@@ -174,9 +174,9 @@ y la cobertura detallada en
 | TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial |
 | PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
 | PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ |
-| SPH density | ✅ | ✅ | ✅ batch/tiling | ✅ |
-| SPH forces clásico | ✅ | ✅ | ✅ batch/tiling | ✅ |
-| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ batch/tiling | ✅ |
+| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
+| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
+| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | Cooling H/He/metales/UVB | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
 | Dust update / radiation pressure | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
 | Molecular H₂ / shielding | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
@@ -188,10 +188,10 @@ y la cobertura detallada en
 | MHD reconnection | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD flux-freeze / stats | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
-| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics; dedicated photoheating dispatch | ✅ |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
-| Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ spin reductions AVX2 + AVX512; luminosity/SED scalar | ❌ |
 | SIDM | ✅ | ✅ density + pair evaluation | ❌ | ✅ smoke/parity kernel |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |

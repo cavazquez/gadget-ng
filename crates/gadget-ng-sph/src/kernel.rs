@@ -26,6 +26,11 @@
 //! - **AVX2+FMA**: procesa 4×f64 por iteración (YMM registers).
 //! - **Scalar**: fallback sin SIMD.
 
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
+
 /// Factor de normalización 3D del kernel Wendland C2.
 /// ∫ W(r,h) 4πr² dr = 4π σ₃ · (4/21) = 1  →  σ₃ = 21 / (16π).
 const SIGMA3: f64 = 21.0 / (16.0 * std::f64::consts::PI);
@@ -120,19 +125,124 @@ fn w_and_grad_w_batch_scalar(r: &[f64], h: f64, w_out: &mut [f64], gw_out: &mut 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn w_batch_avx2(r: &[f64], h: f64, out: &mut [f64]) {
-    w_batch_scalar(r, h, out)
+    let inv_h = 1.0 / h;
+    let inv_h3 = inv_h * inv_h * inv_h;
+    let lanes = 4;
+    let chunks = r.len() / lanes * lanes;
+
+    let inv_h_v = _mm256_set1_pd(inv_h);
+    let two_v = _mm256_set1_pd(2.0);
+    let half_v = _mm256_set1_pd(0.5);
+    let one_v = _mm256_set1_pd(1.0);
+    let scale_v = _mm256_set1_pd(SIGMA3 * inv_h3);
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let rv = unsafe { _mm256_loadu_pd(r.as_ptr().add(i)) };
+        let q = _mm256_mul_pd(rv, inv_h_v);
+        let qc = _mm256_min_pd(q, two_v);
+        let t = _mm256_fnmadd_pd(half_v, qc, one_v);
+        let t2 = _mm256_mul_pd(t, t);
+        let t4 = _mm256_mul_pd(t2, t2);
+        let two_q_plus_one = _mm256_fmadd_pd(two_v, qc, one_v);
+        let w = _mm256_mul_pd(scale_v, _mm256_mul_pd(t4, two_q_plus_one));
+        // SAFETY: `out` length equals `r` length at the public call sites.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr().add(i), w) };
+        i += lanes;
+    }
+
+    for (dst, &ri) in out[chunks..].iter_mut().zip(&r[chunks..]) {
+        *dst = w_branchfree(ri * inv_h, inv_h3);
+    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn grad_w_batch_avx2(r: &[f64], h: f64, out: &mut [f64]) {
-    grad_w_batch_scalar(r, h, out)
+    let inv_h = 1.0 / h;
+    let inv_h4 = inv_h * inv_h * inv_h * inv_h;
+    let lanes = 4;
+    let chunks = r.len() / lanes * lanes;
+
+    let inv_h_v = _mm256_set1_pd(inv_h);
+    let two_v = _mm256_set1_pd(2.0);
+    let half_v = _mm256_set1_pd(0.5);
+    let one_v = _mm256_set1_pd(1.0);
+    let minus_five_v = _mm256_set1_pd(-5.0);
+    let scale_v = _mm256_set1_pd(SIGMA3 * inv_h4);
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let rv = unsafe { _mm256_loadu_pd(r.as_ptr().add(i)) };
+        let q = _mm256_mul_pd(rv, inv_h_v);
+        let qc = _mm256_min_pd(q, two_v);
+        let t = _mm256_fnmadd_pd(half_v, qc, one_v);
+        let t2 = _mm256_mul_pd(t, t);
+        let t3 = _mm256_mul_pd(t2, t);
+        let grad = _mm256_mul_pd(scale_v, _mm256_mul_pd(minus_five_v, _mm256_mul_pd(qc, t3)));
+        // SAFETY: `out` length equals `r` length at the public call sites.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr().add(i), grad) };
+        i += lanes;
+    }
+
+    for (dst, &ri) in out[chunks..].iter_mut().zip(&r[chunks..]) {
+        *dst = grad_w_branchfree(ri * inv_h, inv_h4);
+    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn w_and_grad_w_batch_avx2(r: &[f64], h: f64, w_out: &mut [f64], gw_out: &mut [f64]) {
-    w_and_grad_w_batch_scalar(r, h, w_out, gw_out)
+    let inv_h = 1.0 / h;
+    let inv_h3 = inv_h * inv_h * inv_h;
+    let inv_h4 = inv_h * inv_h3;
+    let lanes = 4;
+    let chunks = r.len() / lanes * lanes;
+
+    let inv_h_v = _mm256_set1_pd(inv_h);
+    let two_v = _mm256_set1_pd(2.0);
+    let half_v = _mm256_set1_pd(0.5);
+    let one_v = _mm256_set1_pd(1.0);
+    let minus_five_v = _mm256_set1_pd(-5.0);
+    let w_scale_v = _mm256_set1_pd(SIGMA3 * inv_h3);
+    let gw_scale_v = _mm256_set1_pd(SIGMA3 * inv_h4);
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let rv = unsafe { _mm256_loadu_pd(r.as_ptr().add(i)) };
+        let q = _mm256_mul_pd(rv, inv_h_v);
+        let qc = _mm256_min_pd(q, two_v);
+        let t = _mm256_fnmadd_pd(half_v, qc, one_v);
+        let t2 = _mm256_mul_pd(t, t);
+        let t3 = _mm256_mul_pd(t2, t);
+        let two_q_plus_one = _mm256_fmadd_pd(two_v, qc, one_v);
+        let w = _mm256_mul_pd(
+            w_scale_v,
+            _mm256_mul_pd(_mm256_mul_pd(t3, t), two_q_plus_one),
+        );
+        let grad = _mm256_mul_pd(
+            gw_scale_v,
+            _mm256_mul_pd(minus_five_v, _mm256_mul_pd(qc, t3)),
+        );
+        // SAFETY: output slices have the same length as `r` at the public call sites.
+        unsafe {
+            _mm256_storeu_pd(w_out.as_mut_ptr().add(i), w);
+            _mm256_storeu_pd(gw_out.as_mut_ptr().add(i), grad);
+        }
+        i += lanes;
+    }
+
+    for k in chunks..r.len() {
+        let q = r[k] * inv_h;
+        let qc = q.min(2.0);
+        let t = 1.0 - 0.5 * qc;
+        let t3 = t * t * t;
+        w_out[k] = SIGMA3 * inv_h3 * t3 * t * (2.0 * qc + 1.0);
+        gw_out[k] = SIGMA3 * inv_h4 * (-5.0 * qc * t3);
+    }
 }
 
 // ── Kernels AVX-512 (8×f64 por iteración) ────────────────────────────────────
@@ -140,19 +250,124 @@ unsafe fn w_and_grad_w_batch_avx2(r: &[f64], h: f64, w_out: &mut [f64], gw_out: 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
 unsafe fn w_batch_avx512(r: &[f64], h: f64, out: &mut [f64]) {
-    w_batch_scalar(r, h, out)
+    let inv_h = 1.0 / h;
+    let inv_h3 = inv_h * inv_h * inv_h;
+    let lanes = 8;
+    let chunks = r.len() / lanes * lanes;
+
+    let inv_h_v = _mm512_set1_pd(inv_h);
+    let two_v = _mm512_set1_pd(2.0);
+    let half_v = _mm512_set1_pd(0.5);
+    let one_v = _mm512_set1_pd(1.0);
+    let scale_v = _mm512_set1_pd(SIGMA3 * inv_h3);
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let rv = unsafe { _mm512_loadu_pd(r.as_ptr().add(i)) };
+        let q = _mm512_mul_pd(rv, inv_h_v);
+        let qc = _mm512_min_pd(q, two_v);
+        let t = _mm512_fnmadd_pd(half_v, qc, one_v);
+        let t2 = _mm512_mul_pd(t, t);
+        let t4 = _mm512_mul_pd(t2, t2);
+        let two_q_plus_one = _mm512_fmadd_pd(two_v, qc, one_v);
+        let w = _mm512_mul_pd(scale_v, _mm512_mul_pd(t4, two_q_plus_one));
+        // SAFETY: `out` length equals `r` length at the public call sites.
+        unsafe { _mm512_storeu_pd(out.as_mut_ptr().add(i), w) };
+        i += lanes;
+    }
+
+    for (dst, &ri) in out[chunks..].iter_mut().zip(&r[chunks..]) {
+        *dst = w_branchfree(ri * inv_h, inv_h3);
+    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
 unsafe fn grad_w_batch_avx512(r: &[f64], h: f64, out: &mut [f64]) {
-    grad_w_batch_scalar(r, h, out)
+    let inv_h = 1.0 / h;
+    let inv_h4 = inv_h * inv_h * inv_h * inv_h;
+    let lanes = 8;
+    let chunks = r.len() / lanes * lanes;
+
+    let inv_h_v = _mm512_set1_pd(inv_h);
+    let two_v = _mm512_set1_pd(2.0);
+    let half_v = _mm512_set1_pd(0.5);
+    let one_v = _mm512_set1_pd(1.0);
+    let minus_five_v = _mm512_set1_pd(-5.0);
+    let scale_v = _mm512_set1_pd(SIGMA3 * inv_h4);
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let rv = unsafe { _mm512_loadu_pd(r.as_ptr().add(i)) };
+        let q = _mm512_mul_pd(rv, inv_h_v);
+        let qc = _mm512_min_pd(q, two_v);
+        let t = _mm512_fnmadd_pd(half_v, qc, one_v);
+        let t2 = _mm512_mul_pd(t, t);
+        let t3 = _mm512_mul_pd(t2, t);
+        let grad = _mm512_mul_pd(scale_v, _mm512_mul_pd(minus_five_v, _mm512_mul_pd(qc, t3)));
+        // SAFETY: `out` length equals `r` length at the public call sites.
+        unsafe { _mm512_storeu_pd(out.as_mut_ptr().add(i), grad) };
+        i += lanes;
+    }
+
+    for (dst, &ri) in out[chunks..].iter_mut().zip(&r[chunks..]) {
+        *dst = grad_w_branchfree(ri * inv_h, inv_h4);
+    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
 unsafe fn w_and_grad_w_batch_avx512(r: &[f64], h: f64, w_out: &mut [f64], gw_out: &mut [f64]) {
-    w_and_grad_w_batch_scalar(r, h, w_out, gw_out)
+    let inv_h = 1.0 / h;
+    let inv_h3 = inv_h * inv_h * inv_h;
+    let inv_h4 = inv_h * inv_h3;
+    let lanes = 8;
+    let chunks = r.len() / lanes * lanes;
+
+    let inv_h_v = _mm512_set1_pd(inv_h);
+    let two_v = _mm512_set1_pd(2.0);
+    let half_v = _mm512_set1_pd(0.5);
+    let one_v = _mm512_set1_pd(1.0);
+    let minus_five_v = _mm512_set1_pd(-5.0);
+    let w_scale_v = _mm512_set1_pd(SIGMA3 * inv_h3);
+    let gw_scale_v = _mm512_set1_pd(SIGMA3 * inv_h4);
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let rv = unsafe { _mm512_loadu_pd(r.as_ptr().add(i)) };
+        let q = _mm512_mul_pd(rv, inv_h_v);
+        let qc = _mm512_min_pd(q, two_v);
+        let t = _mm512_fnmadd_pd(half_v, qc, one_v);
+        let t2 = _mm512_mul_pd(t, t);
+        let t3 = _mm512_mul_pd(t2, t);
+        let two_q_plus_one = _mm512_fmadd_pd(two_v, qc, one_v);
+        let w = _mm512_mul_pd(
+            w_scale_v,
+            _mm512_mul_pd(_mm512_mul_pd(t3, t), two_q_plus_one),
+        );
+        let grad = _mm512_mul_pd(
+            gw_scale_v,
+            _mm512_mul_pd(minus_five_v, _mm512_mul_pd(qc, t3)),
+        );
+        // SAFETY: output slices have the same length as `r` at the public call sites.
+        unsafe {
+            _mm512_storeu_pd(w_out.as_mut_ptr().add(i), w);
+            _mm512_storeu_pd(gw_out.as_mut_ptr().add(i), grad);
+        }
+        i += lanes;
+    }
+
+    for k in chunks..r.len() {
+        let q = r[k] * inv_h;
+        let qc = q.min(2.0);
+        let t = 1.0 - 0.5 * qc;
+        let t3 = t * t * t;
+        w_out[k] = SIGMA3 * inv_h3 * t3 * t * (2.0 * qc + 1.0);
+        gw_out[k] = SIGMA3 * inv_h4 * (-5.0 * qc * t3);
+    }
 }
 
 // ── API pública con dispatch en runtime ──────────────────────────────────────

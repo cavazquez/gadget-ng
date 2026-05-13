@@ -25,6 +25,20 @@
 use gadget_ng_core::Vec3;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 const G_INTERNAL: f64 = 4.302e-3; // pc M_sun⁻¹ (km/s)² — en unidades de kpc·(km/s)²/M_sun = 4.302e-6
 
@@ -95,7 +109,7 @@ pub fn halo_spin(
     #[cfg(feature = "rayon")]
     let mass_total: f64 = masses.par_iter().sum();
     #[cfg(not(feature = "rayon"))]
-    let mass_total: f64 = masses.iter().sum();
+    let mass_total: f64 = mass_sum(masses);
     if mass_total <= 0.0 {
         return None;
     }
@@ -114,18 +128,7 @@ pub fn halo_spin(
         .reduce(|| (0.0, 0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
 
     #[cfg(not(feature = "rayon"))]
-    let (lx, ly, lz) = {
-        let mut lx = 0.0f64;
-        let mut ly = 0.0f64;
-        let mut lz = 0.0f64;
-        for (i, (&pos, &vel)) in positions.iter().zip(velocities.iter()).enumerate() {
-            let (dlx, dly, dlz) = angular_momentum_term(i, pos, vel, masses, pos_com, vel_com);
-            lx += dlx;
-            ly += dly;
-            lz += dlz;
-        }
-        (lx, ly, lz)
-    };
+    let (lx, ly, lz) = angular_momentum_sum(positions, velocities, masses, pos_com, vel_com);
 
     let l_mag = (lx * lx + ly * ly + lz * lz).sqrt();
 
@@ -175,6 +178,27 @@ pub fn compute_halo_spins(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+#[cfg(not(feature = "rayon"))]
+fn mass_sum(masses: &[f64]) -> f64 {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return mass_sum_avx512(masses);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return mass_sum_avx2(masses);
+            }
+        }
+    }
+    masses.iter().sum()
+}
 
 #[cfg(feature = "rayon")]
 fn compute_halo_spins_impl(
@@ -261,19 +285,7 @@ fn center_of_mass(positions: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 
 
     #[cfg(not(feature = "rayon"))]
     {
-        let mut cx = 0.0f64;
-        let mut cy = 0.0f64;
-        let mut cz = 0.0f64;
-        for (i, &pos) in positions.iter().enumerate() {
-            let m = if i < masses.len() {
-                masses[i]
-            } else {
-                masses[0]
-            };
-            cx += m * pos.x;
-            cy += m * pos.y;
-            cz += m * pos.z;
-        }
+        let (cx, cy, cz) = weighted_vec3_sum(positions, masses);
         [cx / total_mass, cy / total_mass, cz / total_mass]
     }
 }
@@ -298,21 +310,107 @@ fn velocity_center(velocities: &[Vec3], masses: &[f64], total_mass: f64) -> [f64
 
     #[cfg(not(feature = "rayon"))]
     {
-        let mut vx = 0.0f64;
-        let mut vy = 0.0f64;
-        let mut vz = 0.0f64;
-        for (i, &vel) in velocities.iter().enumerate() {
-            let m = if i < masses.len() {
-                masses[i]
-            } else {
-                masses[0]
-            };
-            vx += m * vel.x;
-            vy += m * vel.y;
-            vz += m * vel.z;
-        }
+        let (vx, vy, vz) = weighted_vec3_sum(velocities, masses);
         [vx / total_mass, vy / total_mass, vz / total_mass]
     }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn weighted_vec3_sum(values: &[Vec3], masses: &[f64]) -> (f64, f64, f64) {
+    if values.len() > masses.len() {
+        return weighted_vec3_sum_scalar(values, masses);
+    }
+
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return weighted_vec3_sum_avx512(values, masses);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return weighted_vec3_sum_avx2(values, masses);
+            }
+        }
+    }
+
+    weighted_vec3_sum_scalar(values, masses)
+}
+
+#[cfg(not(feature = "rayon"))]
+fn weighted_vec3_sum_scalar(values: &[Vec3], masses: &[f64]) -> (f64, f64, f64) {
+    let mut sx = 0.0f64;
+    let mut sy = 0.0f64;
+    let mut sz = 0.0f64;
+    for (i, &value) in values.iter().enumerate() {
+        let m = if i < masses.len() {
+            masses[i]
+        } else {
+            masses[0]
+        };
+        sx += m * value.x;
+        sy += m * value.y;
+        sz += m * value.z;
+    }
+    (sx, sy, sz)
+}
+
+#[cfg(not(feature = "rayon"))]
+fn angular_momentum_sum(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    pos_com: [f64; 3],
+    vel_com: [f64; 3],
+) -> (f64, f64, f64) {
+    if positions.len() > masses.len() || positions.len() != velocities.len() {
+        return angular_momentum_sum_scalar(positions, velocities, masses, pos_com, vel_com);
+    }
+
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return angular_momentum_sum_avx512(
+                    positions, velocities, masses, pos_com, vel_com,
+                );
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return angular_momentum_sum_avx2(positions, velocities, masses, pos_com, vel_com);
+            }
+        }
+    }
+
+    angular_momentum_sum_scalar(positions, velocities, masses, pos_com, vel_com)
+}
+
+#[cfg(not(feature = "rayon"))]
+fn angular_momentum_sum_scalar(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    pos_com: [f64; 3],
+    vel_com: [f64; 3],
+) -> (f64, f64, f64) {
+    let mut lx = 0.0f64;
+    let mut ly = 0.0f64;
+    let mut lz = 0.0f64;
+    for (i, (&pos, &vel)) in positions.iter().zip(velocities.iter()).enumerate() {
+        let (dlx, dly, dlz) = angular_momentum_term(i, pos, vel, masses, pos_com, vel_com);
+        lx += dlx;
+        ly += dly;
+        lz += dlz;
+    }
+    (lx, ly, lz)
 }
 
 fn r200_from_mass(mass: f64, params: &SpinParams) -> f64 {
@@ -321,6 +419,335 @@ fn r200_from_mass(mass: f64, params: &SpinParams) -> f64 {
         return 0.0;
     }
     (3.0 * mass / (4.0 * std::f64::consts::PI * rho_thresh)).cbrt()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn mass_sum_avx2(masses: &[f64]) -> f64 {
+    let lanes = 4;
+    let chunks = masses.len() / lanes * lanes;
+    let mut acc = _mm256_setzero_pd();
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm256_loadu_pd(masses.as_ptr().add(i)) };
+        acc = _mm256_add_pd(acc, m);
+        i += lanes;
+    }
+    let mut tmp = [0.0; 4];
+    // SAFETY: fixed-size stack array has exactly four f64 lanes.
+    unsafe { _mm256_storeu_pd(tmp.as_mut_ptr(), acc) };
+    tmp.into_iter().sum::<f64>() + masses[chunks..].iter().sum::<f64>()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn mass_sum_avx512(masses: &[f64]) -> f64 {
+    let lanes = 8;
+    let chunks = masses.len() / lanes * lanes;
+    let mut acc = _mm512_setzero_pd();
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm512_loadu_pd(masses.as_ptr().add(i)) };
+        acc = _mm512_add_pd(acc, m);
+        i += lanes;
+    }
+    let mut tmp = [0.0; 8];
+    // SAFETY: fixed-size stack array has exactly eight f64 lanes.
+    unsafe { _mm512_storeu_pd(tmp.as_mut_ptr(), acc) };
+    tmp.into_iter().sum::<f64>() + masses[chunks..].iter().sum::<f64>()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn weighted_vec3_sum_avx2(values: &[Vec3], masses: &[f64]) -> (f64, f64, f64) {
+    let lanes = 4;
+    let chunks = values.len() / lanes * lanes;
+    let mut sx = _mm256_setzero_pd();
+    let mut sy = _mm256_setzero_pd();
+    let mut sz = _mm256_setzero_pd();
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm256_loadu_pd(masses.as_ptr().add(i)) };
+        let x = _mm256_set_pd(
+            values[i + 3].x,
+            values[i + 2].x,
+            values[i + 1].x,
+            values[i].x,
+        );
+        let y = _mm256_set_pd(
+            values[i + 3].y,
+            values[i + 2].y,
+            values[i + 1].y,
+            values[i].y,
+        );
+        let z = _mm256_set_pd(
+            values[i + 3].z,
+            values[i + 2].z,
+            values[i + 1].z,
+            values[i].z,
+        );
+        sx = _mm256_fmadd_pd(m, x, sx);
+        sy = _mm256_fmadd_pd(m, y, sy);
+        sz = _mm256_fmadd_pd(m, z, sz);
+        i += lanes;
+    }
+
+    let mut tx = [0.0; 4];
+    let mut ty = [0.0; 4];
+    let mut tz = [0.0; 4];
+    // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(tx.as_mut_ptr(), sx);
+        _mm256_storeu_pd(ty.as_mut_ptr(), sy);
+        _mm256_storeu_pd(tz.as_mut_ptr(), sz);
+    }
+    let tail = weighted_vec3_sum_scalar(&values[chunks..], &masses[chunks..]);
+    (
+        tx.into_iter().sum::<f64>() + tail.0,
+        ty.into_iter().sum::<f64>() + tail.1,
+        tz.into_iter().sum::<f64>() + tail.2,
+    )
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn weighted_vec3_sum_avx512(values: &[Vec3], masses: &[f64]) -> (f64, f64, f64) {
+    let lanes = 8;
+    let chunks = values.len() / lanes * lanes;
+    let mut sx = _mm512_setzero_pd();
+    let mut sy = _mm512_setzero_pd();
+    let mut sz = _mm512_setzero_pd();
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm512_loadu_pd(masses.as_ptr().add(i)) };
+        let x = _mm512_set_pd(
+            values[i + 7].x,
+            values[i + 6].x,
+            values[i + 5].x,
+            values[i + 4].x,
+            values[i + 3].x,
+            values[i + 2].x,
+            values[i + 1].x,
+            values[i].x,
+        );
+        let y = _mm512_set_pd(
+            values[i + 7].y,
+            values[i + 6].y,
+            values[i + 5].y,
+            values[i + 4].y,
+            values[i + 3].y,
+            values[i + 2].y,
+            values[i + 1].y,
+            values[i].y,
+        );
+        let z = _mm512_set_pd(
+            values[i + 7].z,
+            values[i + 6].z,
+            values[i + 5].z,
+            values[i + 4].z,
+            values[i + 3].z,
+            values[i + 2].z,
+            values[i + 1].z,
+            values[i].z,
+        );
+        sx = _mm512_fmadd_pd(m, x, sx);
+        sy = _mm512_fmadd_pd(m, y, sy);
+        sz = _mm512_fmadd_pd(m, z, sz);
+        i += lanes;
+    }
+
+    let mut tx = [0.0; 8];
+    let mut ty = [0.0; 8];
+    let mut tz = [0.0; 8];
+    // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
+    unsafe {
+        _mm512_storeu_pd(tx.as_mut_ptr(), sx);
+        _mm512_storeu_pd(ty.as_mut_ptr(), sy);
+        _mm512_storeu_pd(tz.as_mut_ptr(), sz);
+    }
+    let tail = weighted_vec3_sum_scalar(&values[chunks..], &masses[chunks..]);
+    (
+        tx.into_iter().sum::<f64>() + tail.0,
+        ty.into_iter().sum::<f64>() + tail.1,
+        tz.into_iter().sum::<f64>() + tail.2,
+    )
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn angular_momentum_sum_avx2(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    pos_com: [f64; 3],
+    vel_com: [f64; 3],
+) -> (f64, f64, f64) {
+    let lanes = 4;
+    let chunks = positions.len() / lanes * lanes;
+    let pcx = _mm256_set1_pd(pos_com[0]);
+    let pcy = _mm256_set1_pd(pos_com[1]);
+    let pcz = _mm256_set1_pd(pos_com[2]);
+    let vcx = _mm256_set1_pd(vel_com[0]);
+    let vcy = _mm256_set1_pd(vel_com[1]);
+    let vcz = _mm256_set1_pd(vel_com[2]);
+    let mut lx = _mm256_setzero_pd();
+    let mut ly = _mm256_setzero_pd();
+    let mut lz = _mm256_setzero_pd();
+
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm256_loadu_pd(masses.as_ptr().add(i)) };
+        let px = _mm256_set_pd(
+            positions[i + 3].x,
+            positions[i + 2].x,
+            positions[i + 1].x,
+            positions[i].x,
+        );
+        let py = _mm256_set_pd(
+            positions[i + 3].y,
+            positions[i + 2].y,
+            positions[i + 1].y,
+            positions[i].y,
+        );
+        let pz = _mm256_set_pd(
+            positions[i + 3].z,
+            positions[i + 2].z,
+            positions[i + 1].z,
+            positions[i].z,
+        );
+        let vx = _mm256_set_pd(
+            velocities[i + 3].x,
+            velocities[i + 2].x,
+            velocities[i + 1].x,
+            velocities[i].x,
+        );
+        let vy = _mm256_set_pd(
+            velocities[i + 3].y,
+            velocities[i + 2].y,
+            velocities[i + 1].y,
+            velocities[i].y,
+        );
+        let vz = _mm256_set_pd(
+            velocities[i + 3].z,
+            velocities[i + 2].z,
+            velocities[i + 1].z,
+            velocities[i].z,
+        );
+        let rx = _mm256_sub_pd(px, pcx);
+        let ry = _mm256_sub_pd(py, pcy);
+        let rz = _mm256_sub_pd(pz, pcz);
+        let dvx = _mm256_sub_pd(vx, vcx);
+        let dvy = _mm256_sub_pd(vy, vcy);
+        let dvz = _mm256_sub_pd(vz, vcz);
+        lx = _mm256_fmadd_pd(
+            m,
+            _mm256_sub_pd(_mm256_mul_pd(ry, dvz), _mm256_mul_pd(rz, dvy)),
+            lx,
+        );
+        ly = _mm256_fmadd_pd(
+            m,
+            _mm256_sub_pd(_mm256_mul_pd(rz, dvx), _mm256_mul_pd(rx, dvz)),
+            ly,
+        );
+        lz = _mm256_fmadd_pd(
+            m,
+            _mm256_sub_pd(_mm256_mul_pd(rx, dvy), _mm256_mul_pd(ry, dvx)),
+            lz,
+        );
+        i += lanes;
+    }
+
+    let mut tx = [0.0; 4];
+    let mut ty = [0.0; 4];
+    let mut tz = [0.0; 4];
+    // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(tx.as_mut_ptr(), lx);
+        _mm256_storeu_pd(ty.as_mut_ptr(), ly);
+        _mm256_storeu_pd(tz.as_mut_ptr(), lz);
+    }
+    let tail = angular_momentum_sum_scalar(
+        &positions[chunks..],
+        &velocities[chunks..],
+        &masses[chunks..],
+        pos_com,
+        vel_com,
+    );
+    (
+        tx.into_iter().sum::<f64>() + tail.0,
+        ty.into_iter().sum::<f64>() + tail.1,
+        tz.into_iter().sum::<f64>() + tail.2,
+    )
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn angular_momentum_sum_avx512(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    pos_com: [f64; 3],
+    vel_com: [f64; 3],
+) -> (f64, f64, f64) {
+    let lanes = 8;
+    let chunks = positions.len() / lanes * lanes;
+    let mut lx = 0.0;
+    let mut ly = 0.0;
+    let mut lz = 0.0;
+
+    let mut i = 0;
+    while i < chunks {
+        let vals = angular_momentum_sum_scalar(
+            &positions[i..i + lanes],
+            &velocities[i..i + lanes],
+            &masses[i..i + lanes],
+            pos_com,
+            vel_com,
+        );
+        lx += vals.0;
+        ly += vals.1;
+        lz += vals.2;
+        i += lanes;
+    }
+    let tail = angular_momentum_sum_scalar(
+        &positions[chunks..],
+        &velocities[chunks..],
+        &masses[chunks..],
+        pos_com,
+        vel_com,
+    );
+    (lx + tail.0, ly + tail.1, lz + tail.2)
 }
 
 #[cfg(test)]
