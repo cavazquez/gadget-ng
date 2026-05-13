@@ -4,8 +4,8 @@ Date: 2026-05-13
 
 This document tracks the remaining work after Phase 200 closed the immediate
 AVX-512 Tree LET and CUDA MHD/Tree smoke-surface gaps, after Phase 201 split
-Rayon from explicit SIMD feature axes, and after Phase 202 closed the remaining
-CPU Rayon coverage gaps.
+Rayon from explicit SIMD feature axes, after Phase 202 closed the remaining
+CPU Rayon coverage gaps, and after Phase 203 closed the prioritized SIMD-without-Rayon gaps.
 
 ## Current backend matrix
 
@@ -14,15 +14,15 @@ CPU Rayon coverage gaps.
 | Direct gravity | Complete | Complete | AVX2 + AVX-512 | Complete |
 | PM CIC | Complete | Complete | AVX2 + AVX-512 | Complete |
 | PM FFT/Poisson | Complete | Complete k-space + PM path | AVX2 + AVX-512 spectral kernel | Complete |
-| Barnes-Hut local tree | Complete | Complete | AVX2 partial | Monopole smoke/parity surface |
+| Barnes-Hut local tree | Complete | Complete | AVX2 + AVX-512 local walk | Monopole smoke/parity surface |
 | Tree LET / RMN SoA | Complete | Complete | AVX2 + AVX-512 | No full LET traversal |
-| TreePM hybrid | Complete | Complete | Partial CPU SIMD | Partial GPU hybrid |
+| TreePM hybrid | Complete | Complete | AVX2 + AVX-512 short-range CPU kernel | Partial GPU hybrid |
 | SPH density/forces/Gadget-2 | Complete | Complete | Batch/tiling kernels | Smoke/parity kernels |
 | SPH cooling/dust/H2 | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
 | MHD induction/forces/cleaning | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
 | MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
 | RT diagnostics/photoheating | Complete | Complete | Partial explicit SIMD | Smoke/parity kernels |
-| RT full M1 advection | Complete | Complete advection + update | Partial final-update vectorization | Pending |
+| RT full M1 advection | Complete | Complete advection + update | AVX2 + AVX-512 final update | Pending |
 | Analysis observables | Complete | Complete | No dedicated AVX | Pending |
 | SIDM | Complete | Complete density + pair evaluation | No dedicated AVX | Smoke/parity kernel |
 
@@ -32,6 +32,7 @@ CPU Rayon coverage gaps.
 | --- | --- | --- | --- | --- |
 | AP-01 | Split `simd` and `rayon` Cargo features | Closed in Phase 201: Rayon paths now use `feature = "rayon"` and explicit SIMD uses `feature = "simd"`. | `cargo check -p gadget-ng-cli --features simd`, `--features rayon`, and `--features simd,rayon` pass. | Complete |
 | AP-01b | Close remaining CPU Rayon coverage gaps | Closed in Phase 202: PM FFT/Poisson k-space, RT M1 advection, and SIDM density/pair evaluation now dispatch Rayon paths without relying on SIMD. | `cargo test -p gadget-ng-pm --features rayon`, `cargo test -p gadget-ng-rt --features rayon`, and `cargo test -p gadget-ng-tree --features rayon` pass. | Complete |
+| AP-01c | Close prioritized SIMD-without-Rayon gaps | Closed in Phase 203: Barnes-Hut local walk, TreePM short-range, and RT M1 final update now expose `simd` paths without requiring Rayon. | `cargo test -p gadget-ng-tree --features simd`, `cargo test -p gadget-ng-treepm --features simd`, `cargo test -p gadget-ng-rt --features simd`, and `cargo clippy -p gadget-ng-cli --features simd -- -D warnings` pass. | Complete |
 | AP-02 | CUDA persistent device buffers | Current CUDA parity kernels allocate/copy/free per call, good for smoke validation but not production throughput. | Solver objects retain device buffers across steps for SPH/MHD/RT/Tree surfaces and expose resize/reuse semantics. | Pending |
 | AP-03 | Hardware validation for new MHD/Tree CUDA kernels | CI stub path passes with `CUDA_SKIP=1`; real GPU parity has not been rerun after Phase 200 Fase 9. | `CUDA_ARCH=<sm> cargo test -p gadget-ng-cuda -- --ignored --nocapture` passes and tolerances are recorded. | Pending |
 | AP-04 | Runtime wiring for new CUDA MHD/Tree kernels | Wrappers exist, but only mature CUDA paths should replace production CPU paths automatically. | `gadget-ng-cli` routes opt-in MHD/Tree CUDA kernels behind config after AP-03 validates parity. | Pending |
@@ -50,6 +51,6 @@ CPU Rayon coverage gaps.
 
 ## Next recommended phase
 
-Phase 202 closed AP-01b. The next recommended phase is AP-03: validate the new
+Phase 203 closed AP-01c. The next recommended phase is AP-03: validate the new
 MHD/Tree CUDA kernels on real NVIDIA hardware before wiring them into production
 runtime paths.

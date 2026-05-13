@@ -684,6 +684,25 @@ impl Octree {
         mac_softening: MacSoftening,
     ) -> Vec3 {
         use gadget_ng_core::pairwise_accel_plummer;
+        #[cfg(feature = "simd")]
+        if !walk_instrumented() && multipole_order <= 3 {
+            return self.walk_accel_multipole_simd(
+                pos_i,
+                gi,
+                g,
+                eps2,
+                theta,
+                positions,
+                masses,
+                multipole_order,
+                use_relative_criterion,
+                use_bmax_criterion,
+                err_tol,
+                softened_multipoles,
+                mac_softening,
+                pairwise_accel_plummer,
+            );
+        }
         self.walk_inner(
             self.root,
             pos_i,
@@ -854,6 +873,193 @@ impl Octree {
             );
         }
         a
+    }
+
+    #[cfg(feature = "simd")]
+    #[expect(clippy::too_many_arguments)]
+    fn walk_accel_multipole_simd(
+        &self,
+        pos_i: Vec3,
+        gi: usize,
+        g: f64,
+        eps2: f64,
+        theta: f64,
+        positions: &[Vec3],
+        masses: &[f64],
+        multipole_order: u8,
+        use_relative_criterion: bool,
+        use_bmax_criterion: bool,
+        err_tol: f64,
+        softened_multipoles: bool,
+        mac_softening: MacSoftening,
+        pair: fn(Vec3, f64, Vec3, f64, f64) -> Vec3,
+    ) -> Vec3 {
+        let mut accepted = Vec::with_capacity(64);
+        let mut direct = Vec::with_capacity(64);
+        self.collect_walk_interactions(
+            self.root,
+            pos_i,
+            gi,
+            eps2,
+            theta,
+            multipole_order,
+            use_relative_criterion,
+            use_bmax_criterion,
+            err_tol,
+            mac_softening,
+            &mut accepted,
+            &mut direct,
+        );
+
+        let mut a = Vec3::zero();
+        if !accepted.is_empty() {
+            let soa = crate::rmn_soa::RmnSoa::from_slice(&accepted);
+            a += soa.accel(pos_i, g, eps2);
+        }
+        for j in direct {
+            a += pair(pos_i, masses[j], positions[j], g, eps2);
+        }
+
+        if softened_multipoles {
+            a
+        } else {
+            let bare_correction =
+                self.bare_multipole_correction(pos_i, &accepted, g, eps2, multipole_order);
+            a + bare_correction
+        }
+    }
+
+    #[cfg(feature = "simd")]
+    #[expect(clippy::too_many_arguments)]
+    fn collect_walk_interactions(
+        &self,
+        node_idx: u32,
+        pos_i: Vec3,
+        gi: usize,
+        eps2: f64,
+        theta: f64,
+        multipole_order: u8,
+        use_relative_criterion: bool,
+        use_bmax_criterion: bool,
+        err_tol: f64,
+        mac_softening: MacSoftening,
+        accepted: &mut Vec<RemoteMultipoleNode>,
+        direct: &mut Vec<usize>,
+    ) {
+        let node = &self.nodes[node_idx as usize];
+        if node.mass == 0.0 {
+            return;
+        }
+        let is_leaf = node.children.iter().all(|&c| c == NO_CHILD);
+        if is_leaf {
+            if let Some(j) = node.particle_idx
+                && j != gi
+            {
+                direct.push(j);
+            }
+            return;
+        }
+
+        let s = 2.0 * node.half_size;
+        let eval_inside_cell = point_in_node_cell(pos_i, node.center, node.half_size);
+        let r_com = pos_i - node.com;
+        let d_com = r_com.norm();
+        let use_mac = if use_relative_criterion {
+            if !eval_inside_cell && d_com > 1e-300 {
+                let a_mono_mag = node.mass / (d_com * d_com + eps2);
+                let q = &node.quad;
+                let q_frob2 = q[0] * q[0]
+                    + q[1] * q[1]
+                    + q[2] * q[2]
+                    + q[3] * q[3]
+                    + q[4] * q[4]
+                    + q[5] * q[5];
+                let q_frob = q_frob2.sqrt();
+                let quad_mag = match mac_softening {
+                    MacSoftening::Bare => {
+                        let d2 = d_com * d_com;
+                        q_frob / (d2 * d2 * d_com)
+                    }
+                    MacSoftening::Consistent => {
+                        let s2 = d_com * d_com + eps2;
+                        q_frob / (s2 * s2 * s2.sqrt())
+                    }
+                };
+                a_mono_mag > 1e-300 && quad_mag / a_mono_mag < err_tol
+            } else {
+                false
+            }
+        } else if !(theta > 0.0 && !eval_inside_cell && d_com > 1e-300) {
+            false
+        } else if use_bmax_criterion {
+            let delta = (node.com - node.center).norm();
+            let bmax = s + delta;
+            bmax / d_com < theta
+        } else {
+            s / d_com < theta
+        };
+
+        if use_mac {
+            let mut quad = node.quad;
+            let mut oct = node.oct;
+            if multipole_order < 2 {
+                quad = [0.0; 6];
+            }
+            if multipole_order < 3 {
+                oct = [0.0; 7];
+            }
+            accepted.push(RemoteMultipoleNode {
+                com: node.com,
+                mass: node.mass,
+                quad,
+                oct,
+                hex: [0.0; 15],
+                half_size: node.half_size,
+            });
+            return;
+        }
+
+        for &ch in &node.children {
+            if ch != NO_CHILD {
+                self.collect_walk_interactions(
+                    ch,
+                    pos_i,
+                    gi,
+                    eps2,
+                    theta,
+                    multipole_order,
+                    use_relative_criterion,
+                    use_bmax_criterion,
+                    err_tol,
+                    mac_softening,
+                    accepted,
+                    direct,
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "simd")]
+    fn bare_multipole_correction(
+        &self,
+        pos_i: Vec3,
+        accepted: &[RemoteMultipoleNode],
+        g: f64,
+        eps2: f64,
+        multipole_order: u8,
+    ) -> Vec3 {
+        let mut correction = Vec3::zero();
+        for node in accepted {
+            let r = pos_i - node.com;
+            if multipole_order >= 2 {
+                correction +=
+                    quad_accel(r, node.quad, g) - quad_accel_softened(r, node.quad, g, eps2);
+            }
+            if multipole_order >= 3 {
+                correction += oct_accel(r, node.oct, g) - oct_accel_softened(r, node.oct, g, eps2);
+            }
+        }
+        correction
     }
 }
 

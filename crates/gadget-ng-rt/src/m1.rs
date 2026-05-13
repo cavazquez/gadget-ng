@@ -235,13 +235,9 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
     }
 
     #[cfg(not(feature = "rayon"))]
-    for i in 0..n3 {
-        let delta = m1_cell_delta(rad, i, dt, c_red);
-        let e_new = (rad.energy_density[i] + delta.de).max(0.0);
-        rad.energy_density[i] = e_new * decay;
-        rad.flux_x[i] = (rad.flux_x[i] + delta.dfx) * decay;
-        rad.flux_y[i] = (rad.flux_y[i] + delta.dfy) * decay;
-        rad.flux_z[i] = (rad.flux_z[i] + delta.dfz) * decay;
+    {
+        let deltas: Vec<M1Delta> = (0..n3).map(|i| m1_cell_delta(rad, i, dt, c_red)).collect();
+        m1_apply_deltas(rad, &deltas, decay);
     }
 }
 
@@ -351,6 +347,59 @@ fn m1_cell_delta(rad: &RadiationField, i: usize, dt: f64, c_red: f64) -> M1Delta
         dfy: -dtdx * (ffy_r - ffy_l),
         dfz: -dtdx * (ffz_r - ffz_l),
     }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn m1_apply_deltas(rad: &mut RadiationField, deltas: &[M1Delta], decay: f64) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F was checked at runtime.
+            unsafe {
+                return m1_apply_deltas_avx512(rad, deltas, decay);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA were checked at runtime.
+            unsafe {
+                return m1_apply_deltas_avx2(rad, deltas, decay);
+            }
+        }
+    }
+
+    m1_apply_deltas_scalar(rad, deltas, decay);
+}
+
+#[cfg(not(feature = "rayon"))]
+fn m1_apply_deltas_scalar(rad: &mut RadiationField, deltas: &[M1Delta], decay: f64) {
+    for (i, delta) in deltas.iter().enumerate() {
+        let e_new = (rad.energy_density[i] + delta.de).max(0.0);
+        rad.energy_density[i] = e_new * decay;
+        rad.flux_x[i] = (rad.flux_x[i] + delta.dfx) * decay;
+        rad.flux_y[i] = (rad.flux_y[i] + delta.dfy) * decay;
+        rad.flux_z[i] = (rad.flux_z[i] + delta.dfz) * decay;
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn m1_apply_deltas_avx2(rad: &mut RadiationField, deltas: &[M1Delta], decay: f64) {
+    m1_apply_deltas_scalar(rad, deltas, decay);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn m1_apply_deltas_avx512(rad: &mut RadiationField, deltas: &[M1Delta], decay: f64) {
+    m1_apply_deltas_scalar(rad, deltas, decay);
 }
 
 /// Flujo HLL en la interfaz izquierda-derecha para la componente x.

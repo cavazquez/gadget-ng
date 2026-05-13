@@ -269,6 +269,7 @@ pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
     }
 }
 
+#[cfg(feature = "rayon")]
 #[derive(Default)]
 struct SedAccumulator {
     l_u: f64,
@@ -281,6 +282,7 @@ struct SedAccumulator {
     n_stars: usize,
 }
 
+#[cfg(feature = "rayon")]
 impl SedAccumulator {
     fn combine(self, other: Self) -> Self {
         Self {
@@ -326,6 +328,7 @@ impl SedAccumulator {
     }
 }
 
+#[cfg(feature = "rayon")]
 fn sed_contribution(p: &Particle) -> SedAccumulator {
     if p.ptype != ParticleType::Star {
         return SedAccumulator::default();
@@ -345,6 +348,7 @@ fn sed_contribution(p: &Particle) -> SedAccumulator {
     }
 }
 
+#[cfg(feature = "rayon")]
 #[derive(Default)]
 struct LuminosityAccumulator {
     l_total: f64,
@@ -353,6 +357,7 @@ struct LuminosityAccumulator {
     n_stars: usize,
 }
 
+#[cfg(feature = "rayon")]
 impl LuminosityAccumulator {
     fn combine(self, other: Self) -> Self {
         Self {
@@ -382,6 +387,7 @@ impl LuminosityAccumulator {
     }
 }
 
+#[cfg(feature = "rayon")]
 fn luminosity_contribution(p: &Particle) -> LuminosityAccumulator {
     if p.ptype != ParticleType::Star {
         return LuminosityAccumulator::default();

@@ -9,6 +9,7 @@ description = "Transferencia radiativa M1 para gadget-ng (Phase 81)"
 default = []
 mpi = ["dep:mpi"]
 rayon = ["dep:rayon"]
+simd = []
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }

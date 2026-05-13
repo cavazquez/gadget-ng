@@ -188,22 +188,14 @@ fn walk_short_range(tree: &Octree, xi: Vec3, skip: usize, p: &ShortRangeParams<'
                 let rx = rj.x - xi.x;
                 let ry = rj.y - xi.y;
                 let rz = rj.z - xi.z;
-                let r2 = rx * rx + ry * ry + rz * rz + p.eps2;
-                let r = r2.sqrt();
-                let w = erfc_factor(r, p.r_split);
-                let inv3 = p.g * p.masses[j] * w / (r2 * r);
-                *a += Vec3::new(rx * inv3, ry * inv3, rz * inv3);
+                *a += short_range_pair_accel(rx, ry, rz, p.masses[j], p);
             }
         } else {
             let d2 = dx * dx + dy * dy + dz * dz;
             let use_monopole = h < 0.1 * p.r_cut2.sqrt() && d2 > 1e-30;
 
             if use_monopole {
-                let r2 = d2 + p.eps2;
-                let r = r2.sqrt();
-                let w = erfc_factor(r, p.r_split);
-                let inv3 = p.g * node.mass * w / (r2 * r);
-                *a += Vec3::new(dx * inv3, dy * inv3, dz * inv3);
+                *a += short_range_pair_accel(dx, dy, dz, node.mass, p);
             } else {
                 for &ch in &node.children {
                     if ch != NO_CHILD {
@@ -313,14 +305,11 @@ fn walk_short_range_periodic(
                 let rx = minimum_image(rj.x - xi.x, box_size);
                 let ry = minimum_image(rj.y - xi.y, box_size);
                 let rz = minimum_image(rj.z - xi.z, box_size);
-                let r2 = rx * rx + ry * ry + rz * rz + p.eps2;
-                if r2 - p.eps2 > p.r_cut2 {
+                let r2_bare = rx * rx + ry * ry + rz * rz;
+                if r2_bare > p.r_cut2 {
                     continue; // fuera del cutoff con minimum_image
                 }
-                let r = r2.sqrt();
-                let w = erfc_factor(r, p.r_split);
-                let inv3 = p.g * p.masses[j] * w / (r2 * r);
-                *a += Vec3::new(rx * inv3, ry * inv3, rz * inv3);
+                *a += short_range_pair_accel_periodic(rx, ry, rz, p.masses[j], p);
             }
         } else {
             // Distancia CoM con minimum_image para el monopolo.
@@ -331,11 +320,7 @@ fn walk_short_range_periodic(
             let use_monopole = node.half_size < 0.1 * p.r_cut2.sqrt() && d2 > 1e-30;
 
             if use_monopole {
-                let r2 = d2 + p.eps2;
-                let r = r2.sqrt();
-                let w = erfc_factor(r, p.r_split);
-                let inv3 = p.g * node.mass * w / (r2 * r);
-                *a += Vec3::new(dx * inv3, dy * inv3, dz * inv3);
+                *a += short_range_pair_accel_periodic(dx, dy, dz, node.mass, p);
             } else {
                 for &ch in &node.children {
                     if ch != NO_CHILD {
@@ -345,6 +330,99 @@ fn walk_short_range_periodic(
             }
         }
     }
+}
+
+#[inline]
+fn short_range_pair_accel(rx: f64, ry: f64, rz: f64, mass: f64, p: &ShortRangeParams<'_>) -> Vec3 {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F was checked at runtime.
+            return unsafe {
+                short_range_pair_accel_avx512(rx, ry, rz, mass, p.eps2, p.g, p.r_split)
+            };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA were checked at runtime.
+            return unsafe {
+                short_range_pair_accel_avx2(rx, ry, rz, mass, p.eps2, p.g, p.r_split)
+            };
+        }
+    }
+    short_range_pair_accel_scalar(rx, ry, rz, mass, p.eps2, p.g, p.r_split)
+}
+
+#[inline]
+fn short_range_pair_accel_periodic(
+    rx: f64,
+    ry: f64,
+    rz: f64,
+    mass: f64,
+    p: &ShortRangeParamsPeriodic<'_>,
+) -> Vec3 {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F was checked at runtime.
+            return unsafe {
+                short_range_pair_accel_avx512(rx, ry, rz, mass, p.eps2, p.g, p.r_split)
+            };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA were checked at runtime.
+            return unsafe {
+                short_range_pair_accel_avx2(rx, ry, rz, mass, p.eps2, p.g, p.r_split)
+            };
+        }
+    }
+    short_range_pair_accel_scalar(rx, ry, rz, mass, p.eps2, p.g, p.r_split)
+}
+
+#[inline]
+fn short_range_pair_accel_scalar(
+    rx: f64,
+    ry: f64,
+    rz: f64,
+    mass: f64,
+    eps2: f64,
+    g: f64,
+    r_split: f64,
+) -> Vec3 {
+    let r2 = rx * rx + ry * ry + rz * rz + eps2;
+    let r = r2.sqrt();
+    let w = erfc_factor(r, r_split);
+    let inv3 = g * mass * w / (r2 * r);
+    Vec3::new(rx * inv3, ry * inv3, rz * inv3)
+}
+
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn short_range_pair_accel_avx2(
+    rx: f64,
+    ry: f64,
+    rz: f64,
+    mass: f64,
+    eps2: f64,
+    g: f64,
+    r_split: f64,
+) -> Vec3 {
+    short_range_pair_accel_scalar(rx, ry, rz, mass, eps2, g, r_split)
+}
+
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+#[target_feature(enable = "avx512f")]
+unsafe fn short_range_pair_accel_avx512(
+    rx: f64,
+    ry: f64,
+    rz: f64,
+    mass: f64,
+    eps2: f64,
+    g: f64,
+    r_split: f64,
+) -> Vec3 {
+    short_range_pair_accel_scalar(rx, ry, rz, mass, eps2, g, r_split)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

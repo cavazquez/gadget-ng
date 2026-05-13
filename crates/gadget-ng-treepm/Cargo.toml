@@ -8,6 +8,7 @@ description = "TreePM gravity solver para gadget-ng — Barnes-Hut (corto alcanc
 [features]
 default = []
 rayon = ["dep:rayon", "gadget-ng-pm/rayon"]
+simd = ["gadget-ng-pm/simd", "gadget-ng-tree/simd"]
 
 [dependencies]
 gadget-ng-core     = { path = "../gadget-ng-core" }

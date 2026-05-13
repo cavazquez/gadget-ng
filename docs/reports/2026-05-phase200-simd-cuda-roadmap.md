@@ -283,6 +283,7 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | 9 | Fase 9 completada: CUDA MHD/Tree smoke surfaces, Rust wrappers, FFI/build wiring, and stub CI validation. |
 | 2026-05-13 | 201/AP-01 | Feature split completado: `rayon` y `simd` son ejes separados; `cargo check -p gadget-ng-cli --features simd`, `rayon`, y `simd,rayon` pasan. |
 | 2026-05-13 | 202/AP-01b | CPU Rayon gaps cerrados: PM FFT/Poisson k-space, RT M1 advection/update y SIDM density/pair evaluation. |
+| 2026-05-13 | 203/AP-01c | SIMD sin Rayon priorizado cerrado: Barnes-Hut local walk, TreePM short-range y RT M1 final update. |
 
 ## Remaining backlog
 

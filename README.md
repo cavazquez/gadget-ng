@@ -169,9 +169,9 @@ y la cobertura detallada en
 | Área / módulo | CPU sin Rayon | CPU con Rayon | SIMD sin Rayon AVX2/AVX512 | CUDA |
 |---|---:|---:|---:|---:|
 | Gravedad directa `O(N²)` | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
-| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 parcial | ⚠️ kernel monopole parity |
+| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 + AVX512 local walk | ⚠️ kernel monopole parity |
 | Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ❌ full LET traversal |
-| TreePM corto alcance | ✅ | ✅ | ⚠️ CPU/SIMD parcial | ⚠️ wgpu/CUDA híbrido parcial |
+| TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial |
 | PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
 | PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ |
 | SPH density | ✅ | ✅ | ✅ batch/tiling | ✅ |
@@ -189,7 +189,7 @@ y la cobertura detallada en
 | MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD flux-freeze / stats | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ⚠️ SIMD parcial | ✅ |
-| RT full M1 advection | ✅ | ✅ advección + update | ⚠️ final update parcial | ❌ |
+| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
 | SIDM | ✅ | ✅ density + pair evaluation | ❌ | ✅ smoke/parity kernel |

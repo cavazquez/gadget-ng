@@ -37,14 +37,14 @@ implementations.
 | --- | --- | --- | --- |
 | Direct gravity | Yes, `SimdDirectGravity` | Yes, `CudaDirectGravity` | Real parity |
 | PM gravity | Yes, CPU PM/Rayon path | Yes, `CudaPmSolver` | Real parity |
-| Tree/Barnes-Hut/LET | Yes | Monopole/SIDM smoke surface | Partial CUDA |
+| Tree/Barnes-Hut/LET | Yes, local walk + LET/RMN | Monopole/SIDM smoke surface | Partial CUDA |
 | SPH density | Yes | Yes, `CudaSphSolver` | Experimental parity |
 | SPH forces/Gadget2 viscosity | Yes | Yes, `CudaSphSolver` | Experimental parity |
 | SPH cooling/dust/H2 | Yes | Yes, CUDA solvers | Experimental parity |
 | MHD flux-freezing/statistics | Yes | Yes, `CudaMhdSolver` | Experimental parity |
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes | Yes, `CudaRtSolver` | Experimental parity |
-| RT M1 full advection substep | Yes, CPU Rayon advection/update | No | CPU-only |
+| RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
 | Analysis spin/luminosity/SED | Yes | No | SIMD-only |
 
 ## Validated commands
@@ -65,6 +65,10 @@ cargo fmt --all --check
 cargo test -p gadget-ng-pm --features rayon
 cargo test -p gadget-ng-rt --features rayon
 cargo test -p gadget-ng-tree --features rayon
+cargo test -p gadget-ng-tree --features simd
+cargo test -p gadget-ng-treepm --features simd
+cargo test -p gadget-ng-rt --features simd
+cargo clippy -p gadget-ng-cli --features simd -- -D warnings
 ```
 
 The CUDA side has been validated on NVIDIA GTX 1060 (`sm_61`) with:
