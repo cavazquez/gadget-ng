@@ -45,7 +45,7 @@ implementations.
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
-| RT chemistry rates | AVX2/AVX-512 particle photoionization-rate batches | No | SIMD-only |
+| RT chemistry rates/cooling | AVX2/AVX-512 particle photoionization-rate batches and cooling update | No | SIMD-only |
 | RT chemistry stiff solver | Scalar implicit subcycling | No | CPU-only |
 | RT reionization state | AVX2/AVX-512 reductions | No | SIMD-only |
 | RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | No | SIMD-only |

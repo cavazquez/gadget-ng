@@ -190,7 +190,7 @@ y la cobertura detallada en
 | MHD flux-freeze / stats | ✅ | ✅ | ⚠️ b-field stats AVX2 + AVX512; flux-freeze scalar | ✅ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
-| RT chemistry rates | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates | ❌ |
+| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
 | RT chemistry stiff solver | ✅ | ✅ | ⚠️ subciclo implícito escalar | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |

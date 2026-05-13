@@ -550,26 +550,21 @@ fn apply_chemistry_impl(
     );
 
     let box_size = rad.dx * rad.nx as f64;
-    let dv = rad.dx.powi(3);
     let gamma_hi = photoionization_rates_for_particles(particles, rad, box_size, &m1_dummy);
+    let mut t_gas = vec![0.0; particles.len()];
 
     for (i, p) in particles.iter_mut().enumerate() {
         let st = &mut chem_states[i];
 
         let u_code = p.internal_energy;
-        let t_gas = st.temperature_from_internal_energy(u_code, params.gamma);
+        t_gas[i] = st.temperature_from_internal_energy(u_code, params.gamma);
 
         let gamma_hei = 0.0;
 
-        *st = solve_chemistry_implicit(st, gamma_hi[i], gamma_hei, t_gas, dt);
-
-        let cool_rate = cooling_rate_approx(t_gas, st.x_e, params.n_h_ref)
-            + cooling_rate_hd(t_gas, st.x_hd, params.n_h_ref);
-        let delta_u = -cool_rate * dt / U_CODE_TO_ERG_G;
-        p.internal_energy = (p.internal_energy + delta_u).max(0.0);
-
-        let _ = dv;
+        *st = solve_chemistry_implicit(st, gamma_hi[i], gamma_hei, t_gas[i], dt);
     }
+
+    apply_chemistry_cooling(particles, chem_states, &t_gas, params.n_h_ref, dt);
 }
 
 #[cfg(not(feature = "rayon"))]
@@ -602,6 +597,45 @@ fn photoionization_rates_for_particles(
         .iter()
         .map(|p| photoionization_rate_at_pos(rad, p.position, box_size, params))
         .collect()
+}
+
+#[cfg(not(feature = "rayon"))]
+fn apply_chemistry_cooling(
+    particles: &mut [Particle],
+    chem_states: &[ChemState],
+    t_gas: &[f64],
+    n_h_ref: f64,
+    dt: f64,
+) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                apply_chemistry_cooling_avx512(particles, chem_states, t_gas, n_h_ref, dt);
+                return;
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                apply_chemistry_cooling_avx2(particles, chem_states, t_gas, n_h_ref, dt);
+                return;
+            }
+        }
+    }
+
+    for ((p, st), &t) in particles
+        .iter_mut()
+        .zip(chem_states.iter())
+        .zip(t_gas.iter())
+    {
+        let cool_rate =
+            cooling_rate_approx(t, st.x_e, n_h_ref) + cooling_rate_hd(t, st.x_hd, n_h_ref);
+        let delta_u = -cool_rate * dt / U_CODE_TO_ERG_G;
+        p.internal_energy = (p.internal_energy + delta_u).max(0.0);
+    }
 }
 
 #[cfg(feature = "rayon")]
@@ -767,6 +801,132 @@ unsafe fn photoionization_rates_for_particles_avx512(
 ) -> Vec<f64> {
     // SAFETY: AVX-512F was checked at runtime; AVX2 arithmetic preserves semantics.
     unsafe { photoionization_rates_for_particles_avx2(particles, rad, box_size, params) }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_chemistry_cooling_avx2(
+    particles: &mut [Particle],
+    chem_states: &[ChemState],
+    t_gas: &[f64],
+    n_h_ref: f64,
+    dt: f64,
+) {
+    let lanes = 4;
+    let n = particles.len().min(chem_states.len()).min(t_gas.len());
+    let chunks = n / lanes * lanes;
+    let one = _mm256_set1_pd(1.0);
+    let zero = _mm256_set1_pd(0.0);
+    let n_h2 = _mm256_set1_pd(n_h_ref * n_h_ref);
+    let brems_coeff = _mm256_set1_pd(1.42e-27);
+    let lya_coeff = _mm256_set1_pd(7.5e-19);
+    let hd_coeff = _mm256_set1_pd(1.0e-23);
+    let inv_1e5 = _mm256_set1_pd(1.0e-5);
+    let inv_100 = _mm256_set1_pd(0.01);
+    let inv_1e4 = _mm256_set1_pd(1.0e-4);
+    let delta_scale = _mm256_set1_pd(-dt / U_CODE_TO_ERG_G);
+    let mut i = 0;
+    while i < chunks {
+        let t = _mm256_max_pd(
+            one,
+            _mm256_set_pd(t_gas[i + 3], t_gas[i + 2], t_gas[i + 1], t_gas[i]),
+        );
+        let xe = _mm256_set_pd(
+            chem_states[i + 3].x_e,
+            chem_states[i + 2].x_e,
+            chem_states[i + 1].x_e,
+            chem_states[i].x_e,
+        );
+        let x_hd = _mm256_max_pd(
+            zero,
+            _mm256_set_pd(
+                chem_states[i + 3].x_hd,
+                chem_states[i + 2].x_hd,
+                chem_states[i + 1].x_hd,
+                chem_states[i].x_hd,
+            ),
+        );
+        let sqrt_t = _mm256_sqrt_pd(t);
+        let brems = _mm256_mul_pd(brems_coeff, _mm256_mul_pd(sqrt_t, _mm256_mul_pd(n_h2, xe)));
+
+        let mut tt = [0.0; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(tt.as_mut_ptr(), t) };
+        let lya_shape = _mm256_set_pd(
+            (-118_348.0 / tt[3]).exp(),
+            (-118_348.0 / tt[2]).exp(),
+            (-118_348.0 / tt[1]).exp(),
+            (-118_348.0 / tt[0]).exp(),
+        );
+        let lya_denom = _mm256_add_pd(one, _mm256_sqrt_pd(_mm256_mul_pd(t, inv_1e5)));
+        let lya = _mm256_div_pd(
+            _mm256_mul_pd(lya_coeff, _mm256_mul_pd(lya_shape, _mm256_mul_pd(n_h2, xe))),
+            lya_denom,
+        );
+
+        let hd_rot = _mm256_set_pd(
+            (-128.0 / tt[3]).exp(),
+            (-128.0 / tt[2]).exp(),
+            (-128.0 / tt[1]).exp(),
+            (-128.0 / tt[0]).exp(),
+        );
+        let t100 = _mm256_mul_pd(t, inv_100);
+        let t1e4 = _mm256_mul_pd(t, inv_1e4);
+        let t100_sq = _mm256_mul_pd(t100, t100);
+        let t1e4_sq = _mm256_mul_pd(t1e4, t1e4);
+        let low_t_boost = _mm256_div_pd(t100_sq, _mm256_add_pd(one, t1e4_sq));
+        let hd = _mm256_mul_pd(
+            hd_coeff,
+            _mm256_mul_pd(
+                n_h2,
+                _mm256_mul_pd(x_hd, _mm256_mul_pd(hd_rot, low_t_boost)),
+            ),
+        );
+
+        let cool = _mm256_add_pd(_mm256_add_pd(brems, lya), hd);
+        let current = _mm256_set_pd(
+            particles[i + 3].internal_energy,
+            particles[i + 2].internal_energy,
+            particles[i + 1].internal_energy,
+            particles[i].internal_energy,
+        );
+        let next = _mm256_max_pd(zero, _mm256_fmadd_pd(cool, delta_scale, current));
+        let mut out = [0.0; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr(), next) };
+        particles[i].internal_energy = out[0];
+        particles[i + 1].internal_energy = out[1];
+        particles[i + 2].internal_energy = out[2];
+        particles[i + 3].internal_energy = out[3];
+        i += lanes;
+    }
+    for k in chunks..n {
+        let cool_rate = cooling_rate_approx(t_gas[k], chem_states[k].x_e, n_h_ref)
+            + cooling_rate_hd(t_gas[k], chem_states[k].x_hd, n_h_ref);
+        let delta_u = -cool_rate * dt / U_CODE_TO_ERG_G;
+        particles[k].internal_energy = (particles[k].internal_energy + delta_u).max(0.0);
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_chemistry_cooling_avx512(
+    particles: &mut [Particle],
+    chem_states: &[ChemState],
+    t_gas: &[f64],
+    n_h_ref: f64,
+    dt: f64,
+) {
+    // SAFETY: AVX-512F was checked at runtime; AVX2 arithmetic preserves semantics.
+    unsafe { apply_chemistry_cooling_avx2(particles, chem_states, t_gas, n_h_ref, dt) }
 }
 
 #[cfg(all(
