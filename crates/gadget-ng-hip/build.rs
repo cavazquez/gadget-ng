@@ -30,8 +30,7 @@ fn main() {
 
     // ── 1. Skip si HIP_SKIP=1 ─────────────────────────────────────────────────
     if std::env::var("HIP_SKIP").as_deref() == Ok("1") {
-        println!("cargo:warning=HIP_SKIP=1: HipPmSolver deshabilitado (stubs activos)");
-        println!("cargo:rustc-cfg=hip_unavailable");
+        disable_hip("HIP_SKIP=1");
         return;
     }
 
@@ -44,7 +43,7 @@ fn main() {
             "cargo:warning=hipcc no encontrado (instalar ROCm o definir ROCM_PATH). \
              HipPmSolver deshabilitado."
         );
-        println!("cargo:rustc-cfg=hip_unavailable");
+        disable_hip("hipcc no encontrado");
         return;
     };
 
@@ -56,7 +55,7 @@ fn main() {
             "cargo:warning=rocFFT no encontrada (librocfft.so). \
              HipPmSolver deshabilitado."
         );
-        println!("cargo:rustc-cfg=hip_unavailable");
+        disable_hip("rocFFT no encontrada");
         return;
     };
 
@@ -97,14 +96,14 @@ fn main() {
                 println!(
                     "cargo:warning=hipcc falló al compilar {name} (código {s}). HIP deshabilitado."
                 );
-                println!("cargo:rustc-cfg=hip_unavailable");
+                disable_hip("hipcc falló al compilar kernels");
                 return;
             }
             Err(e) => {
                 println!(
                     "cargo:warning=No se pudo ejecutar hipcc para {name}: {e}. HIP deshabilitado."
                 );
-                println!("cargo:rustc-cfg=hip_unavailable");
+                disable_hip("no se pudo ejecutar hipcc");
                 return;
             }
         }
@@ -125,15 +124,18 @@ fn main() {
         Ok(s) if s.success() => {}
         Ok(s) => {
             println!("cargo:warning=ar falló (código {s}). HIP deshabilitado.");
-            println!("cargo:rustc-cfg=hip_unavailable");
+            disable_hip("ar falló al crear libpm_hip.a");
             return;
         }
         Err(e) => {
             println!("cargo:warning=No se pudo ejecutar ar: {e}. HIP deshabilitado.");
-            println!("cargo:rustc-cfg=hip_unavailable");
+            disable_hip("no se pudo ejecutar ar");
             return;
         }
     }
+
+    println!("cargo:rustc-env=GADGET_NG_HIP_COMPILED=1");
+    println!("cargo:rustc-env=GADGET_NG_HIP_BUILD_REASON=HIP toolchain disponible");
 
     // ── 5. Directivas de enlazado ─────────────────────────────────────────────
     println!("cargo:rustc-link-search=native={}", out_dir.display());
@@ -156,6 +158,13 @@ fn main() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn disable_hip(reason: &str) {
+    println!("cargo:warning=HIP deshabilitado: {reason}");
+    println!("cargo:rustc-cfg=hip_unavailable");
+    println!("cargo:rustc-env=GADGET_NG_HIP_COMPILED=0");
+    println!("cargo:rustc-env=GADGET_NG_HIP_BUILD_REASON={reason}");
+}
 
 /// Busca `hipcc` primero en `$ROCM_PATH/bin`, luego en PATH y rutas estándar.
 fn find_hipcc(rocm_path: Option<&Path>) -> Option<PathBuf> {

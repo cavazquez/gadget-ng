@@ -4,10 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+simd = ["dep:rayon"]
+
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
-rayon = "1.10"
+rayon = { version = "1.10", optional = true }
 serde.workspace = true
 
 [dev-dependencies]

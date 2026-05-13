@@ -41,6 +41,9 @@
 
 // ── Constantes físicas ────────────────────────────────────────────────────
 
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
+
 /// Velocidad de la luz en km/s.
 pub const C_KMS: f64 = 2.998e5;
 
@@ -106,26 +109,49 @@ impl RadiationField {
 
     /// Energía total en el dominio (suma de E × dV).
     pub fn total_energy(&self, dv: f64) -> f64 {
-        self.energy_density.iter().sum::<f64>() * dv
+        sum_energy_density(&self.energy_density) * dv
     }
 
     /// Parámetro de anisotropía ξ = |F| / (c_red × E) para cada celda.
     pub fn xi_field(&self, c_red: f64) -> Vec<f64> {
-        let n = self.n_cells();
-        (0..n)
-            .map(|i| {
-                let e = self.energy_density[i];
-                if e < 1e-300 {
-                    return 0.0;
-                }
-                let fx = self.flux_x[i];
-                let fy = self.flux_y[i];
-                let fz = self.flux_z[i];
-                let f_mag = (fx * fx + fy * fy + fz * fz).sqrt();
-                (f_mag / (c_red * e)).clamp(0.0, 1.0)
-            })
-            .collect()
+        xi_field_impl(self, c_red)
     }
+
+    #[inline]
+    fn xi_cell(&self, i: usize, c_red: f64) -> f64 {
+        let e = self.energy_density[i];
+        if e < 1e-300 {
+            return 0.0;
+        }
+        let fx = self.flux_x[i];
+        let fy = self.flux_y[i];
+        let fz = self.flux_z[i];
+        let f_mag = (fx * fx + fy * fy + fz * fz).sqrt();
+        (f_mag / (c_red * e)).clamp(0.0, 1.0)
+    }
+}
+
+#[cfg(feature = "simd")]
+fn sum_energy_density(energy_density: &[f64]) -> f64 {
+    energy_density.par_iter().sum()
+}
+
+#[cfg(not(feature = "simd"))]
+fn sum_energy_density(energy_density: &[f64]) -> f64 {
+    energy_density.iter().sum()
+}
+
+#[cfg(feature = "simd")]
+fn xi_field_impl(rad: &RadiationField, c_red: f64) -> Vec<f64> {
+    (0..rad.n_cells())
+        .into_par_iter()
+        .map(|i| rad.xi_cell(i, c_red))
+        .collect()
+}
+
+#[cfg(not(feature = "simd"))]
+fn xi_field_impl(rad: &RadiationField, c_red: f64) -> Vec<f64> {
+    (0..rad.n_cells()).map(|i| rad.xi_cell(i, c_red)).collect()
 }
 
 /// Parámetros del solver M1.
@@ -278,6 +304,27 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
 
     // ── Actualizar + fuente implícita ────────────────────────────────────
     let decay = (-c_red * kappa * dt).exp();
+    #[cfg(feature = "simd")]
+    {
+        rad.energy_density
+            .par_iter_mut()
+            .zip(rad.flux_x.par_iter_mut())
+            .zip(rad.flux_y.par_iter_mut())
+            .zip(rad.flux_z.par_iter_mut())
+            .zip(de.par_iter())
+            .zip(dfx.par_iter())
+            .zip(dfy.par_iter())
+            .zip(dfz.par_iter())
+            .for_each(|(((((((e, fx), fy), fz), de), dfx), dfy), dfz)| {
+                let e_new = (*e + *de).max(0.0);
+                *e = e_new * decay;
+                *fx = (*fx + *dfx) * decay;
+                *fy = (*fy + *dfy) * decay;
+                *fz = (*fz + *dfz) * decay;
+            });
+    }
+
+    #[cfg(not(feature = "simd"))]
     for i in 0..n3 {
         let e_new = (rad.energy_density[i] + de[i]).max(0.0);
         rad.energy_density[i] = e_new * decay;

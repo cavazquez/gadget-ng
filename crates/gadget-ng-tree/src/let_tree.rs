@@ -351,6 +351,10 @@ impl LetTree {
 
     /// Recursión interna del walk tileado para el nodo `node_idx`.
     #[cfg(feature = "simd")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "hot recursive SIMD walk keeps scalar state unboxed"
+    )]
     fn walk_inner_4xi(
         &self,
         node_idx: u32,
@@ -376,7 +380,7 @@ impl LetTree {
         // MAC conservativo: abrir el nodo si CUALQUIER partícula válida falla.
         let all_pass = pos[..tile_size].iter().all(|p| {
             let d = (*p - node.com).norm();
-            if !(d > 1e-300) {
+            if d.partial_cmp(&1e-300) != Some(std::cmp::Ordering::Greater) {
                 return false;
             }
             let s = 2.0 * node.half_size;

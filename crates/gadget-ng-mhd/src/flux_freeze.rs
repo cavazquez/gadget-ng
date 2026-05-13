@@ -18,6 +18,8 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Aplica el criterio de flux-freeze a partículas de gas con β > beta_freeze (Phase 138).
 ///
@@ -29,44 +31,72 @@ use gadget_ng_core::{Particle, ParticleType};
 /// `rho_ref` es la densidad de referencia respecto a la cual se calcula la amplificación.
 /// En la práctica suele ser la densidad inicial o la densidad media del halo.
 pub fn apply_flux_freeze(particles: &mut [Particle], gamma: f64, beta_freeze: f64, rho_ref: f64) {
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter_mut()
+            .for_each(|p| apply_flux_freeze_particle(p, gamma, beta_freeze, rho_ref));
+    }
+
+    #[cfg(not(feature = "simd"))]
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
+        apply_flux_freeze_particle(p, gamma, beta_freeze, rho_ref);
+    }
+}
 
-        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
-        if b2 < 1e-60 {
-            continue;
-        } // B=0: nada que congelar
+fn apply_flux_freeze_particle(p: &mut Particle, gamma: f64, beta_freeze: f64, rho_ref: f64) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
 
-        let h = p.smoothing_length.max(1e-10);
-        let rho = (p.mass / (h * h * h)).max(1e-30);
-        let p_th = (gamma - 1.0) * rho * p.internal_energy;
-        let beta = 2.0 * MU0 * p_th / b2;
+    let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+    if b2 < 1e-60 {
+        return;
+    } // B=0: nada que congelar
 
-        if beta > beta_freeze && rho_ref > 0.0 {
-            // Conservación de flujo: B ∝ ρ^{2/3}
-            let scale = (rho / rho_ref).powf(2.0 / 3.0);
-            p.b_field.x *= scale;
-            p.b_field.y *= scale;
-            p.b_field.z *= scale;
-        }
+    let h = p.smoothing_length.max(1e-10);
+    let rho = (p.mass / (h * h * h)).max(1e-30);
+    let p_th = (gamma - 1.0) * rho * p.internal_energy;
+    let beta = 2.0 * MU0 * p_th / b2;
+
+    if beta > beta_freeze && rho_ref > 0.0 {
+        // Conservación de flujo: B ∝ ρ^{2/3}
+        let scale = (rho / rho_ref).powf(2.0 / 3.0);
+        p.b_field.x *= scale;
+        p.b_field.y *= scale;
+        p.b_field.z *= scale;
     }
 }
 
 /// Calcula la densidad media de las partículas de gas (densidad de referencia).
 pub fn mean_gas_density(particles: &[Particle]) -> f64 {
-    let mut rho_sum = 0.0_f64;
-    let mut n = 0usize;
-    for p in particles.iter() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
-        let h = p.smoothing_length.max(1e-10);
-        rho_sum += p.mass / (h * h * h);
-        n += 1;
+    #[cfg(feature = "simd")]
+    {
+        let (rho_sum, n) = particles
+            .par_iter()
+            .filter(|p| p.ptype == ParticleType::Gas)
+            .map(|p| {
+                let h = p.smoothing_length.max(1e-10);
+                (p.mass / (h * h * h), 1usize)
+            })
+            .reduce(|| (0.0_f64, 0usize), |a, b| (a.0 + b.0, a.1 + b.1));
+        if n == 0 { 1.0 } else { rho_sum / n as f64 }
     }
-    if n == 0 { 1.0 } else { rho_sum / n as f64 }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut rho_sum = 0.0_f64;
+        let mut n = 0usize;
+        for p in particles.iter() {
+            if p.ptype != ParticleType::Gas {
+                continue;
+            }
+            let h = p.smoothing_length.max(1e-10);
+            rho_sum += p.mass / (h * h * h);
+            n += 1;
+        }
+        if n == 0 { 1.0 } else { rho_sum / n as f64 }
+    }
 }
 
 /// Valida que B ∝ ρ^{2/3} para una partícula dada respecto a valores de referencia.

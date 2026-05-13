@@ -32,7 +32,7 @@
 //! }
 //! ```
 
-use crate::CudaPmSolver;
+use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 
 /// Solver de gravedad directa N² via CUDA.
 ///
@@ -57,13 +57,20 @@ impl CudaDirectGravity {
     /// # Parámetros
     /// - `eps` — softening gravitacional en unidades internas
     pub fn try_new(eps: f32) -> Option<Self> {
+        Self::try_new_checked(eps).ok()
+    }
+
+    /// Variante fallible de [`Self::try_new`] que conserva el motivo de indisponibilidad.
+    pub fn try_new_checked(eps: f32) -> Result<Self, CudaUnavailable> {
         if CudaPmSolver::is_available() {
-            Some(Self {
+            Ok(Self {
                 eps,
                 block_size: 256,
             })
         } else {
-            None
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            })
         }
     }
 
@@ -82,14 +89,29 @@ impl CudaDirectGravity {
     /// Panics si CUDA no está disponible en tiempo de compilación (`cuda_unavailable`).
     /// Esto no debería ocurrir normalmente porque `try_new` devuelve `None` sin hardware.
     pub fn compute(&self, pos: &[[f32; 3]], mass: &[f32]) -> Vec<[f32; 3]> {
+        match self.try_compute(pos, mass) {
+            Ok(accels) => accels,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    /// Calcula aceleraciones directas y devuelve un error explícito si CUDA falla.
+    pub fn try_compute(
+        &self,
+        pos: &[[f32; 3]],
+        mass: &[f32],
+    ) -> Result<Vec<[f32; 3]>, CudaExecutionError> {
         let n = pos.len();
         assert_eq!(mass.len(), n, "pos y mass deben tener la misma longitud");
 
         #[cfg(cuda_unavailable)]
-        panic!(
-            "CudaDirectGravity::compute llamado pero CUDA no está disponible. \
-             Usa CudaDirectGravity::try_new para verificar disponibilidad."
-        );
+        {
+            let _ = (pos, mass);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
 
         #[cfg(not(cuda_unavailable))]
         {
@@ -105,7 +127,9 @@ impl CudaDirectGravity {
             // no-NULL con assert inmediato.
             let handle: *mut c_void =
                 unsafe { ffi::cuda_direct_create(eps2, self.block_size as i32) };
-            assert!(!handle.is_null(), "cuda_direct_create devolvió NULL");
+            if handle.is_null() {
+                return Err(CudaExecutionError::CreateFailed("CudaDirectGravity"));
+            }
 
             // Extraer componentes de posición en arrays contiguos
             let mut x: Vec<f32> = Vec::with_capacity(n);
@@ -143,10 +167,15 @@ impl CudaDirectGravity {
             // cuda_direct_destroy libera todos los recursos GPU asociados.
             unsafe { ffi::cuda_direct_destroy(handle) };
 
-            assert_eq!(ret, 0, "cuda_direct_solve falló con código {ret}");
+            if ret != 0 {
+                return Err(CudaExecutionError::KernelFailed {
+                    kernel: "cuda_direct_solve",
+                    code: ret,
+                });
+            }
 
             // Combinar en [[ax, ay, az]; N]
-            (0..n).map(|i| [ax[i], ay[i], az[i]]).collect()
+            Ok((0..n).map(|i| [ax[i], ay[i], az[i]]).collect())
         }
     }
 

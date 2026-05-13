@@ -20,7 +20,7 @@
 //! }
 //! ```
 
-use crate::HipPmSolver;
+use crate::{HipExecutionError, HipPmSolver, HipUnavailable};
 
 /// Solver de gravedad directa N² via HIP/ROCm.
 ///
@@ -42,13 +42,20 @@ impl HipDirectGravity {
     /// # Parámetros
     /// - `eps` — softening gravitacional en unidades internas
     pub fn try_new(eps: f32) -> Option<Self> {
+        Self::try_new_checked(eps).ok()
+    }
+
+    /// Variante fallible de [`Self::try_new`] que conserva el motivo de indisponibilidad.
+    pub fn try_new_checked(eps: f32) -> Result<Self, HipUnavailable> {
         if HipPmSolver::is_available() {
-            Some(Self {
+            Ok(Self {
                 eps,
                 workgroup_size: 256,
             })
         } else {
-            None
+            Err(HipUnavailable {
+                availability: HipPmSolver::availability(),
+            })
         }
     }
 
@@ -66,14 +73,29 @@ impl HipDirectGravity {
     ///
     /// Panics si HIP no está disponible en tiempo de compilación (`hip_unavailable`).
     pub fn compute(&self, pos: &[[f32; 3]], mass: &[f32]) -> Vec<[f32; 3]> {
+        match self.try_compute(pos, mass) {
+            Ok(accels) => accels,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    /// Calcula aceleraciones directas y devuelve un error explícito si HIP falla.
+    pub fn try_compute(
+        &self,
+        pos: &[[f32; 3]],
+        mass: &[f32],
+    ) -> Result<Vec<[f32; 3]>, HipExecutionError> {
         let n = pos.len();
         assert_eq!(mass.len(), n, "pos y mass deben tener la misma longitud");
 
         #[cfg(hip_unavailable)]
-        panic!(
-            "HipDirectGravity::compute llamado pero HIP no está disponible. \
-             Usa HipDirectGravity::try_new para verificar disponibilidad."
-        );
+        {
+            let _ = (pos, mass);
+            Err(HipUnavailable {
+                availability: HipPmSolver::availability(),
+            }
+            .into())
+        }
 
         #[cfg(not(hip_unavailable))]
         {
@@ -87,7 +109,9 @@ impl HipDirectGravity {
             // eps2 y workgroup_size son escalares válidos. Handle se verifica no-NULL.
             let handle: *mut c_void =
                 unsafe { ffi::hip_direct_create(eps2, self.workgroup_size as i32) };
-            assert!(!handle.is_null(), "hip_direct_create devolvió NULL");
+            if handle.is_null() {
+                return Err(HipExecutionError::CreateFailed("HipDirectGravity"));
+            }
 
             let mut x: Vec<f32> = Vec::with_capacity(n);
             let mut y: Vec<f32> = Vec::with_capacity(n);
@@ -123,9 +147,14 @@ impl HipDirectGravity {
             // hip_direct_destroy libera todos los recursos GPU asociados.
             unsafe { ffi::hip_direct_destroy(handle) };
 
-            assert_eq!(ret, 0, "hip_direct_solve falló con código {ret}");
+            if ret != 0 {
+                return Err(HipExecutionError::KernelFailed {
+                    kernel: "hip_direct_solve",
+                    code: ret,
+                });
+            }
 
-            (0..n).map(|i| [ax[i], ay[i], az[i]]).collect()
+            Ok((0..n).map(|i| [ax[i], ay[i], az[i]]).collect())
         }
     }
 

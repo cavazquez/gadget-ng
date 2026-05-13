@@ -23,6 +23,9 @@ fn main() {
     println!("cargo:rerun-if-changed=cuda/pm_gravity.h");
     println!("cargo:rerun-if-changed=cuda/direct_gravity.cu");
     println!("cargo:rerun-if-changed=cuda/direct_gravity.h");
+    println!("cargo:rerun-if-changed=cuda/sph_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/mhd_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/rt_kernels.cu");
     println!("cargo:rerun-if-env-changed=CUDA_SKIP");
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_ARCH");
@@ -32,8 +35,7 @@ fn main() {
 
     // ── 1. Skip si CUDA_SKIP=1 ────────────────────────────────────────────────
     if std::env::var("CUDA_SKIP").as_deref() == Ok("1") {
-        println!("cargo:warning=CUDA_SKIP=1: CudaPmSolver deshabilitado (stubs activos)");
-        println!("cargo:rustc-cfg=cuda_unavailable");
+        disable_cuda("CUDA_SKIP=1");
         return;
     }
 
@@ -46,7 +48,7 @@ fn main() {
             "cargo:warning=nvcc no encontrado (instalar CUDA Toolkit o definir CUDA_PATH). \
              CudaPmSolver deshabilitado."
         );
-        println!("cargo:rustc-cfg=cuda_unavailable");
+        disable_cuda("nvcc no encontrado");
         return;
     };
 
@@ -58,7 +60,7 @@ fn main() {
             "cargo:warning=cuFFT no encontrada (libcufft.so). \
              CudaPmSolver deshabilitado."
         );
-        println!("cargo:rustc-cfg=cuda_unavailable");
+        disable_cuda("cuFFT no encontrada");
         return;
     };
 
@@ -77,6 +79,9 @@ fn main() {
     let kernel_sources = [
         ("pm_gravity", "cuda/pm_gravity.cu"),
         ("direct_gravity", "cuda/direct_gravity.cu"),
+        ("sph_kernels", "cuda/sph_kernels.cu"),
+        ("mhd_kernels", "cuda/mhd_kernels.cu"),
+        ("rt_kernels", "cuda/rt_kernels.cu"),
     ];
 
     let mut obj_paths: Vec<PathBuf> = Vec::new();
@@ -106,14 +111,14 @@ fn main() {
                 println!(
                     "cargo:warning=nvcc falló al compilar {name} (código {s}). CUDA deshabilitado."
                 );
-                println!("cargo:rustc-cfg=cuda_unavailable");
+                disable_cuda("nvcc falló al compilar kernels");
                 return;
             }
             Err(e) => {
                 println!(
                     "cargo:warning=No se pudo ejecutar nvcc para {name}: {e}. CUDA deshabilitado."
                 );
-                println!("cargo:rustc-cfg=cuda_unavailable");
+                disable_cuda("no se pudo ejecutar nvcc");
                 return;
             }
         }
@@ -134,15 +139,18 @@ fn main() {
         Ok(s) if s.success() => {}
         Ok(s) => {
             println!("cargo:warning=ar falló (código {s}). CUDA deshabilitado.");
-            println!("cargo:rustc-cfg=cuda_unavailable");
+            disable_cuda("ar falló al crear libpm_cuda.a");
             return;
         }
         Err(e) => {
             println!("cargo:warning=No se pudo ejecutar ar: {e}. CUDA deshabilitado.");
-            println!("cargo:rustc-cfg=cuda_unavailable");
+            disable_cuda("no se pudo ejecutar ar");
             return;
         }
     }
+
+    println!("cargo:rustc-env=GADGET_NG_CUDA_COMPILED=1");
+    println!("cargo:rustc-env=GADGET_NG_CUDA_BUILD_REASON=CUDA toolchain disponible");
 
     // ── 5. Directivas de enlazado ─────────────────────────────────────────────
     println!("cargo:rustc-link-search=native={}", out_dir.display());
@@ -165,6 +173,13 @@ fn main() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn disable_cuda(reason: &str) {
+    println!("cargo:warning=CUDA deshabilitado: {reason}");
+    println!("cargo:rustc-cfg=cuda_unavailable");
+    println!("cargo:rustc-env=GADGET_NG_CUDA_COMPILED=0");
+    println!("cargo:rustc-env=GADGET_NG_CUDA_BUILD_REASON={reason}");
+}
 
 /// Busca `nvcc` primero en `$CUDA_PATH/bin`, luego en PATH.
 fn find_nvcc(cuda_path: Option<&Path>) -> Option<PathBuf> {

@@ -8,12 +8,14 @@ description = "Análisis in-situ para gadget-ng: FoF, power spectrum P(k), catá
 [features]
 default = []
 parallel = ["dep:gadget-ng-parallel"]
+simd = ["dep:rayon"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
 gadget-ng-parallel = { path = "../gadget-ng-parallel", optional = true }
 serde.workspace = true
 serde_json.workspace = true
+rayon = { version = "1.10", optional = true }
 rustfft = "6.4.1"
 
 [dev-dependencies]

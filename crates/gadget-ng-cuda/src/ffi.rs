@@ -69,4 +69,157 @@ unsafe extern "C" {
         n: i32,
         g: f32,
     ) -> i32;
+
+    // ── Kernels SPH O(N²) ───────────────────────────────────────────────────
+
+    pub fn cuda_sph_density(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        mass: *const f32,
+        is_gas: *const u8,
+        u: *const f32,
+        h_in: *const f32,
+        h_out: *mut f32,
+        rho_out: *mut f32,
+        pressure_out: *mut f32,
+        entropy_out: *mut f32,
+        n: i32,
+        periodic_box: f32,
+    ) -> i32;
+
+    pub fn cuda_sph_balsara(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        is_gas: *const u8,
+        rho: *const f32,
+        pressure: *const f32,
+        h_sml: *const f32,
+        balsara_out: *mut f32,
+        n: i32,
+        periodic_box: f32,
+    ) -> i32;
+
+    pub fn cuda_sph_forces(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        is_gas: *const u8,
+        rho: *const f32,
+        pressure: *const f32,
+        h_sml: *const f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        du_dt_out: *mut f32,
+        n: i32,
+        periodic_box: f32,
+    ) -> i32;
+
+    pub fn cuda_sph_gadget2_forces(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        is_gas: *const u8,
+        rho: *const f32,
+        pressure: *const f32,
+        h_sml: *const f32,
+        balsara: *const f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        da_dt_out: *mut f32,
+        du_dt_out: *mut f32,
+        max_vsig_out: *mut f32,
+        n: i32,
+        periodic_box: f32,
+    ) -> i32;
+
+    // ── Kernels MHD ─────────────────────────────────────────────────────────
+
+    pub fn cuda_mhd_flux_freeze(
+        ptype: *const u8,
+        mass: *const f32,
+        internal_energy: *const f32,
+        h_sml: *const f32,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        n: i32,
+        gamma: f32,
+        beta_freeze: f32,
+        rho_ref: f32,
+    ) -> i32;
+
+    pub fn cuda_mhd_density_contrib(
+        ptype: *const u8,
+        mass: *const f32,
+        h_sml: *const f32,
+        rho_out: *mut f32,
+        count_out: *mut f32,
+        n: i32,
+    ) -> i32;
+
+    pub fn cuda_mhd_b_stats_contrib(
+        ptype: *const u8,
+        mass: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        m_out: *mut f32,
+        mb_out: *mut f32,
+        mb2_out: *mut f32,
+        bmag_out: *mut f32,
+        emag_out: *mut f32,
+        count_out: *mut f32,
+        n: i32,
+    ) -> i32;
+
+    // ── Kernels RT ──────────────────────────────────────────────────────────
+
+    pub fn cuda_rt_energy_xi_photoion(
+        energy: *const f32,
+        flux_x: *const f32,
+        flux_y: *const f32,
+        flux_z: *const f32,
+        energy_contrib_out: *mut f32,
+        xi_out: *mut f32,
+        gamma_out: *mut f32,
+        n: i32,
+        dv: f32,
+        c_red_code: f32,
+        c_red_cgs: f32,
+    ) -> i32;
+
+    pub fn cuda_rt_photoheating(
+        ptype: *const u8,
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        internal_energy_in: *const f32,
+        gamma_hi: *const f32,
+        internal_energy_out: *mut f32,
+        n_particles: i32,
+        nx: i32,
+        ny: i32,
+        nz: i32,
+        box_size: f32,
+        dt: f32,
+    ) -> i32;
 }

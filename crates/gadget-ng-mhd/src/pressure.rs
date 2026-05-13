@@ -182,9 +182,9 @@ mod tests {
     #[test]
     fn maxwell_stress_zero_when_b_zero() {
         let m = maxwell_stress(Vec3::zero());
-        for i in 0..3 {
-            for j in 0..3 {
-                assert_abs_diff_eq!(m[i][j], 0.0, epsilon = 1e-15);
+        for row in &m {
+            for value in row {
+                assert_abs_diff_eq!(*value, 0.0, epsilon = 1e-15);
             }
         }
     }
@@ -202,9 +202,9 @@ mod tests {
     fn maxwell_stress_is_symmetric() {
         let b = Vec3::new(1.0, 2.0, 3.0);
         let m = maxwell_stress(b);
-        for i in 0..3 {
-            for j in 0..3 {
-                assert_abs_diff_eq!(m[i][j], m[j][i], epsilon = 1e-15);
+        for (i, row) in m.iter().enumerate() {
+            for (j, value) in row.iter().enumerate() {
+                assert_abs_diff_eq!(*value, m[j][i], epsilon = 1e-15);
             }
         }
     }

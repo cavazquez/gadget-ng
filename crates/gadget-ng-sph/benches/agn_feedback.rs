@@ -45,11 +45,12 @@ fn make_black_holes(n_bh: usize, box_size: f64) -> Vec<BlackHole> {
     (0..n_bh)
         .map(|i| {
             let frac = (i as f64 + 0.5) / n_bh as f64;
-            BlackHole {
-                pos: Vec3::new(frac * box_size, frac * box_size, frac * box_size),
-                mass: 1e8,
-                accretion_rate: 1e-4,
-            }
+            let mut bh = BlackHole::new(
+                Vec3::new(frac * box_size, frac * box_size, frac * box_size),
+                1e8,
+            );
+            bh.accretion_rate = 1e-4;
+            bh
         })
         .collect()
 }
@@ -99,11 +100,7 @@ fn bench_bondi_rate(c: &mut Criterion) {
 
     let bh_masses = [1e6_f64, 1e7, 1e8, 1e9];
     for &mass in &bh_masses {
-        let bh = BlackHole {
-            pos: Vec3::zero(),
-            mass,
-            accretion_rate: 0.0,
-        };
+        let bh = BlackHole::new(Vec3::zero(), mass);
         group.bench_with_input(
             BenchmarkId::new("M_bh", format!("{:.0e}", mass)),
             &mass,

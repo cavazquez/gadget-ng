@@ -1,6 +1,8 @@
 //! Estadísticas del campo magnético para monitoreo cosmológico (Phase 136 + 147).
 
 use gadget_ng_core::{Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Estadísticas del campo magnético sobre todas las partículas de gas.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -23,39 +25,89 @@ pub struct BFieldStats {
 pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
     use crate::MU0;
 
-    let mut m_total = 0.0_f64;
-    let mut mb_sum = 0.0_f64; // Σ m_i |B_i|
-    let mut mb2_sum = 0.0_f64; // Σ m_i |B_i|²
-    let mut b_max = 0.0_f64;
-    let mut e_mag = 0.0_f64;
-    let mut n_gas = 0usize;
+    #[cfg(feature = "simd")]
+    {
+        let (m_total, mb_sum, mb2_sum, b_max, e_mag, n_gas) = particles
+            .par_iter()
+            .filter(|p| p.ptype == ParticleType::Gas)
+            .map(|p| {
+                let b2 = p.b_field.x * p.b_field.x
+                    + p.b_field.y * p.b_field.y
+                    + p.b_field.z * p.b_field.z;
+                let b_mag = b2.sqrt();
+                (
+                    p.mass,
+                    p.mass * b_mag,
+                    p.mass * b2,
+                    b_mag,
+                    p.mass * b2 / (2.0 * MU0),
+                    1usize,
+                )
+            })
+            .reduce(
+                || (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64, 0usize),
+                |a, b| {
+                    (
+                        a.0 + b.0,
+                        a.1 + b.1,
+                        a.2 + b.2,
+                        a.3.max(b.3),
+                        a.4 + b.4,
+                        a.5 + b.5,
+                    )
+                },
+            );
 
-    for p in particles.iter() {
-        if p.ptype != ParticleType::Gas {
-            continue;
+        if n_gas == 0 || m_total <= 0.0 {
+            return None;
         }
-        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
-        let b_mag = b2.sqrt();
 
-        m_total += p.mass;
-        mb_sum += p.mass * b_mag;
-        mb2_sum += p.mass * b2;
-        b_max = b_max.max(b_mag);
-        e_mag += p.mass * b2 / (2.0 * MU0);
-        n_gas += 1;
+        Some(BFieldStats {
+            b_mean: mb_sum / m_total,
+            b_rms: (mb2_sum / m_total).sqrt(),
+            b_max,
+            e_mag,
+            n_gas,
+        })
     }
 
-    if n_gas == 0 || m_total <= 0.0 {
-        return None;
-    }
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut m_total = 0.0_f64;
+        let mut mb_sum = 0.0_f64; // Σ m_i |B_i|
+        let mut mb2_sum = 0.0_f64; // Σ m_i |B_i|²
+        let mut b_max = 0.0_f64;
+        let mut e_mag = 0.0_f64;
+        let mut n_gas = 0usize;
 
-    Some(BFieldStats {
-        b_mean: mb_sum / m_total,
-        b_rms: (mb2_sum / m_total).sqrt(),
-        b_max,
-        e_mag,
-        n_gas,
-    })
+        for p in particles.iter() {
+            if p.ptype != ParticleType::Gas {
+                continue;
+            }
+            let b2 =
+                p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+            let b_mag = b2.sqrt();
+
+            m_total += p.mass;
+            mb_sum += p.mass * b_mag;
+            mb2_sum += p.mass * b2;
+            b_max = b_max.max(b_mag);
+            e_mag += p.mass * b2 / (2.0 * MU0);
+            n_gas += 1;
+        }
+
+        if n_gas == 0 || m_total <= 0.0 {
+            return None;
+        }
+
+        Some(BFieldStats {
+            b_mean: mb_sum / m_total,
+            b_rms: (mb2_sum / m_total).sqrt(),
+            b_max,
+            e_mag,
+            n_gas,
+        })
+    }
 }
 
 /// Espectro de potencia magnético P_B(k) estimado por histograma de |B|² (Phase 147).

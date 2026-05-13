@@ -393,12 +393,13 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     #[cfg(feature = "cuda")]
     if cfg.performance.use_gpu_cuda && cfg.gravity.solver == SolverKind::Direct {
         let eps = cfg.simulation.softening as f32;
-        if let Some(gpu) = gadget_ng_cuda::CudaDirectGravity::try_new(eps) {
+        if let Ok(gpu) = gadget_ng_cuda::CudaDirectGravity::try_new_checked(eps) {
             eprintln!("[gadget-ng] CUDA direct gravity activado (f32).");
             return Box::new(gpu);
         }
         eprintln!(
-            "[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible; usando CPU direct."
+            "[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible ({}); usando CPU direct.",
+            gadget_ng_cuda::CudaPmSolver::availability()
         );
     }
 
@@ -406,12 +407,13 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     #[cfg(feature = "hip")]
     if cfg.performance.use_gpu_hip && cfg.gravity.solver == SolverKind::Direct {
         let eps = cfg.simulation.softening as f32;
-        if let Some(gpu) = gadget_ng_hip::HipDirectGravity::try_new(eps) {
+        if let Ok(gpu) = gadget_ng_hip::HipDirectGravity::try_new_checked(eps) {
             eprintln!("[gadget-ng] HIP direct gravity activado (f32).");
             return Box::new(gpu);
         }
         eprintln!(
-            "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP no disponible; usando CPU direct."
+            "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP no disponible ({}); usando CPU direct.",
+            gadget_ng_hip::HipPmSolver::availability()
         );
     }
 
@@ -420,9 +422,10 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     // dispositivo CUDA, `try_new()` devuelve None y se continúa con el solver CPU.
     #[cfg(feature = "cuda")]
     if cfg.performance.use_gpu_cuda && cfg.gravity.solver == SolverKind::Pm {
-        if let Some(solver) =
-            gadget_ng_cuda::CudaPmSolver::try_new(cfg.gravity.pm_grid_size, cfg.simulation.box_size)
-        {
+        if let Ok(solver) = gadget_ng_cuda::CudaPmSolver::try_new_checked(
+            cfg.gravity.pm_grid_size,
+            cfg.simulation.box_size,
+        ) {
             eprintln!(
                 "[gadget-ng] PM CUDA activado (grilla {}³).",
                 solver.grid_size()
@@ -430,7 +433,8 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             return Box::new(solver);
         }
         eprintln!(
-            "[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible; usando CPU PM."
+            "[gadget-ng] ADVERTENCIA: use_gpu_cuda=true pero CUDA no disponible ({}); usando CPU PM.",
+            gadget_ng_cuda::CudaPmSolver::availability()
         );
     }
 
@@ -440,9 +444,10 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     // dispositivo ROCm, `try_new()` devuelve None y se continúa con el solver CPU.
     #[cfg(feature = "hip")]
     if cfg.performance.use_gpu_hip && cfg.gravity.solver == SolverKind::Pm {
-        if let Some(solver) =
-            gadget_ng_hip::HipPmSolver::try_new(cfg.gravity.pm_grid_size, cfg.simulation.box_size)
-        {
+        if let Ok(solver) = gadget_ng_hip::HipPmSolver::try_new_checked(
+            cfg.gravity.pm_grid_size,
+            cfg.simulation.box_size,
+        ) {
             eprintln!(
                 "[gadget-ng] PM HIP/ROCm activado (grilla {}³).",
                 solver.grid_size()
@@ -450,7 +455,8 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             return Box::new(solver);
         }
         eprintln!(
-            "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP/ROCm no disponible; usando CPU PM."
+            "[gadget-ng] ADVERTENCIA: use_gpu_hip=true pero HIP/ROCm no disponible ({}); usando CPU PM.",
+            gadget_ng_hip::HipPmSolver::availability()
         );
     }
 
@@ -467,7 +473,8 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
             return Box::new(hybrid);
         }
         eprintln!(
-            "[gadget-ng] ADVERTENCIA: use_gpu_treepm=true pero CUDA/wgpu no disponible; TreePM CPU."
+            "[gadget-ng] ADVERTENCIA: use_gpu_treepm=true pero CUDA/wgpu no disponible (CUDA: {}); TreePM CPU.",
+            gadget_ng_cuda::CudaPmSolver::availability()
         );
     }
 

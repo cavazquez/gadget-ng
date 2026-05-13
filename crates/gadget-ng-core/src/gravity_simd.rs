@@ -173,6 +173,16 @@ mod tests {
             cosmology: crate::config::CosmologySection::default(),
             units: crate::config::UnitsSection::default(),
             decomposition: Default::default(),
+            insitu_analysis: Default::default(),
+            sph: Default::default(),
+            rt: Default::default(),
+            reionization: Default::default(),
+            mhd: Default::default(),
+            turbulence: Default::default(),
+            two_fluid: Default::default(),
+            sidm: Default::default(),
+            modified_gravity: Default::default(),
+            dark_matter: Default::default(),
         }
     }
 

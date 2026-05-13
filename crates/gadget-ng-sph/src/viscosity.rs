@@ -29,6 +29,8 @@ use crate::kernel::grad_w;
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Regularización para el factor Balsara (evita división por cero).
 const EPS_BAL: f64 = 0.0001;
@@ -75,7 +77,35 @@ pub fn compute_balsara_factors_with_periodic(
         .iter()
         .map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0))
         .collect();
+    #[cfg(feature = "simd")]
+    {
+        let updates: Vec<Option<f64>> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                if !is_gas[i] {
+                    return None;
+                }
+                Some(balsara_for_particle(
+                    i,
+                    &pos,
+                    &vel,
+                    &mass,
+                    &is_gas,
+                    &rho,
+                    &pressure,
+                    &h_sml,
+                    periodic_box,
+                ))
+            })
+            .collect();
+        for (p, update) in particles.iter_mut().zip(updates) {
+            if let (Some(gas), Some(balsara)) = (p.gas.as_mut(), update) {
+                gas.balsara = balsara;
+            }
+        }
+    }
 
+    #[cfg(not(feature = "simd"))]
     for i in 0..n {
         if !is_gas[i] {
             continue;
@@ -139,6 +169,63 @@ pub fn compute_balsara_factors_with_periodic(
             gas.balsara = balsara_val;
         }
     }
+}
+
+#[cfg(feature = "simd")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "hot SPH pair loop keeps SoA slices explicit"
+)]
+fn balsara_for_particle(
+    i: usize,
+    pos: &[Vec3],
+    vel: &[Vec3],
+    mass: &[f64],
+    is_gas: &[bool],
+    rho: &[f64],
+    pressure: &[f64],
+    h_sml: &[f64],
+    periodic_box: Option<f64>,
+) -> f64 {
+    if rho[i] < 1e-200 {
+        return 1.0;
+    }
+
+    let pi = pos[i];
+    let vi = vel[i];
+    let hi = h_sml[i];
+    let inv_rho_i = 1.0 / rho[i];
+    let mut div_v = 0.0_f64;
+    let mut curl_v = Vec3::zero();
+
+    for j in 0..pos.len() {
+        if j == i || !is_gas[j] || rho[j] < 1e-200 {
+            continue;
+        }
+        let r_ij = periodic_delta(pos[j], pi, periodic_box);
+        let r = r_ij.norm();
+        let gw = grad_w(r, hi);
+        if gw == 0.0 {
+            continue;
+        }
+        let r_hat = if r > 1e-300 {
+            r_ij * (1.0 / r)
+        } else {
+            Vec3::zero()
+        };
+        let nabla_w = r_hat * (gw / hi);
+        let dv = vel[j] - vi;
+        div_v += mass[j] * dv.dot(nabla_w);
+        curl_v += cross(nabla_w, dv) * mass[j];
+    }
+
+    div_v *= inv_rho_i;
+    curl_v *= inv_rho_i;
+    let abs_div = div_v.abs();
+    let abs_curl = curl_v.norm();
+    let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
+    let eps_term = EPS_BAL * cs_i / hi;
+    abs_div / (abs_div + abs_curl + eps_term)
 }
 
 #[cfg(test)]

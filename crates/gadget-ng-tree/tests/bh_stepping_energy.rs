@@ -46,6 +46,7 @@ fn stepping_with_barnes_hut_kinetic_bounded() {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
     };
     let eps2 = cfg.softening_squared();
     let g = cfg.simulation.gravitational_constant;

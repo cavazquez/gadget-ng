@@ -4,6 +4,7 @@
 
 use std::ffi::c_void;
 
+use crate::availability::{self, HipAvailability, HipExecutionError, HipUnavailable};
 use gadget_ng_core::gravity::GravitySolver;
 use gadget_ng_core::vec3::Vec3;
 
@@ -28,20 +29,33 @@ unsafe impl Send for HipPmSolver {}
 unsafe impl Sync for HipPmSolver {}
 
 impl HipPmSolver {
-    /// `true` si el crate se compiló con soporte HIP y hay un dispositivo disponible.
-    pub fn is_available() -> bool {
+    /// Estado detallado de HIP, separando compilación y runtime.
+    pub fn availability() -> HipAvailability {
         #[cfg(hip_unavailable)]
-        return false;
+        {
+            return availability::build_availability();
+        }
 
         #[cfg(not(hip_unavailable))]
         {
+            let mut status = availability::build_availability();
+            // SAFETY: llamada FFI de prueba con grilla mínima; el handle se destruye si existe.
             let h = unsafe { crate::ffi::hip_pm_create(8, 1.0) };
             if h.is_null() {
-                return false;
+                status.runtime_available = false;
+                status.reason = "toolchain HIP disponible, pero no se pudo crear handle runtime";
+                return status;
             }
+            // SAFETY: h fue creado por hip_pm_create y no se usará después.
             unsafe { crate::ffi::hip_pm_destroy(h) };
-            true
+            status.runtime_available = true;
+            status
         }
+    }
+
+    /// `true` si el crate se compiló con soporte HIP y hay un dispositivo disponible.
+    pub fn is_available() -> bool {
+        Self::availability().is_available()
     }
 
     /// Intenta construir el solver PM HIP.
@@ -52,15 +66,31 @@ impl HipPmSolver {
     ///
     /// Devuelve `None` si HIP no está disponible o si la inicialización falla.
     pub fn try_new(grid_size: usize, box_size: f64) -> Option<Self> {
-        Self::try_new_with_r_split(grid_size, box_size, 0.0)
+        Self::try_new_checked(grid_size, box_size).ok()
+    }
+
+    /// Variante fallible de [`Self::try_new`] que conserva el motivo de indisponibilidad.
+    pub fn try_new_checked(grid_size: usize, box_size: f64) -> Result<Self, HipUnavailable> {
+        Self::try_new_with_r_split_checked(grid_size, box_size, 0.0)
     }
 
     /// Igual que [`Self::try_new`] con filtro Gaussiano TreePM opcional.
     pub fn try_new_with_r_split(grid_size: usize, box_size: f64, r_split: f64) -> Option<Self> {
+        Self::try_new_with_r_split_checked(grid_size, box_size, r_split).ok()
+    }
+
+    /// Variante fallible de [`Self::try_new_with_r_split`].
+    pub fn try_new_with_r_split_checked(
+        grid_size: usize,
+        box_size: f64,
+        r_split: f64,
+    ) -> Result<Self, HipUnavailable> {
         #[cfg(hip_unavailable)]
         {
             let _ = (grid_size, box_size, r_split);
-            return None;
+            return Err(HipUnavailable {
+                availability: Self::availability(),
+            });
         }
 
         #[cfg(not(hip_unavailable))]
@@ -70,9 +100,11 @@ impl HipPmSolver {
             // no-NULL inmediatamente después.
             let handle = unsafe { crate::ffi::hip_pm_create(grid_size as i32, box_size as f32) };
             if handle.is_null() {
-                return None;
+                return Err(HipUnavailable {
+                    availability: Self::availability(),
+                });
             }
-            Some(Self {
+            Ok(Self {
                 handle,
                 grid_size,
                 r_split: r_split as f32,
@@ -95,27 +127,14 @@ impl HipPmSolver {
     pub fn grid_size(&self) -> usize {
         self.grid_size
     }
-}
 
-impl Drop for HipPmSolver {
-    fn drop(&mut self) {
-        // SAFETY: self.handle es no-NULL (verificado en try_new). hip_pm_destroy
-        // libera recursos GPU y se llama exactamente una vez en Drop.
-        #[cfg(not(hip_unavailable))]
-        unsafe {
-            crate::ffi::hip_pm_destroy(self.handle);
-        }
-    }
-}
-
-// ── GravitySolver ─────────────────────────────────────────────────────────────
-
-impl GravitySolver for HipPmSolver {
-    /// Calcula aceleraciones PM GPU para las partículas en `global_indices`.
+    /// Calcula aceleraciones PM HIP y devuelve un error explícito si el kernel falla.
     ///
-    /// Idéntica lógica que `CudaPmSolver::accelerations_for_indices`; la diferencia
-    /// está en las llamadas FFI subyacentes (HIP vs CUDA).
-    fn accelerations_for_indices(
+    /// Esta es la API preferida para código que puede decidir cómo reaccionar ante
+    /// errores de runtime GPU. La implementación de [`GravitySolver`] conserva la
+    /// firma histórica y convierte el error en `panic!` para evitar continuar una
+    /// simulación con aceleraciones inválidas.
+    pub fn try_accelerations_for_indices(
         &self,
         global_positions: &[Vec3],
         global_masses: &[f64],
@@ -123,19 +142,26 @@ impl GravitySolver for HipPmSolver {
         g: f64,
         global_indices: &[usize],
         out: &mut [Vec3],
-    ) {
+    ) -> Result<(), HipExecutionError> {
         assert_eq!(global_indices.len(), out.len());
         if global_indices.is_empty() {
-            return;
+            return Ok(());
         }
 
         #[cfg(hip_unavailable)]
         {
-            let _ = (global_positions, global_masses, eps2, g, global_indices);
-            for v in out.iter_mut() {
-                *v = Vec3::zero();
+            let _ = (
+                global_positions,
+                global_masses,
+                eps2,
+                g,
+                global_indices,
+                out,
+            );
+            return Err(HipUnavailable {
+                availability: Self::availability(),
             }
-            return;
+            .into());
         }
 
         #[cfg(not(hip_unavailable))]
@@ -177,16 +203,56 @@ impl GravitySolver for HipPmSolver {
                 )
             };
             if ret != 0 {
-                eprintln!("[HipPmSolver] hip_pm_solve error code {ret}");
-                for v in out.iter_mut() {
-                    *v = Vec3::zero();
-                }
-                return;
+                return Err(HipExecutionError::KernelFailed {
+                    kernel: "hip_pm_solve",
+                    code: ret,
+                });
             }
 
             for (j, &gi) in global_indices.iter().enumerate() {
                 out[j] = Vec3::new(ax[gi] as f64, ay[gi] as f64, az[gi] as f64);
             }
+            Ok(())
+        }
+    }
+}
+
+impl Drop for HipPmSolver {
+    fn drop(&mut self) {
+        // SAFETY: self.handle es no-NULL (verificado en try_new). hip_pm_destroy
+        // libera recursos GPU y se llama exactamente una vez en Drop.
+        #[cfg(not(hip_unavailable))]
+        unsafe {
+            crate::ffi::hip_pm_destroy(self.handle);
+        }
+    }
+}
+
+// ── GravitySolver ─────────────────────────────────────────────────────────────
+
+impl GravitySolver for HipPmSolver {
+    /// Calcula aceleraciones PM GPU para las partículas en `global_indices`.
+    ///
+    /// Idéntica lógica que `CudaPmSolver::accelerations_for_indices`; la diferencia
+    /// está en las llamadas FFI subyacentes (HIP vs CUDA).
+    fn accelerations_for_indices(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+    ) {
+        if let Err(err) = self.try_accelerations_for_indices(
+            global_positions,
+            global_masses,
+            eps2,
+            g,
+            global_indices,
+            out,
+        ) {
+            panic!("HipPmSolver::accelerations_for_indices falló: {err}");
         }
     }
 }

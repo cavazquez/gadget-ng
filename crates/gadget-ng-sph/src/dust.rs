@@ -31,6 +31,8 @@
 
 use crate::cooling::u_to_temperature;
 use gadget_ng_core::{DustSection, DustSpeciesModel, Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Radiation constant in cgs, `a_rad` [erg cm^-3 K^-4].
 const A_RAD_CGS: f64 = 7.5657e-15;
@@ -52,28 +54,40 @@ pub fn update_dust(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt
         return;
     }
 
-    for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
-
-        let t = u_to_temperature(p.internal_energy.max(0.0), gamma);
-        let z = p.metallicity.clamp(0.0, 1.0);
-
-        if t < cfg.t_destroy_k {
-            // Acreción: D/G crece hacia d_to_g_max × Z con tiempo τ_grow
-            let d_target = cfg.d_to_g_max * z;
-            let tau = cfg.tau_grow.max(1e-10);
-            p.dust_to_gas += z * (d_target - p.dust_to_gas) * dt / tau;
-        } else {
-            // Sputtering térmico: τ_sputter ∝ (T_destroy/T)²
-            let t_ratio = cfg.t_destroy_k / t.max(cfg.t_destroy_k);
-            let tau_sputter = cfg.tau_grow * (t_ratio * t_ratio).max(1e-6);
-            p.dust_to_gas *= (-dt / tau_sputter).exp();
-        }
-
-        p.dust_to_gas = p.dust_to_gas.clamp(0.0, cfg.d_to_g_max);
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter_mut()
+            .for_each(|p| update_dust_particle(p, cfg, gamma, dt));
     }
+
+    #[cfg(not(feature = "simd"))]
+    for p in particles.iter_mut() {
+        update_dust_particle(p, cfg, gamma, dt);
+    }
+}
+
+fn update_dust_particle(p: &mut Particle, cfg: &DustSection, gamma: f64, dt: f64) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
+
+    let t = u_to_temperature(p.internal_energy.max(0.0), gamma);
+    let z = p.metallicity.clamp(0.0, 1.0);
+
+    if t < cfg.t_destroy_k {
+        // Acreción: D/G crece hacia d_to_g_max × Z con tiempo τ_grow
+        let d_target = cfg.d_to_g_max * z;
+        let tau = cfg.tau_grow.max(1e-10);
+        p.dust_to_gas += z * (d_target - p.dust_to_gas) * dt / tau;
+    } else {
+        // Sputtering térmico: τ_sputter ∝ (T_destroy/T)²
+        let t_ratio = cfg.t_destroy_k / t.max(cfg.t_destroy_k);
+        let tau_sputter = cfg.tau_grow * (t_ratio * t_ratio).max(1e-6);
+        p.dust_to_gas *= (-dt / tau_sputter).exp();
+    }
+
+    p.dust_to_gas = p.dust_to_gas.clamp(0.0, cfg.d_to_g_max);
 }
 
 /// Profundidad óptica del polvo en UV (Phase 137).
@@ -151,25 +165,42 @@ pub fn apply_dust_radiation_pressure_kick(
     if !cfg.enabled || !cfg.radiation_pressure_enabled {
         return;
     }
-    const PI: f64 = std::f64::consts::PI;
-    for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
-        if p.dust_to_gas <= 0.0 {
-            continue;
-        }
-        let h = p.smoothing_length.max(1e-30);
-        let rho = p.mass / ((4.0 / 3.0) * PI * h * h * h).max(1e-100);
-        let a_mag = cfg.radiation_pressure_kappa * p.dust_to_gas * cfg.radiation_pressure_j_uv
-            / rho.max(1e-30);
-        let dir = if p.position.z >= z_reference {
-            Vec3::new(0.0, 0.0, 1.0)
-        } else {
-            Vec3::new(0.0, 0.0, -1.0)
-        };
-        p.velocity += dir * (a_mag * dt);
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter_mut()
+            .for_each(|p| apply_dust_radiation_pressure_kick_particle(p, cfg, z_reference, dt));
     }
+
+    #[cfg(not(feature = "simd"))]
+    for p in particles.iter_mut() {
+        apply_dust_radiation_pressure_kick_particle(p, cfg, z_reference, dt);
+    }
+}
+
+fn apply_dust_radiation_pressure_kick_particle(
+    p: &mut Particle,
+    cfg: &DustSection,
+    z_reference: f64,
+    dt: f64,
+) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
+    if p.dust_to_gas <= 0.0 {
+        return;
+    }
+    const PI: f64 = std::f64::consts::PI;
+    let h = p.smoothing_length.max(1e-30);
+    let rho = p.mass / ((4.0 / 3.0) * PI * h * h * h).max(1e-100);
+    let a_mag =
+        cfg.radiation_pressure_kappa * p.dust_to_gas * cfg.radiation_pressure_j_uv / rho.max(1e-30);
+    let dir = if p.position.z >= z_reference {
+        Vec3::new(0.0, 0.0, 1.0)
+    } else {
+        Vec3::new(0.0, 0.0, -1.0)
+    };
+    p.velocity += dir * (a_mag * dt);
 }
 
 /// Equilibrium dust temperature for a greybody with emissivity index `beta=2`.

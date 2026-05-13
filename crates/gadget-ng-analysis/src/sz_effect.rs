@@ -292,8 +292,12 @@ pub fn compute_kinetic_sz_map(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_core::{Particle, Vec3};
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "test fixture mirrors particle thermodynamic fields"
+    )]
     fn make_gas_particle(
         x: f64,
         y: f64,

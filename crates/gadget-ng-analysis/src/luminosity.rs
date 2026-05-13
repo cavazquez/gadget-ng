@@ -30,6 +30,8 @@
 
 use crate::sps_tables::{Spsband, sps_luminosity};
 use gadget_ng_core::{Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Resultado del cálculo de luminosidad para una galaxia o cúmulo (Phase 118).
 #[derive(Debug, Clone, PartialEq)]
@@ -141,59 +143,71 @@ pub struct SedResult {
 /// # Retorna
 /// `SedResult` con luminosidades por banda, colores y edad media ponderada.
 pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
-    let mut l_u = 0.0_f64;
-    let mut l_b = 0.0_f64;
-    let mut l_v = 0.0_f64;
-    let mut l_r = 0.0_f64;
-    let mut l_i = 0.0_f64;
-    let mut mass_age = 0.0_f64;
-    let mut mass_tot = 0.0_f64;
-    let mut n_stars = 0_usize;
-
-    for p in particles {
-        if p.ptype != ParticleType::Star {
-            continue;
-        }
-        let age = p.stellar_age.max(1e-3);
-        let z = p.metallicity;
-        let m = p.mass;
-
-        l_u += m * sps_luminosity(age, z, Spsband::U);
-        l_b += m * sps_luminosity(age, z, Spsband::B);
-        l_v += m * sps_luminosity(age, z, Spsband::V);
-        l_r += m * sps_luminosity(age, z, Spsband::R);
-        l_i += m * sps_luminosity(age, z, Spsband::I);
-        mass_age += m * age;
-        mass_tot += m;
-        n_stars += 1;
+    #[cfg(feature = "simd")]
+    {
+        let acc = particles
+            .par_iter()
+            .map(sed_contribution)
+            .reduce(SedAccumulator::default, SedAccumulator::combine);
+        acc.into_result()
     }
 
-    let bv = if l_b > 0.0 && l_v > 0.0 {
-        -2.5 * (l_b / l_v).log10()
-    } else {
-        0.0
-    };
-    let vr = if l_v > 0.0 && l_r > 0.0 {
-        -2.5 * (l_v / l_r).log10()
-    } else {
-        0.0
-    };
-    let mass_weighted_age = if mass_tot > 0.0 {
-        mass_age / mass_tot
-    } else {
-        0.0
-    };
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut l_u = 0.0_f64;
+        let mut l_b = 0.0_f64;
+        let mut l_v = 0.0_f64;
+        let mut l_r = 0.0_f64;
+        let mut l_i = 0.0_f64;
+        let mut mass_age = 0.0_f64;
+        let mut mass_tot = 0.0_f64;
+        let mut n_stars = 0_usize;
 
-    SedResult {
-        l_u,
-        l_b,
-        l_v,
-        l_r,
-        l_i,
-        bv,
-        vr,
-        mass_weighted_age,
-        n_stars,
+        for p in particles {
+            if p.ptype != ParticleType::Star {
+                continue;
+            }
+            let age = p.stellar_age.max(1e-3);
+            let z = p.metallicity;
+            let m = p.mass;
+
+            l_u += m * sps_luminosity(age, z, Spsband::U);
+            l_b += m * sps_luminosity(age, z, Spsband::B);
+            l_v += m * sps_luminosity(age, z, Spsband::V);
+            l_r += m * sps_luminosity(age, z, Spsband::R);
+            l_i += m * sps_luminosity(age, z, Spsband::I);
+            mass_age += m * age;
+            mass_tot += m;
+            n_stars += 1;
+        }
+
+        let bv = if l_b > 0.0 && l_v > 0.0 {
+            -2.5 * (l_b / l_v).log10()
+        } else {
+            0.0
+        };
+        let vr = if l_v > 0.0 && l_r > 0.0 {
+            -2.5 * (l_v / l_r).log10()
+        } else {
+            0.0
+        };
+        let mass_weighted_age = if mass_tot > 0.0 {
+            mass_age / mass_tot
+        } else {
+            0.0
+        };
+
+        SedResult {
+            l_u,
+            l_b,
+            l_v,
+            l_r,
+            l_i,
+            bv,
+            vr,
+            mass_weighted_age,
+            n_stars,
+        }
     }
 }
 
@@ -210,35 +224,175 @@ pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
 ///
 /// `LuminosityResult` con luminosidad total, colores promedio y número de estrellas.
 pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
-    let mut l_total = 0.0_f64;
-    let mut bv_weighted = 0.0_f64;
-    let mut gr_weighted = 0.0_f64;
-    let mut n_stars = 0_usize;
-
-    for p in particles {
-        if p.ptype != ParticleType::Star {
-            continue;
-        }
-        let age = p.stellar_age.max(1e-4);
-        let z = p.metallicity;
-        let l_i = stellar_luminosity_solar(p.mass, age, z);
-
-        l_total += l_i;
-        bv_weighted += l_i * bv_color(age, z);
-        gr_weighted += l_i * gr_color(age, z);
-        n_stars += 1;
+    #[cfg(feature = "simd")]
+    {
+        let acc = particles.par_iter().map(luminosity_contribution).reduce(
+            LuminosityAccumulator::default,
+            LuminosityAccumulator::combine,
+        );
+        acc.into_result()
     }
 
-    let (bv, gr) = if l_total > 0.0 {
-        (bv_weighted / l_total, gr_weighted / l_total)
-    } else {
-        (0.0, 0.0)
-    };
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut l_total = 0.0_f64;
+        let mut bv_weighted = 0.0_f64;
+        let mut gr_weighted = 0.0_f64;
+        let mut n_stars = 0_usize;
 
-    LuminosityResult {
-        l_total,
-        bv,
-        gr,
-        n_stars,
+        for p in particles {
+            if p.ptype != ParticleType::Star {
+                continue;
+            }
+            let age = p.stellar_age.max(1e-4);
+            let z = p.metallicity;
+            let l_i = stellar_luminosity_solar(p.mass, age, z);
+
+            l_total += l_i;
+            bv_weighted += l_i * bv_color(age, z);
+            gr_weighted += l_i * gr_color(age, z);
+            n_stars += 1;
+        }
+
+        let (bv, gr) = if l_total > 0.0 {
+            (bv_weighted / l_total, gr_weighted / l_total)
+        } else {
+            (0.0, 0.0)
+        };
+
+        LuminosityResult {
+            l_total,
+            bv,
+            gr,
+            n_stars,
+        }
+    }
+}
+
+#[derive(Default)]
+struct SedAccumulator {
+    l_u: f64,
+    l_b: f64,
+    l_v: f64,
+    l_r: f64,
+    l_i: f64,
+    mass_age: f64,
+    mass_tot: f64,
+    n_stars: usize,
+}
+
+impl SedAccumulator {
+    fn combine(self, other: Self) -> Self {
+        Self {
+            l_u: self.l_u + other.l_u,
+            l_b: self.l_b + other.l_b,
+            l_v: self.l_v + other.l_v,
+            l_r: self.l_r + other.l_r,
+            l_i: self.l_i + other.l_i,
+            mass_age: self.mass_age + other.mass_age,
+            mass_tot: self.mass_tot + other.mass_tot,
+            n_stars: self.n_stars + other.n_stars,
+        }
+    }
+
+    fn into_result(self) -> SedResult {
+        let bv = if self.l_b > 0.0 && self.l_v > 0.0 {
+            -2.5 * (self.l_b / self.l_v).log10()
+        } else {
+            0.0
+        };
+        let vr = if self.l_v > 0.0 && self.l_r > 0.0 {
+            -2.5 * (self.l_v / self.l_r).log10()
+        } else {
+            0.0
+        };
+        let mass_weighted_age = if self.mass_tot > 0.0 {
+            self.mass_age / self.mass_tot
+        } else {
+            0.0
+        };
+
+        SedResult {
+            l_u: self.l_u,
+            l_b: self.l_b,
+            l_v: self.l_v,
+            l_r: self.l_r,
+            l_i: self.l_i,
+            bv,
+            vr,
+            mass_weighted_age,
+            n_stars: self.n_stars,
+        }
+    }
+}
+
+fn sed_contribution(p: &Particle) -> SedAccumulator {
+    if p.ptype != ParticleType::Star {
+        return SedAccumulator::default();
+    }
+    let age = p.stellar_age.max(1e-3);
+    let z = p.metallicity;
+    let m = p.mass;
+    SedAccumulator {
+        l_u: m * sps_luminosity(age, z, Spsband::U),
+        l_b: m * sps_luminosity(age, z, Spsband::B),
+        l_v: m * sps_luminosity(age, z, Spsband::V),
+        l_r: m * sps_luminosity(age, z, Spsband::R),
+        l_i: m * sps_luminosity(age, z, Spsband::I),
+        mass_age: m * age,
+        mass_tot: m,
+        n_stars: 1,
+    }
+}
+
+#[derive(Default)]
+struct LuminosityAccumulator {
+    l_total: f64,
+    bv_weighted: f64,
+    gr_weighted: f64,
+    n_stars: usize,
+}
+
+impl LuminosityAccumulator {
+    fn combine(self, other: Self) -> Self {
+        Self {
+            l_total: self.l_total + other.l_total,
+            bv_weighted: self.bv_weighted + other.bv_weighted,
+            gr_weighted: self.gr_weighted + other.gr_weighted,
+            n_stars: self.n_stars + other.n_stars,
+        }
+    }
+
+    fn into_result(self) -> LuminosityResult {
+        let (bv, gr) = if self.l_total > 0.0 {
+            (
+                self.bv_weighted / self.l_total,
+                self.gr_weighted / self.l_total,
+            )
+        } else {
+            (0.0, 0.0)
+        };
+
+        LuminosityResult {
+            l_total: self.l_total,
+            bv,
+            gr,
+            n_stars: self.n_stars,
+        }
+    }
+}
+
+fn luminosity_contribution(p: &Particle) -> LuminosityAccumulator {
+    if p.ptype != ParticleType::Star {
+        return LuminosityAccumulator::default();
+    }
+    let age = p.stellar_age.max(1e-4);
+    let z = p.metallicity;
+    let l_i = stellar_luminosity_solar(p.mass, age, z);
+    LuminosityAccumulator {
+        l_total: l_i,
+        bv_weighted: l_i * bv_color(age, z),
+        gr_weighted: l_i * gr_color(age, z),
+        n_stars: 1,
     }
 }

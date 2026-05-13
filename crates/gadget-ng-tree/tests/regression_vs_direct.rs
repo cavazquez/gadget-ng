@@ -60,6 +60,7 @@ fn lattice_cfg(n: usize, seed: u64) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
     }
 }
 

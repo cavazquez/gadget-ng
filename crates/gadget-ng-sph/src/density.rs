@@ -16,6 +16,8 @@ use crate::kernel::{grad_w, w};
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Número objetivo de vecinos SPH.
 const N_NEIGH: f64 = 32.0;
@@ -37,7 +39,38 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
     // Extrae datos de todas las partículas (pos, mass) para no tener borrowing doble.
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    #[cfg(feature = "simd")]
+    {
+        let gas_state: Vec<Option<(f64, f64)>> = particles
+            .iter()
+            .map(|p| p.gas.as_ref().map(|g| (g.h_sml, g.u)))
+            .collect();
+        let updates: Vec<Option<(f64, f64, f64, f64)>> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                let (h0, u) = gas_state[i]?;
+                Some(density_update_for_particle(
+                    &pos,
+                    &mass,
+                    i,
+                    h0,
+                    u,
+                    periodic_box,
+                ))
+            })
+            .collect();
 
+        for (p, update) in particles.iter_mut().zip(updates) {
+            if let (Some(gas), Some((h, rho, pressure, entropy))) = (p.gas.as_mut(), update) {
+                gas.h_sml = h;
+                gas.rho = rho;
+                gas.pressure = pressure;
+                gas.entropy = entropy;
+            }
+        }
+    }
+
+    #[cfg(not(feature = "simd"))]
     for i in 0..n {
         let gas = match particles[i].gas.as_mut() {
             Some(g) => g,
@@ -74,6 +107,43 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
             gas.entropy = (GAMMA - 1.0) * gas.u / gas.rho.powf(GAMMA - 1.0);
         }
     }
+}
+
+#[cfg(feature = "simd")]
+fn density_update_for_particle(
+    pos: &[Vec3],
+    mass: &[f64],
+    i: usize,
+    h0: f64,
+    u: f64,
+    periodic_box: Option<f64>,
+) -> (f64, f64, f64, f64) {
+    let n = pos.len();
+    let pi = pos[i];
+    let m_i = mass[i];
+    let mut h = h0.max(1e-10);
+
+    for _ in 0..MAX_ITER {
+        let (rho, drho_dh) = rho_and_deriv(pos, mass, pi, h, n, periodic_box);
+        let n_eff = (4.0 * std::f64::consts::PI / 3.0) * (2.0 * h).powi(3) * rho / m_i;
+        if (n_eff - N_NEIGH).abs() < 1e-2 {
+            break;
+        }
+        let dn_dh = (4.0 * std::f64::consts::PI / 3.0)
+            * (24.0 * h * h * rho + (2.0 * h).powi(3) * drho_dh)
+            / m_i;
+        let dh = -(n_eff - N_NEIGH) / (dn_dh + 1e-100);
+        h = (h + dh.clamp(-0.5 * h, 0.5 * h)).max(1e-10);
+    }
+
+    let rho = rho_sum(pos, mass, pi, h, n, periodic_box);
+    let pressure = (GAMMA - 1.0) * rho * u;
+    let entropy = if rho > 0.0 {
+        (GAMMA - 1.0) * u / rho.powf(GAMMA - 1.0)
+    } else {
+        0.0
+    };
+    (h, rho, pressure, entropy)
 }
 
 /// `ρ(h) = Σ_j m_j W(r_ij, h)` y su derivada `dρ/dh`.

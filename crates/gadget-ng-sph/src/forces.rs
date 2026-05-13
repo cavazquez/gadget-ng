@@ -36,6 +36,8 @@ use crate::kernel::grad_w;
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Regularización de μ_ij (viscosidad clásica de Monaghan).
 const EPS_VISC: f64 = 0.01;
@@ -65,7 +67,37 @@ pub fn compute_sph_forces_with_periodic(particles: &mut [SphParticle], periodic_
         .iter()
         .map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0))
         .collect();
+    #[cfg(feature = "simd")]
+    {
+        let is_gas: Vec<bool> = particles.iter().map(|p| p.gas.is_some()).collect();
+        let updates: Vec<Option<(Vec3, f64)>> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                if !is_gas[i] || rho[i] < 1e-200 {
+                    return None;
+                }
+                Some(sph_force_update_for_particle(
+                    i,
+                    &pos,
+                    &vel,
+                    &mass,
+                    &rho,
+                    &pressure,
+                    &h_sml,
+                    &is_gas,
+                    periodic_box,
+                ))
+            })
+            .collect();
+        for (p, update) in particles.iter_mut().zip(updates) {
+            if let (Some(gas), Some((acc, dudt))) = (p.gas.as_mut(), update) {
+                gas.acc_sph = acc;
+                gas.du_dt = dudt;
+            }
+        }
+    }
 
+    #[cfg(not(feature = "simd"))]
     for i in 0..n {
         if particles[i].gas.is_none() {
             continue;
@@ -136,6 +168,69 @@ pub fn compute_sph_forces_with_periodic(particles: &mut [SphParticle], periodic_
     }
 }
 
+#[cfg(feature = "simd")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "hot SPH pair loop keeps SoA slices explicit"
+)]
+fn sph_force_update_for_particle(
+    i: usize,
+    pos: &[Vec3],
+    vel: &[Vec3],
+    mass: &[f64],
+    rho: &[f64],
+    pressure: &[f64],
+    h_sml: &[f64],
+    is_gas: &[bool],
+    periodic_box: Option<f64>,
+) -> (Vec3, f64) {
+    let n = pos.len();
+    let pi_rho2 = pressure[i] / (rho[i] * rho[i]);
+    let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
+    let mut acc = Vec3::zero();
+    let mut dudt = 0.0_f64;
+
+    for j in 0..n {
+        if j == i || !is_gas[j] || rho[j] < 1e-200 {
+            continue;
+        }
+        let r_ij = periodic_delta(pos[j], pos[i], periodic_box);
+        let r = r_ij.norm();
+        let h_i = h_sml[i];
+        let h_j = h_sml[j];
+        let gw_i = grad_w(r, h_i);
+        let gw_j = grad_w(r, h_j);
+        if gw_i == 0.0 && gw_j == 0.0 {
+            continue;
+        }
+        let r_hat = if r > 1e-300 {
+            r_ij * (1.0 / r)
+        } else {
+            Vec3::zero()
+        };
+        let nabla_w_i = r_hat * (gw_i / h_i);
+        let nabla_w_j = r_hat * (gw_j / h_j);
+        let pj_rho2 = pressure[j] / (rho[j] * rho[j]);
+        let v_ij = vel[i] - vel[j];
+        let h_bar = 0.5 * (h_i + h_j);
+        let mu_ij = if v_ij.dot(r_ij) < 0.0 {
+            let cs_j = (GAMMA * pressure[j] / rho[j]).sqrt().max(0.0);
+            let cs_bar = 0.5 * (cs_i + cs_j);
+            let rho_bar = 0.5 * (rho[i] + rho[j]);
+            let mu = h_bar * v_ij.dot(r_ij) / (r * r + EPS_VISC * h_bar * h_bar);
+            -ALPHA_VISC * cs_bar * mu / rho_bar
+        } else {
+            0.0
+        };
+        let coeff_i = pi_rho2 + 0.5 * mu_ij;
+        let coeff_j = pj_rho2 + 0.5 * mu_ij;
+        acc -= (nabla_w_i * coeff_i + nabla_w_j * coeff_j) * mass[j];
+        dudt += mass[j] * pi_rho2 * v_ij.dot(nabla_w_i);
+    }
+
+    (acc, dudt)
+}
+
 /// Fuerzas SPH con formulación Gadget-2 completa.
 ///
 /// Implementa la viscosidad artificial por **velocidad de señal** (Gadget-2, ec. 14)
@@ -183,7 +278,39 @@ pub fn compute_sph_forces_gadget2_with_periodic(
         .iter()
         .map(|p| p.gas.as_ref().map(|g| g.balsara).unwrap_or(1.0))
         .collect();
+    #[cfg(feature = "simd")]
+    {
+        let is_gas: Vec<bool> = particles.iter().map(|p| p.gas.is_some()).collect();
+        let updates: Vec<Option<(Vec3, f64, f64)>> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                if !is_gas[i] || rho[i] < 1e-200 {
+                    return None;
+                }
+                Some(sph_gadget2_update_for_particle(
+                    i,
+                    &pos,
+                    &vel,
+                    &mass,
+                    &rho,
+                    &pressure,
+                    &h_sml,
+                    &balsara,
+                    &is_gas,
+                    periodic_box,
+                ))
+            })
+            .collect();
+        for (p, update) in particles.iter_mut().zip(updates) {
+            if let (Some(gas), Some((acc, da_dt, max_vsig))) = (p.gas.as_mut(), update) {
+                gas.acc_sph = acc;
+                gas.da_dt = da_dt;
+                gas.max_vsig = max_vsig;
+            }
+        }
+    }
 
+    #[cfg(not(feature = "simd"))]
     for i in 0..n {
         if particles[i].gas.is_none() || rho[i] < 1e-200 {
             continue;
@@ -267,6 +394,79 @@ pub fn compute_sph_forces_gadget2_with_periodic(
             gas.du_dt = pressure[i] / (rho[i] * rho[i]) * da_dt;
         }
     }
+}
+
+#[cfg(feature = "simd")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "hot SPH pair loop keeps SoA slices explicit"
+)]
+fn sph_gadget2_update_for_particle(
+    i: usize,
+    pos: &[Vec3],
+    vel: &[Vec3],
+    mass: &[f64],
+    rho: &[f64],
+    pressure: &[f64],
+    h_sml: &[f64],
+    balsara: &[f64],
+    is_gas: &[bool],
+    periodic_box: Option<f64>,
+) -> (Vec3, f64, f64) {
+    let n = pos.len();
+    let pi_rho2 = pressure[i] / (rho[i] * rho[i]);
+    let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
+    let fi = balsara[i];
+    let mut acc = Vec3::zero();
+    let mut da_dt = 0.0_f64;
+    let mut max_vsig = 0.0_f64;
+
+    for j in 0..n {
+        if j == i || !is_gas[j] || rho[j] < 1e-200 {
+            continue;
+        }
+        let r_ij = periodic_delta(pos[j], pos[i], periodic_box);
+        let r = r_ij.norm();
+        let hi = h_sml[i];
+        let hj = h_sml[j];
+        let gw_i = grad_w(r, hi);
+        let gw_j = grad_w(r, hj);
+        if gw_i == 0.0 && gw_j == 0.0 {
+            continue;
+        }
+        let r_hat = if r > 1e-300 {
+            r_ij * (1.0 / r)
+        } else {
+            Vec3::zero()
+        };
+        let nabla_w_i = r_hat * (gw_i / hi);
+        let nabla_w_j = r_hat * (gw_j / hj);
+        let nabla_w_bar = (nabla_w_i + nabla_w_j) * 0.5;
+        let v_ij = vel[i] - vel[j];
+        let w_ij = v_ij.dot(r_hat);
+        let (pi_visc, vsig) = if w_ij < 0.0 {
+            let cs_j = (GAMMA * pressure[j] / rho[j]).sqrt().max(0.0);
+            let vsig_ij = ALPHA_VISC * (cs_i + cs_j - 3.0 * w_ij) * 0.5;
+            let rho_bar = 0.5 * (rho[i] + rho[j]);
+            let fij = 0.5 * (fi + balsara[j]);
+            (-fij * vsig_ij * w_ij / rho_bar, vsig_ij)
+        } else {
+            (0.0, 0.0)
+        };
+        max_vsig = max_vsig.max(vsig);
+        let pj_rho2 = pressure[j] / (rho[j] * rho[j]);
+        let coeff_i = pi_rho2 + 0.5 * pi_visc;
+        let coeff_j = pj_rho2 + 0.5 * pi_visc;
+        acc -= (nabla_w_i * coeff_i + nabla_w_j * coeff_j) * mass[j];
+        da_dt += mass[j] * pi_visc * v_ij.dot(nabla_w_bar);
+    }
+
+    let da_factor = if rho[i] > 0.0 {
+        (GAMMA - 1.0) * 0.5 / rho[i].powf(GAMMA - 1.0)
+    } else {
+        0.0
+    };
+    (acc, da_dt * da_factor, max_vsig)
 }
 
 /// Parámetro de viscosidad artificial (compartido entre ambos integradores).

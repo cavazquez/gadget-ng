@@ -23,6 +23,8 @@
 //! Peebles (1971), A&A 11, 377; Bullock et al. (2001), ApJ 555, 240.
 
 use gadget_ng_core::Vec3;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 const G_INTERNAL: f64 = 4.302e-3; // pc M_sun⁻¹ (km/s)² — en unidades de kpc·(km/s)²/M_sun = 4.302e-6
 
@@ -90,6 +92,9 @@ pub fn halo_spin(
         return None;
     }
 
+    #[cfg(feature = "simd")]
+    let mass_total: f64 = masses.par_iter().sum();
+    #[cfg(not(feature = "simd"))]
     let mass_total: f64 = masses.iter().sum();
     if mass_total <= 0.0 {
         return None;
@@ -100,27 +105,27 @@ pub fn halo_spin(
     let vel_com = velocity_center(velocities, masses, mass_total);
 
     // ── Momento angular L = Σ m_i × (r_i - r_com) × (v_i - v_com) ───────
-    let mut lx = 0.0f64;
-    let mut ly = 0.0f64;
-    let mut lz = 0.0f64;
+    #[cfg(feature = "simd")]
+    let (lx, ly, lz) = positions
+        .par_iter()
+        .zip(velocities.par_iter())
+        .enumerate()
+        .map(|(i, (&pos, &vel))| angular_momentum_term(i, pos, vel, masses, pos_com, vel_com))
+        .reduce(|| (0.0, 0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
 
-    for (i, (&pos, &vel)) in positions.iter().zip(velocities.iter()).enumerate() {
-        let m = if i < masses.len() {
-            masses[i]
-        } else {
-            masses[0]
-        };
-        let rx = pos.x - pos_com[0];
-        let ry = pos.y - pos_com[1];
-        let rz = pos.z - pos_com[2];
-        let vx = vel.x - vel_com[0];
-        let vy = vel.y - vel_com[1];
-        let vz = vel.z - vel_com[2];
-        // L += m × (r × v)
-        lx += m * (ry * vz - rz * vy);
-        ly += m * (rz * vx - rx * vz);
-        lz += m * (rx * vy - ry * vx);
-    }
+    #[cfg(not(feature = "simd"))]
+    let (lx, ly, lz) = {
+        let mut lx = 0.0f64;
+        let mut ly = 0.0f64;
+        let mut lz = 0.0f64;
+        for (i, (&pos, &vel)) in positions.iter().zip(velocities.iter()).enumerate() {
+            let (dlx, dly, dlz) = angular_momentum_term(i, pos, vel, masses, pos_com, vel_com);
+            lx += dlx;
+            ly += dly;
+            lz += dlz;
+        }
+        (lx, ly, lz)
+    };
 
     let l_mag = (lx * lx + ly * ly + lz * lz).sqrt();
 
@@ -166,6 +171,38 @@ pub fn compute_halo_spins(
     halo_ids: &[Vec<usize>],
     params: &SpinParams,
 ) -> Vec<Option<HaloSpin>> {
+    compute_halo_spins_impl(positions, velocities, masses, halo_ids, params)
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+#[cfg(feature = "simd")]
+fn compute_halo_spins_impl(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    halo_ids: &[Vec<usize>],
+    params: &SpinParams,
+) -> Vec<Option<HaloSpin>> {
+    halo_ids
+        .par_iter()
+        .map(|ids| {
+            let pos: Vec<Vec3> = ids.iter().map(|&i| positions[i]).collect();
+            let vel: Vec<Vec3> = ids.iter().map(|&i| velocities[i]).collect();
+            let mass: Vec<f64> = ids.iter().map(|&i| masses[i]).collect();
+            halo_spin(&pos, &vel, &mass, params)
+        })
+        .collect()
+}
+
+#[cfg(not(feature = "simd"))]
+fn compute_halo_spins_impl(
+    positions: &[Vec3],
+    velocities: &[Vec3],
+    masses: &[f64],
+    halo_ids: &[Vec<usize>],
+    params: &SpinParams,
+) -> Vec<Option<HaloSpin>> {
     halo_ids
         .iter()
         .map(|ids| {
@@ -177,40 +214,105 @@ pub fn compute_halo_spins(
         .collect()
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+fn angular_momentum_term(
+    i: usize,
+    pos: Vec3,
+    vel: Vec3,
+    masses: &[f64],
+    pos_com: [f64; 3],
+    vel_com: [f64; 3],
+) -> (f64, f64, f64) {
+    let m = if i < masses.len() {
+        masses[i]
+    } else {
+        masses[0]
+    };
+    let rx = pos.x - pos_com[0];
+    let ry = pos.y - pos_com[1];
+    let rz = pos.z - pos_com[2];
+    let vx = vel.x - vel_com[0];
+    let vy = vel.y - vel_com[1];
+    let vz = vel.z - vel_com[2];
+    // L += m × (r × v)
+    (
+        m * (ry * vz - rz * vy),
+        m * (rz * vx - rx * vz),
+        m * (rx * vy - ry * vx),
+    )
+}
 
 fn center_of_mass(positions: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 3] {
-    let mut cx = 0.0f64;
-    let mut cy = 0.0f64;
-    let mut cz = 0.0f64;
-    for (i, &pos) in positions.iter().enumerate() {
-        let m = if i < masses.len() {
-            masses[i]
-        } else {
-            masses[0]
-        };
-        cx += m * pos.x;
-        cy += m * pos.y;
-        cz += m * pos.z;
+    #[cfg(feature = "simd")]
+    {
+        let (cx, cy, cz) = positions
+            .par_iter()
+            .enumerate()
+            .map(|(i, &pos)| {
+                let m = if i < masses.len() {
+                    masses[i]
+                } else {
+                    masses[0]
+                };
+                (m * pos.x, m * pos.y, m * pos.z)
+            })
+            .reduce(|| (0.0, 0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+        [cx / total_mass, cy / total_mass, cz / total_mass]
     }
-    [cx / total_mass, cy / total_mass, cz / total_mass]
+
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut cx = 0.0f64;
+        let mut cy = 0.0f64;
+        let mut cz = 0.0f64;
+        for (i, &pos) in positions.iter().enumerate() {
+            let m = if i < masses.len() {
+                masses[i]
+            } else {
+                masses[0]
+            };
+            cx += m * pos.x;
+            cy += m * pos.y;
+            cz += m * pos.z;
+        }
+        [cx / total_mass, cy / total_mass, cz / total_mass]
+    }
 }
 
 fn velocity_center(velocities: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 3] {
-    let mut vx = 0.0f64;
-    let mut vy = 0.0f64;
-    let mut vz = 0.0f64;
-    for (i, &vel) in velocities.iter().enumerate() {
-        let m = if i < masses.len() {
-            masses[i]
-        } else {
-            masses[0]
-        };
-        vx += m * vel.x;
-        vy += m * vel.y;
-        vz += m * vel.z;
+    #[cfg(feature = "simd")]
+    {
+        let (vx, vy, vz) = velocities
+            .par_iter()
+            .enumerate()
+            .map(|(i, &vel)| {
+                let m = if i < masses.len() {
+                    masses[i]
+                } else {
+                    masses[0]
+                };
+                (m * vel.x, m * vel.y, m * vel.z)
+            })
+            .reduce(|| (0.0, 0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+        [vx / total_mass, vy / total_mass, vz / total_mass]
     }
-    [vx / total_mass, vy / total_mass, vz / total_mass]
+
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut vx = 0.0f64;
+        let mut vy = 0.0f64;
+        let mut vz = 0.0f64;
+        for (i, &vel) in velocities.iter().enumerate() {
+            let m = if i < masses.len() {
+                masses[i]
+            } else {
+                masses[0]
+            };
+            vx += m * vel.x;
+            vy += m * vel.y;
+            vz += m * vel.z;
+        }
+        [vx / total_mass, vy / total_mass, vz / total_mass]
+    }
 }
 
 fn r200_from_mass(mass: f64, params: &SpinParams) -> f64 {

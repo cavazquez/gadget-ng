@@ -710,6 +710,7 @@ dependencies = [
  "approx",
  "gadget-ng-core",
  "gadget-ng-parallel",
+ "rayon",
  "rustfft",
  "serde",
  "serde_json",
@@ -767,8 +768,12 @@ dependencies = [
 name = "gadget-ng-cuda"
 version = "0.2.0"
 dependencies = [
+ "criterion",
  "gadget-ng-core",
+ "gadget-ng-mhd",
  "gadget-ng-pm",
+ "gadget-ng-rt",
+ "gadget-ng-sph",
 ]
 
 [[package]]
@@ -836,6 +841,7 @@ dependencies = [
  "approx",
  "criterion",
  "gadget-ng-core",
+ "rayon",
 ]
 
 [[package]]
@@ -895,6 +901,7 @@ dependencies = [
  "gadget-ng-core",
  "gadget-ng-sph",
  "mpi",
+ "rayon",
  "rustfft",
  "serde",
 ]

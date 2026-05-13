@@ -35,6 +35,8 @@
 //! conversión son: `k_B/m_H ≈ 8.254 × 10⁻³ (km/s)² / K`.
 
 use gadget_ng_core::{CoolingKind, Particle, ParticleType, SphSection, UvBackgroundModel};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// k_B / (m_H · μ) en (km/s)² / K.
 /// μ = 0.6 (gas completamente ionizado H+He), k_B/m_H = 8.254 × 10⁻³ km²/s²/K.
@@ -328,57 +330,77 @@ pub fn apply_cooling_with_redshift(
     let t_floor_k = cfg.t_floor_k;
     let u_floor = temperature_to_u(t_floor_k, gamma);
 
-    for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas || p.internal_energy <= u_floor {
-            continue;
-        }
-        // Densidad estimada localmente: ρ ≈ m / (4/3 π h³)
-        let h = p.smoothing_length.max(1e-10);
-        let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
-
-        let lambda = match cfg.cooling {
-            CoolingKind::None => 0.0,
-            CoolingKind::AtomicHHe => {
-                cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
-            }
-            CoolingKind::MetalCooling => cooling_rate_metal(
-                p.internal_energy,
-                rho_local,
-                p.metallicity,
-                gamma,
-                t_floor_k,
-            ),
-            CoolingKind::MetalTabular => cooling_rate_tabular(
-                p.internal_energy,
-                rho_local,
-                p.metallicity,
-                gamma,
-                t_floor_k,
-            ),
-            CoolingKind::UvBackground => cooling_rate_uvb(
-                p.internal_energy,
-                rho_local,
-                p.metallicity,
-                gamma,
-                t_floor_k,
-                cfg,
-                redshift,
-            ),
-        };
-        if lambda == 0.0 {
-            continue;
-        }
-        // du/dt = -Λ_net · X_H² · ρ ; si Λ_net<0 domina heating y du/dt>0.
-        let du_dt = -lambda * X_H * X_H * rho_local;
-        // Subciclo: limitar dt para que Euler explícito no cruce u=0 de un salto no físico.
-        let dt_eff = if du_dt < 0.0 {
-            let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
-            dt.min(dt_cool)
-        } else {
-            dt
-        };
-        p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter_mut()
+            .for_each(|p| apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor));
     }
+
+    #[cfg(not(feature = "simd"))]
+    for p in particles.iter_mut() {
+        apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor);
+    }
+}
+
+fn apply_cooling_particle(
+    p: &mut Particle,
+    cfg: &SphSection,
+    dt: f64,
+    redshift: f64,
+    gamma: f64,
+    t_floor_k: f64,
+    u_floor: f64,
+) {
+    if p.ptype != ParticleType::Gas || p.internal_energy <= u_floor {
+        return;
+    }
+    // Densidad estimada localmente: ρ ≈ m / (4/3 π h³)
+    let h = p.smoothing_length.max(1e-10);
+    let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
+
+    let lambda = match cfg.cooling {
+        CoolingKind::None => 0.0,
+        CoolingKind::AtomicHHe => {
+            cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
+        }
+        CoolingKind::MetalCooling => cooling_rate_metal(
+            p.internal_energy,
+            rho_local,
+            p.metallicity,
+            gamma,
+            t_floor_k,
+        ),
+        CoolingKind::MetalTabular => cooling_rate_tabular(
+            p.internal_energy,
+            rho_local,
+            p.metallicity,
+            gamma,
+            t_floor_k,
+        ),
+        CoolingKind::UvBackground => cooling_rate_uvb(
+            p.internal_energy,
+            rho_local,
+            p.metallicity,
+            gamma,
+            t_floor_k,
+            cfg,
+            redshift,
+        ),
+    };
+    if lambda == 0.0 {
+        return;
+    }
+    // du/dt = -Λ_net · X_H² · ρ ; si Λ_net<0 domina heating y du/dt>0.
+    let du_dt = -lambda * X_H * X_H * rho_local;
+    // Subciclo: limitar dt para que Euler explícito no cruce u=0 de un salto no físico.
+    let dt_eff = if du_dt < 0.0 {
+        let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
+        dt.min(dt_cool)
+    } else {
+        dt
+    };
+    p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
 }
 
 /// Cooling con supresión magnética por β-plasma (Phase 134).
@@ -403,70 +425,94 @@ pub fn apply_cooling_mhd_with_redshift(
     let u_floor = temperature_to_u(t_floor_k, gamma);
     let f_mag = cfg.mag_suppress_cooling;
 
+    #[cfg(feature = "simd")]
+    {
+        particles.par_iter_mut().for_each(|p| {
+            apply_cooling_mhd_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor, f_mag)
+        });
+    }
+
+    #[cfg(not(feature = "simd"))]
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas || p.internal_energy <= u_floor {
-            continue;
-        }
-        let h = p.smoothing_length.max(1e-10);
-        let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
+        apply_cooling_mhd_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor, f_mag);
+    }
+}
 
-        let lambda = match cfg.cooling {
-            CoolingKind::None => 0.0,
-            CoolingKind::AtomicHHe => {
-                cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
-            }
-            CoolingKind::MetalCooling => cooling_rate_metal(
-                p.internal_energy,
-                rho_local,
-                p.metallicity,
-                gamma,
-                t_floor_k,
-            ),
-            CoolingKind::MetalTabular => cooling_rate_tabular(
-                p.internal_energy,
-                rho_local,
-                p.metallicity,
-                gamma,
-                t_floor_k,
-            ),
-            CoolingKind::UvBackground => cooling_rate_uvb(
-                p.internal_energy,
-                rho_local,
-                p.metallicity,
-                gamma,
-                t_floor_k,
-                cfg,
-                redshift,
-            ),
-        };
-        if lambda == 0.0 {
-            continue;
-        }
+#[expect(
+    clippy::too_many_arguments,
+    reason = "keeps cooling loop state scalar for serial and rayon paths"
+)]
+fn apply_cooling_mhd_particle(
+    p: &mut Particle,
+    cfg: &SphSection,
+    dt: f64,
+    redshift: f64,
+    gamma: f64,
+    t_floor_k: f64,
+    u_floor: f64,
+    f_mag: f64,
+) {
+    if p.ptype != ParticleType::Gas || p.internal_energy <= u_floor {
+        return;
+    }
+    let h = p.smoothing_length.max(1e-10);
+    let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
 
-        // Supresión magnética: β = 2 P_th / |B|² (con μ₀=1 en unidades internas)
-        let mag_suppression = if f_mag > 0.0 {
-            let b2 =
-                p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
-            if b2 > 1e-60 {
-                let p_th = (gamma - 1.0) * rho_local * p.internal_energy;
-                let beta = 2.0 * p_th / b2;
-                1.0 / (1.0 + f_mag / beta.max(1e-10))
-            } else {
-                1.0
-            }
+    let lambda = match cfg.cooling {
+        CoolingKind::None => 0.0,
+        CoolingKind::AtomicHHe => {
+            cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
+        }
+        CoolingKind::MetalCooling => cooling_rate_metal(
+            p.internal_energy,
+            rho_local,
+            p.metallicity,
+            gamma,
+            t_floor_k,
+        ),
+        CoolingKind::MetalTabular => cooling_rate_tabular(
+            p.internal_energy,
+            rho_local,
+            p.metallicity,
+            gamma,
+            t_floor_k,
+        ),
+        CoolingKind::UvBackground => cooling_rate_uvb(
+            p.internal_energy,
+            rho_local,
+            p.metallicity,
+            gamma,
+            t_floor_k,
+            cfg,
+            redshift,
+        ),
+    };
+    if lambda == 0.0 {
+        return;
+    }
+
+    // Supresión magnética: β = 2 P_th / |B|² (con μ₀=1 en unidades internas)
+    let mag_suppression = if f_mag > 0.0 {
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+        if b2 > 1e-60 {
+            let p_th = (gamma - 1.0) * rho_local * p.internal_energy;
+            let beta = 2.0 * p_th / b2;
+            1.0 / (1.0 + f_mag / beta.max(1e-10))
         } else {
             1.0
-        };
+        }
+    } else {
+        1.0
+    };
 
-        let du_dt = -lambda * X_H * X_H * rho_local * mag_suppression;
-        let dt_eff = if du_dt < 0.0 {
-            let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
-            dt.min(dt_cool)
-        } else {
-            dt
-        };
-        p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
-    }
+    let du_dt = -lambda * X_H * X_H * rho_local * mag_suppression;
+    let dt_eff = if du_dt < 0.0 {
+        let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
+        dt.min(dt_cool)
+    } else {
+        dt
+    };
+    p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
 }
 
 #[cfg(test)]

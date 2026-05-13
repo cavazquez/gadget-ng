@@ -4,6 +4,7 @@
 
 use std::ffi::c_void;
 
+use crate::availability::{self, CudaAvailability, CudaExecutionError, CudaUnavailable};
 use gadget_ng_core::gravity::GravitySolver;
 use gadget_ng_core::vec3::Vec3;
 
@@ -33,21 +34,33 @@ unsafe impl Send for CudaPmSolver {}
 unsafe impl Sync for CudaPmSolver {}
 
 impl CudaPmSolver {
-    /// `true` si el crate se compiló con soporte CUDA y hay un dispositivo disponible.
-    pub fn is_available() -> bool {
+    /// Estado detallado de CUDA, separando compilación y runtime.
+    pub fn availability() -> CudaAvailability {
         #[cfg(cuda_unavailable)]
-        return false;
+        {
+            return availability::build_availability();
+        }
 
         #[cfg(not(cuda_unavailable))]
         {
-            // Intento de crear un handle de prueba con grilla mínima.
+            let mut status = availability::build_availability();
+            // SAFETY: llamada FFI de prueba con grilla mínima; el handle se destruye si existe.
             let h = unsafe { crate::ffi::cuda_pm_create(8, 1.0) };
             if h.is_null() {
-                return false;
+                status.runtime_available = false;
+                status.reason = "toolchain CUDA disponible, pero no se pudo crear handle runtime";
+                return status;
             }
+            // SAFETY: h fue creado por cuda_pm_create y no se usará después.
             unsafe { crate::ffi::cuda_pm_destroy(h) };
-            true
+            status.runtime_available = true;
+            status
         }
+    }
+
+    /// `true` si el crate se compiló con soporte CUDA y hay un dispositivo disponible.
+    pub fn is_available() -> bool {
+        Self::availability().is_available()
     }
 
     /// Intenta construir el solver PM CUDA.
@@ -58,15 +71,31 @@ impl CudaPmSolver {
     ///
     /// Devuelve `None` si CUDA no está disponible o si la inicialización falla.
     pub fn try_new(grid_size: usize, box_size: f64) -> Option<Self> {
-        Self::try_new_with_r_split(grid_size, box_size, 0.0)
+        Self::try_new_checked(grid_size, box_size).ok()
+    }
+
+    /// Variante fallible de [`Self::try_new`] que conserva el motivo de indisponibilidad.
+    pub fn try_new_checked(grid_size: usize, box_size: f64) -> Result<Self, CudaUnavailable> {
+        Self::try_new_with_r_split_checked(grid_size, box_size, 0.0)
     }
 
     /// Como [`Self::try_new`], pero con filtro Gaussiano TreePM (`r_split` > 0).
     pub fn try_new_with_r_split(grid_size: usize, box_size: f64, r_split: f64) -> Option<Self> {
+        Self::try_new_with_r_split_checked(grid_size, box_size, r_split).ok()
+    }
+
+    /// Variante fallible de [`Self::try_new_with_r_split`].
+    pub fn try_new_with_r_split_checked(
+        grid_size: usize,
+        box_size: f64,
+        r_split: f64,
+    ) -> Result<Self, CudaUnavailable> {
         #[cfg(cuda_unavailable)]
         {
             let _ = (grid_size, box_size, r_split);
-            return None;
+            return Err(CudaUnavailable {
+                availability: Self::availability(),
+            });
         }
 
         #[cfg(not(cuda_unavailable))]
@@ -76,9 +105,11 @@ impl CudaPmSolver {
             // no-NULL inmediatamente después.
             let handle = unsafe { crate::ffi::cuda_pm_create(grid_size as i32, box_size as f32) };
             if handle.is_null() {
-                return None;
+                return Err(CudaUnavailable {
+                    availability: Self::availability(),
+                });
             }
-            Some(Self {
+            Ok(Self {
                 handle,
                 grid_size,
                 r_split: r_split as f32,
@@ -102,31 +133,14 @@ impl CudaPmSolver {
     pub fn grid_size(&self) -> usize {
         self.grid_size
     }
-}
 
-impl Drop for CudaPmSolver {
-    fn drop(&mut self) {
-        // SAFETY: self.handle es no-NULL (verificado en try_new). cuda_pm_destroy
-        // libera recursos GPU y se llama exactamente una vez en Drop.
-        #[cfg(not(cuda_unavailable))]
-        unsafe {
-            crate::ffi::cuda_pm_destroy(self.handle);
-        }
-    }
-}
-
-// ── GravitySolver ─────────────────────────────────────────────────────────────
-
-impl GravitySolver for CudaPmSolver {
-    /// Calcula aceleraciones PM GPU para las partículas en `global_indices`.
+    /// Calcula aceleraciones PM CUDA y devuelve un error explícito si el kernel falla.
     ///
-    /// El solver PM asigna TODAS las partículas a la grilla de densidad,
-    /// resuelve la ecuación de Poisson en k-space con cuFFT y luego interpola
-    /// la fuerza solo para las partículas solicitadas.
-    ///
-    /// Conversión de precisión: f64 → f32 antes de enviar al device (GPU), y
-    /// f32 → f64 en los resultados. El error relativo introducido es O(1e-7).
-    fn accelerations_for_indices(
+    /// Esta es la API preferida para código que puede decidir cómo reaccionar ante
+    /// errores de runtime GPU. La implementación de [`GravitySolver`] conserva la
+    /// firma histórica y convierte el error en `panic!` para evitar continuar una
+    /// simulación con aceleraciones inválidas.
+    pub fn try_accelerations_for_indices(
         &self,
         global_positions: &[Vec3],
         global_masses: &[f64],
@@ -134,20 +148,26 @@ impl GravitySolver for CudaPmSolver {
         g: f64,
         global_indices: &[usize],
         out: &mut [Vec3],
-    ) {
+    ) -> Result<(), CudaExecutionError> {
         assert_eq!(global_indices.len(), out.len());
         if global_indices.is_empty() {
-            return;
+            return Ok(());
         }
 
         #[cfg(cuda_unavailable)]
         {
-            // Nunca debería llegar aquí si try_new devuelve None correctamente.
-            let _ = (global_positions, global_masses, eps2, g, global_indices);
-            for v in out.iter_mut() {
-                *v = Vec3::zero();
+            let _ = (
+                global_positions,
+                global_masses,
+                eps2,
+                g,
+                global_indices,
+                out,
+            );
+            return Err(CudaUnavailable {
+                availability: Self::availability(),
             }
-            return;
+            .into());
         }
 
         #[cfg(not(cuda_unavailable))]
@@ -191,18 +211,61 @@ impl GravitySolver for CudaPmSolver {
                 )
             };
             if ret != 0 {
-                // En caso de error CUDA, dejar aceleraciones en cero.
-                eprintln!("[CudaPmSolver] cuda_pm_solve error code {ret}");
-                for v in out.iter_mut() {
-                    *v = Vec3::zero();
-                }
-                return;
+                return Err(CudaExecutionError::KernelFailed {
+                    kernel: "cuda_pm_solve",
+                    code: ret,
+                });
             }
 
             // Extraer solo los índices solicitados.
             for (j, &gi) in global_indices.iter().enumerate() {
                 out[j] = Vec3::new(ax[gi] as f64, ay[gi] as f64, az[gi] as f64);
             }
+            Ok(())
+        }
+    }
+}
+
+impl Drop for CudaPmSolver {
+    fn drop(&mut self) {
+        // SAFETY: self.handle es no-NULL (verificado en try_new). cuda_pm_destroy
+        // libera recursos GPU y se llama exactamente una vez en Drop.
+        #[cfg(not(cuda_unavailable))]
+        unsafe {
+            crate::ffi::cuda_pm_destroy(self.handle);
+        }
+    }
+}
+
+// ── GravitySolver ─────────────────────────────────────────────────────────────
+
+impl GravitySolver for CudaPmSolver {
+    /// Calcula aceleraciones PM GPU para las partículas en `global_indices`.
+    ///
+    /// El solver PM asigna TODAS las partículas a la grilla de densidad,
+    /// resuelve la ecuación de Poisson en k-space con cuFFT y luego interpola
+    /// la fuerza solo para las partículas solicitadas.
+    ///
+    /// Conversión de precisión: f64 → f32 antes de enviar al device (GPU), y
+    /// f32 → f64 en los resultados. El error relativo introducido es O(1e-7).
+    fn accelerations_for_indices(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+    ) {
+        if let Err(err) = self.try_accelerations_for_indices(
+            global_positions,
+            global_masses,
+            eps2,
+            g,
+            global_indices,
+            out,
+        ) {
+            panic!("CudaPmSolver::accelerations_for_indices falló: {err}");
         }
     }
 }

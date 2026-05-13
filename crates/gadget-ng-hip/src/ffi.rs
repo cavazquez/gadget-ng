@@ -5,7 +5,7 @@
 //! el cfg `hip_unavailable` desde build.rs).
 
 #[cfg(not(hip_unavailable))]
-extern "C" {
+unsafe extern "C" {
     // ── Solver PM (CIC + rocFFT + Poisson) ───────────────────────────────────
 
     /// Crea un handle PM HIP con grilla `grid_size³` y caja periódica `box_size`.

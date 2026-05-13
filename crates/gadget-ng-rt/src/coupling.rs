@@ -40,6 +40,8 @@
 
 use crate::m1::{C_KMS, M1Params, RadiationField};
 use gadget_ng_core::{Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 
@@ -61,7 +63,20 @@ const U_CODE_TO_ERG_G: f64 = 1e10;
 /// `Γ(i) = σ_HI × c_red × E(i) / (h × ν₀)` [s⁻¹]
 pub fn photoionization_rate(rad: &RadiationField, params: &M1Params) -> Vec<f64> {
     let c_red = C_KMS * 1e5 / params.c_red_factor; // km/s → cm/s
-    rad.energy_density
+    photoionization_rate_impl(&rad.energy_density, c_red)
+}
+
+#[cfg(feature = "simd")]
+fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
+    energy_density
+        .par_iter()
+        .map(|&e| SIGMA_HI * c_red * e.max(0.0) / H_NU_0_ERG)
+        .collect()
+}
+
+#[cfg(not(feature = "simd"))]
+fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
+    energy_density
         .iter()
         .map(|&e| SIGMA_HI * c_red * e.max(0.0) / H_NU_0_ERG)
         .collect()
@@ -89,32 +104,57 @@ pub fn apply_photoheating(
     let ny = rad.ny;
     let nz = rad.nz;
 
-    for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
-
-        // Mapear posición a celda más cercana
-        let ix = ((p.position.x / box_size * nx as f64).floor() as usize).min(nx - 1);
-        let iy = ((p.position.y / box_size * ny as f64).floor() as usize).min(ny - 1);
-        let iz = ((p.position.z / box_size * nz as f64).floor() as usize).min(nz - 1);
-        let cell = rad.idx(ix, iy, iz);
-
-        let gamma = if cell < gamma_hi.len() {
-            gamma_hi[cell]
-        } else {
-            0.0
-        };
-
-        if gamma < 1e-30 {
-            continue;
-        }
-
-        // ΔU = Γ_HI × ε_heat × dt / (U_CODE_TO_ERG_G)
-        // ε_heat = fracción de E_fotón que va a calentamiento (≈ 1 para fotoionización primaria)
-        let delta_u = gamma * dt / U_CODE_TO_ERG_G;
-        p.internal_energy += delta_u.min(p.internal_energy * 10.0); // cap para estabilidad
+    #[cfg(feature = "simd")]
+    {
+        particles.par_iter_mut().for_each(|p| {
+            photoheat_particle(p, rad, gamma_hi, dt, box_size, nx, ny, nz);
+        });
     }
+
+    #[cfg(not(feature = "simd"))]
+    for p in particles.iter_mut() {
+        photoheat_particle(p, rad, gamma_hi, dt, box_size, nx, ny, nz);
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "photoheating maps particle coordinates with grid dimensions"
+)]
+fn photoheat_particle(
+    p: &mut Particle,
+    rad: &RadiationField,
+    gamma_hi: &[f64],
+    dt: f64,
+    box_size: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
+
+    // Mapear posición a celda más cercana
+    let ix = ((p.position.x / box_size * nx as f64).floor() as usize).min(nx - 1);
+    let iy = ((p.position.y / box_size * ny as f64).floor() as usize).min(ny - 1);
+    let iz = ((p.position.z / box_size * nz as f64).floor() as usize).min(nz - 1);
+    let cell = rad.idx(ix, iy, iz);
+
+    let gamma = if cell < gamma_hi.len() {
+        gamma_hi[cell]
+    } else {
+        0.0
+    };
+
+    if gamma < 1e-30 {
+        return;
+    }
+
+    // ΔU = Γ_HI × ε_heat × dt / (U_CODE_TO_ERG_G)
+    // ε_heat = fracción de E_fotón que va a calentamiento (≈ 1 para fotoionización primaria)
+    let delta_u = gamma * dt / U_CODE_TO_ERG_G;
+    p.internal_energy += delta_u.min(p.internal_energy * 10.0); // cap para estabilidad
 }
 
 /// Deposita emisión del gas al campo de radiación (recombinación y bremsstrahlung).
@@ -191,8 +231,6 @@ pub fn radiation_gas_coupling_step_with_dust(
     dt: f64,
     box_size: f64,
 ) {
-    use gadget_ng_core::ParticleType;
-
     // Paso 1: emisión gas → rad (igual)
     deposit_gas_emission(particles, rad, dt, box_size, 1e-20);
 
@@ -201,29 +239,48 @@ pub fn radiation_gas_coupling_step_with_dust(
 
     // Paso 3: fotocalentamiento con atenuación τ_dust
     // Aplicamos exp(-τ_dust) al fotocalentamiento de cada partícula individualmente
-    for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
-        let h = p.smoothing_length.max(1e-10);
-        let rho = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
-        let tau_dust = kappa_dust_uv * p.dust_to_gas * rho * h;
-        let attenuation = (-tau_dust).exp();
-
-        // El fotocalentamiento escala con el flujo UV atenuado
-        // Aplicamos la corrección multiplicando el efecto de calentamiento
-        // via la energía radiativa local (aproximación)
-        let nx = rad.nx;
-        let ny = rad.ny;
-        let nz = rad.nz;
-        let ix = ((p.position.x / box_size) * nx as f64) as usize % nx;
-        let iy = ((p.position.y / box_size) * ny as f64) as usize % ny;
-        let iz = ((p.position.z / box_size) * nz as f64) as usize % nz;
-        let idx = rad.idx(ix, iy, iz);
-        let e_rad = rad.energy_density[idx];
-        let heating = params.sigma_dust * e_rad * attenuation * dt;
-        p.internal_energy = (p.internal_energy + heating).max(0.0);
+    #[cfg(feature = "simd")]
+    {
+        particles.par_iter_mut().for_each(|p| {
+            photoheat_dust_particle(p, rad, params, kappa_dust_uv, dt, box_size);
+        });
     }
+
+    #[cfg(not(feature = "simd"))]
+    for p in particles.iter_mut() {
+        photoheat_dust_particle(p, rad, params, kappa_dust_uv, dt, box_size);
+    }
+}
+
+fn photoheat_dust_particle(
+    p: &mut Particle,
+    rad: &RadiationField,
+    params: &M1Params,
+    kappa_dust_uv: f64,
+    dt: f64,
+    box_size: f64,
+) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
+    let h = p.smoothing_length.max(1e-10);
+    let rho = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
+    let tau_dust = kappa_dust_uv * p.dust_to_gas * rho * h;
+    let attenuation = (-tau_dust).exp();
+
+    // El fotocalentamiento escala con el flujo UV atenuado
+    // Aplicamos la corrección multiplicando el efecto de calentamiento
+    // via la energía radiativa local (aproximación)
+    let nx = rad.nx;
+    let ny = rad.ny;
+    let nz = rad.nz;
+    let ix = ((p.position.x / box_size) * nx as f64) as usize % nx;
+    let iy = ((p.position.y / box_size) * ny as f64) as usize % ny;
+    let iz = ((p.position.z / box_size) * nz as f64) as usize % nz;
+    let idx = rad.idx(ix, iy, iz);
+    let e_rad = rad.energy_density[idx];
+    let heating = params.sigma_dust * e_rad * attenuation * dt;
+    p.internal_energy = (p.internal_energy + heating).max(0.0);
 }
 
 #[cfg(test)]
