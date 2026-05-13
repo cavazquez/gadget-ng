@@ -171,17 +171,25 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 
 ### Fase 6 — CIC SIMD (~200 LOC, ~1h)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-18
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Media
 
-| # | Item | Archivo | Descripción |
-|---|------|---------|-------------|
-| 6.1 | `assign_simd` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx2")]` CIC mass assignment |
-| 6.2 | `interpolate_simd` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx2")]` CIC force interpolation |
-| 6.3 | `assign_avx512` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx512f")]` 8-wide CIC |
-| 6.4 | `interpolate_avx512` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx512f")]` 8-wide CIC |
-| 6.5 | Runtime dispatch | `gadget-ng-pm/src/cic.rs` | Fallback chain |
+| # | Item | Archivo | Descripción | Estado |
+|---|------|---------|-------------|--------|
+| 6.1 | `assign_simd` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx2", enable = "fma")]` CIC mass assignment batch | ✅ |
+| 6.2 | `interpolate_simd` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx2", enable = "fma")]` CIC force interpolation batch | ✅ |
+| 6.3 | `assign_avx512` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx512f")]` 8-wide CIC mass assignment | ✅ |
+| 6.4 | `interpolate_avx512` | `gadget-ng-pm/src/cic.rs` | `#[target_feature(enable = "avx512f")]` 8-wide CIC force interpolation | ✅ |
+| 6.5 | Runtime dispatch | `gadget-ng-pm/src/cic.rs` | `is_x86_feature_detected!` fallback chain avx512f→avx2+fma→scalar | ✅ |
+| 6.6 | SoA conversion | `gadget-ng-pm/src/cic.rs` | `assign()` and `interpolate()` convert Vec3 arrays to SoA slices before batch calls | ✅ |
+| 6.7 | Tests | `gadget-ng-pm/src/cic.rs` | `assign_single_particle_on_grid_node`, `assign_conserves_total_mass`, `interpolate_constant_field_gives_same_value`, `assign_symmetry_at_center`, `interpolate_is_inverse_of_assign`, `assign_periodic_wrapping` | ✅ |
+
+**Key design decisions:**
+- `assign()` and `interpolate()` now use SoA layout (separate `pos_x`, `pos_y`, `pos_z` slices) internally for better auto-vectorization.
+- Batch scalar functions `assign_batch_scalar` / `interpolate_batch_scalar` serve as the inner kernels; `#[target_feature]` wrappers delegate to them forcing LLVM to emit AVX2 or AVX-512 vector instructions.
+- Runtime dispatch: `is_x86_feature_detected!("avx512f")` → `is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma")` → scalar fallback.
+- Rayon versions (`assign_rayon`, `interpolate_rayon`) preserved under `#[cfg(feature = "rayon")]` with collect-then-merge pattern.
+- 39 PM tests pass (including 6 new CIC tests). Clippy clean with `-D warnings`.
 
 ---
 
@@ -248,3 +256,4 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | 2 | Fase 2 completada: SPH kernel batch functions (w_batch, grad_w_batch, w_and_grad_w_batch) con AVX-512/AVX2/scalar dispatch. Branch-free formulation. |
 | 2026-05-13 | 3 | Fase 3 completada: Gravity AVX-512 with BLOCK_J=128, inner_scalar_128, runtime dispatch avx512f→avx2+fma→scalar. |
 | 2026-05-13 | 5 | Fase 5 completada: 7 MHD pair-loop functions con Rayon parallel (_impl/_par) + serial fallback. Half-pair→N² per-particle para clean par_iter. Tests pass, clippy clean. |
+| 2026-05-13 | 6 | Fase 6 completada: CIC SIMD batch functions con AVX-512/AVX2+FMA/scalar dispatch. SoA layout for auto-vectorization. 39 PM tests pass, clippy clean. |
