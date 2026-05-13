@@ -61,6 +61,20 @@ use crate::m1::RadiationField;
 use gadget_ng_core::Particle;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -537,6 +551,7 @@ fn apply_chemistry_impl(
 
     let box_size = rad.dx * rad.nx as f64;
     let dv = rad.dx.powi(3);
+    let gamma_hi = photoionization_rates_for_particles(particles, rad, box_size, &m1_dummy);
 
     for (i, p) in particles.iter_mut().enumerate() {
         let st = &mut chem_states[i];
@@ -544,10 +559,9 @@ fn apply_chemistry_impl(
         let u_code = p.internal_energy;
         let t_gas = st.temperature_from_internal_energy(u_code, params.gamma);
 
-        let gamma_hi = photoionization_rate_at_pos(rad, p.position, box_size, &m1_dummy);
         let gamma_hei = 0.0;
 
-        *st = solve_chemistry_implicit(st, gamma_hi, gamma_hei, t_gas, dt);
+        *st = solve_chemistry_implicit(st, gamma_hi[i], gamma_hei, t_gas, dt);
 
         let cool_rate = cooling_rate_approx(t_gas, st.x_e, params.n_h_ref)
             + cooling_rate_hd(t_gas, st.x_hd, params.n_h_ref);
@@ -556,6 +570,38 @@ fn apply_chemistry_impl(
 
         let _ = dv;
     }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn photoionization_rates_for_particles(
+    particles: &[Particle],
+    rad: &RadiationField,
+    box_size: f64,
+    params: &crate::m1::M1Params,
+) -> Vec<f64> {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return photoionization_rates_for_particles_avx512(
+                    particles, rad, box_size, params,
+                );
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return photoionization_rates_for_particles_avx2(particles, rad, box_size, params);
+            }
+        }
+    }
+
+    particles
+        .iter()
+        .map(|p| photoionization_rate_at_pos(rad, p.position, box_size, params))
+        .collect()
 }
 
 #[cfg(feature = "rayon")]
@@ -646,6 +692,110 @@ fn photoionization_rate_at_pos(
     // Γ_HI = σ_HI × c_red × E_UV / (h·ν_0)
     let c_red = C_KMS * 1e5 / params.c_red_factor;
     SIGMA_HI_CHEM * c_red * e_uv / H_NU_0_ERG_CHEM
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn photoionization_rates_for_particles_avx2(
+    particles: &[Particle],
+    rad: &RadiationField,
+    box_size: f64,
+    params: &crate::m1::M1Params,
+) -> Vec<f64> {
+    use crate::m1::C_KMS;
+
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let inv_box = 1.0 / box_size;
+    let nx_f = rad.nx as f64;
+    let ny_f = rad.ny as f64;
+    let nz_f = rad.nz as f64;
+    let grid = ChemRateGrid {
+        inv_box,
+        nx_f,
+        ny_f,
+        nz_f,
+        nx: rad.nx,
+        ny: rad.ny,
+        nz: rad.nz,
+    };
+    let coeff = SIGMA_HI_CHEM * (C_KMS * 1e5 / params.c_red_factor) / H_NU_0_ERG_CHEM;
+    let coeff_v = _mm256_set1_pd(coeff);
+    let zero = _mm256_set1_pd(0.0);
+    let mut out = vec![0.0; particles.len()];
+    let mut i = 0;
+    while i < chunks {
+        let idx0 = particle_cell_idx(&particles[i], grid);
+        let idx1 = particle_cell_idx(&particles[i + 1], grid);
+        let idx2 = particle_cell_idx(&particles[i + 2], grid);
+        let idx3 = particle_cell_idx(&particles[i + 3], grid);
+        let e = _mm256_max_pd(
+            zero,
+            _mm256_set_pd(
+                rad.energy_density[idx3],
+                rad.energy_density[idx2],
+                rad.energy_density[idx1],
+                rad.energy_density[idx0],
+            ),
+        );
+        let gamma = _mm256_mul_pd(e, coeff_v);
+        // SAFETY: output has `particles.len()` entries and `i..i+4` is in bounds by construction.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr().add(i), gamma) };
+        i += lanes;
+    }
+    for k in chunks..particles.len() {
+        out[k] = photoionization_rate_at_pos(rad, particles[k].position, box_size, params);
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn photoionization_rates_for_particles_avx512(
+    particles: &[Particle],
+    rad: &RadiationField,
+    box_size: f64,
+    params: &crate::m1::M1Params,
+) -> Vec<f64> {
+    // SAFETY: AVX-512F was checked at runtime; AVX2 arithmetic preserves semantics.
+    unsafe { photoionization_rates_for_particles_avx2(particles, rad, box_size, params) }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[derive(Clone, Copy)]
+struct ChemRateGrid {
+    inv_box: f64,
+    nx_f: f64,
+    ny_f: f64,
+    nz_f: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[inline]
+fn particle_cell_idx(p: &Particle, grid: ChemRateGrid) -> usize {
+    let ix = ((p.position.x * grid.inv_box * grid.nx_f) as usize).min(grid.nx - 1);
+    let iy = ((p.position.y * grid.inv_box * grid.ny_f) as usize).min(grid.ny - 1);
+    let iz = ((p.position.z * grid.inv_box * grid.nz_f) as usize).min(grid.nz - 1);
+    ix * grid.ny * grid.nz + iy * grid.nz + iz
 }
 
 /// Tasa de enfriamiento atómico aproximada [erg cm⁻³ s⁻¹ / (n_H²)].

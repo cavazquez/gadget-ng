@@ -190,7 +190,10 @@ y la cobertura detallada en
 | MHD flux-freeze / stats | ✅ | ✅ | ⚠️ b-field stats AVX2 + AVX512; flux-freeze scalar | ✅ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
-| RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ 21cm/reionization reductions AVX2 + AVX512; chemistry scalar | ❌ |
+| RT chemistry rates | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates | ❌ |
+| RT chemistry stiff solver | ✅ | ✅ | ⚠️ subciclo implícito escalar | ❌ |
+| RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
+| RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ smoke/parity kernel |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
