@@ -47,11 +47,13 @@ pub use dark_matter::{
 pub use gadget_ng_gpu_layout::{BH_GPU_NO_PARTICLE, BhFmmGpuNode, BhMonopoleGpuNode};
 #[cfg(feature = "rayon")]
 pub use gravity::RayonDirectGravity;
+#[cfg(all(feature = "rayon", feature = "simd"))]
+pub use gravity::RayonDirectGravitySimdTier;
 pub use gravity::{
     DirectGravity, GravitySolver, accelerations_all_particles, pairwise_accel_plummer,
 };
 #[cfg(feature = "simd")]
-pub use gravity_simd::SimdDirectGravity;
+pub use gravity_simd::{GravSimdTier, SimdDirectGravity, SimdDirectGravityTier};
 pub use ic::{IcError, build_particles, build_particles_for_gid_range};
 pub use ic_2lpt::{Psi2Variant, zeldovich_2lpt_ics, zeldovich_2lpt_ics_with_variant};
 pub use ic_mhd::{

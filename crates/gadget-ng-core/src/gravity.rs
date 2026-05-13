@@ -56,6 +56,7 @@ pub trait GravitySolver: Send + Sync {
 }
 
 /// Gravedad directa O(N²) globalmente consistente: mismo orden de suma j=0..N-1 que serial.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct DirectGravity;
 
 impl GravitySolver for DirectGravity {
@@ -140,6 +141,7 @@ pub mod parallel_direct {
 /// **No determinista** respecto al orden de suma entre partículas; no garantiza
 /// paridad bit-a-bit con el modo serial ni con `MpiRuntime`.
 #[cfg(feature = "rayon")]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RayonDirectGravity;
 
 #[cfg(feature = "rayon")]
@@ -204,5 +206,51 @@ impl GravitySolver for RayonDirectGravity {
                     *a = acc;
                 });
         }
+    }
+}
+
+/// Como [`RayonDirectGravity`] con `simd`, pero el kernel interno usa [`crate::gravity_simd::accel_soa_blocked_tier`].
+///
+/// Sirve para benchmarks AVX2 vs AVX-512 con el mismo paralelismo Rayon que producción.
+#[cfg(all(feature = "rayon", feature = "simd"))]
+#[derive(Clone, Copy, Debug)]
+pub struct RayonDirectGravitySimdTier(pub crate::gravity_simd::GravSimdTier);
+
+#[cfg(all(feature = "rayon", feature = "simd"))]
+impl GravitySolver for RayonDirectGravitySimdTier {
+    fn accelerations_for_indices(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+    ) {
+        use crate::gravity_simd::{KernelParams, accel_soa_blocked_tier};
+        use rayon::prelude::*;
+
+        assert_eq!(global_positions.len(), global_masses.len());
+        assert_eq!(global_indices.len(), out.len());
+
+        let xs: Vec<f64> = global_positions.iter().map(|p| p.x).collect();
+        let ys: Vec<f64> = global_positions.iter().map(|p| p.y).collect();
+        let zs: Vec<f64> = global_positions.iter().map(|p| p.z).collect();
+        let params = KernelParams {
+            xs: &xs,
+            ys: &ys,
+            zs: &zs,
+            masses: global_masses,
+            eps2,
+            g,
+        };
+
+        out.par_iter_mut()
+            .zip(global_indices.par_iter())
+            .for_each(|(a, &gi)| {
+                let (ax, ay, az) =
+                    accel_soa_blocked_tier(xs[gi], ys[gi], zs[gi], gi, &params, self.0);
+                *a = Vec3::new(ax, ay, az);
+            });
     }
 }

@@ -165,6 +165,78 @@ pub fn accel_soa_blocked(
     inner_scalar(xi, yi, zi, skip, p)
 }
 
+// ── Tier forzado (bench / micro-tuning); producción usa [`accel_soa_blocked`] ─
+
+/// Nivel SIMD explícito para benchmarks y comparaciones AVX2 vs AVX-512.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GravSimdTier {
+    /// Igual que [`accel_soa_blocked`] (AVX-512 → AVX2+FMA → escalar).
+    #[default]
+    Runtime,
+    /// Kernel AVX-512F + tile 128; si la CPU no lo soporta, cae a [`inner_scalar`].
+    Avx512,
+    /// Kernel AVX2+FMA + tile 64; si falta soporte, cae a [`inner_scalar`].
+    Avx2Fma,
+    /// Bucle escalar con `BLOCK_J` (sin intrínsecos forzados).
+    Scalar,
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GravSimdTier {
+    #[default]
+    Runtime,
+    Scalar,
+}
+
+/// Variante de [`accel_soa_blocked`] que respeta `tier` para medir AVX2 vs AVX-512 por separado.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub fn accel_soa_blocked_tier(
+    xi: f64,
+    yi: f64,
+    zi: f64,
+    skip: usize,
+    p: &KernelParams<'_>,
+    tier: GravSimdTier,
+) -> (f64, f64, f64) {
+    match tier {
+        GravSimdTier::Runtime => accel_soa_blocked(xi, yi, zi, skip, p),
+        GravSimdTier::Avx512 => {
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: comprobación inmediata de `avx512f`.
+                unsafe { inner_blocked_avx512(xi, yi, zi, skip, p) }
+            } else {
+                inner_scalar(xi, yi, zi, skip, p)
+            }
+        }
+        GravSimdTier::Avx2Fma => {
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: comprobación inmediata de `avx2` y `fma`.
+                unsafe { inner_blocked_avx2(xi, yi, zi, skip, p) }
+            } else {
+                inner_scalar(xi, yi, zi, skip, p)
+            }
+        }
+        GravSimdTier::Scalar => inner_scalar(xi, yi, zi, skip, p),
+    }
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+pub fn accel_soa_blocked_tier(
+    xi: f64,
+    yi: f64,
+    zi: f64,
+    skip: usize,
+    p: &KernelParams<'_>,
+    tier: GravSimdTier,
+) -> (f64, f64, f64) {
+    match tier {
+        GravSimdTier::Scalar => inner_scalar(xi, yi, zi, skip, p),
+        GravSimdTier::Runtime => accel_soa_blocked(xi, yi, zi, skip, p),
+    }
+}
+
 // ── Solver serial SIMD+blocking ───────────────────────────────────────────────
 
 /// Solver de gravedad directa O(N²) con SoA, caché-blocking y auto-vectorización AVX2.
@@ -203,6 +275,42 @@ impl GravitySolver for SimdDirectGravity {
 
         for (k, &gi) in global_indices.iter().enumerate() {
             let (ax, ay, az) = accel_soa_blocked(xs[gi], ys[gi], zs[gi], gi, &params);
+            out[k] = Vec3::new(ax, ay, az);
+        }
+    }
+}
+
+/// Como [`SimdDirectGravity`] pero con tier SIMD fijado (p. ej. benchmarks AVX2 vs AVX-512).
+#[derive(Debug, Clone, Copy)]
+pub struct SimdDirectGravityTier(pub GravSimdTier);
+
+impl GravitySolver for SimdDirectGravityTier {
+    fn accelerations_for_indices(
+        &self,
+        global_positions: &[Vec3],
+        global_masses: &[f64],
+        eps2: f64,
+        g: f64,
+        global_indices: &[usize],
+        out: &mut [Vec3],
+    ) {
+        assert_eq!(global_positions.len(), global_masses.len());
+        assert_eq!(global_indices.len(), out.len());
+
+        let xs: Vec<f64> = global_positions.iter().map(|p| p.x).collect();
+        let ys: Vec<f64> = global_positions.iter().map(|p| p.y).collect();
+        let zs: Vec<f64> = global_positions.iter().map(|p| p.z).collect();
+        let params = KernelParams {
+            xs: &xs,
+            ys: &ys,
+            zs: &zs,
+            masses: global_masses,
+            eps2,
+            g,
+        };
+
+        for (k, &gi) in global_indices.iter().enumerate() {
+            let (ax, ay, az) = accel_soa_blocked_tier(xs[gi], ys[gi], zs[gi], gi, &params, self.0);
             out[k] = Vec3::new(ax, ay, az);
         }
     }
@@ -290,5 +398,31 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    #[test]
+    fn tier_runtime_matches_dispatch() {
+        let cfg = lattice_cfg(8);
+        let particles = build_particles(&cfg).unwrap();
+        let xs: Vec<f64> = particles.iter().map(|p| p.position.x).collect();
+        let ys: Vec<f64> = particles.iter().map(|p| p.position.y).collect();
+        let zs: Vec<f64> = particles.iter().map(|p| p.position.z).collect();
+        let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+        let eps2 = softening_squared(&cfg);
+        let g = cfg.simulation.gravitational_constant;
+        let p = KernelParams {
+            xs: &xs,
+            ys: &ys,
+            zs: &zs,
+            masses: &masses,
+            eps2,
+            g,
+        };
+        let xi = xs[1];
+        let yi = ys[1];
+        let zi = zs[1];
+        let a = accel_soa_blocked(xi, yi, zi, 1, &p);
+        let b = accel_soa_blocked_tier(xi, yi, zi, 1, &p, GravSimdTier::Runtime);
+        assert_eq!(a, b);
     }
 }

@@ -1,3 +1,15 @@
+//! Benchmark Criterion: gravedad directa N² — serial vs Rayon vs SIMD.
+//!
+//! Comparación + gráfico: `bash scripts/bench_direct_cpu_plot.sh` genera
+//! `runs/benchmarks/direct-cpu/direct_gravity_mean_times.{csv,png}`.
+//!
+//! Matriz de **features** (cada pasada compila lo que aplica):
+//! - sin features → `direct_cpu/serial`
+//! - `--features rayon` → + `direct_cpu/rayon_scalar_inner`
+//! - `--features simd,rayon` → + SIMD monohilo y Rayon+SIMD (AVX2/512 en x86 si la CPU lo expone)
+//!
+//! Los tiers AVX2/AVX-512 forzados requieren x86 con esos flags; si no, el kernel cae a escalar.
+
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use gadget_ng_core::config::{
     CosmologySection, OutputSection, PerformanceSection, TimestepSection, UnitsSection,
@@ -39,83 +51,118 @@ fn lattice_cfg(n: usize) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
     }
 }
 
-fn bench_direct_serial(c: &mut Criterion) {
-    let mut group = c.benchmark_group("direct_serial");
-    for n in [27usize, 125, 512] {
-        let cfg = lattice_cfg(n);
-        let parts = build_particles(&cfg).unwrap();
-        let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-        let mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-        let eps2 = cfg.softening_squared();
-        let g = cfg.simulation.gravitational_constant;
-        let idx: Vec<usize> = (0..n).collect();
-        let mut out = vec![Vec3::zero(); n];
+fn lattice_buffers(n: usize) -> (Vec<Vec3>, Vec<f64>, f64, f64, Vec<usize>, Vec<Vec3>) {
+    let cfg = lattice_cfg(n);
+    let parts = build_particles(&cfg).unwrap();
+    let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
+    let mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
+    let eps2 = cfg.softening_squared();
+    let g = cfg.simulation.gravitational_constant;
+    let idx: Vec<usize> = (0..n).collect();
+    let out = vec![Vec3::zero(); n];
+    (pos, mass, eps2, g, idx, out)
+}
+
+fn bench_gravity_solver<S: GravitySolver + Copy>(
+    c: &mut Criterion,
+    group_name: &str,
+    solver: S,
+    sizes: &[usize],
+) {
+    let mut group = c.benchmark_group(group_name);
+    for &n in sizes {
+        let (pos, mass, eps2, g, idx, mut out) = lattice_buffers(n);
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {
-                DirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut out);
+                solver.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut out);
             });
         });
     }
     group.finish();
 }
 
-#[cfg(feature = "rayon")]
-fn bench_direct_rayon(c: &mut Criterion) {
-    use gadget_ng_core::RayonDirectGravity;
-    let mut group = c.benchmark_group("direct_rayon");
-    for n in [27usize, 125, 512] {
-        let cfg = lattice_cfg(n);
-        let parts = build_particles(&cfg).unwrap();
-        let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-        let mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-        let eps2 = cfg.softening_squared();
-        let g = cfg.simulation.gravitational_constant;
-        let idx: Vec<usize> = (0..n).collect();
-        let mut out = vec![Vec3::zero(); n];
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| {
-                RayonDirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut out);
-            });
-        });
+fn direct_gravity_cpu_tiers(c: &mut Criterion) {
+    const SIZES: &[usize] = &[27, 125, 512];
+
+    bench_gravity_solver(c, "direct_cpu/serial", DirectGravity, SIZES);
+
+    #[cfg(all(feature = "rayon", not(feature = "simd")))]
+    {
+        use gadget_ng_core::RayonDirectGravity;
+        bench_gravity_solver(
+            c,
+            "direct_cpu/rayon_scalar_inner",
+            RayonDirectGravity,
+            SIZES,
+        );
     }
-    group.finish();
+
+    #[cfg(feature = "simd")]
+    {
+        use gadget_ng_core::SimdDirectGravity;
+        bench_gravity_solver(
+            c,
+            "direct_cpu/simd_serial_runtime",
+            SimdDirectGravity,
+            SIZES,
+        );
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            use gadget_ng_core::{GravSimdTier, SimdDirectGravityTier};
+            use std::arch::is_x86_feature_detected;
+            bench_gravity_solver(
+                c,
+                "direct_cpu/simd_serial_avx2",
+                SimdDirectGravityTier(GravSimdTier::Avx2Fma),
+                SIZES,
+            );
+            if is_x86_feature_detected!("avx512f") {
+                bench_gravity_solver(
+                    c,
+                    "direct_cpu/simd_serial_avx512",
+                    SimdDirectGravityTier(GravSimdTier::Avx512),
+                    SIZES,
+                );
+            }
+        }
+    }
+
+    #[cfg(all(feature = "rayon", feature = "simd"))]
+    {
+        use gadget_ng_core::RayonDirectGravity;
+        bench_gravity_solver(
+            c,
+            "direct_cpu/rayon_simd_runtime",
+            RayonDirectGravity,
+            SIZES,
+        );
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            use gadget_ng_core::{GravSimdTier, RayonDirectGravitySimdTier};
+            use std::arch::is_x86_feature_detected;
+            bench_gravity_solver(
+                c,
+                "direct_cpu/rayon_simd_avx2",
+                RayonDirectGravitySimdTier(GravSimdTier::Avx2Fma),
+                SIZES,
+            );
+            if is_x86_feature_detected!("avx512f") {
+                bench_gravity_solver(
+                    c,
+                    "direct_cpu/rayon_simd_avx512",
+                    RayonDirectGravitySimdTier(GravSimdTier::Avx512),
+                    SIZES,
+                );
+            }
+        }
+    }
 }
 
-#[cfg(not(feature = "rayon"))]
-fn bench_direct_rayon(_c: &mut Criterion) {}
-
-#[cfg(feature = "rayon")]
-fn bench_direct_simd(c: &mut Criterion) {
-    use gadget_ng_core::SimdDirectGravity;
-    let mut group = c.benchmark_group("direct_simd");
-    for n in [27usize, 125, 512] {
-        let cfg = lattice_cfg(n);
-        let parts = build_particles(&cfg).unwrap();
-        let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();
-        let mass: Vec<f64> = parts.iter().map(|p| p.mass).collect();
-        let eps2 = cfg.softening_squared();
-        let g = cfg.simulation.gravitational_constant;
-        let idx: Vec<usize> = (0..n).collect();
-        let mut out = vec![Vec3::zero(); n];
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| {
-                SimdDirectGravity.accelerations_for_indices(&pos, &mass, eps2, g, &idx, &mut out);
-            });
-        });
-    }
-    group.finish();
-}
-
-#[cfg(not(feature = "rayon"))]
-fn bench_direct_simd(_c: &mut Criterion) {}
-
-criterion_group!(
-    benches,
-    bench_direct_serial,
-    bench_direct_rayon,
-    bench_direct_simd
-);
+criterion_group!(benches, direct_gravity_cpu_tiers);
 criterion_main!(benches);
