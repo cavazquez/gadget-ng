@@ -34,6 +34,8 @@ use crate::periodic_delta;
 use gadget_ng_core::{
     FeedbackSection, Particle, ParticleType, StarFormationModel, StellarFeedbackMode, WindParams,
 };
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 
@@ -52,22 +54,43 @@ const E_SN_PER_MSUN: f64 = 1.54e-3; // (km/s)² por 10¹⁰ M_sun
 /// Retorna `sfr[i]` en unidades internas de masa/tiempo.
 /// Para partículas que no son gas, o que no alcanzan `rho_sf`, retorna 0.
 pub fn compute_sfr(particles: &[Particle], cfg: &FeedbackSection) -> Vec<f64> {
-    particles
-        .iter()
-        .map(|p| {
-            if p.ptype != ParticleType::Gas {
-                return 0.0;
-            }
-            // La densidad se aproxima usando la longitud de suavizado
-            let h = p.smoothing_length.max(1e-10);
-            let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
-            if rho_approx < cfg.rho_sf {
-                0.0
-            } else {
-                SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N)
-            }
-        })
-        .collect()
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter()
+            .map(|p| {
+                if p.ptype != ParticleType::Gas {
+                    return 0.0;
+                }
+                let h = p.smoothing_length.max(1e-10);
+                let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+                if rho_approx < cfg.rho_sf {
+                    0.0
+                } else {
+                    SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N)
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        particles
+            .iter()
+            .map(|p| {
+                if p.ptype != ParticleType::Gas {
+                    return 0.0;
+                }
+                let h = p.smoothing_length.max(1e-10);
+                let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+                if rho_approx < cfg.rho_sf {
+                    0.0
+                } else {
+                    SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N)
+                }
+            })
+            .collect()
+    }
 }
 
 /// Calcula la tasa de formación estelar con boost por gas molecular H₂ (Phase 122).
@@ -80,23 +103,45 @@ pub fn compute_sfr_with_h2(
     cfg: &FeedbackSection,
     h2_boost: f64,
 ) -> Vec<f64> {
-    particles
-        .iter()
-        .map(|p| {
-            if p.ptype != ParticleType::Gas {
-                return 0.0;
-            }
-            let h = p.smoothing_length.max(1e-10);
-            let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
-            if rho_approx < cfg.rho_sf {
-                0.0
-            } else {
-                let sfr_base = SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N);
-                // Phase 122: multiplicar por factor H2
-                sfr_base * (1.0 + h2_boost * p.h2_fraction)
-            }
-        })
-        .collect()
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter()
+            .map(|p| {
+                if p.ptype != ParticleType::Gas {
+                    return 0.0;
+                }
+                let h = p.smoothing_length.max(1e-10);
+                let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+                if rho_approx < cfg.rho_sf {
+                    0.0
+                } else {
+                    let sfr_base = SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N);
+                    sfr_base * (1.0 + h2_boost * p.h2_fraction)
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        particles
+            .iter()
+            .map(|p| {
+                if p.ptype != ParticleType::Gas {
+                    return 0.0;
+                }
+                let h = p.smoothing_length.max(1e-10);
+                let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+                if rho_approx < cfg.rho_sf {
+                    0.0
+                } else {
+                    let sfr_base = SFR_A * (rho_approx / cfg.rho_sf).powf(SFR_N);
+                    sfr_base * (1.0 + h2_boost * p.h2_fraction)
+                }
+            })
+            .collect()
+    }
 }
 
 /// Calcula la SFR basada en presión efectiva local (Phase 177).
@@ -106,28 +151,62 @@ pub fn compute_sfr_with_h2(
 pub fn compute_sfr_pressure(particles: &[Particle], cfg: &FeedbackSection, gamma: f64) -> Vec<f64> {
     let p0 = cfg.sf_pressure_norm.max(1e-20);
     let n = cfg.sf_pressure_index;
-    particles
-        .iter()
-        .map(|p| {
-            if p.ptype != ParticleType::Gas {
-                return 0.0;
-            }
-            let h = p.smoothing_length.max(1e-10);
-            let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
-            if rho_approx < cfg.rho_sf {
-                return 0.0;
-            }
-            let pressure = ((gamma - 1.0) * rho_approx * p.internal_energy).max(0.0);
-            SFR_A * (pressure / p0).powf(n)
-        })
-        .collect()
+
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter()
+            .map(|p| {
+                if p.ptype != ParticleType::Gas {
+                    return 0.0;
+                }
+                let h = p.smoothing_length.max(1e-10);
+                let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+                if rho_approx < cfg.rho_sf {
+                    return 0.0;
+                }
+                let pressure = ((gamma - 1.0) * rho_approx * p.internal_energy).max(0.0);
+                SFR_A * (pressure / p0).powf(n)
+            })
+            .collect()
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        particles
+            .iter()
+            .map(|p| {
+                if p.ptype != ParticleType::Gas {
+                    return 0.0;
+                }
+                let h = p.smoothing_length.max(1e-10);
+                let rho_approx = p.mass / (h * h * h * (4.0 / 3.0) * std::f64::consts::PI);
+                if rho_approx < cfg.rho_sf {
+                    return 0.0;
+                }
+                let pressure = ((gamma - 1.0) * rho_approx * p.internal_energy).max(0.0);
+                SFR_A * (pressure / p0).powf(n)
+            })
+            .collect()
+    }
 }
 
 /// Calcula SFR según el modelo elegido en configuración.
 pub fn compute_sfr_model(particles: &[Particle], cfg: &FeedbackSection, gamma: f64) -> Vec<f64> {
-    match cfg.sf_model {
-        StarFormationModel::DensityLaw => compute_sfr(particles, cfg),
-        StarFormationModel::PressureLaw => compute_sfr_pressure(particles, cfg, gamma),
+    #[cfg(feature = "simd")]
+    {
+        match cfg.sf_model {
+            StarFormationModel::DensityLaw => compute_sfr(particles, cfg),
+            StarFormationModel::PressureLaw => compute_sfr_pressure(particles, cfg, gamma),
+        }
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        match cfg.sf_model {
+            StarFormationModel::DensityLaw => compute_sfr(particles, cfg),
+            StarFormationModel::PressureLaw => compute_sfr_pressure(particles, cfg, gamma),
+        }
     }
 }
 
@@ -170,6 +249,34 @@ pub fn apply_sn_feedback(
     let v_kick = cfg.v_kick_km_s;
     let e_sn_per_m = E_SN_PER_MSUN * cfg.eps_sn;
 
+    #[cfg(feature = "simd")]
+    {
+        let base_seed = *seed;
+        let n = particles.len();
+        particles.par_iter_mut().enumerate().for_each(|(i, p)| {
+            if p.ptype != ParticleType::Gas {
+                return;
+            }
+            let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+            if sfr_i < cfg.sfr_min {
+                return;
+            }
+            let m = p.mass.max(1e-30);
+            let prob = 1.0 - (-sfr_i * dt / m).exp();
+            let mut local_seed = base_seed.wrapping_add(i as u64 * 0x9E3779B97F4A7C15);
+            let rand_val = rand01(&mut local_seed);
+            if rand_val < prob {
+                let (nx, ny, nz) = random_unit_vector(&mut local_seed);
+                p.velocity.x += v_kick * nx;
+                p.velocity.y += v_kick * ny;
+                p.velocity.z += v_kick * nz;
+                p.internal_energy += e_sn_per_m / m * sfr_i * dt;
+            }
+        });
+        *seed = base_seed.wrapping_add(n as u64 * 0x9E3779B97F4A7C15);
+    }
+
+    #[cfg(not(feature = "simd"))]
     for i in 0..particles.len() {
         if particles[i].ptype != ParticleType::Gas {
             continue;
@@ -220,45 +327,108 @@ pub fn apply_thermal_feedback_stochastic(
         return 0.0;
     }
     let n_heat = cfg.n_heat_neighbors.max(1);
-    let mut total_injected = 0.0_f64;
 
-    for i in 0..particles.len() {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
-        }
-        let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
-        if sfr_i < cfg.sfr_min {
-            continue;
-        }
+    #[cfg(feature = "simd")]
+    {
+        let n = particles.len();
+        let pos: Vec<_> = particles.iter().map(|p| p.position).collect();
+        let h: Vec<f64> = particles
+            .iter()
+            .map(|p| p.smoothing_length.max(1e-10))
+            .collect();
+        let ptypes: Vec<ParticleType> = particles.iter().map(|p| p.ptype).collect();
+        let masses: Vec<f64> = particles.iter().map(|p| p.mass.max(1e-30)).collect();
+        let base_seed_val = *seed;
 
-        let m = particles[i].mass.max(1e-30);
-        let prob = 1.0 - (-sfr_i * dt / m).exp();
-        if rand01(seed) >= prob {
-            continue;
-        }
-
-        let h_i = particles[i].smoothing_length.max(1e-10);
-        let pos_i = particles[i].position;
-        let mut candidates: Vec<(usize, f64)> = (0..particles.len())
-            .filter(|&j| particles[j].ptype == ParticleType::Gas)
-            .map(|j| {
-                let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
-                (j, r)
+        let heat_events: Vec<Vec<(usize, f64)>> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                let mut events = Vec::new();
+                if ptypes[i] != ParticleType::Gas {
+                    return events;
+                }
+                let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+                if sfr_i < cfg.sfr_min {
+                    return events;
+                }
+                let mut local_seed = base_seed_val.wrapping_add(i as u64 * 0x9E3779B97F4A7C15);
+                let prob = 1.0 - (-sfr_i * dt / masses[i]).exp();
+                if rand01(&mut local_seed) >= prob {
+                    return events;
+                }
+                let mut candidates: Vec<(usize, f64)> = (0..n)
+                    .filter(|&j| ptypes[j] == ParticleType::Gas)
+                    .map(|j| {
+                        let r = periodic_delta(pos[i], pos[j], periodic_box).norm();
+                        (j, r)
+                    })
+                    .filter(|&(_, r)| r <= 2.0 * h[i])
+                    .collect();
+                candidates
+                    .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                if candidates.is_empty() {
+                    candidates.push((i, 0.0));
+                }
+                for (j, _) in candidates.into_iter().take(n_heat) {
+                    events.push((j, du_heat));
+                }
+                events
             })
-            .filter(|&(_, r)| r <= 2.0 * h_i)
             .collect();
 
-        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        if candidates.is_empty() {
-            candidates.push((i, 0.0));
+        let mut total_injected = 0.0;
+        for events in heat_events {
+            for (j, du) in events {
+                particles[j].internal_energy += du;
+                total_injected += du * particles[j].mass;
+            }
         }
-        for (j, _) in candidates.into_iter().take(n_heat) {
-            particles[j].internal_energy += du_heat;
-            total_injected += du_heat * particles[j].mass;
-        }
+        *seed = base_seed_val.wrapping_add(n as u64 * 0x9E3779B97F4A7C15);
+        total_injected
     }
 
-    total_injected
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut total_injected = 0.0_f64;
+
+        for i in 0..particles.len() {
+            if particles[i].ptype != ParticleType::Gas {
+                continue;
+            }
+            let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+            if sfr_i < cfg.sfr_min {
+                continue;
+            }
+
+            let m = particles[i].mass.max(1e-30);
+            let prob = 1.0 - (-sfr_i * dt / m).exp();
+            if rand01(seed) >= prob {
+                continue;
+            }
+
+            let h_i = particles[i].smoothing_length.max(1e-10);
+            let pos_i = particles[i].position;
+            let mut candidates: Vec<(usize, f64)> = (0..particles.len())
+                .filter(|&j| particles[j].ptype == ParticleType::Gas)
+                .map(|j| {
+                    let r = periodic_delta(pos_i, particles[j].position, periodic_box).norm();
+                    (j, r)
+                })
+                .filter(|&(_, r)| r <= 2.0 * h_i)
+                .collect();
+
+            candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            if candidates.is_empty() {
+                candidates.push((i, 0.0));
+            }
+            for (j, _) in candidates.into_iter().take(n_heat) {
+                particles[j].internal_energy += du_heat;
+                total_injected += du_heat * particles[j].mass;
+            }
+        }
+
+        total_injected
+    }
 }
 
 /// Genera un vector unitario aleatorio en la esfera usando un LCG.
@@ -298,38 +468,75 @@ pub fn apply_galactic_winds(
     dt: f64,
     seed: &mut u64,
 ) -> Vec<usize> {
-    let mut launched: Vec<usize> = Vec::new();
     if !cfg.enabled {
-        return launched;
+        return Vec::new();
     }
 
     let v_wind = cfg.v_wind_km_s;
     let eta = cfg.mass_loading;
 
-    for i in 0..particles.len() {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
-        }
-        let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
-        if sfr_i <= 0.0 {
-            continue;
-        }
+    #[cfg(feature = "simd")]
+    {
+        let base_seed = *seed;
+        let n = particles.len();
 
-        let m = particles[i].mass.max(1e-30);
-        // Probabilidad de ser lanzado como viento en este paso.
-        let prob = 1.0 - (-(eta * sfr_i * dt) / m).exp();
+        let launched: Vec<usize> = (0..n)
+            .into_par_iter()
+            .filter_map(|i| {
+                if particles[i].ptype != ParticleType::Gas {
+                    return None;
+                }
+                let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+                if sfr_i <= 0.0 {
+                    return None;
+                }
+                let m = particles[i].mass.max(1e-30);
+                let prob = 1.0 - (-(eta * sfr_i * dt) / m).exp();
+                let mut local_seed = base_seed.wrapping_add(i as u64 * 0x9E3779B97F4A7C15);
+                let rand_val = rand01(&mut local_seed);
+                if rand_val < prob { Some(i) } else { None }
+            })
+            .collect();
 
-        let rand_val = rand01(seed);
-
-        if rand_val < prob {
-            let (nx, ny, nz) = random_unit_vector(seed);
+        let mut rng = base_seed.wrapping_add(n as u64 * 0x9E3779B97F4A7C15);
+        for &i in &launched {
+            let (nx, ny, nz) = random_unit_vector(&mut rng);
             particles[i].velocity.x += v_wind * nx;
             particles[i].velocity.y += v_wind * ny;
             particles[i].velocity.z += v_wind * nz;
-            launched.push(i);
         }
+        *seed = rng;
+        launched
     }
-    launched
+
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut launched: Vec<usize> = Vec::new();
+
+        for i in 0..particles.len() {
+            if particles[i].ptype != ParticleType::Gas {
+                continue;
+            }
+            let sfr_i = if i < sfr.len() { sfr[i] } else { 0.0 };
+            if sfr_i <= 0.0 {
+                continue;
+            }
+
+            let m = particles[i].mass.max(1e-30);
+            let prob = 1.0 - (-(eta * sfr_i * dt) / m).exp();
+
+            let rand_val = rand01(seed);
+
+            if rand_val < prob {
+                let (nx, ny, nz) = random_unit_vector(seed);
+                particles[i].velocity.x += v_wind * nx;
+                particles[i].velocity.y += v_wind * ny;
+                particles[i].velocity.z += v_wind * nz;
+                launched.push(i);
+            }
+        }
+        launched
+    }
 }
 
 /// Calcula la energía total inyectada por SN en un paso.
@@ -341,11 +548,23 @@ pub fn total_sn_energy_injection(
     cfg: &FeedbackSection,
     dt: f64,
 ) -> f64 {
-    sfr.iter()
-        .zip(masses.iter())
-        .filter(|&(&s, _)| s >= cfg.sfr_min)
-        .map(|(&s, &_m)| E_SN_PER_MSUN * cfg.eps_sn * s * dt)
-        .sum()
+    #[cfg(feature = "simd")]
+    {
+        sfr.par_iter()
+            .zip(masses.par_iter())
+            .filter(|&(&s, _)| s >= cfg.sfr_min)
+            .map(|(&s, &_m)| E_SN_PER_MSUN * cfg.eps_sn * s * dt)
+            .sum()
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        sfr.iter()
+            .zip(masses.iter())
+            .filter(|&(&s, _)| s >= cfg.sfr_min)
+            .map(|(&s, &_m)| E_SN_PER_MSUN * cfg.eps_sn * s * dt)
+            .sum()
+    }
 }
 
 /// Genera partículas estelares desde gas con SFR activa (Phase 112).
@@ -549,6 +768,16 @@ pub fn apply_snia_feedback_periodic(
 ///
 /// Debe llamarse cada paso con `dt_gyr` = paso de tiempo en Gyr.
 pub fn advance_stellar_ages(particles: &mut [Particle], dt_gyr: f64) {
+    #[cfg(feature = "simd")]
+    {
+        particles.par_iter_mut().for_each(|p| {
+            if p.ptype == gadget_ng_core::ParticleType::Star {
+                p.stellar_age += dt_gyr;
+            }
+        });
+    }
+
+    #[cfg(not(feature = "simd"))]
     for p in particles.iter_mut() {
         if p.ptype == gadget_ng_core::ParticleType::Star {
             p.stellar_age += dt_gyr;
@@ -574,37 +803,72 @@ pub fn apply_stellar_wind_feedback(
     dt: f64,
     seed: &mut u64,
 ) -> Vec<usize> {
-    let mut kicked = Vec::new();
     if !cfg.stellar_wind_enabled {
-        return kicked;
+        return Vec::new();
     }
 
-    // Velocidad del viento en unidades internas (km/s → km/s ya está bien)
     let v_wind = cfg.v_stellar_wind_km_s;
 
-    for i in 0..particles.len() {
-        if particles[i].ptype != gadget_ng_core::ParticleType::Gas {
-            continue;
-        }
-        if sfr[i] < cfg.sfr_min {
-            continue;
-        }
+    #[cfg(feature = "simd")]
+    {
+        let base_seed = *seed;
+        let n = particles.len();
 
-        let m_i = particles[i].mass.max(1e-30);
-        // Probabilidad: p = η_w × sfr × dt / m
-        let prob = (cfg.eta_stellar_wind * sfr[i] * dt / m_i).min(1.0);
+        let kicked: Vec<usize> = (0..n)
+            .into_par_iter()
+            .filter_map(|i| {
+                if particles[i].ptype != gadget_ng_core::ParticleType::Gas {
+                    return None;
+                }
+                if sfr[i] < cfg.sfr_min {
+                    return None;
+                }
+                let m_i = particles[i].mass.max(1e-30);
+                let prob = (cfg.eta_stellar_wind * sfr[i] * dt / m_i).min(1.0);
+                let mut local_seed = base_seed.wrapping_add(i as u64 * 0x9E3779B97F4A7C15);
+                let rand_val = rand01(&mut local_seed);
+                if rand_val < prob { Some(i) } else { None }
+            })
+            .collect();
 
-        let rand_val = rand01(seed);
-
-        if rand_val < prob {
-            let (nx, ny, nz) = random_unit_vector(seed);
+        let mut rng = base_seed.wrapping_add(n as u64 * 0x9E3779B97F4A7C15);
+        for &i in &kicked {
+            let (nx, ny, nz) = random_unit_vector(&mut rng);
             particles[i].velocity.x += v_wind * nx;
             particles[i].velocity.y += v_wind * ny;
             particles[i].velocity.z += v_wind * nz;
-            kicked.push(i);
         }
+        *seed = rng;
+        kicked
     }
-    kicked
+
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut kicked = Vec::new();
+
+        for i in 0..particles.len() {
+            if particles[i].ptype != gadget_ng_core::ParticleType::Gas {
+                continue;
+            }
+            if sfr[i] < cfg.sfr_min {
+                continue;
+            }
+
+            let m_i = particles[i].mass.max(1e-30);
+            let prob = (cfg.eta_stellar_wind * sfr[i] * dt / m_i).min(1.0);
+
+            let rand_val = rand01(seed);
+
+            if rand_val < prob {
+                let (nx, ny, nz) = random_unit_vector(seed);
+                particles[i].velocity.x += v_wind * nx;
+                particles[i].velocity.y += v_wind * ny;
+                particles[i].velocity.z += v_wind * nz;
+                kicked.push(i);
+            }
+        }
+        kicked
+    }
 }
 
 #[cfg(test)]

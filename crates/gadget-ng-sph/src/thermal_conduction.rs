@@ -31,6 +31,8 @@
 use crate::cooling::{temperature_to_u, u_to_temperature};
 use crate::periodic_delta;
 use gadget_ng_core::{ConductionSection, Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Logaritmo de Coulomb típico para plasma del ICM.
 const COULOMB_LOG: f64 = 37.0;
@@ -79,51 +81,103 @@ pub fn apply_thermal_conduction_periodic(
     }
 
     let n = particles.len();
-    let mut delta_u = vec![0.0_f64; n];
 
-    // Loop sobre pares únicos (i < j) para garantizar conservación de energía exacta.
-    // Calor que gana i proviene de j y viceversa: Δu_i = −Δu_j.
-    for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
-        }
-        let h_i = particles[i].smoothing_length.max(1e-10);
-        let t_i = u_to_temperature(particles[i].internal_energy.max(0.0), gamma);
+    let u_floor = temperature_to_u(t_floor_k, gamma);
 
-        for j in (i + 1)..n {
-            if particles[j].ptype != ParticleType::Gas {
-                continue;
+    #[cfg(feature = "simd")]
+    {
+        let ptypes: Vec<ParticleType> = particles.iter().map(|p| p.ptype).collect();
+        let pos: Vec<_> = particles.iter().map(|p| p.position).collect();
+        let h: Vec<f64> = particles
+            .iter()
+            .map(|p| p.smoothing_length.max(1e-10))
+            .collect();
+        let t_arr: Vec<f64> = particles
+            .iter()
+            .map(|p| u_to_temperature(p.internal_energy.max(0.0), gamma))
+            .collect();
+
+        let delta_u: Vec<f64> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                if ptypes[i] != ParticleType::Gas {
+                    return 0.0;
+                }
+                let mut sum = 0.0_f64;
+                for j in 0..n {
+                    if i == j || ptypes[j] != ParticleType::Gas {
+                        continue;
+                    }
+                    let r = periodic_delta(pos[i], pos[j], periodic_box).norm();
+                    let h_ij = h[i].max(h[j]);
+                    let w = kernel_cond(r, h_ij);
+                    if w <= 0.0 {
+                        continue;
+                    }
+                    let t_mean = 0.5 * (t_arr[i] + t_arr[j]);
+                    let kappa_eff =
+                        cfg.kappa_spitzer * cfg.psi_suppression * t_mean.powf(2.5) / COULOMB_LOG;
+                    sum += kappa_eff * (t_arr[j] - t_arr[i]) * w * dt;
+                }
+                sum
+            })
+            .collect();
+
+        for i in 0..n {
+            if particles[i].ptype == ParticleType::Gas && delta_u[i] != 0.0 {
+                let u_new = particles[i].internal_energy + delta_u[i];
+                particles[i].internal_energy = u_new.max(u_floor);
             }
-            let t_j = u_to_temperature(particles[j].internal_energy.max(0.0), gamma);
-
-            let r =
-                periodic_delta(particles[i].position, particles[j].position, periodic_box).norm();
-
-            // Usa el máximo de los dos radios de suavizado
-            let h_ij = h_i.max(particles[j].smoothing_length.max(1e-10));
-            let w = kernel_cond(r, h_ij);
-            if w <= 0.0 {
-                continue;
-            }
-
-            // Conductividad efectiva con dependencia T_mean^{5/2}
-            let t_mean = 0.5 * (t_i + t_j);
-            let kappa_eff =
-                cfg.kappa_spitzer * cfg.psi_suppression * t_mean.powf(2.5) / COULOMB_LOG;
-
-            // Flujo neto: q > 0 significa que i gana calor de j (j > i en temperatura)
-            let q_ij = kappa_eff * (t_j - t_i) * w * dt;
-            delta_u[i] += q_ij; // i recibe
-            delta_u[j] -= q_ij; // j cede (conservación exacta)
         }
     }
 
-    // Aplicar incrementos: solo clampear si la conducción enfría por debajo del floor
-    let u_floor = temperature_to_u(t_floor_k, gamma);
-    for i in 0..n {
-        if particles[i].ptype == ParticleType::Gas && delta_u[i] != 0.0 {
-            let u_new = particles[i].internal_energy + delta_u[i];
-            particles[i].internal_energy = u_new.max(u_floor);
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut delta_u = vec![0.0_f64; n];
+
+        // Loop sobre pares únicos (i < j) para garantizar conservación de energía exacta.
+        // Calor que gana i proviene de j y viceversa: Δu_i = −Δu_j.
+        for i in 0..n {
+            if particles[i].ptype != ParticleType::Gas {
+                continue;
+            }
+            let h_i = particles[i].smoothing_length.max(1e-10);
+            let t_i = u_to_temperature(particles[i].internal_energy.max(0.0), gamma);
+
+            for j in (i + 1)..n {
+                if particles[j].ptype != ParticleType::Gas {
+                    continue;
+                }
+                let t_j = u_to_temperature(particles[j].internal_energy.max(0.0), gamma);
+
+                let r = periodic_delta(particles[i].position, particles[j].position, periodic_box)
+                    .norm();
+
+                // Usa el máximo de los dos radios de suavizado
+                let h_ij = h_i.max(particles[j].smoothing_length.max(1e-10));
+                let w = kernel_cond(r, h_ij);
+                if w <= 0.0 {
+                    continue;
+                }
+
+                // Conductividad efectiva con dependencia T_mean^{5/2}
+                let t_mean = 0.5 * (t_i + t_j);
+                let kappa_eff =
+                    cfg.kappa_spitzer * cfg.psi_suppression * t_mean.powf(2.5) / COULOMB_LOG;
+
+                // Flujo neto: q > 0 significa que i gana calor de j (j > i en temperatura)
+                let q_ij = kappa_eff * (t_j - t_i) * w * dt;
+                delta_u[i] += q_ij; // i recibe
+                delta_u[j] -= q_ij; // j cede (conservación exacta)
+            }
+        }
+
+        // Aplicar incrementos: solo clampear si la conducción enfría por debajo del floor
+        for i in 0..n {
+            if particles[i].ptype == ParticleType::Gas && delta_u[i] != 0.0 {
+                let u_new = particles[i].internal_energy + delta_u[i];
+                particles[i].internal_energy = u_new.max(u_floor);
+            }
         }
     }
 }

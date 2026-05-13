@@ -33,6 +33,8 @@
 //! McKee & Ostriker (1977) ApJ 218, 148 — three-phase ISM.
 
 use gadget_ng_core::{Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 const KB_OVER_MH_MU: f64 = 8.254e-3 / 0.6;
 
@@ -65,32 +67,64 @@ pub fn classify_phase(u: f64, u_cold: f64, gamma: f64) -> GasPhase {
 }
 
 pub fn phase_fractions(particles: &[Particle], gamma: f64) -> (f64, f64, f64) {
-    let mut n_cold = 0u64;
-    let mut n_warm = 0u64;
-    let mut n_hot = 0u64;
-    let mut n_gas = 0u64;
+    #[cfg(feature = "simd")]
+    {
+        let (n_cold, n_warm, n_hot, n_gas) = particles
+            .par_iter()
+            .filter(|p| p.ptype == ParticleType::Gas)
+            .fold(
+                || (0u64, 0u64, 0u64, 0u64),
+                |(c, w, h, n), p| match classify_phase(p.internal_energy, p.u_cold, gamma) {
+                    GasPhase::Cold => (c + 1, w, h, n + 1),
+                    GasPhase::Warm => (c, w + 1, h, n + 1),
+                    GasPhase::Hot => (c, w, h + 1, n + 1),
+                },
+            )
+            .reduce(
+                || (0, 0, 0, 0),
+                |(ac, aw, ah, an), (bc, bw, bh, bn)| (ac + bc, aw + bw, ah + bh, an + bn),
+            );
 
-    for p in particles.iter() {
-        if p.ptype != ParticleType::Gas {
-            continue;
+        if n_gas == 0 {
+            return (0.0, 0.0, 0.0);
         }
-        n_gas += 1;
-        match classify_phase(p.internal_energy, p.u_cold, gamma) {
-            GasPhase::Cold => n_cold += 1,
-            GasPhase::Warm => n_warm += 1,
-            GasPhase::Hot => n_hot += 1,
-        }
+
+        (
+            n_cold as f64 / n_gas as f64,
+            n_warm as f64 / n_gas as f64,
+            n_hot as f64 / n_gas as f64,
+        )
     }
 
-    if n_gas == 0 {
-        return (0.0, 0.0, 0.0);
-    }
+    #[cfg(not(feature = "simd"))]
+    {
+        let mut n_cold = 0u64;
+        let mut n_warm = 0u64;
+        let mut n_hot = 0u64;
+        let mut n_gas = 0u64;
 
-    (
-        n_cold as f64 / n_gas as f64,
-        n_warm as f64 / n_gas as f64,
-        n_hot as f64 / n_gas as f64,
-    )
+        for p in particles.iter() {
+            if p.ptype != ParticleType::Gas {
+                continue;
+            }
+            n_gas += 1;
+            match classify_phase(p.internal_energy, p.u_cold, gamma) {
+                GasPhase::Cold => n_cold += 1,
+                GasPhase::Warm => n_warm += 1,
+                GasPhase::Hot => n_hot += 1,
+            }
+        }
+
+        if n_gas == 0 {
+            return (0.0, 0.0, 0.0);
+        }
+
+        (
+            n_cold as f64 / n_gas as f64,
+            n_warm as f64 / n_gas as f64,
+            n_hot as f64 / n_gas as f64,
+        )
+    }
 }
 
 pub fn field_length(kappa: f64, rho: f64, lambda_cooling: f64, gamma: f64) -> f64 {
@@ -139,24 +173,36 @@ pub fn thermal_instability_criterion(t: f64, rho: f64, lambda_cool: f64) -> bool
 }
 
 pub fn apply_phase_transitions(particles: &mut [Particle], dt: f64, gamma: f64, t_transition: f64) {
+    #[cfg(feature = "simd")]
+    {
+        particles.par_iter_mut().for_each(|p| {
+            apply_phase_transition_particle(p, dt, gamma, t_transition);
+        });
+    }
+
+    #[cfg(not(feature = "simd"))]
     for p in particles.iter_mut() {
-        if p.ptype != ParticleType::Gas {
-            continue;
-        }
+        apply_phase_transition_particle(p, dt, gamma, t_transition);
+    }
+}
 
-        let t = temperature_from_u(p.internal_energy + p.u_cold, gamma);
+fn apply_phase_transition_particle(p: &mut Particle, dt: f64, gamma: f64, t_transition: f64) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
 
-        if t < T_COLD_MAX {
-            let u_hot = u_from_temperature(T_WARM_MAX, gamma);
-            let delta_u = (u_hot - p.u_cold).min(dt / t_transition);
-            p.internal_energy += delta_u;
-            p.u_cold -= delta_u;
-        } else if t > T_WARM_MAX {
-            let u_cold_target = u_from_temperature(T_COLD_MAX, gamma);
-            let delta_u = (p.u_cold - u_cold_target).min(dt / t_transition);
-            p.u_cold = u_cold_target.max(0.0);
-            p.internal_energy -= delta_u;
-        }
+    let t = temperature_from_u(p.internal_energy + p.u_cold, gamma);
+
+    if t < T_COLD_MAX {
+        let u_hot = u_from_temperature(T_WARM_MAX, gamma);
+        let delta_u = (u_hot - p.u_cold).min(dt / t_transition);
+        p.internal_energy += delta_u;
+        p.u_cold -= delta_u;
+    } else if t > T_WARM_MAX {
+        let u_cold_target = u_from_temperature(T_COLD_MAX, gamma);
+        let delta_u = (p.u_cold - u_cold_target).min(dt / t_transition);
+        p.u_cold = u_cold_target.max(0.0);
+        p.internal_energy -= delta_u;
     }
 }
 

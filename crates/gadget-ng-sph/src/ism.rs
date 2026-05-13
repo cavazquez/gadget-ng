@@ -28,6 +28,8 @@
 //! Springel & Hernquist (2003) MNRAS 339, 289
 
 use gadget_ng_core::{IsmSection, Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Calcula la presión efectiva del ISM multifase (Phase 114).
 ///
@@ -74,41 +76,60 @@ pub fn update_ism_phases(
     let n = particles.len();
     assert_eq!(sfr.len(), n, "sfr.len() debe ser igual a particles.len()");
 
-    const T_RELAX_FACTOR: f64 = 0.1; // t_relax = T_RELAX_FACTOR × dt_típico
+    #[cfg(feature = "simd")]
+    {
+        particles
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(i, p)| update_ism_particle(p, i, sfr, rho_sf, cfg, dt));
+    }
 
-    for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
+    #[cfg(not(feature = "simd"))]
+    {
+        for (i, p) in particles.iter_mut().enumerate() {
+            update_ism_particle(p, i, sfr, rho_sf, cfg, dt);
         }
+    }
+}
 
-        let h = particles[i].smoothing_length.max(1e-10);
-        let rho_local = particles[i].mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
+fn update_ism_particle(
+    p: &mut Particle,
+    i: usize,
+    sfr: &[f64],
+    rho_sf: f64,
+    cfg: &IsmSection,
+    dt: f64,
+) {
+    const T_RELAX_FACTOR: f64 = 0.1;
 
-        let u_total = particles[i].internal_energy + particles[i].u_cold;
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
 
-        if sfr[i] > 0.0 && rho_sf > 0.0 {
-            // Gas sobre el umbral: equilibrar fases
-            let density_factor = (rho_local / rho_sf).min(1.0);
-            let u_cold_eq = cfg.f_cold * u_total * density_factor;
+    let h = p.smoothing_length.max(1e-10);
+    let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
 
-            let u_cold_old = particles[i].u_cold;
-            let t_relax = (T_RELAX_FACTOR * dt).max(dt * 0.01);
-            let alpha = (dt / t_relax).min(1.0);
+    let u_total = p.internal_energy + p.u_cold;
 
-            let u_cold_new = u_cold_old + alpha * (u_cold_eq - u_cold_old);
-            let du_cold = u_cold_new - u_cold_old;
+    if sfr[i] > 0.0 && rho_sf > 0.0 {
+        let density_factor = (rho_local / rho_sf).min(1.0);
+        let u_cold_eq = cfg.f_cold * u_total * density_factor;
 
-            particles[i].u_cold = u_cold_new.max(0.0);
-            // Conservar energía total: lo que gana la fase fría lo pierde la caliente
-            particles[i].internal_energy = (particles[i].internal_energy - du_cold).max(0.0);
-        } else {
-            // Gas bajo el umbral: la fase fría se disipa (calienta el gas)
-            let decay = (-dt / (T_RELAX_FACTOR * 10.0 * dt.max(1e-20))).exp();
-            let u_cold_new = particles[i].u_cold * decay;
-            let released = particles[i].u_cold - u_cold_new;
-            particles[i].u_cold = u_cold_new;
-            particles[i].internal_energy += released; // calentamiento por disipación
-        }
+        let u_cold_old = p.u_cold;
+        let t_relax = (T_RELAX_FACTOR * dt).max(dt * 0.01);
+        let alpha = (dt / t_relax).min(1.0);
+
+        let u_cold_new = u_cold_old + alpha * (u_cold_eq - u_cold_old);
+        let du_cold = u_cold_new - u_cold_old;
+
+        p.u_cold = u_cold_new.max(0.0);
+        p.internal_energy = (p.internal_energy - du_cold).max(0.0);
+    } else {
+        let decay = (-dt / (T_RELAX_FACTOR * 10.0 * dt.max(1e-20))).exp();
+        let u_cold_new = p.u_cold * decay;
+        let released = p.u_cold - u_cold_new;
+        p.u_cold = u_cold_new;
+        p.internal_energy += released;
     }
 }
 
