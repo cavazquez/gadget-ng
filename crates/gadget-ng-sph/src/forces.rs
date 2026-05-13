@@ -33,6 +33,8 @@
 
 use crate::density::GAMMA;
 use crate::kernel::grad_w;
+#[cfg(feature = "simd")]
+use crate::kernel::grad_w_batch;
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
@@ -187,41 +189,80 @@ fn sph_force_update_for_particle(
     let n = pos.len();
     let pi_rho2 = pressure[i] / (rho[i] * rho[i]);
     let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
-    let mut acc = Vec3::zero();
-    let mut dudt = 0.0_f64;
+    let hi = h_sml[i];
+    let pi_pos = pos[i];
+    let pi_vel = vel[i];
+
+    // Collect neighbor distances for batch kernel evaluation
+    let mut r_buf: Vec<f64> = Vec::with_capacity(n);
+    let mut idx_buf: Vec<usize> = Vec::with_capacity(n);
+    let mut r_ij_buf: Vec<Vec3> = Vec::with_capacity(n);
+    let mut r_hat_buf: Vec<Vec3> = Vec::with_capacity(n);
 
     for j in 0..n {
         if j == i || !is_gas[j] || rho[j] < 1e-200 {
             continue;
         }
-        let r_ij = periodic_delta(pos[j], pos[i], periodic_box);
+        let r_ij = periodic_delta(pos[j], pi_pos, periodic_box);
         let r = r_ij.norm();
-        let h_i = h_sml[i];
-        let h_j = h_sml[j];
-        let gw_i = grad_w(r, h_i);
-        let gw_j = grad_w(r, h_j);
-        if gw_i == 0.0 && gw_j == 0.0 {
-            continue;
+        let gw_i = grad_w(r, hi);
+        if gw_i == 0.0 {
+            // Also need to check h_j — only skip if both are zero
+            let gw_j = grad_w(r, h_sml[j]);
+            if gw_j == 0.0 {
+                continue;
+            }
         }
-        let r_hat = if r > 1e-300 {
+        r_buf.push(r);
+        idx_buf.push(j);
+        r_ij_buf.push(r_ij);
+        r_hat_buf.push(if r > 1e-300 {
             r_ij * (1.0 / r)
         } else {
             Vec3::zero()
-        };
-        let nabla_w_i = r_hat * (gw_i / h_i);
-        let nabla_w_j = r_hat * (gw_j / h_j);
+        });
+    }
+
+    let m = r_buf.len();
+    if m == 0 {
+        return (Vec3::zero(), 0.0);
+    }
+
+    // Batch kernel evaluation for h_i (the fixed smoothing length for particle i)
+    let mut gw_i_buf = vec![0.0_f64; m];
+    grad_w_batch(&r_buf, hi, &mut gw_i_buf);
+
+    // For h_j we still need per-particle evaluation (variable h)
+    let mut acc = Vec3::zero();
+    let mut dudt = 0.0_f64;
+    let inv_hi = 1.0 / hi;
+
+    for k in 0..m {
+        let gw_i = gw_i_buf[k];
+        let r = r_buf[k];
+        // Evaluate gw_j with variable h_j
+        let gw_j = grad_w(r, h_sml[idx_buf[k]]);
+        if gw_i == 0.0 && gw_j == 0.0 {
+            continue;
+        }
+        let j = idx_buf[k];
+        let r_hat = r_hat_buf[k];
+        let nabla_w_i = r_hat * (gw_i * inv_hi);
+        let nabla_w_j = r_hat * (gw_j / h_sml[j]);
         let pj_rho2 = pressure[j] / (rho[j] * rho[j]);
-        let v_ij = vel[i] - vel[j];
-        let h_bar = 0.5 * (h_i + h_j);
-        let mu_ij = if v_ij.dot(r_ij) < 0.0 {
+
+        let v_ij = pi_vel - vel[j];
+        let h_bar = 0.5 * (hi + h_sml[j]);
+        let mu_ij = if v_ij.dot(r_ij_buf[k]) < 0.0 {
             let cs_j = (GAMMA * pressure[j] / rho[j]).sqrt().max(0.0);
             let cs_bar = 0.5 * (cs_i + cs_j);
             let rho_bar = 0.5 * (rho[i] + rho[j]);
-            let mu = h_bar * v_ij.dot(r_ij) / (r * r + EPS_VISC * h_bar * h_bar);
+            let mu = h_bar * v_ij.dot(r_ij_buf[k]) / (r * r + EPS_VISC * h_bar * h_bar);
             -ALPHA_VISC * cs_bar * mu / rho_bar
         } else {
             0.0
         };
+
         let coeff_i = pi_rho2 + 0.5 * mu_ij;
         let coeff_j = pj_rho2 + 0.5 * mu_ij;
         acc -= (nabla_w_i * coeff_i + nabla_w_j * coeff_j) * mass[j];

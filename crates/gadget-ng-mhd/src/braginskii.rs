@@ -32,6 +32,8 @@
 //! Schekochihin & Cowley (2006), Phys. Plasmas 13, 056501 — MHD con Braginskii.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Kernel SPH compacto para difusión de momento.
 #[inline]
@@ -47,18 +49,12 @@ fn kernel_w(r: f64, h: f64) -> f64 {
     (21.0 / (2.0 * std::f64::consts::PI * h * h * h)) * t.powi(4) * (1.0 + 2.0 * q)
 }
 
-/// Aplica la viscosidad anisótropa de Braginskii al campo de velocidades (Phase 146).
-///
-/// El tensor de presión viscosa `π_ij = −η_visc (b̂_i b̂_j − δ_ij/3) ∇·v`
-/// se discretiza en SPH como un intercambio de momento anisótropo entre pares,
-/// proyectado sobre la dirección del campo magnético local.
-///
-/// # Parámetros
-///
-/// - `particles`: slice mutable de partículas de gas
-/// - `eta_visc`: coeficiente de viscosidad de Braginskii [unidades internas]
-/// - `dt`: paso de tiempo
-pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt: f64) {
+#[cfg(not(feature = "simd"))]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "hot MHD pair loop indexes multiple SoA arrays"
+)]
+fn apply_braginskii_viscosity_impl(particles: &mut [Particle], eta_visc: f64, dt: f64) {
     if eta_visc <= 0.0 {
         return;
     }
@@ -83,9 +79,10 @@ pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt:
         }
         let b_mag = b2_i.sqrt();
         let bhat = Vec3::new(b_i.x / b_mag, b_i.y / b_mag, b_i.z / b_mag);
-        let rho_i = (particles[i].mass / (h_i * h_i * h_i)).max(1e-30);
-
-        for j in (i + 1)..n {
+        for j in 0..n {
+            if j == i {
+                continue;
+            }
             if particles[j].ptype != ParticleType::Gas {
                 continue;
             }
@@ -105,36 +102,24 @@ pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt:
                 continue;
             }
 
-            // Dirección entre partículas
             let rhat_x = dx / r;
             let rhat_y = dy / r;
             let rhat_z = dz / r;
 
-            // cos²(θ) = (B̂ · r̂)² — factor geométrico anisótropo
             let cos_theta = bhat.x * rhat_x + bhat.y * rhat_y + bhat.z * rhat_z;
             let cos2 = cos_theta * cos_theta;
 
-            // Diferencia de velocidad proyectada sobre B̂
             let dvx = particles[j].velocity.x - vel_i.x;
             let dvy = particles[j].velocity.y - vel_i.y;
             let dvz = particles[j].velocity.z - vel_i.z;
-            let dv_par = dvx * bhat.x + dvy * bhat.y + dvz * bhat.z; // (v_j - v_i) · B̂
+            let dv_par = dvx * bhat.x + dvy * bhat.y + dvz * bhat.z;
 
-            // Tensor Braginskii: π ∝ b̂ ⊗ b̂ × ∇·v
-            // Aproximamos ∇·v local como la divergencia de v entre el par
             let rho_j = (particles[j].mass / (h_j * h_j * h_j)).max(1e-30);
+            let factor = eta_visc * particles[j].mass / rho_j * cos2 * w;
 
-            let factor_i = eta_visc * particles[j].mass / rho_j * cos2 * w;
-            let factor_j = eta_visc * particles[i].mass / rho_i * cos2 * w;
-
-            // Impulso viscoso anisótropo: solo en dirección B̂
-            dv[i].x += factor_i * dv_par * bhat.x * dt;
-            dv[i].y += factor_i * dv_par * bhat.y * dt;
-            dv[i].z += factor_i * dv_par * bhat.z * dt;
-
-            dv[j].x -= factor_j * dv_par * bhat.x * dt;
-            dv[j].y -= factor_j * dv_par * bhat.y * dt;
-            dv[j].z -= factor_j * dv_par * bhat.z * dt;
+            dv[i].x += factor * dv_par * bhat.x * dt;
+            dv[i].y += factor * dv_par * bhat.y * dt;
+            dv[i].z += factor * dv_par * bhat.z * dt;
         }
     }
 
@@ -144,5 +129,125 @@ pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt:
             particles[i].velocity.y += dv[i].y;
             particles[i].velocity.z += dv[i].z;
         }
+    }
+}
+
+#[cfg(feature = "simd")]
+fn apply_braginskii_viscosity_par(particles: &mut [Particle], eta_visc: f64, dt: f64) {
+    if eta_visc <= 0.0 {
+        return;
+    }
+    let n = particles.len();
+    if n == 0 {
+        return;
+    }
+
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let vel: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(1e-10))
+        .collect();
+    let b_field: Vec<Vec3> = particles.iter().map(|p| p.b_field).collect();
+    let rho: Vec<f64> = h_sml
+        .iter()
+        .zip(mass.iter())
+        .map(|(&h, &m)| (m / (h * h * h)).max(1e-30))
+        .collect();
+    let is_gas: Vec<bool> = particles
+        .iter()
+        .map(|p| p.ptype == ParticleType::Gas)
+        .collect();
+
+    let updates: Vec<Option<Vec3>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if !is_gas[i] {
+                return None;
+            }
+            let h_i = h_sml[i];
+            let b_i = b_field[i];
+            let b2_i = b_i.x * b_i.x + b_i.y * b_i.y + b_i.z * b_i.z;
+            if b2_i < 1e-60 {
+                return Some(Vec3::zero());
+            }
+            let b_mag = b2_i.sqrt();
+            let bhat_x = b_i.x / b_mag;
+            let bhat_y = b_i.y / b_mag;
+            let bhat_z = b_i.z / b_mag;
+            let vel_i = vel[i];
+
+            let mut dv_i = Vec3::zero();
+
+            for j in 0..n {
+                if j == i || !is_gas[j] {
+                    continue;
+                }
+                let dx = pos[j].x - pos[i].x;
+                let dy = pos[j].y - pos[i].y;
+                let dz = pos[j].z - pos[i].z;
+                let r = (dx * dx + dy * dy + dz * dz).sqrt();
+                if r < 1e-14 {
+                    continue;
+                }
+
+                let h_avg = 0.5 * (h_i + h_sml[j]);
+                let w = kernel_w(r, 2.0 * h_avg);
+                if w <= 0.0 {
+                    continue;
+                }
+
+                let rhat_x = dx / r;
+                let rhat_y = dy / r;
+                let rhat_z = dz / r;
+
+                let cos_theta = bhat_x * rhat_x + bhat_y * rhat_y + bhat_z * rhat_z;
+                let cos2 = cos_theta * cos_theta;
+
+                let dvx = vel[j].x - vel_i.x;
+                let dvy = vel[j].y - vel_i.y;
+                let dvz = vel[j].z - vel_i.z;
+                let dv_par = dvx * bhat_x + dvy * bhat_y + dvz * bhat_z;
+
+                let factor = eta_visc * mass[j] / rho[j] * cos2 * w;
+
+                dv_i.x += factor * dv_par * bhat_x * dt;
+                dv_i.y += factor * dv_par * bhat_y * dt;
+                dv_i.z += factor * dv_par * bhat_z * dt;
+            }
+            Some(dv_i)
+        })
+        .collect();
+
+    for (p, update) in particles.iter_mut().zip(updates) {
+        if let (true, Some(dv)) = (p.ptype == ParticleType::Gas, update) {
+            p.velocity.x += dv.x;
+            p.velocity.y += dv.y;
+            p.velocity.z += dv.z;
+        }
+    }
+}
+
+/// Aplica la viscosidad anisótropa de Braginskii al campo de velocidades (Phase 146).
+///
+/// El tensor de presión viscosa `π_ij = −η_visc (b̂_i b̂_j − δ_ij/3) ∇·v`
+/// se discretiza en SPH como un intercambio de momento anisótropo entre pares,
+/// proyectado sobre la dirección del campo magnético local.
+///
+/// # Parámetros
+///
+/// - `particles`: slice mutable de partículas de gas
+/// - `eta_visc`: coeficiente de viscosidad de Braginskii [unidades internas]
+/// - `dt`: paso de tiempo
+pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        apply_braginskii_viscosity_par(particles, eta_visc, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_braginskii_viscosity_impl(particles, eta_visc, dt);
     }
 }

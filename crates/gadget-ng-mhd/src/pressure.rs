@@ -20,6 +20,8 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Calcula la presión magnética escalar `P_B = |B|² / (2μ₀)`.
 pub fn magnetic_pressure(b: Vec3) -> f64 {
@@ -61,19 +63,13 @@ fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-/// Aplica las fuerzas magnéticas (tensor de Maxwell SPH) a las partículas de gas (Phase 124).
-///
-/// Para cada par (i, j) de partículas de gas, acumula la aceleración magnética:
-///
-/// ```text
-/// a_i += m_j (M_i/ρ_i² + M_j/ρ_j²) · ∇W_ij
-/// ```
-#[allow(clippy::needless_range_loop)]
-pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
+#[cfg(not(feature = "simd"))]
+fn apply_magnetic_forces_impl(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
-    let mut acc_mag = vec![Vec3::zero(); n];
+    if n == 0 {
+        return;
+    }
 
-    // Precalcular densidades y tensores de Maxwell
     let rho: Vec<f64> = particles
         .iter()
         .map(|p| {
@@ -86,6 +82,8 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
         .map(|p| maxwell_stress(p.b_field))
         .collect();
 
+    let mut acc_mag = vec![Vec3::zero(); n];
+
     for i in 0..n {
         if particles[i].ptype != ParticleType::Gas {
             continue;
@@ -93,7 +91,10 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
         let rho_i2 = rho[i] * rho[i];
         let m_i = &maxwell[i];
 
-        for j in (i + 1)..n {
+        for j in 0..n {
+            if j == i {
+                continue;
+            }
             if particles[j].ptype != ParticleType::Gas {
                 continue;
             }
@@ -110,7 +111,6 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
             let grad_w = kernel_gradient(r_ij, h_ij);
             let gw = [grad_w.x, grad_w.y, grad_w.z];
 
-            // a_contrib = (M_i/ρ_i² + M_j/ρ_j²) · ∇W_ij
             let mut a = [0.0_f64; 3];
             for k in 0..3 {
                 for l in 0..3 {
@@ -118,27 +118,114 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
                 }
             }
 
-            let m_j_mass = particles[j].mass;
-            let m_i_mass = particles[i].mass;
-
-            acc_mag[i].x += m_j_mass * a[0];
-            acc_mag[i].y += m_j_mass * a[1];
-            acc_mag[i].z += m_j_mass * a[2];
-
-            acc_mag[j].x -= m_i_mass * a[0];
-            acc_mag[j].y -= m_i_mass * a[1];
-            acc_mag[j].z -= m_i_mass * a[2];
+            acc_mag[i].x += particles[j].mass * a[0];
+            acc_mag[i].y += particles[j].mass * a[1];
+            acc_mag[i].z += particles[j].mass * a[2];
         }
     }
 
-    // Integración de Euler: v += a * dt
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
+        if particles[i].ptype == ParticleType::Gas {
+            particles[i].velocity.x += acc_mag[i].x * dt;
+            particles[i].velocity.y += acc_mag[i].y * dt;
+            particles[i].velocity.z += acc_mag[i].z * dt;
         }
-        particles[i].velocity.x += acc_mag[i].x * dt;
-        particles[i].velocity.y += acc_mag[i].y * dt;
-        particles[i].velocity.z += acc_mag[i].z * dt;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn apply_magnetic_forces_par(particles: &mut [Particle], dt: f64) {
+    let n = particles.len();
+    if n == 0 {
+        return;
+    }
+
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(1e-10))
+        .collect();
+    let rho: Vec<f64> = h_sml
+        .iter()
+        .zip(mass.iter())
+        .map(|(&h, &m)| (m / (h * h * h)).max(1e-30))
+        .collect();
+    let maxwell: Vec<[[f64; 3]; 3]> = particles
+        .iter()
+        .map(|p| maxwell_stress(p.b_field))
+        .collect();
+    let is_gas: Vec<bool> = particles
+        .iter()
+        .map(|p| p.ptype == ParticleType::Gas)
+        .collect();
+
+    let updates: Vec<Option<Vec3>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if !is_gas[i] {
+                return None;
+            }
+            let rho_i2 = rho[i] * rho[i];
+            let m_i = &maxwell[i];
+            let mut acc = Vec3::zero();
+
+            for j in 0..n {
+                if j == i || !is_gas[j] {
+                    continue;
+                }
+                let rho_j2 = rho[j] * rho[j];
+                let m_j = &maxwell[j];
+
+                let r_ij = Vec3 {
+                    x: pos[j].x - pos[i].x,
+                    y: pos[j].y - pos[i].y,
+                    z: pos[j].z - pos[i].z,
+                };
+                let h_ij = 0.5 * (h_sml[i] + h_sml[j]);
+                let grad_w = kernel_gradient(r_ij, h_ij);
+                let gw = [grad_w.x, grad_w.y, grad_w.z];
+
+                let mut a = [0.0_f64; 3];
+                for k in 0..3 {
+                    for l in 0..3 {
+                        a[k] += (m_i[k][l] / rho_i2 + m_j[k][l] / rho_j2) * gw[l];
+                    }
+                }
+
+                acc.x += mass[j] * a[0];
+                acc.y += mass[j] * a[1];
+                acc.z += mass[j] * a[2];
+            }
+            Some(acc)
+        })
+        .collect();
+
+    for (p, update) in particles.iter_mut().zip(updates) {
+        if let (true, Some(acc)) = (p.ptype == ParticleType::Gas, update) {
+            p.velocity.x += acc.x * dt;
+            p.velocity.y += acc.y * dt;
+            p.velocity.z += acc.z * dt;
+        }
+    }
+}
+
+/// Aplica las fuerzas magnéticas (tensor de Maxwell SPH) a las partículas de gas (Phase 124).
+///
+/// Para cada par (i, j) de partículas de gas, acumula la aceleración magnética:
+///
+/// ```text
+/// a_i += m_j (M_i/ρ_i² + M_j/ρ_j²) · ∇W_ij
+/// ```
+pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        apply_magnetic_forces_par(particles, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_magnetic_forces_impl(particles, dt);
     }
 }
 

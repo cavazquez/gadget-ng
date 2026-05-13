@@ -12,7 +12,10 @@
 //! La implementación usa una lista O(N²) válida para N ~ 10 000 partículas.
 //! Para N mayores se debería usar un árbol KD o cell-linked-list.
 
+#[cfg(not(feature = "simd"))]
 use crate::kernel::{grad_w, w};
+#[cfg(feature = "simd")]
+use crate::kernel::{w_and_grad_w_batch, w_batch};
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
@@ -124,7 +127,7 @@ fn density_update_for_particle(
     let mut h = h0.max(1e-10);
 
     for _ in 0..MAX_ITER {
-        let (rho, drho_dh) = rho_and_deriv(pos, mass, pi, h, n, periodic_box);
+        let (rho, drho_dh) = rho_and_deriv_batch(pos, mass, pi, h, n, periodic_box);
         let n_eff = (4.0 * std::f64::consts::PI / 3.0) * (2.0 * h).powi(3) * rho / m_i;
         if (n_eff - N_NEIGH).abs() < 1e-2 {
             break;
@@ -136,7 +139,7 @@ fn density_update_for_particle(
         h = (h + dh.clamp(-0.5 * h, 0.5 * h)).max(1e-10);
     }
 
-    let rho = rho_sum(pos, mass, pi, h, n, periodic_box);
+    let rho = rho_sum_batch(pos, mass, pi, h, n, periodic_box);
     let pressure = (GAMMA - 1.0) * rho * u;
     let entropy = if rho > 0.0 {
         (GAMMA - 1.0) * u / rho.powf(GAMMA - 1.0)
@@ -147,6 +150,8 @@ fn density_update_for_particle(
 }
 
 /// `ρ(h) = Σ_j m_j W(r_ij, h)` y su derivada `dρ/dh`.
+/// Versión escalar (una partícula a la vez).
+#[cfg(not(feature = "simd"))]
 fn rho_and_deriv(
     pos: &[Vec3],
     mass: &[f64],
@@ -157,17 +162,60 @@ fn rho_and_deriv(
 ) -> (f64, f64) {
     let mut rho = 0.0_f64;
     let mut drho = 0.0_f64;
-    for j in 0..n {
-        let r = periodic_delta(pi, pos[j], periodic_box).norm();
+    for (j, pj) in pos.iter().enumerate().take(n) {
+        let r = periodic_delta(pi, *pj, periodic_box).norm();
         rho += mass[j] * w(r, h);
-        // dW/dh = -dW/dr · r/h  (chain rule: W(r, h) = 1/h³ f(r/h))
-        // más correcto: dW/dh = -1/h (3 W + r dW/dr)
-        let gw = grad_w(r, h); // = dW/dr
+        let gw = grad_w(r, h);
         drho += mass[j] * (-1.0 / h) * (3.0 * w(r, h) + r * gw);
     }
     (rho, drho)
 }
 
+/// Versión SIMD por lotes de `rho_and_deriv`: recolecta distancias y usa
+/// `w_and_grad_w_batch` para vectorizar el cómputo del kernel Wendland C2.
+#[cfg(feature = "simd")]
+fn rho_and_deriv_batch(
+    pos: &[Vec3],
+    mass: &[f64],
+    pi: Vec3,
+    h: f64,
+    n: usize,
+    periodic_box: Option<f64>,
+) -> (f64, f64) {
+    let mut r_buf: Vec<f64> = Vec::with_capacity(n);
+    let mut idx_buf: Vec<usize> = Vec::with_capacity(n);
+
+    for (j, pj) in pos.iter().enumerate().take(n) {
+        let r = periodic_delta(pi, *pj, periodic_box).norm();
+        if r < 2.0 * h {
+            r_buf.push(r);
+            idx_buf.push(j);
+        }
+    }
+
+    let m = r_buf.len();
+    if m == 0 {
+        return (0.0, 0.0);
+    }
+
+    let mut w_buf = vec![0.0_f64; m];
+    let mut gw_buf = vec![0.0_f64; m];
+    w_and_grad_w_batch(&r_buf, h, &mut w_buf, &mut gw_buf);
+
+    let mut rho = 0.0_f64;
+    let mut drho = 0.0_f64;
+    let inv_h = 1.0 / h;
+    let coeff = -inv_h * 3.0;
+
+    for k in 0..m {
+        let mj = mass[idx_buf[k]];
+        rho += mj * w_buf[k];
+        drho += mj * (coeff * w_buf[k] + (-inv_h) * r_buf[k] * gw_buf[k]);
+    }
+    (rho, drho)
+}
+
+#[cfg(not(feature = "simd"))]
 fn rho_sum(
     pos: &[Vec3],
     mass: &[f64],
@@ -179,6 +227,42 @@ fn rho_sum(
     (0..n)
         .map(|j| mass[j] * w(periodic_delta(pi, pos[j], periodic_box).norm(), h))
         .sum()
+}
+
+/// Versión SIMD por lotes de `rho_sum`.
+#[cfg(feature = "simd")]
+fn rho_sum_batch(
+    pos: &[Vec3],
+    mass: &[f64],
+    pi: Vec3,
+    h: f64,
+    n: usize,
+    periodic_box: Option<f64>,
+) -> f64 {
+    let mut r_buf: Vec<f64> = Vec::with_capacity(n);
+    let mut idx_buf: Vec<usize> = Vec::with_capacity(n);
+
+    for (j, pj) in pos.iter().enumerate().take(n) {
+        let r = periodic_delta(pi, *pj, periodic_box).norm();
+        if r < 2.0 * h {
+            r_buf.push(r);
+            idx_buf.push(j);
+        }
+    }
+
+    let m = r_buf.len();
+    if m == 0 {
+        return 0.0;
+    }
+
+    let mut w_buf = vec![0.0_f64; m];
+    w_batch(&r_buf, h, &mut w_buf);
+
+    let mut rho = 0.0_f64;
+    for k in 0..m {
+        rho += mass[idx_buf[k]] * w_buf[k];
+    }
+    rho
 }
 
 #[cfg(test)]

@@ -21,6 +21,8 @@
 
 use crate::MU0;
 use gadget_ng_core::{BFieldKind, MhdSection, Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Gradiente del kernel SPH cúbico (en 3D): `∇W(r, h)`.
 ///
@@ -51,11 +53,8 @@ fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-/// Avanza el campo magnético de todas las partículas de gas un paso `dt`
-/// usando la ecuación de inducción SPH (Phase 123).
-///
-/// La densidad SPH se aproxima como `ρ ≈ mass/h³` (consistente con el resto del código).
-pub fn advance_induction(particles: &mut [Particle], dt: f64) {
+#[cfg(not(feature = "simd"))]
+fn advance_induction_impl(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
     let mut db = vec![Vec3::zero(); n];
 
@@ -69,7 +68,7 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
         let v_i = particles[i].velocity;
 
         for j in 0..n {
-            if i == j {
+            if j == i {
                 continue;
             }
             if particles[j].ptype != ParticleType::Gas {
@@ -87,11 +86,9 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
                 z: particles[j].position.z - particles[i].position.z,
             };
 
-            // ∇W evaluado en r_ij con h promedio
             let h_ij = 0.5 * (h_i + h_j);
             let grad_w = kernel_gradient(r_ij, h_ij);
 
-            // v_ij = v_i - v_j
             let v_ij = Vec3 {
                 x: v_i.x - v_j.x,
                 y: v_i.y - v_j.y,
@@ -103,8 +100,6 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
                 z: b_i.z - b_j.z,
             };
 
-            // Contribución de j a dB_i/dt (formulación simétrica):
-            // dB_i/dt += (m_j/ρ_j) [(B_ij·∇W_ij) v_ij - (v_ij·∇W_ij) B_ij]
             let b_dot_grad = b_ij.x * grad_w.x + b_ij.y * grad_w.y + b_ij.z * grad_w.z;
             let v_dot_grad = v_ij.x * grad_w.x + v_ij.y * grad_w.y + v_ij.z * grad_w.z;
             let factor = particles[j].mass / rho_j;
@@ -113,18 +108,103 @@ pub fn advance_induction(particles: &mut [Particle], dt: f64) {
             db[i].y += factor * (b_dot_grad * v_ij.y - v_dot_grad * b_ij.y);
             db[i].z += factor * (b_dot_grad * v_ij.z - v_dot_grad * b_ij.z);
         }
-        // Factor de normalización para consistencia con SPH estándar
-        let _ = rho_i; // rho_i usada para verificación futura (supresión de warning)
+        let _ = rho_i;
     }
 
-    // Integración explícita de Euler
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
+        if particles[i].ptype == ParticleType::Gas {
+            particles[i].b_field.x += db[i].x * dt;
+            particles[i].b_field.y += db[i].y * dt;
+            particles[i].b_field.z += db[i].z * dt;
         }
-        particles[i].b_field.x += db[i].x * dt;
-        particles[i].b_field.y += db[i].y * dt;
-        particles[i].b_field.z += db[i].z * dt;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn advance_induction_par(particles: &mut [Particle], dt: f64) {
+    let n = particles.len();
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let vel: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
+    let b_field: Vec<Vec3> = particles.iter().map(|p| p.b_field).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(1e-10))
+        .collect();
+    let rho: Vec<f64> = h_sml
+        .iter()
+        .zip(mass.iter())
+        .map(|(&h, &m)| (m / (h * h * h)).max(1e-30))
+        .collect();
+    let is_gas: Vec<bool> = particles
+        .iter()
+        .map(|p| p.ptype == ParticleType::Gas)
+        .collect();
+
+    let updates: Vec<Option<Vec3>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if !is_gas[i] {
+                return None;
+            }
+            let h_i = h_sml[i];
+            let b_i = b_field[i];
+            let v_i = vel[i];
+            let mut db_i = Vec3::zero();
+
+            for j in 0..n {
+                if j == i || !is_gas[j] {
+                    continue;
+                }
+                let r_ij = Vec3 {
+                    x: pos[j].x - pos[i].x,
+                    y: pos[j].y - pos[i].y,
+                    z: pos[j].z - pos[i].z,
+                };
+                let h_ij = 0.5 * (h_i + h_sml[j]);
+                let grad_w = kernel_gradient(r_ij, h_ij);
+
+                let v_ij = Vec3 {
+                    x: v_i.x - vel[j].x,
+                    y: v_i.y - vel[j].y,
+                    z: v_i.z - vel[j].z,
+                };
+                let b_ij = Vec3 {
+                    x: b_i.x - b_field[j].x,
+                    y: b_i.y - b_field[j].y,
+                    z: b_i.z - b_field[j].z,
+                };
+
+                let b_dot_grad = b_ij.x * grad_w.x + b_ij.y * grad_w.y + b_ij.z * grad_w.z;
+                let v_dot_grad = v_ij.x * grad_w.x + v_ij.y * grad_w.y + v_ij.z * grad_w.z;
+                let factor = mass[j] / rho[j];
+
+                db_i.x += factor * (b_dot_grad * v_ij.x - v_dot_grad * b_ij.x);
+                db_i.y += factor * (b_dot_grad * v_ij.y - v_dot_grad * b_ij.y);
+                db_i.z += factor * (b_dot_grad * v_ij.z - v_dot_grad * b_ij.z);
+            }
+            Some(db_i)
+        })
+        .collect();
+
+    for (p, update) in particles.iter_mut().zip(updates) {
+        if let (true, Some(db)) = (p.ptype == ParticleType::Gas, update) {
+            p.b_field.x += db.x * dt;
+            p.b_field.y += db.y * dt;
+            p.b_field.z += db.z * dt;
+        }
+    }
+}
+
+pub fn advance_induction(particles: &mut [Particle], dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        advance_induction_par(particles, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        advance_induction_impl(particles, dt);
     }
 }
 
@@ -149,7 +229,6 @@ pub fn init_b_field(particles: &mut [Particle], cfg: &MhdSection, box_size: f64)
             BFieldKind::None => Vec3::zero(),
             BFieldKind::Uniform => b0,
             BFieldKind::Random => {
-                // LCG con global_id como semilla — reproducible y sin dependencia externa
                 let seed = p.global_id as u64;
                 let rx = lcg_uniform(seed);
                 let ry = lcg_uniform(seed.wrapping_add(1));
@@ -207,19 +286,12 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
     cfl * h_min / v_a_max
 }
 
-/// Aplica resistividad numérica artificial al campo magnético (Phase 135).
-///
-/// Suaviza las discontinuidades de B usando el esquema de Price (2008):
-///
-/// ```text
-/// (∂B_i/∂t)_η = η_art × Σ_j m_j/ρ_j × (B_j − B_i) × 2|∇W_ij|/|r_ij|
-/// ```
-///
-/// donde `η_art = alpha_b × h_i × v_sig` y `v_sig = |v_ij|` es la señal de velocidad relativa.
-///
-/// Con `alpha_b = 0.0` es un no-op.
-#[expect(clippy::needless_range_loop)]
-pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+#[cfg(not(feature = "simd"))]
+#[expect(
+    clippy::needless_range_loop,
+    reason = "hot MHD pair loop indexes multiple SoA arrays"
+)]
+fn apply_artificial_resistivity_impl(particles: &mut [Particle], alpha_b: f64, dt: f64) {
     if alpha_b <= 0.0 {
         return;
     }
@@ -262,16 +334,13 @@ pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt
                 continue;
             }
 
-            // Velocidad de señal: diferencia relativa de velocidades
             let dvx = particles[j].velocity.x - vel_i.x;
             let dvy = particles[j].velocity.y - vel_i.y;
             let dvz = particles[j].velocity.z - vel_i.z;
             let v_sig = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
 
-            // Resistividad artificial: η_art = alpha_b × h_i × v_sig
             let eta_art = alpha_b * h_i * v_sig;
 
-            // Gradiente del kernel: |∇W| ≈ |dW/dr| ≈ 1/(h⁴) simplificado
             let q = r / h_avg;
             let dw_dr = if q <= 1.0 {
                 -3.0 * q * (2.0 - q) / (h_avg.powi(4))
@@ -285,13 +354,9 @@ pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt
             let rho_j = (particles[j].mass / (h_j * h_j * h_j)).max(1e-30);
             let factor = eta_art * particles[j].mass / rho_j * 2.0 * grad_w_mag / r;
 
-            let db_x = factor * (particles[j].b_field.x - b_i.x);
-            let db_y = factor * (particles[j].b_field.y - b_i.y);
-            let db_z = factor * (particles[j].b_field.z - b_i.z);
-
-            db[i].x += db_x;
-            db[i].y += db_y;
-            db[i].z += db_z;
+            db[i].x += factor * (particles[j].b_field.x - b_i.x);
+            db[i].y += factor * (particles[j].b_field.y - b_i.y);
+            db[i].z += factor * (particles[j].b_field.z - b_i.z);
         }
     }
 
@@ -301,5 +366,122 @@ pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt
             particles[i].b_field.y += db[i].y * dt;
             particles[i].b_field.z += db[i].z * dt;
         }
+    }
+}
+
+#[cfg(feature = "simd")]
+fn apply_artificial_resistivity_par(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+    if alpha_b <= 0.0 {
+        return;
+    }
+    let n = particles.len();
+    if n == 0 {
+        return;
+    }
+
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let vel: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
+    let b_field: Vec<Vec3> = particles.iter().map(|p| p.b_field).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(1e-10))
+        .collect();
+    let rho: Vec<f64> = h_sml
+        .iter()
+        .zip(mass.iter())
+        .map(|(&h, &m)| (m / (h * h * h)).max(1e-30))
+        .collect();
+    let is_gas: Vec<bool> = particles
+        .iter()
+        .map(|p| p.ptype == ParticleType::Gas)
+        .collect();
+
+    let updates: Vec<Option<Vec3>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if !is_gas[i] {
+                return None;
+            }
+            let h_i = h_sml[i];
+            let b_i = b_field[i];
+            let vel_i = vel[i];
+            let mut db_i = Vec3::zero();
+
+            for j in 0..n {
+                if j == i || !is_gas[j] {
+                    continue;
+                }
+                let r_ij = Vec3 {
+                    x: pos[j].x - pos[i].x,
+                    y: pos[j].y - pos[i].y,
+                    z: pos[j].z - pos[i].z,
+                };
+                let r = (r_ij.x * r_ij.x + r_ij.y * r_ij.y + r_ij.z * r_ij.z).sqrt();
+                if r < 1e-14 {
+                    continue;
+                }
+                let h_avg = 0.5 * (h_i + h_sml[j]);
+                if r > 2.0 * h_avg {
+                    continue;
+                }
+
+                let dv = Vec3 {
+                    x: vel[j].x - vel_i.x,
+                    y: vel[j].y - vel_i.y,
+                    z: vel[j].z - vel_i.z,
+                };
+                let v_sig = (dv.x * dv.x + dv.y * dv.y + dv.z * dv.z).sqrt();
+                let eta_art = alpha_b * h_i * v_sig;
+
+                let q = r / h_avg;
+                let dw_dr = if q <= 1.0 {
+                    -3.0 * q * (2.0 - q) / (h_avg.powi(4))
+                } else if q <= 2.0 {
+                    -3.0 * (2.0 - q).powi(2) / (2.0 * h_avg.powi(4))
+                } else {
+                    0.0
+                };
+                let grad_w_mag = dw_dr.abs();
+
+                let factor = eta_art * mass[j] / rho[j] * 2.0 * grad_w_mag / r;
+
+                db_i.x += factor * (b_field[j].x - b_i.x);
+                db_i.y += factor * (b_field[j].y - b_i.y);
+                db_i.z += factor * (b_field[j].z - b_i.z);
+            }
+            Some(db_i)
+        })
+        .collect();
+
+    for (p, update) in particles.iter_mut().zip(updates) {
+        if let (true, Some(db)) = (p.ptype == ParticleType::Gas, update) {
+            p.b_field.x += db.x * dt;
+            p.b_field.y += db.y * dt;
+            p.b_field.z += db.z * dt;
+        }
+    }
+}
+
+/// Aplica resistividad numérica artificial al campo magnético (Phase 135).
+///
+/// Suaviza las discontinuidades de B usando el esquema de Price (2008):
+///
+/// ```text
+/// (∂B_i/∂t)_η = η_art × Σ_j m_j/ρ_j × (B_j − B_i) × 2|∇W_ij|/|r_ij|
+/// ```
+///
+/// donde `η_art = alpha_b × h_i × v_sig` y `v_sig = |v_ij|` es la señal de velocidad relativa.
+///
+/// Con `alpha_b = 0.0` es un no-op.
+pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        apply_artificial_resistivity_par(particles, alpha_b, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_artificial_resistivity_impl(particles, alpha_b, dt);
     }
 }

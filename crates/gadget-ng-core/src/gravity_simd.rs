@@ -1,19 +1,32 @@
-//! Kernel de gravedad directa con layout SoA, caché-blocking y auto-vectorización AVX2.
+//! Kernel de gravedad directa con layout SoA, caché-blocking y auto-vectorización.
 //!
 //! Estrategia de optimización:
 //! - **SoA** (Structure of Arrays): los componentes `x`, `y`, `z` y `mass` se pasan como
 //!   slices contiguos separados, lo que permite al compilador vectorizar el bucle interno.
-//! - **Caché-blocking** (`BLOCK_J = 64`): el bucle sobre j se procesa en tiles que ocupan
-//!   ~2 KB por componente en L1 (64 × 8 bytes), reduciendo los fallos de caché.
-//! - **`#[target_feature(enable = "avx2", enable = "fma")]`**: fuerza la emisión de
-//!   instrucciones 256-bit (4× f64 por registro `ymm`) con FMA fusionado.
+//! - **Caché-blocking** (`BLOCK_J = 64` para AVX2, `BLOCK_J_AVX512 = 128` para AVX-512):
+//!   el bucle sobre j se procesa en tiles que ocupan ~2–4 KB por componente en L1,
+//!   reduciendo los fallos de caché.
+//! - **Dispatch en runtime**: `is_x86_feature_detected!` elige AVX-512 → AVX2+FMA → escalar.
 //! - **Mask en lugar de branch**: la condición `j == skip` se convierte en un factor
-//!   `0.0 | 1.0` para mantener el bucle libre de saltos y vectorizable con `vblendpd`.
+//!   `0.0 | 1.0` para mantener el bucle libre de saltos y vectorizable.
+//!
+//! ## Niveles SIMD
+//!
+//! | Nivel       | Registros | f64/iter | BLOCK_J | target_feature        |
+//! |-------------|-----------|----------|---------|-----------------------|
+//! | AVX-512     | ZMM (512) | 8        | 128     | `avx512f`             |
+//! | AVX2+FMA    | YMM (256) | 4        | 64      | `avx2` + `fma`        |
+//! | Scalar      | XMM (128) | 1        | 64      | — (fallback)          |
 use crate::gravity::GravitySolver;
 use crate::vec3::Vec3;
 
-/// Tamaño del tile para caché-blocking. 64 × 4 componentes × 8 bytes = 2 KB por tile.
+/// Tamaño del tile para caché-blocking AVX2/scalar. 64 × 4 componentes × 8 bytes = 2 KB por tile.
 pub const BLOCK_J: usize = 64;
+
+/// Tamaño del tile para caché-blocking AVX-512. 128 × 4 componentes × 8 bytes = 4 KB por tile.
+/// ZMM registers procesan 8×f64 por iteración, el doble que YMM → tile más grande aprovecha mejor.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+const BLOCK_J_AVX512: usize = 128;
 
 // ── Datos SoA del sistema global ──────────────────────────────────────────────
 
@@ -27,7 +40,7 @@ pub struct KernelParams<'a> {
     pub g: f64,
 }
 
-// ── Kernel escalar (fallback sin AVX2) ────────────────────────────────────────
+// ── Kernel escalar con BLOCK_J = 64 (fallback AVX2/scalar) ───────────────────
 
 fn inner_scalar(xi: f64, yi: f64, zi: f64, skip: usize, p: &KernelParams<'_>) -> (f64, f64, f64) {
     let n = p.xs.len();
@@ -38,7 +51,6 @@ fn inner_scalar(xi: f64, yi: f64, zi: f64, skip: usize, p: &KernelParams<'_>) ->
     while j < n {
         let end = (j + BLOCK_J).min(n);
         for k in j..end {
-            // Mask evita el branch: skip aporta 0 a la acumulación.
             let mask = if k == skip { 0.0_f64 } else { 1.0_f64 };
             let dx = p.xs[k] - xi;
             let dy = p.ys[k] - yi;
@@ -56,12 +68,45 @@ fn inner_scalar(xi: f64, yi: f64, zi: f64, skip: usize, p: &KernelParams<'_>) ->
     (ax, ay, az)
 }
 
-// ── Kernel AVX2+FMA (hot path, compilador auto-vectoriza con SoA) ─────────────
+// ── Kernel escalar con BLOCK_J = 128 (para AVX-512, tile más grande) ─────────
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn inner_scalar_128(
+    xi: f64,
+    yi: f64,
+    zi: f64,
+    skip: usize,
+    p: &KernelParams<'_>,
+) -> (f64, f64, f64) {
+    let n = p.xs.len();
+    let mut ax = 0.0_f64;
+    let mut ay = 0.0_f64;
+    let mut az = 0.0_f64;
+    let mut j = 0;
+    while j < n {
+        let end = (j + BLOCK_J_AVX512).min(n);
+        for k in j..end {
+            let mask = if k == skip { 0.0_f64 } else { 1.0_f64 };
+            let dx = p.xs[k] - xi;
+            let dy = p.ys[k] - yi;
+            let dz = p.zs[k] - zi;
+            let r2 = dx * dx + dy * dy + dz * dz + p.eps2;
+            let inv = 1.0 / r2.sqrt();
+            let inv3 = inv * inv * inv;
+            let factor = mask * p.g * p.masses[k] * inv3;
+            ax += factor * dx;
+            ay += factor * dy;
+            az += factor * dz;
+        }
+        j += BLOCK_J_AVX512;
+    }
+    (ax, ay, az)
+}
+
+// ── Kernel AVX2+FMA (4×f64 por iteración) ────────────────────────────────────
 
 /// # Safety
 /// Debe llamarse sólo cuando la CPU soporte AVX2 y FMA.
-/// El `#[target_feature]` permite al compilador emitir instrucciones ymm de 256 bits;
-/// con layout SoA los cuatro slices son contiguos → vectorización automática de 4×f64.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn inner_blocked_avx2(
@@ -71,17 +116,34 @@ unsafe fn inner_blocked_avx2(
     skip: usize,
     p: &KernelParams<'_>,
 ) -> (f64, f64, f64) {
-    // Mismo algoritmo que inner_scalar; con target_feature AVX2+FMA el compilador
-    // auto-vectoriza los bucles sobre floats contiguos en slices SoA.
     inner_scalar(xi, yi, zi, skip, p)
+}
+
+// ── Kernel AVX-512 (8×f64 por iteración, tile 128) ───────────────────────────
+
+/// # Safety
+/// Debe llamarse sólo cuando la CPU soporte AVX-512F.
+/// Usa `BLOCK_J_AVX512 = 128` para aprovechar el ancho completo de ZMM (8×f64).
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx512f")]
+unsafe fn inner_blocked_avx512(
+    xi: f64,
+    yi: f64,
+    zi: f64,
+    skip: usize,
+    p: &KernelParams<'_>,
+) -> (f64, f64, f64) {
+    inner_scalar_128(xi, yi, zi, skip, p)
 }
 
 // ── Wrapper público con detección en runtime ──────────────────────────────────
 
 /// Calcula la aceleración sobre la partícula `(xi,yi,zi)` debida a todas las demás.
 ///
-/// - Si la CPU soporta AVX2+FMA el compilador habrá emitido código vectorizado.
-/// - En caso contrario usa el fallback escalar con caché-blocking equivalente.
+/// Dispatch en runtime: AVX-512 → AVX2+FMA → escalar.
+/// - AVX-512 usa `BLOCK_J = 128` (8×f64 por ZMM, tile de 4 KB).
+/// - AVX2+FMA usa `BLOCK_J = 64` (4×f64 por YMM, tile de 2 KB).
+/// - Escalar usa `BLOCK_J = 64` con el mismo algoritmo.
 pub fn accel_soa_blocked(
     xi: f64,
     yi: f64,
@@ -90,9 +152,15 @@ pub fn accel_soa_blocked(
     p: &KernelParams<'_>,
 ) -> (f64, f64, f64) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-        // SAFETY: acabamos de verificar en runtime que avx2 y fma están disponibles.
-        return unsafe { inner_blocked_avx2(xi, yi, zi, skip, p) };
+    {
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: acabamos de verificar en runtime que avx512f está disponible.
+            return unsafe { inner_blocked_avx512(xi, yi, zi, skip, p) };
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: acabamos de verificar en runtime que avx2 y fma están disponibles.
+            return unsafe { inner_blocked_avx2(xi, yi, zi, skip, p) };
+        }
     }
     inner_scalar(xi, yi, zi, skip, p)
 }

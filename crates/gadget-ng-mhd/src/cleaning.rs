@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! ∂B/∂t + ∇ψ = 0
-//! ∂ψ/∂t + c_h² ∇·B = -c_r ψ
+//! ∂ψ/∂t + c_h² ∇·B = −c_r ψ
 //! ```
 //!
 //! donde:
@@ -18,7 +18,7 @@
 //! En la integración explícita de Euler:
 //!
 //! ```text
-//! ψ_new = ψ × exp(-c_r × dt)  [disipación]
+//! ψ_new = ψ × exp(−c_r × dt)  [disipación]
 //! B_new  = B − ∇ψ × dt         [corrección del campo]
 //! ```
 //!
@@ -28,6 +28,8 @@
 //! Tricco & Price (2012), J. Comput. Phys. 231, 7214.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Gradiente SPH del campo escalar ψ para un par (i, j).
 fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
@@ -53,25 +55,10 @@ fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-/// Aplica un paso del esquema de limpieza de Dedner para div-B (Phase 125).
-///
-/// # Parámetros
-///
-/// - `particles` — slice mutable de partículas.
-/// - `c_h`       — velocidad de las ondas de limpieza (típicamente velocidad de Alfvén máx.).
-/// - `c_r`       — tasa de amortiguamiento de ψ (s⁻¹).
-/// - `dt`        — paso de tiempo.
-///
-/// # Algoritmo
-///
-/// 1. Calcula la divergencia SPH de B para cada partícula: `div_B_i = Σ_j (m_j/ρ_j) (B_j - B_i)·∇W_ij`.
-/// 2. Actualiza ψ: `ψ_new = ψ × exp(-c_r × dt) − c_h² × div_B × dt`.
-/// 3. Calcula el gradiente SPH de ψ: `∇ψ_i = Σ_j (m_j/ρ_j) (ψ_j - ψ_i) ∇W_ij`.
-/// 4. Corrige B: `B_new = B − ∇ψ × dt`.
-pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
+#[cfg(not(feature = "simd"))]
+fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
     let n = particles.len();
 
-    // Precalcular densidades
     let rho: Vec<f64> = particles
         .iter()
         .map(|p| {
@@ -80,7 +67,6 @@ pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
         })
         .collect();
 
-    // Paso 1: div_B SPH para cada partícula i
     let mut div_b = vec![0.0_f64; n];
     let mut grad_psi = vec![Vec3::zero(); n];
 
@@ -111,7 +97,6 @@ pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
             let grad_w = grad_w_scalar(r_ij, h_ij);
             let factor = particles[j].mass / rho[j];
 
-            // div_B_i += (m_j/ρ_j) (B_j - B_i) · ∇W_ij
             let db = Vec3 {
                 x: b_j.x - b_i.x,
                 y: b_j.y - b_i.y,
@@ -119,7 +104,6 @@ pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
             };
             div_b[i] += factor * (db.x * grad_w.x + db.y * grad_w.y + db.z * grad_w.z);
 
-            // grad_ψ_i += (m_j/ρ_j) (ψ_j - ψ_i) ∇W_ij
             let dpsi = psi_j - psi_i;
             grad_psi[i].x += factor * dpsi * grad_w.x;
             grad_psi[i].y += factor * dpsi * grad_w.y;
@@ -127,17 +111,115 @@ pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
         }
     }
 
-    // Paso 2 & 3: actualizar ψ y B
     let decay = (-c_r * dt).exp();
     for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
+        if particles[i].ptype == ParticleType::Gas {
+            particles[i].psi_div = particles[i].psi_div * decay - c_h * c_h * div_b[i] * dt;
+            particles[i].b_field.x -= grad_psi[i].x * dt;
+            particles[i].b_field.y -= grad_psi[i].y * dt;
+            particles[i].b_field.z -= grad_psi[i].z * dt;
         }
-        // ψ_new = ψ × exp(-c_r dt) − c_h² × div_B × dt
-        particles[i].psi_div = particles[i].psi_div * decay - c_h * c_h * div_b[i] * dt;
-        // B_new = B − ∇ψ × dt
-        particles[i].b_field.x -= grad_psi[i].x * dt;
-        particles[i].b_field.y -= grad_psi[i].y * dt;
-        particles[i].b_field.z -= grad_psi[i].z * dt;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn dedner_cleaning_step_par(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
+    let n = particles.len();
+
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(1e-10))
+        .collect();
+    let rho: Vec<f64> = h_sml
+        .iter()
+        .zip(mass.iter())
+        .map(|(&h, &m)| (m / (h * h * h)).max(1e-30))
+        .collect();
+    let b_field: Vec<Vec3> = particles.iter().map(|p| p.b_field).collect();
+    let psi_div: Vec<f64> = particles.iter().map(|p| p.psi_div).collect();
+    let is_gas: Vec<bool> = particles
+        .iter()
+        .map(|p| p.ptype == ParticleType::Gas)
+        .collect();
+
+    let updates: Vec<Option<(f64, Vec3)>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if !is_gas[i] {
+                return None;
+            }
+            let b_i = b_field[i];
+            let psi_i = psi_div[i];
+            let mut div_b_i = 0.0_f64;
+            let mut grad_psi_i = Vec3::zero();
+
+            for j in 0..n {
+                if j == i || !is_gas[j] {
+                    continue;
+                }
+                let b_j = b_field[j];
+                let psi_j = psi_div[j];
+                let h_ij = 0.5 * (h_sml[i] + h_sml[j]);
+                let r_ij = Vec3 {
+                    x: pos[j].x - pos[i].x,
+                    y: pos[j].y - pos[i].y,
+                    z: pos[j].z - pos[i].z,
+                };
+                let grad_w = grad_w_scalar(r_ij, h_ij);
+                let factor = mass[j] / rho[j];
+
+                let db = Vec3 {
+                    x: b_j.x - b_i.x,
+                    y: b_j.y - b_i.y,
+                    z: b_j.z - b_i.z,
+                };
+                div_b_i += factor * (db.x * grad_w.x + db.y * grad_w.y + db.z * grad_w.z);
+
+                let dpsi = psi_j - psi_i;
+                grad_psi_i.x += factor * dpsi * grad_w.x;
+                grad_psi_i.y += factor * dpsi * grad_w.y;
+                grad_psi_i.z += factor * dpsi * grad_w.z;
+            }
+            Some((div_b_i, grad_psi_i))
+        })
+        .collect();
+
+    let decay = (-c_r * dt).exp();
+    for (p, update) in particles.iter_mut().zip(updates) {
+        if let (true, Some((div_b, grad_psi))) = (p.ptype == ParticleType::Gas, update) {
+            p.psi_div = p.psi_div * decay - c_h * c_h * div_b * dt;
+            p.b_field.x -= grad_psi.x * dt;
+            p.b_field.y -= grad_psi.y * dt;
+            p.b_field.z -= grad_psi.z * dt;
+        }
+    }
+}
+
+/// Aplica un paso del esquema de limpieza de Dedner para div-B (Phase 125).
+///
+/// # Parámetros
+///
+/// - `particles` — slice mutable de partículas.
+/// - `c_h`       — velocidad de las ondas de limpieza (típicamente velocidad de Alfvén máx.).
+/// - `c_r`       — tasa de amortiguamiento de ψ (s⁻¹).
+/// - `dt`        — paso de tiempo.
+///
+/// # Algoritmo
+///
+/// 1. Calcula la divergencia SPH de B para cada partícula: `div_B_i = Σ_j (m_j/ρ_j) (B_j − B_i)·∇W_ij`.
+/// 2. Actualiza ψ: `ψ_new = ψ × exp(−c_r × dt) − c_h² × div_B × dt`.
+/// 3. Calcula el gradiente SPH de ψ: `∇ψ_i = Σ_j (m_j/ρ_j) (ψ_j − ψ_i) ∇W_ij`.
+/// 4. Corrige B: `B_new = B − ∇ψ × dt`.
+pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        dedner_cleaning_step_par(particles, c_h, c_r, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        dedner_cleaning_step_impl(particles, c_h, c_r, dt);
     }
 }

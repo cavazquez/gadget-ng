@@ -107,23 +107,31 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 
 ---
 
-### Fase 3 — Gravity AVX-512 Extension (~100 LOC, ~1h)
+### Fase 3 — Gravity AVX-512 Extension (~100 LOC)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-15
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Media
 
-| # | Item | Archivo | Descripción |
-|---|------|---------|-------------|
-| 3.1 | `inner_blocked_avx512` | `gadget-ng-core/src/gravity_simd.rs` | `#[target_feature(enable = "avx512f")]` with BLOCK_J=128, ZMM registers |
-| 3.2 | Runtime dispatch update | `gadget-ng-core/src/gravity_simd.rs` | Add avx512f branch to `accel_soa_blocked` |
+| # | Item | Archivo | Descripción | Estado |
+|---|------|---------|-------------|--------|
+| 3.1 | `inner_blocked_avx512` | `gadget-ng-core/src/gravity_simd.rs` | `#[target_feature(enable = "avx512f")]` with BLOCK_J=128 | ✅ |
+| 3.2 | `inner_scalar_128` | `gadget-ng-core/src/gravity_simd.rs` | Scalar inner loop with BLOCK_J=128 for AVX-512 tile size | ✅ |
+| 3.3 | Runtime dispatch update | `gadget-ng-core/src/gravity_simd.rs` | AVX-512 → AVX2+FMA → scalar fallback chain | ✅ |
+| 3.4 | `BLOCK_J_AVX512` | `gadget-ng-core/src/gravity_simd.rs` | Tile size constant = 128 (4 KB per component in L1) | ✅ |
+
+**Key design decisions:**
+- AVX-512 uses `BLOCK_J_AVX512 = 128` (double the AVX2 tile) since ZMM processes 8×f64 per iteration. This gives 4 KB per tile instead of 2 KB, still well within L1 cache.
+- Same branch-free mask pattern (`if k == skip { 0.0 } else { 1.0 }`) — LLVM eliminates the branch via `vblendpd`/`vblendvpd`.
+- `inner_scalar_128` is a separate function to ensure the different tile size compiles correctly with `avx512f` target features.
+- Dispatch priority: `avx512f` first, then `avx2+fma`, then scalar.
+
+**Tests:** 33 pass. Clippy clean with `-D warnings`.
 
 ---
 
 ### Fase 4 — SPH Pair Loop SIMD Tiling (~600 LOC, ~3h)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-16
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Media
 
 | # | Item | Archivo | Descripción |
@@ -137,19 +145,27 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 
 ### Fase 5 — MHD Pair Loop SIMD Tiling (~500 LOC, ~2h)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-17
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Media
 
-| # | Item | Archivo | Descripción |
-|---|------|---------|-------------|
-| 5.1 | Induction SIMD | `gadget-ng-mhd/src/induction.rs` | Batch kernel + FMA in j-loop |
-| 5.2 | Resistivity SIMD | `gadget-ng-mhd/src/induction.rs` | Batch kernel in resistivity j-loop |
-| 5.3 | Magnetic forces SIMD | `gadget-ng-mhd/src/pressure.rs` | Batch kernel in magnetic_forces j-loop |
-| 5.4 | Cleaning SIMD | `gadget-ng-mhd/src/cleaning.rs` | Batch kernel in dedner j-loop |
-| 5.5 | Anisotropic SIMD | `gadget-ng-mhd/src/anisotropic.rs` | Batch kernel in conduction j-loop |
-| 5.6 | Reconnection SIMD | `gadget-ng-mhd/src/reconnection.rs` | Batch kernel in reconnection j-loop |
-| 5.7 | Braginskii SIMD | `gadget-ng-mhd/src/braginskii.rs` | Batch kernel in viscosity j-loop |
+| # | Item | Archivo | Descripción | Estado |
+|---|------|---------|-------------|--------|
+| 5.1 | Induction Rayon | `gadget-ng-mhd/src/induction.rs` | `advance_induction` → `_impl`/`_par` with `into_par_iter()` | ✅ |
+| 5.2 | Resistivity Rayon | `gadget-ng-mhd/src/induction.rs` | `apply_artificial_resistivity` → `_impl`/`_par` | ✅ |
+| 5.3 | Magnetic forces Rayon | `gadget-ng-mhd/src/pressure.rs` | `apply_magnetic_forces` → `_impl`/`_par` (N² per-particle) | ✅ |
+| 5.4 | Cleaning Rayon | `gadget-ng-mhd/src/cleaning.rs` | `dedner_cleaning_step` → `_impl`/`_par` | ✅ |
+| 5.5 | Anisotropic Rayon | `gadget-ng-mhd/src/anisotropic.rs` | `apply_anisotropic_conduction` + `diffuse_cr_anisotropic` → `_impl`/`_par` | ✅ |
+| 5.6 | Reconnection Rayon | `gadget-ng-mhd/src/reconnection.rs` | `apply_magnetic_reconnection` → `_impl`/`_par` (N² per-particle) | ✅ |
+| 5.7 | Braginskii Rayon | `gadget-ng-mhd/src/braginskii.rs` | `apply_braginskii_viscosity` → `_impl`/`_par` (N² per-particle) | ✅ |
+
+**Key design decisions:**
+- All 7 MHD pair-loop functions now have `_impl` (serial) / `_par` (Rayon) split with `#[cfg]` dispatch, matching the pattern from Fase 1–4.
+- Half-pair loops (pressure, anisotropic conduction, braginskii, reconnection) converted to full N² per-particle accumulation for clean `par_iter()` — avoids race conditions and is physically more correct for anisotropic effects (each particle uses its own B̂).
+- SoA data extraction upfront for `_par` versions: pos, vel, b_field, mass, h_sml, rho, is_gas extracted into `Vec`s before Rayon dispatch.
+- `diffuse_cr_anisotropic` gets early distance filter `r² < (2h_i)²` in `_par` version and branch-free `kernel_w_branchfree` helper.
+- `apply_magnetic_reconnection` N² per-particle: each particle accumulates `delta_u[i]` and `b_scale[i]` independently. `b_scale` uses `.min()` accumulation (safe for parallel since each thread works on its own particle).
+- `apply_braginskii_viscosity` N²: each particle uses own `B̂_i` and `cos²(θ_i)`, which is physically correct for anisotropic viscosity.
+- Clippy clean with `-D warnings` for both `simd` and non-`simd` configurations. 35 tests pass in both configurations.
 
 ---
 
@@ -230,3 +246,5 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | — | Document created. All phases PENDIENTE. |
 | 2026-05-13 | 1 | Fase 1 completada: 15 funciones con Rayon parallel + serial fallback. Tests pass, clippy clean. |
 | 2026-05-13 | 2 | Fase 2 completada: SPH kernel batch functions (w_batch, grad_w_batch, w_and_grad_w_batch) con AVX-512/AVX2/scalar dispatch. Branch-free formulation. |
+| 2026-05-13 | 3 | Fase 3 completada: Gravity AVX-512 with BLOCK_J=128, inner_scalar_128, runtime dispatch avx512f→avx2+fma→scalar. |
+| 2026-05-13 | 5 | Fase 5 completada: 7 MHD pair-loop functions con Rayon parallel (_impl/_par) + serial fallback. Half-pair→N² per-particle para clean par_iter. Tests pass, clippy clean. |
