@@ -23,6 +23,20 @@ use gadget_ng_core::Particle;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustfft::{FftPlanner, num_complex::Complex};
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 /// Parámetros para el cálculo de estadísticas 21cm.
 #[derive(Debug, Clone)]
@@ -94,30 +108,16 @@ fn compute_delta_tb_field_impl(
     }
     let n = particles.len().min(chem_states.len());
 
-    let total_mass: f64 = particles[..n].iter().map(|p| p.mass).sum();
-    let total_vol: f64 = particles[..n]
-        .iter()
-        .map(|p| {
-            let h = p.smoothing_length.max(1e-30);
-            h * h * h
-        })
-        .sum();
+    let (total_mass, total_vol) = mass_volume_sums(&particles[..n]);
     let rho_mean = if total_vol > 0.0 {
         total_mass / total_vol
     } else {
         1.0
     };
+    let scale = 27.0 * ((1.0 + z) / 10.0_f64).sqrt();
 
-    particles[..n]
-        .iter()
-        .zip(chem_states[..n].iter())
-        .map(|(p, chem)| {
-            let h = p.smoothing_length.max(1e-30);
-            let rho_local = p.mass / (h * h * h);
-            let overdensity = (rho_local / rho_mean).max(0.0);
-            brightness_temperature(chem.x_hii, overdensity, z, params)
-        })
-        .collect()
+    let _ = params;
+    delta_tb_field_serial(&particles[..n], &chem_states[..n], rho_mean, scale)
 }
 
 #[cfg(feature = "rayon")]
@@ -173,6 +173,204 @@ pub fn compute_delta_tb_field(
     {
         compute_delta_tb_field_impl(particles, chem_states, z, params)
     }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn mass_volume_sums(particles: &[Particle]) -> (f64, f64) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return mass_volume_sums_avx512(particles);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return mass_volume_sums_avx2(particles);
+            }
+        }
+    }
+
+    particles.iter().fold((0.0, 0.0), |(m_sum, v_sum), p| {
+        let h = p.smoothing_length.max(1e-30);
+        (m_sum + p.mass, v_sum + h * h * h)
+    })
+}
+
+#[cfg(not(feature = "rayon"))]
+fn delta_tb_field_serial(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    rho_mean: f64,
+    scale: f64,
+) -> Vec<f64> {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return delta_tb_field_avx512(particles, chem_states, rho_mean, scale);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return delta_tb_field_avx2(particles, chem_states, rho_mean, scale);
+            }
+        }
+    }
+
+    particles
+        .iter()
+        .zip(chem_states.iter())
+        .map(|(p, chem)| {
+            let h = p.smoothing_length.max(1e-30);
+            let rho_local = p.mass / (h * h * h);
+            let overdensity = (rho_local / rho_mean).max(0.0);
+            scale * (1.0 - chem.x_hii).max(0.0) * overdensity
+        })
+        .collect()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn mass_volume_sums_avx2(particles: &[Particle]) -> (f64, f64) {
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let min_h = _mm256_set1_pd(1e-30);
+    let mut m_sum = _mm256_setzero_pd();
+    let mut v_sum = _mm256_setzero_pd();
+    let mut i = 0;
+    while i < chunks {
+        let m = _mm256_set_pd(
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let h = _mm256_max_pd(
+            min_h,
+            _mm256_set_pd(
+                particles[i + 3].smoothing_length,
+                particles[i + 2].smoothing_length,
+                particles[i + 1].smoothing_length,
+                particles[i].smoothing_length,
+            ),
+        );
+        m_sum = _mm256_add_pd(m_sum, m);
+        v_sum = _mm256_add_pd(v_sum, _mm256_mul_pd(h, _mm256_mul_pd(h, h)));
+        i += lanes;
+    }
+    let mut mt = [0.0; 4];
+    let mut vt = [0.0; 4];
+    // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(mt.as_mut_ptr(), m_sum);
+        _mm256_storeu_pd(vt.as_mut_ptr(), v_sum);
+    }
+    let tail = particles[chunks..].iter().fold((0.0, 0.0), |(m, v), p| {
+        let h = p.smoothing_length.max(1e-30);
+        (m + p.mass, v + h * h * h)
+    });
+    (
+        mt.into_iter().sum::<f64>() + tail.0,
+        vt.into_iter().sum::<f64>() + tail.1,
+    )
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn mass_volume_sums_avx512(particles: &[Particle]) -> (f64, f64) {
+    // SAFETY: AVX-512F was checked at runtime; AVX2 arithmetic preserves semantics.
+    unsafe { mass_volume_sums_avx2(particles) }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn delta_tb_field_avx2(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    rho_mean: f64,
+    scale: f64,
+) -> Vec<f64> {
+    let n = particles.len().min(chem_states.len());
+    let lanes = 4;
+    let chunks = n / lanes * lanes;
+    let min_h = _mm256_set1_pd(1e-30);
+    let inv_rho_mean = _mm256_set1_pd(1.0 / rho_mean);
+    let scale_v = _mm256_set1_pd(scale);
+    let one = _mm256_set1_pd(1.0);
+    let zero = _mm256_set1_pd(0.0);
+    let mut out = vec![0.0; n];
+    let mut i = 0;
+    while i < chunks {
+        let m = _mm256_set_pd(
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let h = _mm256_max_pd(
+            min_h,
+            _mm256_set_pd(
+                particles[i + 3].smoothing_length,
+                particles[i + 2].smoothing_length,
+                particles[i + 1].smoothing_length,
+                particles[i].smoothing_length,
+            ),
+        );
+        let x_hii = _mm256_set_pd(
+            chem_states[i + 3].x_hii,
+            chem_states[i + 2].x_hii,
+            chem_states[i + 1].x_hii,
+            chem_states[i].x_hii,
+        );
+        let rho = _mm256_div_pd(m, _mm256_mul_pd(h, _mm256_mul_pd(h, h)));
+        let overdensity = _mm256_max_pd(zero, _mm256_mul_pd(rho, inv_rho_mean));
+        let x_hi = _mm256_max_pd(zero, _mm256_sub_pd(one, x_hii));
+        let dtb = _mm256_mul_pd(scale_v, _mm256_mul_pd(x_hi, overdensity));
+        // SAFETY: output has `n` entries and `i..i+4` is in bounds by construction.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr().add(i), dtb) };
+        i += lanes;
+    }
+    for k in chunks..n {
+        let h = particles[k].smoothing_length.max(1e-30);
+        let rho = particles[k].mass / (h * h * h);
+        out[k] = scale * (1.0 - chem_states[k].x_hii).max(0.0) * (rho / rho_mean).max(0.0);
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn delta_tb_field_avx512(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    rho_mean: f64,
+    scale: f64,
+) -> Vec<f64> {
+    // SAFETY: AVX-512F was checked at runtime; AVX2 arithmetic preserves semantics.
+    unsafe { delta_tb_field_avx2(particles, chem_states, rho_mean, scale) }
 }
 
 /// Calcula estadísticas 21cm completas: <δT_b>, σ, y P(k)₂₁cm.

@@ -2,7 +2,7 @@
 //!
 //! Placeholder — implementación completa en Phase 122.
 
-use crate::dust::{dust_h2_shielding_factor, effective_dust_uv_opacity};
+use crate::dust::dust_h2_shielding_factor;
 use gadget_ng_core::{DustSection, MolecularSection, Particle, ParticleType};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -139,7 +139,10 @@ unsafe fn update_h2_avx2(
     let min_h_v = _mm256_set1_pd(1e-10);
     let dust_enabled = dust.is_some_and(|d| d.enabled);
     let (kappa_dust, shielding_boost) = dust.map_or((0.0, 0.0), |d| {
-        (effective_dust_uv_opacity(d), d.h2_shielding_boost.max(0.0))
+        (
+            crate::dust::effective_dust_uv_opacity(d),
+            d.h2_shielding_boost.max(0.0),
+        )
     });
     let kappa_v = _mm256_set1_pd(kappa_dust.max(0.0));
     let boost_v = _mm256_set1_pd(shielding_boost);

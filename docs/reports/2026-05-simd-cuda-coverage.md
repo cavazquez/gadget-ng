@@ -45,6 +45,7 @@ implementations.
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
+| RT chemistry/reionization/21cm | 21cm field and reionization-state reductions AVX2/AVX-512; stiff chemistry scalar | No | SIMD-only partial |
 | Analysis spin/luminosity/SED | AVX2/AVX-512 reductions for spin, luminosity and SED contributions | No | SIMD-only |
 
 ## Validated commands

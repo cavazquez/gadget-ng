@@ -36,6 +36,20 @@ use crate::chemistry::ChemState;
 use crate::m1::RadiationField;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -196,14 +210,11 @@ fn compute_reionization_state_impl(
     }
 
     let n = chem_states.len() as f64;
-    let mean = chem_states.iter().map(|s| s.x_hii).sum::<f64>() / n;
-    let variance = chem_states
-        .iter()
-        .map(|s| (s.x_hii - mean).powi(2))
-        .sum::<f64>()
-        / n;
+    let (sum_xhii, sum_sq, ionized_count) = reionization_moments(chem_states);
+    let mean = sum_xhii / n;
+    let variance = (sum_sq / n - mean * mean).max(0.0);
     let sigma = variance.sqrt();
-    let ionized_fraction = chem_states.iter().filter(|s| s.x_hii > 0.5).count() as f64 / n;
+    let ionized_fraction = ionized_count as f64 / n;
 
     ReionizationState {
         x_hii_mean: mean,
@@ -212,6 +223,97 @@ fn compute_reionization_state_impl(
         z,
         n_sources,
     }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn reionization_moments(chem_states: &[ChemState]) -> (f64, f64, usize) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return reionization_moments_avx512(chem_states);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return reionization_moments_avx2(chem_states);
+            }
+        }
+    }
+
+    chem_states
+        .iter()
+        .fold((0.0_f64, 0.0_f64, 0usize), |(sum, sq, cnt), s| {
+            (
+                sum + s.x_hii,
+                sq + s.x_hii * s.x_hii,
+                cnt + (s.x_hii > 0.5) as usize,
+            )
+        })
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn reionization_moments_avx2(chem_states: &[ChemState]) -> (f64, f64, usize) {
+    let lanes = 4;
+    let chunks = chem_states.len() / lanes * lanes;
+    let half = _mm256_set1_pd(0.5);
+    let mut sum = _mm256_setzero_pd();
+    let mut sq = _mm256_setzero_pd();
+    let mut cnt = 0usize;
+    let mut i = 0;
+    while i < chunks {
+        let x = _mm256_set_pd(
+            chem_states[i + 3].x_hii,
+            chem_states[i + 2].x_hii,
+            chem_states[i + 1].x_hii,
+            chem_states[i].x_hii,
+        );
+        sum = _mm256_add_pd(sum, x);
+        sq = _mm256_fmadd_pd(x, x, sq);
+        cnt += _mm256_movemask_pd(_mm256_cmp_pd(x, half, _CMP_GT_OQ)).count_ones() as usize;
+        i += lanes;
+    }
+    let mut sums = [0.0; 4];
+    let mut sqs = [0.0; 4];
+    // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(sums.as_mut_ptr(), sum);
+        _mm256_storeu_pd(sqs.as_mut_ptr(), sq);
+    }
+    let (tail_sum, tail_sq, tail_cnt) =
+        chem_states[chunks..]
+            .iter()
+            .fold((0.0_f64, 0.0_f64, 0usize), |(sum, sq, cnt), s| {
+                (
+                    sum + s.x_hii,
+                    sq + s.x_hii * s.x_hii,
+                    cnt + (s.x_hii > 0.5) as usize,
+                )
+            });
+    (
+        sums.into_iter().sum::<f64>() + tail_sum,
+        sqs.into_iter().sum::<f64>() + tail_sq,
+        cnt + tail_cnt,
+    )
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn reionization_moments_avx512(chem_states: &[ChemState]) -> (f64, f64, usize) {
+    // SAFETY: AVX-512F was checked at runtime; AVX2 arithmetic preserves semantics.
+    unsafe { reionization_moments_avx2(chem_states) }
 }
 
 #[cfg(feature = "rayon")]
