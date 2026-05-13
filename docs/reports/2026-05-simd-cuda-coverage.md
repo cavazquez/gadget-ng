@@ -60,7 +60,7 @@ cargo test -p gadget-ng-rt --features simd
 cargo clippy -p gadget-ng-rt --features simd --all-targets -- -D warnings
 cargo test -p gadget-ng-analysis --features simd
 cargo clippy -p gadget-ng-analysis --features simd --all-targets -- -D warnings
-cargo clippy -p gadget-ng-cli --features simd,pm-rayon -- -D warnings
+cargo clippy -p gadget-ng-cli --features simd,rayon,pm-rayon -- -D warnings
 cargo fmt --all --check
 ```
 

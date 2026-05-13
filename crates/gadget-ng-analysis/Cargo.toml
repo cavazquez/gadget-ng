@@ -9,7 +9,6 @@ description = "Análisis in-situ para gadget-ng: FoF, power spectrum P(k), catá
 default = []
 parallel = ["dep:gadget-ng-parallel"]
 rayon = ["dep:rayon"]
-simd = []
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
