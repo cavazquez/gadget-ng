@@ -8,7 +8,8 @@ description = "Octree y solver Barnes-Hut para gadget-ng"
 [features]
 default = []
 gpu = ["dep:gadget-ng-gpu"]
-simd = ["dep:rayon", "gadget-ng-core/simd"]
+rayon = ["dep:rayon", "gadget-ng-core/rayon"]
+simd = ["gadget-ng-core/simd"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }

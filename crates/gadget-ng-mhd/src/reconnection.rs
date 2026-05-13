@@ -31,10 +31,10 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn apply_magnetic_reconnection_impl(
     particles: &mut [Particle],
     f_reconnection: f64,
@@ -117,7 +117,7 @@ fn apply_magnetic_reconnection_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_magnetic_reconnection_par(
     particles: &mut [Particle],
     f_reconnection: f64,
@@ -226,12 +226,12 @@ pub fn apply_magnetic_reconnection(
     gamma: f64,
     dt: f64,
 ) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_magnetic_reconnection_par(particles, f_reconnection, gamma, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_magnetic_reconnection_impl(particles, f_reconnection, gamma, dt);
     }

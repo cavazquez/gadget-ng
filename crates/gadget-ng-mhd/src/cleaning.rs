@@ -28,7 +28,7 @@
 //! Tricco & Price (2012), J. Comput. Phys. 231, 7214.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Gradiente SPH del campo escalar ψ para un par (i, j).
@@ -55,7 +55,7 @@ fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
     let n = particles.len();
 
@@ -122,7 +122,7 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn dedner_cleaning_step_par(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
     let n = particles.len();
 
@@ -213,12 +213,12 @@ fn dedner_cleaning_step_par(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
 /// 3. Calcula el gradiente SPH de ψ: `∇ψ_i = Σ_j (m_j/ρ_j) (ψ_j − ψ_i) ∇W_ij`.
 /// 4. Corrige B: `B_new = B − ∇ψ × dt`.
 pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         dedner_cleaning_step_par(particles, c_h, c_r, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         dedner_cleaning_step_impl(particles, c_h, c_r, dt);
     }

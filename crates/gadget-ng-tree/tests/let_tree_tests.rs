@@ -318,7 +318,7 @@ fn let_tree_parallel_walk_matches_serial() {
     // Walk "paralelo": en tests sin feature simd es el mismo camino serial,
     // en tests con feature simd usa Rayon — ambos deben ser idénticos porque
     // cada partícula hace su propia secuencia de operaciones sin compartir estado.
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     let a_parallel: Vec<Vec3> = {
         use rayon::prelude::*;
         queries
@@ -326,7 +326,7 @@ fn let_tree_parallel_walk_matches_serial() {
             .map(|&p| tree.walk_accel(p, g, eps2, theta))
             .collect()
     };
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let a_parallel: Vec<Vec3> = queries
         .iter()
         .map(|&p| tree.walk_accel(p, g, eps2, theta))

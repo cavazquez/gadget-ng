@@ -4,7 +4,7 @@
 
 use crate::dust::dust_h2_shielding_factor;
 use gadget_ng_core::{DustSection, MolecularSection, Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Actualiza la fracción de gas molecular H₂ en cada partícula de gas (Phase 122).
@@ -24,14 +24,14 @@ pub fn update_h2_fraction_with_dust(
     }
     let t_dissoc = 10.0; // tiempo de fotodisociación en unidades internas
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter_mut()
             .for_each(|p| update_h2_particle(p, cfg, dust, dt, t_dissoc));
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         update_h2_particle(p, cfg, dust, dt, t_dissoc);
     }

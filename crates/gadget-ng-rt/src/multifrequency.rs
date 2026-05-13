@@ -8,7 +8,7 @@
 use crate::chemistry::ChemState;
 use crate::m1::{C_KMS, M1Params, RadiationField};
 use gadget_ng_core::{DustSection, Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Photon groups transported or sampled by the reduced RT model.
@@ -213,7 +213,7 @@ pub fn single_group_rates(
 /// `radiation_energy_density` is the local heating proxy used to estimate the
 /// equilibrium dust temperature. The deposited quantity is energy density:
 /// luminosity times `dt` divided by the cell volume.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn deposit_dust_ir_emission_impl(
     particles: &[Particle],
     field: &mut MultiFrequencyField,
@@ -245,7 +245,7 @@ fn deposit_dust_ir_emission_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn deposit_dust_ir_emission_par(
     particles: &[Particle],
     field: &mut MultiFrequencyField,
@@ -298,7 +298,7 @@ pub fn deposit_dust_ir_emission(
     dt: f64,
     box_size: f64,
 ) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         deposit_dust_ir_emission_par(
             particles,
@@ -310,7 +310,7 @@ pub fn deposit_dust_ir_emission(
         );
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         deposit_dust_ir_emission_impl(
             particles,

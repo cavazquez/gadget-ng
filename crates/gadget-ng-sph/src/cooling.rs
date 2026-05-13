@@ -35,7 +35,7 @@
 //! conversión son: `k_B/m_H ≈ 8.254 × 10⁻³ (km/s)² / K`.
 
 use gadget_ng_core::{CoolingKind, Particle, ParticleType, SphSection, UvBackgroundModel};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// k_B / (m_H · μ) en (km/s)² / K.
@@ -330,14 +330,14 @@ pub fn apply_cooling_with_redshift(
     let t_floor_k = cfg.t_floor_k;
     let u_floor = temperature_to_u(t_floor_k, gamma);
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter_mut()
             .for_each(|p| apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor));
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor);
     }
@@ -425,14 +425,14 @@ pub fn apply_cooling_mhd_with_redshift(
     let u_floor = temperature_to_u(t_floor_k, gamma);
     let f_mag = cfg.mag_suppress_cooling;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles.par_iter_mut().for_each(|p| {
             apply_cooling_mhd_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor, f_mag)
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         apply_cooling_mhd_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor, f_mag);
     }

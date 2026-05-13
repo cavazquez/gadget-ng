@@ -7,7 +7,8 @@ description = "N-body core: particles, Plummer-softened direct gravity, traits"
 
 [features]
 default = []
-simd = ["dep:rayon"]
+rayon = ["dep:rayon"]
+simd = []
 gpu = ["dep:gadget-ng-gpu"]
 
 [dependencies]

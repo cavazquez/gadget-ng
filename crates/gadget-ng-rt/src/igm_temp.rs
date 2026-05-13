@@ -34,7 +34,7 @@
 use gadget_ng_core::Particle;
 
 use crate::chemistry::ChemState;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 // ── Structs ───────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ pub fn temperature_from_particle(internal_energy: f64, chem: &ChemState, gamma: 
 ///
 /// # Retorna
 /// `IgmTempBin` con las estadísticas de temperatura del IGM.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn compute_igm_temp_profile_impl(
     particles: &[Particle],
     chem_states: &[ChemState],
@@ -175,7 +175,7 @@ fn compute_igm_temp_profile_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn compute_igm_temp_profile_par(
     particles: &[Particle],
     chem_states: &[ChemState],
@@ -255,12 +255,12 @@ pub fn compute_igm_temp_profile(
     z: f64,
     params: &IgmTempParams,
 ) -> IgmTempBin {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         compute_igm_temp_profile_par(particles, chem_states, mean_density, z, params)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         compute_igm_temp_profile_impl(particles, chem_states, mean_density, z, params)
     }

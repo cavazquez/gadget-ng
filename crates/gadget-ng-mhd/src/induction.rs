@@ -21,7 +21,7 @@
 
 use crate::MU0;
 use gadget_ng_core::{BFieldKind, MhdSection, Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Gradiente del kernel SPH cúbico (en 3D): `∇W(r, h)`.
@@ -53,7 +53,7 @@ fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn advance_induction_impl(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
     let mut db = vec![Vec3::zero(); n];
@@ -120,7 +120,7 @@ fn advance_induction_impl(particles: &mut [Particle], dt: f64) {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn advance_induction_par(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
@@ -197,12 +197,12 @@ fn advance_induction_par(particles: &mut [Particle], dt: f64) {
 }
 
 pub fn advance_induction(particles: &mut [Particle], dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         advance_induction_par(particles, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         advance_induction_impl(particles, dt);
     }
@@ -286,7 +286,7 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
     cfl * h_min / v_a_max
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 #[expect(
     clippy::needless_range_loop,
     reason = "hot MHD pair loop indexes multiple SoA arrays"
@@ -369,7 +369,7 @@ fn apply_artificial_resistivity_impl(particles: &mut [Particle], alpha_b: f64, d
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_artificial_resistivity_par(particles: &mut [Particle], alpha_b: f64, dt: f64) {
     if alpha_b <= 0.0 {
         return;
@@ -475,12 +475,12 @@ fn apply_artificial_resistivity_par(particles: &mut [Particle], alpha_b: f64, dt
 ///
 /// Con `alpha_b = 0.0` es un no-op.
 pub fn apply_artificial_resistivity(particles: &mut [Particle], alpha_b: f64, dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_artificial_resistivity_par(particles, alpha_b, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_artificial_resistivity_impl(particles, alpha_b, dt);
     }

@@ -30,7 +30,7 @@
 
 use crate::sps_tables::{Spsband, sps_luminosity};
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Resultado del cálculo de luminosidad para una galaxia o cúmulo (Phase 118).
@@ -143,7 +143,7 @@ pub struct SedResult {
 /// # Retorna
 /// `SedResult` con luminosidades por banda, colores y edad media ponderada.
 pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let acc = particles
             .par_iter()
@@ -152,7 +152,7 @@ pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
         acc.into_result()
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut l_u = 0.0_f64;
         let mut l_b = 0.0_f64;
@@ -224,7 +224,7 @@ pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
 ///
 /// `LuminosityResult` con luminosidad total, colores promedio y número de estrellas.
 pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let acc = particles.par_iter().map(luminosity_contribution).reduce(
             LuminosityAccumulator::default,
@@ -233,7 +233,7 @@ pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
         acc.into_result()
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut l_total = 0.0_f64;
         let mut bv_weighted = 0.0_f64;

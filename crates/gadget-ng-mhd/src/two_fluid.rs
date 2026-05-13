@@ -38,7 +38,7 @@
 //! Rudd & Nagai (2009), ApJL 701, L16 — T_e/T_i en simulaciones de cúmulos.
 
 use gadget_ng_core::{Particle, ParticleType, TwoFluidSection};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Convierte energía interna `u` a temperatura proporcional (en unidades arbitrarias).
@@ -57,7 +57,7 @@ fn u_to_t_code(u: f64, gamma: f64) -> f64 {
 /// 3. Calcula `ν_ei = nu_ei_coeff × ρ / T_e^{3/2}` (ρ ≈ m/h³)
 /// 4. Actualiza `T_e` con el paso implícito:
 ///    `T_e_new = T_e + (T_i − T_e) × (1 − exp(−ν_ei × dt))`
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn apply_electron_ion_coupling_impl(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
     const GAMMA: f64 = 5.0 / 3.0;
 
@@ -87,7 +87,7 @@ fn apply_electron_ion_coupling_impl(particles: &mut [Particle], cfg: &TwoFluidSe
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_electron_ion_coupling_par(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
     const GAMMA: f64 = 5.0 / 3.0;
 
@@ -118,12 +118,12 @@ fn apply_electron_ion_coupling_par(particles: &mut [Particle], cfg: &TwoFluidSec
 }
 
 pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_electron_ion_coupling_par(particles, cfg, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_electron_ion_coupling_impl(particles, cfg, dt);
     }
@@ -133,7 +133,7 @@ pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSec
 ///
 /// Útil para monitoreo: en ICM sin shocks → T_e/T_i ≈ 1.
 /// Detrás de shocks fuertes → T_e/T_i << 1.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn mean_te_over_ti_impl(particles: &[Particle]) -> f64 {
     const GAMMA: f64 = 5.0 / 3.0;
     let mut sum = 0.0_f64;
@@ -149,7 +149,7 @@ fn mean_te_over_ti_impl(particles: &[Particle]) -> f64 {
     if n == 0 { 1.0 } else { sum / n as f64 }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn mean_te_over_ti_par(particles: &[Particle]) -> f64 {
     const GAMMA: f64 = 5.0 / 3.0;
     let (sum, n) = particles
@@ -167,12 +167,12 @@ fn mean_te_over_ti_par(particles: &[Particle]) -> f64 {
 }
 
 pub fn mean_te_over_ti(particles: &[Particle]) -> f64 {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         mean_te_over_ti_par(particles)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         mean_te_over_ti_impl(particles)
     }

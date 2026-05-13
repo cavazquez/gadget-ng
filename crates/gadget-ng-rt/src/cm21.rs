@@ -20,7 +20,7 @@
 
 use crate::ChemState;
 use gadget_ng_core::Particle;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustfft::{FftPlanner, num_complex::Complex};
 
@@ -82,7 +82,7 @@ pub fn brightness_temperature(x_hii: f64, overdensity: f64, z: f64, _params: &Cm
 /// Calcula el campo de temperatura de brillo δT_b para cada partícula de gas.
 ///
 /// Devuelve un vector con δT_b [mK] por partícula.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn compute_delta_tb_field_impl(
     particles: &[Particle],
     chem_states: &[ChemState],
@@ -120,7 +120,7 @@ fn compute_delta_tb_field_impl(
         .collect()
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn compute_delta_tb_field_par(
     particles: &[Particle],
     chem_states: &[ChemState],
@@ -164,12 +164,12 @@ pub fn compute_delta_tb_field(
     z: f64,
     params: &Cm21Params,
 ) -> Vec<f64> {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         compute_delta_tb_field_par(particles, chem_states, z, params)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         compute_delta_tb_field_impl(particles, chem_states, z, params)
     }

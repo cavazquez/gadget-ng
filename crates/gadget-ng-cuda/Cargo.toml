@@ -13,6 +13,7 @@ description = "Solver PM GPU con CUDA (nvcc + cuFFT). Requiere CUDA Toolkit inst
 [features]
 default = []
 simd = ["gadget-ng-core/simd"]
+rayon = ["gadget-ng-core/rayon"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }

@@ -180,21 +180,21 @@ y la cobertura detallada en
 | Cooling H/He/metales/UVB | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
 | Dust update / radiation pressure | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
 | Molecular H₂ / shielding | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
-| MHD induction/resistivity | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ smoke/parity kernel |
-| MHD magnetic forces | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ |
-| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ scalar diffusion surface |
-| MHD Braginskii | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ |
-| MHD reconnection | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ combined kernel |
-| MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ combined kernel |
-| MHD flux-freeze / stats | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ |
-| RT M1 diagnostics/photoheating | ✅ | ✅ | ⚠️ Rayon/SIMD partial | ✅ |
+| MHD induction/resistivity | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
+| MHD magnetic forces | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
+| MHD Dedner cleaning | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
+| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ no AVX explícito | ✅ scalar diffusion surface |
+| MHD Braginskii | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
+| MHD reconnection | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
+| MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
+| MHD flux-freeze / stats | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ⚠️ SIMD parcial | ✅ |
 | RT full M1 advection | ✅ | ⚠️ parcial | ⚠️ final update parcial | ❌ |
-| RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ❌ |
-| Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ❌ |
+| RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
 | SIDM | ✅ | ⚠️ parcial | ❌ | ✅ smoke/parity kernel |
 | f(R) / modified gravity PM | ✅ | ⚠️ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
-| Runtime CLI wiring | ✅ | ✅ | ⚠️ feature `simd` mezcla Rayon | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
+| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
 
@@ -1398,7 +1398,9 @@ metodología, resultados y limitaciones.
 | `gpu` | Aceleración GPU vía `wgpu` (Vulkan/Metal/DX12/WebGPU) |
 | `🟢 cuda` | Solver PM NVIDIA CUDA + cuFFT (`gadget-ng-cuda`; requiere CUDA toolkit) |
 | `🔴 hip` | Solver PM AMD HIP + rocFFT (`gadget-ng-hip`; requiere ROCm) |
-| `simd` | Vectorización explícita con `rayon` + SIMD |
+| `rayon` | Paralelismo intra-rango con Rayon |
+| `simd` | Kernels SIMD explícitos / `#[target_feature]` sin activar Rayon |
+| `pm-rayon` | Rayon en PM/TreePM (`gadget-ng-pm`, `gadget-ng-treepm`) |
 | `bincode` | Snapshots binarios `particles.bin` |
 | `hdf5` | Snapshots `snapshot.hdf5` estilo GADGET-4 (requiere `libhdf5-dev`) |
 | `msgpack` | Snapshots compactos MessagePack |

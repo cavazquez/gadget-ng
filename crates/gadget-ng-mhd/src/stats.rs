@@ -1,7 +1,7 @@
 //! Estadísticas del campo magnético para monitoreo cosmológico (Phase 136 + 147).
 
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Estadísticas del campo magnético sobre todas las partículas de gas.
@@ -25,7 +25,7 @@ pub struct BFieldStats {
 pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
     use crate::MU0;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let (m_total, mb_sum, mb2_sum, b_max, e_mag, n_gas) = particles
             .par_iter()
@@ -71,7 +71,7 @@ pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
         })
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut m_total = 0.0_f64;
         let mut mb_sum = 0.0_f64; // Σ m_i |B_i|
@@ -125,7 +125,7 @@ pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
 ///
 /// Vector de `(k [1/unidades], P_B(k) [B² × volumen])` para cada bin.
 /// Bins vacíos se omiten del resultado.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn magnetic_power_spectrum_impl(
     particles: &[Particle],
     box_size: f64,
@@ -192,7 +192,7 @@ fn magnetic_power_spectrum_impl(
     result
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn magnetic_power_spectrum_par(
     particles: &[Particle],
     box_size: f64,
@@ -258,12 +258,12 @@ pub fn magnetic_power_spectrum(
     box_size: f64,
     n_bins: usize,
 ) -> Vec<(f64, f64)> {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         magnetic_power_spectrum_par(particles, box_size, n_bins)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         magnetic_power_spectrum_impl(particles, box_size, n_bins)
     }

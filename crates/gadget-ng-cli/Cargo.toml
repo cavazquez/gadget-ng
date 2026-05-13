@@ -17,13 +17,14 @@ hdf5 = ["gadget-ng-io/hdf5"]
 gpu = ["dep:gadget-ng-gpu", "gadget-ng-core/gpu", "gadget-ng-tree/gpu"]
 cuda = ["dep:gadget-ng-cuda"]
 hip  = ["dep:gadget-ng-hip"]
-simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "gadget-ng-integrators/simd", "gadget-ng-sph/simd", "gadget-ng-mhd/simd", "gadget-ng-rt/simd", "gadget-ng-analysis/simd", "dep:rayon"]
+rayon = ["gadget-ng-core/rayon", "gadget-ng-tree/rayon", "gadget-ng-integrators/rayon", "gadget-ng-sph/rayon", "gadget-ng-mhd/rayon", "gadget-ng-rt/rayon", "gadget-ng-analysis/rayon", "dep:rayon"]
+simd = ["gadget-ng-core/simd", "gadget-ng-tree/simd", "gadget-ng-integrators/simd", "gadget-ng-sph/simd", "gadget-ng-mhd/simd", "gadget-ng-rt/simd", "gadget-ng-analysis/simd"]
 pm-rayon = ["gadget-ng-pm/rayon", "gadget-ng-treepm/rayon"]
 msgpack = ["gadget-ng-io/msgpack"]
 netcdf = ["gadget-ng-io/netcdf"]
 # Nota: full NO incluye cuda, hip, pm/fftw, io/hdf5-parallel, pm/mpi — requieren
 # toolchains externos (CUDA Toolkit, ROCm, FFTW3, HDF5 con --enable-parallel).
-full = ["mpi", "bincode", "hdf5", "gpu", "simd", "pm-rayon", "msgpack", "netcdf"]
+full = ["mpi", "bincode", "hdf5", "gpu", "rayon", "simd", "pm-rayon", "msgpack", "netcdf"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core", features = [] }

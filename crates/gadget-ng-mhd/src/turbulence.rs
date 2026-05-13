@@ -33,7 +33,7 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, TurbulenceSection};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Generador de números pseudo-aleatorios simple (LCG para reproducibilidad).
@@ -143,7 +143,7 @@ pub fn apply_turbulent_forcing(
 /// - `alfven_mach = v_rms / v_A` (número de Mach Alfvénico)
 ///
 /// `c_s = sqrt(γ P / ρ)` y `v_A = B / sqrt(μ₀ ρ)`.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn turbulence_stats_impl(particles: &[Particle], gamma: f64) -> (f64, f64) {
     let mut v2_sum = 0.0_f64;
     let mut b2_rho_sum = 0.0_f64;
@@ -181,7 +181,7 @@ fn turbulence_stats_impl(particles: &[Particle], gamma: f64) -> (f64, f64) {
     (mach_rms, alfven_mach)
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn turbulence_stats_par(particles: &[Particle], gamma: f64) -> (f64, f64) {
     let (v2_sum, b2_rho_sum, cs2_sum, n) = particles
         .par_iter()
@@ -225,12 +225,12 @@ fn turbulence_stats_par(particles: &[Particle], gamma: f64) -> (f64, f64) {
 }
 
 pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         turbulence_stats_par(particles, gamma)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         turbulence_stats_impl(particles, gamma)
     }

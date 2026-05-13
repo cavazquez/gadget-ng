@@ -41,7 +41,7 @@
 
 // ── Constantes físicas ────────────────────────────────────────────────────
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Velocidad de la luz en km/s.
@@ -131,17 +131,17 @@ impl RadiationField {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn sum_energy_density(energy_density: &[f64]) -> f64 {
     energy_density.par_iter().sum()
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn sum_energy_density(energy_density: &[f64]) -> f64 {
     energy_density.iter().sum()
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn xi_field_impl(rad: &RadiationField, c_red: f64) -> Vec<f64> {
     (0..rad.n_cells())
         .into_par_iter()
@@ -149,7 +149,7 @@ fn xi_field_impl(rad: &RadiationField, c_red: f64) -> Vec<f64> {
         .collect()
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn xi_field_impl(rad: &RadiationField, c_red: f64) -> Vec<f64> {
     (0..rad.n_cells()).map(|i| rad.xi_cell(i, c_red)).collect()
 }
@@ -304,7 +304,7 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
 
     // ── Actualizar + fuente implícita ────────────────────────────────────
     let decay = (-c_red * kappa * dt).exp();
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         rad.energy_density
             .par_iter_mut()
@@ -324,7 +324,7 @@ fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kap
             });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..n3 {
         let e_new = (rad.energy_density[i] + de[i]).max(0.0);
         rad.energy_density[i] = e_new * decay;

@@ -32,7 +32,7 @@
 //! Schekochihin & Cowley (2006), Phys. Plasmas 13, 056501 — MHD con Braginskii.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Kernel SPH compacto para difusión de momento.
@@ -49,7 +49,7 @@ fn kernel_w(r: f64, h: f64) -> f64 {
     (21.0 / (2.0 * std::f64::consts::PI * h * h * h)) * t.powi(4) * (1.0 + 2.0 * q)
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 #[expect(
     clippy::needless_range_loop,
     reason = "hot MHD pair loop indexes multiple SoA arrays"
@@ -132,7 +132,7 @@ fn apply_braginskii_viscosity_impl(particles: &mut [Particle], eta_visc: f64, dt
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_braginskii_viscosity_par(particles: &mut [Particle], eta_visc: f64, dt: f64) {
     if eta_visc <= 0.0 {
         return;
@@ -241,12 +241,12 @@ fn apply_braginskii_viscosity_par(particles: &mut [Particle], eta_visc: f64, dt:
 /// - `eta_visc`: coeficiente de viscosidad de Braginskii [unidades internas]
 /// - `dt`: paso de tiempo
 pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_braginskii_viscosity_par(particles, eta_visc, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_braginskii_viscosity_impl(particles, eta_visc, dt);
     }

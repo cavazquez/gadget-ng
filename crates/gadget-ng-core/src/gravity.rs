@@ -100,7 +100,7 @@ pub fn accelerations_all_particles(
     debug_assert_eq!(scratch_acc.len(), n);
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub mod parallel_direct {
     use super::*;
     use rayon::prelude::*;
@@ -139,10 +139,10 @@ pub mod parallel_direct {
 /// usa el kernel SoA+caché-blocking+AVX2 de `gravity_simd::accel_soa_blocked`.
 /// **No determinista** respecto al orden de suma entre partículas; no garantiza
 /// paridad bit-a-bit con el modo serial ni con `MpiRuntime`.
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub struct RayonDirectGravity;
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 impl GravitySolver for RayonDirectGravity {
     fn accelerations_for_indices(
         &self,

@@ -1,13 +1,13 @@
 //! Local Barnes–Hut / LET kernels and gravity solver construction (`make_solver`).
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use gadget_ng_core::RayonDirectGravity;
 use gadget_ng_core::{
     DirectGravity, GravitySolver, MacSoftening, OpeningCriterion, Particle, RunConfig, SolverKind,
     Vec3,
 };
 use gadget_ng_pm::PmSolver;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use gadget_ng_tree::RayonBarnesHutGravity;
 #[cfg(feature = "gpu")]
 use gadget_ng_tree::WgpuBarnesHutGpu;
@@ -45,12 +45,12 @@ pub(crate) fn local_bh_walk_params(cfg: &RunConfig) -> LocalBhWalkParams {
 
 /// Rayon en el recorrido del árbol local (MPI / SFC): mismo criterio que [`make_solver`]
 /// (`feature simd` + `[performance] deterministic = false` + solver BH).
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub(crate) fn local_bh_use_rayon(cfg: &RunConfig) -> bool {
     cfg.gravity.solver == SolverKind::BarnesHut && !cfg.performance.deterministic
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 pub(crate) fn local_bh_use_rayon(_cfg: &RunConfig) -> bool {
     false
 }
@@ -101,7 +101,7 @@ pub(crate) fn compute_forces_local_tree(
     parallel_rayon: bool,
 ) {
     debug_assert_eq!(parts.len(), out.len());
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let _ = parallel_rayon;
     if parts.is_empty() {
         return;
@@ -113,7 +113,7 @@ pub(crate) fn compute_forces_local_tree(
         .collect();
     let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     if parallel_rayon {
         use rayon::prelude::*;
         out.par_iter_mut().enumerate().for_each(|(li, acc_out)| {
@@ -158,7 +158,7 @@ pub(crate) fn compute_forces_local_tree_with_costs(
     parallel_rayon: bool,
 ) {
     debug_assert_eq!(parts.len(), out.len());
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let _ = parallel_rayon;
     costs.clear();
     if parts.is_empty() {
@@ -171,7 +171,7 @@ pub(crate) fn compute_forces_local_tree_with_costs(
         .collect();
     let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     if parallel_rayon {
         use rayon::prelude::*;
         costs.resize(parts.len(), 0);
@@ -233,7 +233,7 @@ pub(crate) fn compute_forces_hierarchical_let(
     parallel_rayon: bool,
 ) {
     debug_assert_eq!(acc.len(), active_local.len());
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let _ = parallel_rayon;
     if parts.is_empty() || active_local.is_empty() {
         return;
@@ -245,7 +245,7 @@ pub(crate) fn compute_forces_hierarchical_let(
         .collect();
     let all_mass: Vec<f64> = parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
     let tree = Octree::build(&all_pos, &all_mass);
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     if parallel_rayon {
         use rayon::prelude::*;
         acc.par_iter_mut()
@@ -296,7 +296,7 @@ pub(crate) fn compute_forces_sfc_let(
     parallel_rayon: bool,
 ) {
     debug_assert_eq!(parts.len(), out.len());
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let _ = parallel_rayon;
     if parts.is_empty() {
         return;
@@ -313,7 +313,7 @@ pub(crate) fn compute_forces_sfc_let(
         }
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     if parallel_rayon {
         use rayon::prelude::*;
         out.par_iter_mut().enumerate().for_each(|(li, acc_out)| {
@@ -515,7 +515,7 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
         });
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     if !cfg.performance.deterministic {
         if let Some(n) = cfg.performance.num_threads {
             // Intentar configurar el pool global de Rayon; si ya está inicializado se ignora.
@@ -554,7 +554,7 @@ pub(crate) fn make_solver(cfg: &RunConfig) -> Box<dyn GravitySolver> {
     }
 }
 
-#[cfg(all(test, feature = "simd"))]
+#[cfg(all(test, feature = "rayon"))]
 mod local_tree_rayon_tests {
     use super::{
         LocalBhWalkParams, compute_forces_local_tree, local_bh_use_rayon, walk_accel_local,

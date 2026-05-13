@@ -6,7 +6,7 @@
 //! proxy de ionización térmica y por el contenido de polvo.
 
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Proxy acotado de fracción ionizada local.
@@ -28,7 +28,7 @@ pub fn ionization_fraction_proxy(p: &Particle, ion_floor: f64, dust_coupling: f6
 /// El amortiguamiento es `B(t+dt)=B(t) exp[-eta_ad dt (1/x_i - 1)]`, de modo que
 /// gas completamente ionizado (`x_i≈1`) casi no cambia, mientras que gas neutro
 /// difunde más rápido. La energía magnética disipada se deposita como calor.
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn apply_ambipolar_diffusion_impl(
     particles: &mut [Particle],
     eta_ad: f64,
@@ -59,7 +59,7 @@ fn apply_ambipolar_diffusion_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_ambipolar_diffusion_par(
     particles: &mut [Particle],
     eta_ad: f64,
@@ -98,12 +98,12 @@ pub fn apply_ambipolar_diffusion(
     gamma: f64,
     dt: f64,
 ) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_ambipolar_diffusion_par(particles, eta_ad, ion_floor, dust_coupling, gamma, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_ambipolar_diffusion_impl(particles, eta_ad, ion_floor, dust_coupling, gamma, dt);
     }

@@ -33,7 +33,7 @@
 //! McKee & Ostriker (1977) ApJ 218, 148 — three-phase ISM.
 
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 const KB_OVER_MH_MU: f64 = 8.254e-3 / 0.6;
@@ -67,7 +67,7 @@ pub fn classify_phase(u: f64, u_cold: f64, gamma: f64) -> GasPhase {
 }
 
 pub fn phase_fractions(particles: &[Particle], gamma: f64) -> (f64, f64, f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let (n_cold, n_warm, n_hot, n_gas) = particles
             .par_iter()
@@ -96,7 +96,7 @@ pub fn phase_fractions(particles: &[Particle], gamma: f64) -> (f64, f64, f64) {
         )
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut n_cold = 0u64;
         let mut n_warm = 0u64;
@@ -173,14 +173,14 @@ pub fn thermal_instability_criterion(t: f64, rho: f64, lambda_cool: f64) -> bool
 }
 
 pub fn apply_phase_transitions(particles: &mut [Particle], dt: f64, gamma: f64, t_transition: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles.par_iter_mut().for_each(|p| {
             apply_phase_transition_particle(p, dt, gamma, t_transition);
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         apply_phase_transition_particle(p, dt, gamma, t_transition);
     }

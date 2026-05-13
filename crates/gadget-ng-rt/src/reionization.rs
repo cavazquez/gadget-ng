@@ -34,7 +34,7 @@ use gadget_ng_core::Vec3;
 
 use crate::chemistry::ChemState;
 use crate::m1::RadiationField;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ impl Default for ReionizationParams {
 /// - `sources`  — lista de fuentes UV
 /// - `box_size` — tamaño de la caja periódica
 /// - `dt`       — paso de tiempo
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn deposit_uv_sources_impl(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
     let nx = rad.nx;
     let ny = rad.ny;
@@ -130,7 +130,7 @@ fn deposit_uv_sources_impl(rad: &mut RadiationField, sources: &[UvSource], box_s
     let _ = box_size;
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn deposit_uv_sources_par(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
     let nx = rad.nx;
     let ny = rad.ny;
@@ -164,12 +164,12 @@ fn deposit_uv_sources_par(rad: &mut RadiationField, sources: &[UvSource], box_si
 }
 
 pub fn deposit_uv_sources(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         deposit_uv_sources_par(rad, sources, box_size, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         deposit_uv_sources_impl(rad, sources, box_size, dt);
     }
@@ -181,7 +181,7 @@ pub fn deposit_uv_sources(rad: &mut RadiationField, sources: &[UvSource], box_si
 /// - `chem_states` — fracciones de ionización por partícula de gas
 /// - `z`           — redshift actual
 /// - `n_sources`   — número de fuentes UV activas
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn compute_reionization_state_impl(
     chem_states: &[ChemState],
     z: f64,
@@ -214,7 +214,7 @@ fn compute_reionization_state_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn compute_reionization_state_par(
     chem_states: &[ChemState],
     z: f64,
@@ -262,12 +262,12 @@ pub fn compute_reionization_state(
     z: f64,
     n_sources: usize,
 ) -> ReionizationState {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         compute_reionization_state_par(chem_states, z, n_sources)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         compute_reionization_state_impl(chem_states, z, n_sources)
     }

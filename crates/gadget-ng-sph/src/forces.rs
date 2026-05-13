@@ -33,12 +33,12 @@
 
 use crate::density::GAMMA;
 use crate::kernel::grad_w;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use crate::kernel::grad_w_batch;
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Regularización de μ_ij (viscosidad clásica de Monaghan).
@@ -69,7 +69,7 @@ pub fn compute_sph_forces_with_periodic(particles: &mut [SphParticle], periodic_
         .iter()
         .map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0))
         .collect();
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let is_gas: Vec<bool> = particles.iter().map(|p| p.gas.is_some()).collect();
         let updates: Vec<Option<(Vec3, f64)>> = (0..n)
@@ -99,7 +99,7 @@ pub fn compute_sph_forces_with_periodic(particles: &mut [SphParticle], periodic_
         }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..n {
         if particles[i].gas.is_none() {
             continue;
@@ -170,7 +170,7 @@ pub fn compute_sph_forces_with_periodic(particles: &mut [SphParticle], periodic_
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 #[expect(
     clippy::too_many_arguments,
     reason = "hot SPH pair loop keeps SoA slices explicit"
@@ -319,7 +319,7 @@ pub fn compute_sph_forces_gadget2_with_periodic(
         .iter()
         .map(|p| p.gas.as_ref().map(|g| g.balsara).unwrap_or(1.0))
         .collect();
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let is_gas: Vec<bool> = particles.iter().map(|p| p.gas.is_some()).collect();
         let updates: Vec<Option<(Vec3, f64, f64)>> = (0..n)
@@ -351,7 +351,7 @@ pub fn compute_sph_forces_gadget2_with_periodic(
         }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..n {
         if particles[i].gas.is_none() || rho[i] < 1e-200 {
             continue;
@@ -437,7 +437,7 @@ pub fn compute_sph_forces_gadget2_with_periodic(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 #[expect(
     clippy::too_many_arguments,
     reason = "hot SPH pair loop keeps SoA slices explicit"

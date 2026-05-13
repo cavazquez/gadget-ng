@@ -499,7 +499,7 @@ fn bench_direct_gravity(c: &mut Criterion) {
             });
         });
 
-        #[cfg(feature = "simd")]
+        #[cfg(feature = "rayon")]
         {
             use gadget_ng_core::{RayonDirectGravity, SimdDirectGravity};
             group.bench_with_input(BenchmarkId::new("cpu_rayon", n), &n, |b, _| {

@@ -80,7 +80,7 @@ fn bench_bh_serial(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn bench_bh_rayon(c: &mut Criterion) {
     use gadget_ng_tree::RayonBarnesHutGravity;
     let mut group = c.benchmark_group("bh_rayon_theta0.5");
@@ -106,7 +106,7 @@ fn bench_bh_rayon(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn bench_bh_rayon(_c: &mut Criterion) {}
 
 criterion_group!(benches, bench_bh_build, bench_bh_serial, bench_bh_rayon);

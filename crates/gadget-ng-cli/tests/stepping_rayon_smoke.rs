@@ -1,7 +1,7 @@
 //! Ejecuta `gadget-ng stepping` con el ejemplo `nbody_bh_dtree_rayon_smoke.toml`.
 //! Requiere `--features simd` (Rayon + kernels locales paralelos).
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 mod simd_only {
     use std::process::Command;
 

@@ -28,7 +28,7 @@
 //! Springel & Hernquist (2003) MNRAS 339, 289
 
 use gadget_ng_core::{IsmSection, Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Calcula la presión efectiva del ISM multifase (Phase 114).
@@ -76,7 +76,7 @@ pub fn update_ism_phases(
     let n = particles.len();
     assert_eq!(sfr.len(), n, "sfr.len() debe ser igual a particles.len()");
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter_mut()
@@ -84,7 +84,7 @@ pub fn update_ism_phases(
             .for_each(|(i, p)| update_ism_particle(p, i, sfr, rho_sf, cfg, dt));
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         for (i, p) in particles.iter_mut().enumerate() {
             update_ism_particle(p, i, sfr, rho_sf, cfg, dt);

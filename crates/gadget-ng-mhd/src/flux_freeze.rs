@@ -18,7 +18,7 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Aplica el criterio de flux-freeze a partículas de gas con β > beta_freeze (Phase 138).
@@ -31,14 +31,14 @@ use rayon::prelude::*;
 /// `rho_ref` es la densidad de referencia respecto a la cual se calcula la amplificación.
 /// En la práctica suele ser la densidad inicial o la densidad media del halo.
 pub fn apply_flux_freeze(particles: &mut [Particle], gamma: f64, beta_freeze: f64, rho_ref: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter_mut()
             .for_each(|p| apply_flux_freeze_particle(p, gamma, beta_freeze, rho_ref));
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         apply_flux_freeze_particle(p, gamma, beta_freeze, rho_ref);
     }
@@ -70,7 +70,7 @@ fn apply_flux_freeze_particle(p: &mut Particle, gamma: f64, beta_freeze: f64, rh
 
 /// Calcula la densidad media de las partículas de gas (densidad de referencia).
 pub fn mean_gas_density(particles: &[Particle]) -> f64 {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let (rho_sum, n) = particles
             .par_iter()
@@ -83,7 +83,7 @@ pub fn mean_gas_density(particles: &[Particle]) -> f64 {
         if n == 0 { 1.0 } else { rho_sum / n as f64 }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut rho_sum = 0.0_f64;
         let mut n = 0usize;

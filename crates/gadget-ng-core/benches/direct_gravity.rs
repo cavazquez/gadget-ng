@@ -62,7 +62,7 @@ fn bench_direct_serial(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn bench_direct_rayon(c: &mut Criterion) {
     use gadget_ng_core::RayonDirectGravity;
     let mut group = c.benchmark_group("direct_rayon");
@@ -84,10 +84,10 @@ fn bench_direct_rayon(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn bench_direct_rayon(_c: &mut Criterion) {}
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn bench_direct_simd(c: &mut Criterion) {
     use gadget_ng_core::SimdDirectGravity;
     let mut group = c.benchmark_group("direct_simd");
@@ -109,7 +109,7 @@ fn bench_direct_simd(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn bench_direct_simd(_c: &mut Criterion) {}
 
 criterion_group!(

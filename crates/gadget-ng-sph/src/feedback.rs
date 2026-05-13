@@ -34,7 +34,7 @@ use crate::periodic_delta;
 use gadget_ng_core::{
     FeedbackSection, Particle, ParticleType, StarFormationModel, StellarFeedbackMode, WindParams,
 };
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 // ── Constantes ─────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ const E_SN_PER_MSUN: f64 = 1.54e-3; // (km/s)² por 10¹⁰ M_sun
 /// Retorna `sfr[i]` en unidades internas de masa/tiempo.
 /// Para partículas que no son gas, o que no alcanzan `rho_sf`, retorna 0.
 pub fn compute_sfr(particles: &[Particle], cfg: &FeedbackSection) -> Vec<f64> {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter()
@@ -73,7 +73,7 @@ pub fn compute_sfr(particles: &[Particle], cfg: &FeedbackSection) -> Vec<f64> {
             .collect()
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         particles
             .iter()
@@ -103,7 +103,7 @@ pub fn compute_sfr_with_h2(
     cfg: &FeedbackSection,
     h2_boost: f64,
 ) -> Vec<f64> {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter()
@@ -123,7 +123,7 @@ pub fn compute_sfr_with_h2(
             .collect()
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         particles
             .iter()
@@ -152,7 +152,7 @@ pub fn compute_sfr_pressure(particles: &[Particle], cfg: &FeedbackSection, gamma
     let p0 = cfg.sf_pressure_norm.max(1e-20);
     let n = cfg.sf_pressure_index;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter()
@@ -171,7 +171,7 @@ pub fn compute_sfr_pressure(particles: &[Particle], cfg: &FeedbackSection, gamma
             .collect()
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         particles
             .iter()
@@ -193,7 +193,7 @@ pub fn compute_sfr_pressure(particles: &[Particle], cfg: &FeedbackSection, gamma
 
 /// Calcula SFR según el modelo elegido en configuración.
 pub fn compute_sfr_model(particles: &[Particle], cfg: &FeedbackSection, gamma: f64) -> Vec<f64> {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         match cfg.sf_model {
             StarFormationModel::DensityLaw => compute_sfr(particles, cfg),
@@ -201,7 +201,7 @@ pub fn compute_sfr_model(particles: &[Particle], cfg: &FeedbackSection, gamma: f
         }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         match cfg.sf_model {
             StarFormationModel::DensityLaw => compute_sfr(particles, cfg),
@@ -249,7 +249,7 @@ pub fn apply_sn_feedback(
     let v_kick = cfg.v_kick_km_s;
     let e_sn_per_m = E_SN_PER_MSUN * cfg.eps_sn;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let base_seed = *seed;
         let n = particles.len();
@@ -276,7 +276,7 @@ pub fn apply_sn_feedback(
         *seed = base_seed.wrapping_add(n as u64 * 0x9E3779B97F4A7C15);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..particles.len() {
         if particles[i].ptype != ParticleType::Gas {
             continue;
@@ -328,7 +328,7 @@ pub fn apply_thermal_feedback_stochastic(
     }
     let n_heat = cfg.n_heat_neighbors.max(1);
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let n = particles.len();
         let pos: Vec<_> = particles.iter().map(|p| p.position).collect();
@@ -387,7 +387,7 @@ pub fn apply_thermal_feedback_stochastic(
         total_injected
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut total_injected = 0.0_f64;
 
@@ -475,7 +475,7 @@ pub fn apply_galactic_winds(
     let v_wind = cfg.v_wind_km_s;
     let eta = cfg.mass_loading;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let base_seed = *seed;
         let n = particles.len();
@@ -509,7 +509,7 @@ pub fn apply_galactic_winds(
         launched
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut launched: Vec<usize> = Vec::new();
 
@@ -548,7 +548,7 @@ pub fn total_sn_energy_injection(
     cfg: &FeedbackSection,
     dt: f64,
 ) -> f64 {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         sfr.par_iter()
             .zip(masses.par_iter())
@@ -557,7 +557,7 @@ pub fn total_sn_energy_injection(
             .sum()
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         sfr.iter()
             .zip(masses.iter())
@@ -768,7 +768,7 @@ pub fn apply_snia_feedback_periodic(
 ///
 /// Debe llamarse cada paso con `dt_gyr` = paso de tiempo en Gyr.
 pub fn advance_stellar_ages(particles: &mut [Particle], dt_gyr: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles.par_iter_mut().for_each(|p| {
             if p.ptype == gadget_ng_core::ParticleType::Star {
@@ -777,7 +777,7 @@ pub fn advance_stellar_ages(particles: &mut [Particle], dt_gyr: f64) {
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         if p.ptype == gadget_ng_core::ParticleType::Star {
             p.stellar_age += dt_gyr;
@@ -809,7 +809,7 @@ pub fn apply_stellar_wind_feedback(
 
     let v_wind = cfg.v_stellar_wind_km_s;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let base_seed = *seed;
         let n = particles.len();
@@ -842,7 +842,7 @@ pub fn apply_stellar_wind_feedback(
         kicked
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut kicked = Vec::new();
 

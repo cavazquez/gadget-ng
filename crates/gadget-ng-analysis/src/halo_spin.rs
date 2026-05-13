@@ -23,7 +23,7 @@
 //! Peebles (1971), A&A 11, 377; Bullock et al. (2001), ApJ 555, 240.
 
 use gadget_ng_core::Vec3;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 const G_INTERNAL: f64 = 4.302e-3; // pc M_sun⁻¹ (km/s)² — en unidades de kpc·(km/s)²/M_sun = 4.302e-6
@@ -92,9 +92,9 @@ pub fn halo_spin(
         return None;
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     let mass_total: f64 = masses.par_iter().sum();
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let mass_total: f64 = masses.iter().sum();
     if mass_total <= 0.0 {
         return None;
@@ -105,7 +105,7 @@ pub fn halo_spin(
     let vel_com = velocity_center(velocities, masses, mass_total);
 
     // ── Momento angular L = Σ m_i × (r_i - r_com) × (v_i - v_com) ───────
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     let (lx, ly, lz) = positions
         .par_iter()
         .zip(velocities.par_iter())
@@ -113,7 +113,7 @@ pub fn halo_spin(
         .map(|(i, (&pos, &vel))| angular_momentum_term(i, pos, vel, masses, pos_com, vel_com))
         .reduce(|| (0.0, 0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     let (lx, ly, lz) = {
         let mut lx = 0.0f64;
         let mut ly = 0.0f64;
@@ -176,7 +176,7 @@ pub fn compute_halo_spins(
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn compute_halo_spins_impl(
     positions: &[Vec3],
     velocities: &[Vec3],
@@ -195,7 +195,7 @@ fn compute_halo_spins_impl(
         .collect()
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn compute_halo_spins_impl(
     positions: &[Vec3],
     velocities: &[Vec3],
@@ -242,7 +242,7 @@ fn angular_momentum_term(
 }
 
 fn center_of_mass(positions: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 3] {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let (cx, cy, cz) = positions
             .par_iter()
@@ -259,7 +259,7 @@ fn center_of_mass(positions: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 
         [cx / total_mass, cy / total_mass, cz / total_mass]
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut cx = 0.0f64;
         let mut cy = 0.0f64;
@@ -279,7 +279,7 @@ fn center_of_mass(positions: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 
 }
 
 fn velocity_center(velocities: &[Vec3], masses: &[f64], total_mass: f64) -> [f64; 3] {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let (vx, vy, vz) = velocities
             .par_iter()
@@ -296,7 +296,7 @@ fn velocity_center(velocities: &[Vec3], masses: &[f64], total_mass: f64) -> [f64
         [vx / total_mass, vy / total_mass, vz / total_mass]
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut vx = 0.0f64;
         let mut vy = 0.0f64;

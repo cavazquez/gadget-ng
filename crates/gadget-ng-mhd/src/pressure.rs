@@ -20,7 +20,7 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Calcula la presión magnética escalar `P_B = |B|² / (2μ₀)`.
@@ -63,7 +63,7 @@ fn kernel_gradient(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn apply_magnetic_forces_impl(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
     if n == 0 {
@@ -133,7 +133,7 @@ fn apply_magnetic_forces_impl(particles: &mut [Particle], dt: f64) {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_magnetic_forces_par(particles: &mut [Particle], dt: f64) {
     let n = particles.len();
     if n == 0 {
@@ -188,8 +188,8 @@ fn apply_magnetic_forces_par(particles: &mut [Particle], dt: f64) {
 
                 let mut a = [0.0_f64; 3];
                 for k in 0..3 {
-                    for l in 0..3 {
-                        a[k] += (m_i[k][l] / rho_i2 + m_j[k][l] / rho_j2) * gw[l];
+                    for (l, &gw_l) in gw.iter().enumerate() {
+                        a[k] += (m_i[k][l] / rho_i2 + m_j[k][l] / rho_j2) * gw_l;
                     }
                 }
 
@@ -218,12 +218,12 @@ fn apply_magnetic_forces_par(particles: &mut [Particle], dt: f64) {
 /// a_i += m_j (M_i/ρ_i² + M_j/ρ_j²) · ∇W_ij
 /// ```
 pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_magnetic_forces_par(particles, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_magnetic_forces_impl(particles, dt);
     }

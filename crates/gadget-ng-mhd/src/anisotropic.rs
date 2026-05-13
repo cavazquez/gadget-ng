@@ -29,7 +29,7 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Kernel SPH simple para difusión (Wendland C2).
@@ -54,7 +54,7 @@ fn u_to_t(u: f64, gamma: f64) -> f64 {
     u.max(0.0) * (gamma - 1.0) / (KB_OVER_MU / MU_MEAN)
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 #[expect(
     clippy::needless_range_loop,
     reason = "hot MHD pair loop indexes multiple SoA arrays"
@@ -130,7 +130,7 @@ fn apply_anisotropic_conduction_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_anisotropic_conduction_par(
     particles: &mut [Particle],
     kappa_par: f64,
@@ -229,18 +229,18 @@ pub fn apply_anisotropic_conduction(
     gamma: f64,
     dt: f64,
 ) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_anisotropic_conduction_par(particles, kappa_par, kappa_perp, gamma, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_anisotropic_conduction_impl(particles, kappa_par, kappa_perp, gamma, dt);
     }
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 #[expect(
     clippy::needless_range_loop,
     reason = "hot MHD pair loop indexes multiple SoA arrays"
@@ -311,7 +311,7 @@ fn diffuse_cr_anisotropic_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn diffuse_cr_anisotropic_par(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
     let n = particles.len();
     if n == 0 {
@@ -396,7 +396,7 @@ fn diffuse_cr_anisotropic_par(particles: &mut [Particle], kappa_cr: f64, b_suppr
 ///
 /// La formulación branch-free (`q.min(2.0)`) hace que `t = 0` automáticamente
 /// para `q > 2`, eliminando ramas en el inner loop.
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 #[inline]
 fn kernel_w_branchfree(r: f64, h: f64) -> f64 {
     if h <= 0.0 {
@@ -417,12 +417,12 @@ fn kernel_w_branchfree(r: f64, h: f64) -> f64 {
 ///
 /// Con `B = 0` degenera en difusión isótropa.
 pub fn diffuse_cr_anisotropic(particles: &mut [Particle], kappa_cr: f64, b_suppress: f64, dt: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         diffuse_cr_anisotropic_par(particles, kappa_cr, b_suppress, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         diffuse_cr_anisotropic_impl(particles, kappa_cr, b_suppress, dt);
     }

@@ -41,7 +41,7 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 const C_ALPHA: f64 = 1.0 / 3.0;
@@ -63,7 +63,7 @@ pub fn dynamo_growth_rate(v_rms: f64, b_rms: f64, rho: f64) -> f64 {
     growth.max(0.0)
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn apply_turbulent_dynamo_impl(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
     let alpha = alpha_coefficient(v_rms, 0.5);
     if alpha < 1e-30 {
@@ -110,7 +110,7 @@ fn apply_turbulent_dynamo_impl(particles: &mut [Particle], v_rms: f64, dt: f64, 
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_turbulent_dynamo_par(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
     let alpha = alpha_coefficient(v_rms, 0.5);
     if alpha < 1e-30 {
@@ -158,18 +158,18 @@ fn apply_turbulent_dynamo_par(particles: &mut [Particle], v_rms: f64, dt: f64, d
 }
 
 pub fn apply_turbulent_dynamo(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_turbulent_dynamo_par(particles, v_rms, dt, decay_time);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_turbulent_dynamo_impl(particles, v_rms, dt, decay_time);
     }
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn magnetic_energy_ratio_impl(particles: &[Particle], _gamma: f64) -> f64 {
     let mut e_kin_sum = 0.0_f64;
     let mut e_mag_sum = 0.0_f64;
@@ -197,7 +197,7 @@ fn magnetic_energy_ratio_impl(particles: &[Particle], _gamma: f64) -> f64 {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn magnetic_energy_ratio_par(particles: &[Particle], _gamma: f64) -> f64 {
     let (e_kin, e_mag, n) = particles
         .par_iter()
@@ -222,12 +222,12 @@ fn magnetic_energy_ratio_par(particles: &[Particle], _gamma: f64) -> f64 {
 }
 
 pub fn magnetic_energy_ratio(particles: &[Particle], gamma: f64) -> f64 {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         magnetic_energy_ratio_par(particles, gamma)
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         magnetic_energy_ratio_impl(particles, gamma)
     }

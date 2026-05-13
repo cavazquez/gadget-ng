@@ -34,7 +34,7 @@
 //! Balsara & Spicer (1999), JCP 149, 270 — preservación ∇·B.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Velocidad de la luz en unidades de código (aproximación: c=1 en unidades naturales).
@@ -142,7 +142,7 @@ pub fn srmhd_conserved_to_primitive(
 /// no relativista estándar.
 ///
 /// La corrección de momento: `p_i → γ m_i v_i` (en lugar de `m_i v_i`).
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn advance_srmhd_impl(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
     for p in particles.iter_mut() {
         if p.ptype != ParticleType::Gas {
@@ -170,7 +170,7 @@ fn advance_srmhd_impl(particles: &mut [Particle], dt: f64, c: f64, v_threshold: 
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn advance_srmhd_par(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
     particles.par_iter_mut().for_each(|p| {
         if p.ptype != ParticleType::Gas {
@@ -199,12 +199,12 @@ fn advance_srmhd_par(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f
 }
 
 pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         advance_srmhd_par(particles, dt, c, v_threshold);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         advance_srmhd_impl(particles, dt, c, v_threshold);
     }

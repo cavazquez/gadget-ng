@@ -11,10 +11,10 @@ Achieve full 1-to-1 parity between SIMD (CPU serial/Rayon/AVX2/AVX-512) and CUDA
 
 - All backends must produce physically equivalent results (within f32 precision for CUDA)
 - CUDA code must compile with `CUDA_SKIP=1` (stubs for CI without GPU)
-- Rayon paths currently gated behind `#[cfg(feature = "simd")]` with `#[cfg(not(feature = "simd"))]` serial fallbacks
+- Rayon paths now use `#[cfg(feature = "rayon")]` with `#[cfg(not(feature = "rayon"))]` serial fallbacks.
 - CUDA paths gated behind `#[cfg(feature = "cuda")]` with `cuda_unavailable` stubs
 - AVX2 and AVX-512 exist in direct gravity, SPH kernel batches, PM CIC/Poisson, and Tree LET/RMN SoA hot paths.
-- `feature = "simd"` still gates **Rayon parallelism** in several crates; a clean `rayon` vs `explicit-simd` feature split remains backlog.
+- `feature = "simd"` gates explicit SIMD/target-feature paths; `feature = "rayon"` gates thread parallelism.
 - Auto-vectorization preferred over explicit intrinsics for maintainability
 
 ## Completed Work
@@ -54,7 +54,7 @@ Achieve full 1-to-1 parity between SIMD (CPU serial/Rayon/AVX2/AVX-512) and CUDA
 **Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Alta
 
-Functions parallelized with `#[cfg(feature = "simd")]` Rayon + `#[cfg(not(feature = "simd"))]` serial fallback:
+Functions parallelized with `#[cfg(feature = "rayon")]` Rayon + `#[cfg(not(feature = "rayon"))]` serial fallback:
 
 | # | Función | Archivo | Patrón | Estado |
 |---|---------|---------|--------|--------|
@@ -281,6 +281,7 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | 7 | Fase 7 completada: FFT/Poisson k-space spectral kernel SoA layout + AVX-512/AVX2+FMA scalar dispatch. Pre-computed wave numbers. 46 PM tests pass, clippy clean. |
 | 2026-05-13 | 8 | Fase 8 completada: Tree LET/RMN SoA AVX-512 monopole pass and dispatch. |
 | 2026-05-13 | 9 | Fase 9 completada: CUDA MHD/Tree smoke surfaces, Rust wrappers, FFI/build wiring, and stub CI validation. |
+| 2026-05-13 | 201/AP-01 | Feature split completado: `rayon` y `simd` son ejes separados; `cargo check -p gadget-ng-cli --features simd`, `rayon`, y `simd,rayon` pasan. |
 
 ## Remaining backlog
 

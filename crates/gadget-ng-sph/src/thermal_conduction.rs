@@ -31,7 +31,7 @@
 use crate::cooling::{temperature_to_u, u_to_temperature};
 use crate::periodic_delta;
 use gadget_ng_core::{ConductionSection, Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Logaritmo de Coulomb típico para plasma del ICM.
@@ -84,7 +84,7 @@ pub fn apply_thermal_conduction_periodic(
 
     let u_floor = temperature_to_u(t_floor_k, gamma);
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let ptypes: Vec<ParticleType> = particles.iter().map(|p| p.ptype).collect();
         let pos: Vec<_> = particles.iter().map(|p| p.position).collect();
@@ -131,7 +131,7 @@ pub fn apply_thermal_conduction_periodic(
         }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut delta_u = vec![0.0_f64; n];
 

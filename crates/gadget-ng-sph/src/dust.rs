@@ -31,7 +31,7 @@
 
 use crate::cooling::u_to_temperature;
 use gadget_ng_core::{DustSection, DustSpeciesModel, Particle, ParticleType, Vec3};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Radiation constant in cgs, `a_rad` [erg cm^-3 K^-4].
@@ -54,14 +54,14 @@ pub fn update_dust(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt
         return;
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter_mut()
             .for_each(|p| update_dust_particle(p, cfg, gamma, dt));
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         update_dust_particle(p, cfg, gamma, dt);
     }
@@ -165,14 +165,14 @@ pub fn apply_dust_radiation_pressure_kick(
     if !cfg.enabled || !cfg.radiation_pressure_enabled {
         return;
     }
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles
             .par_iter_mut()
             .for_each(|p| apply_dust_radiation_pressure_kick_particle(p, cfg, z_reference, dt));
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         apply_dust_radiation_pressure_kick_particle(p, cfg, z_reference, dt);
     }

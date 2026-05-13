@@ -45,7 +45,7 @@ pub use dark_matter::{
     fdm_transfer_suppression, wdm_half_mode_k, wdm_transfer_suppression,
 };
 pub use gadget_ng_gpu_layout::{BH_GPU_NO_PARTICLE, BhFmmGpuNode, BhMonopoleGpuNode};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub use gravity::RayonDirectGravity;
 pub use gravity::{
     DirectGravity, GravitySolver, accelerations_all_particles, pairwise_accel_plummer,
@@ -67,5 +67,5 @@ pub use transfer_fn::{
 };
 pub use vec3::Vec3;
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub use gravity::parallel_direct;

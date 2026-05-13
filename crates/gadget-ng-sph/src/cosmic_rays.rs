@@ -20,7 +20,7 @@
 
 use crate::periodic_delta;
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Constante de energía de SN en unidades internas [(km/s)² por 10¹⁰ M_sun].
@@ -65,7 +65,7 @@ pub fn cr_pressure(cr_energy: f64, rho: f64) -> f64 {
 pub fn inject_cr_from_sn(particles: &mut [Particle], sfr: &[f64], cr_fraction: f64, dt: f64) {
     assert_eq!(particles.len(), sfr.len());
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles.par_iter_mut().enumerate().for_each(|(i, p)| {
             if p.ptype != ParticleType::Gas {
@@ -79,7 +79,7 @@ pub fn inject_cr_from_sn(particles: &mut [Particle], sfr: &[f64], cr_fraction: f
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..particles.len() {
         if particles[i].ptype != ParticleType::Gas {
             continue;
@@ -124,7 +124,7 @@ pub fn diffuse_cr_periodic(
         return;
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let ptypes: Vec<ParticleType> = particles.iter().map(|p| p.ptype).collect();
         let pos: Vec<_> = particles.iter().map(|p| p.position).collect();
@@ -167,7 +167,7 @@ pub fn diffuse_cr_periodic(
         }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         let mut delta_cr = vec![0.0_f64; n];
 
@@ -220,7 +220,7 @@ pub fn apply_cr_hadronic_losses(particles: &mut [Particle], coeff: f64, dt: f64)
         return;
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         const PI: f64 = std::f64::consts::PI;
         particles.par_iter_mut().for_each(|p| {
@@ -234,7 +234,7 @@ pub fn apply_cr_hadronic_losses(particles: &mut [Particle], coeff: f64, dt: f64)
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         const PI: f64 = std::f64::consts::PI;
         for p in particles.iter_mut() {

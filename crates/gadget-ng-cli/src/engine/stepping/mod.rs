@@ -1619,7 +1619,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
         //
         // Mejoras sobre Fase 8:
         //   • `alltoallv_f64_overlap`: el walk local se solapa con la comm LET.
-        //   • Rayon (`#[cfg(feature = "simd")]`): walk paralelo intra-rango.
+        //   • Rayon (`#[cfg(feature = "rayon")]`): walk paralelo intra-rango.
         //   • HpcStepStats: desglose de tiempos por fase escrito en diagnostics.jsonl.
         //   • Corrección de atribución: build/export/pack ahora son `this_grav` (no comm).
         //   • Rebalanceo dinámico basado en costo: `allreduce max/min walk_local_ns`.
@@ -1812,7 +1812,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         let received = {
                             let mut do_walk = || {
                                 let t_w = Instant::now();
-                                #[cfg(feature = "simd")]
+                                #[cfg(feature = "rayon")]
                                 {
                                     use rayon::prelude::*;
                                     local_accels.par_iter_mut().enumerate().for_each(|(li, a)| {
@@ -1827,7 +1827,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                         );
                                     });
                                 }
-                                #[cfg(not(feature = "simd"))]
+                                #[cfg(not(feature = "rayon"))]
                                 {
                                     for (li, a) in local_accels.iter_mut().enumerate() {
                                         *a = tree.walk_accel(
@@ -1882,7 +1882,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
 
                             gadget_ng_tree::let_tree_prof_begin();
                             let t_ltw = Instant::now();
-                            #[cfg(feature = "simd")]
+                            #[cfg(all(feature = "rayon", feature = "simd"))]
                             {
                                 use gadget_ng_core::Vec3;
                                 use rayon::prelude::*;
@@ -1912,7 +1912,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                     });
                                 hpc.let_tree_parallel = true;
                             }
-                            #[cfg(not(feature = "simd"))]
+                            #[cfg(not(all(feature = "rayon", feature = "simd")))]
                             {
                                 for (li, a_out) in acc.iter_mut().enumerate() {
                                     let a_remote = let_tree.walk_accel_with_criterion(
@@ -1937,7 +1937,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             this_grav += ltw_ns;
                         } else {
                             // Path flat LET: con feature "simd" usa RmnSoa para kernel fusionado.
-                            #[cfg(feature = "simd")]
+                            #[cfg(all(feature = "rayon", feature = "simd"))]
                             {
                                 let t_pack = Instant::now();
                                 let soa = gadget_ng_tree::RmnSoa::from_slice(&remote_nodes);
@@ -1956,7 +1956,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                 });
                                 hpc.accel_from_let_soa_ns += t_soa.elapsed().as_nanos() as u64;
                             }
-                            #[cfg(not(feature = "simd"))]
+                            #[cfg(not(all(feature = "rayon", feature = "simd")))]
                             {
                                 for (li, a_out) in acc.iter_mut().enumerate() {
                                     let a_remote = gadget_ng_tree::accel_from_let(
@@ -2183,9 +2183,9 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                 mean_apply_leaf_calls: acc_hpc.apply_leaf_calls as f64 / n,
                 mean_rmn_soa_pack_s: acc_hpc.rmn_soa_pack_ns as f64 * ns2s / n,
                 mean_accel_from_let_soa_s: acc_hpc.accel_from_let_soa_ns as f64 * ns2s / n,
-                #[cfg(feature = "simd")]
+                #[cfg(feature = "rayon")]
                 soa_simd_active: true,
-                #[cfg(not(feature = "simd"))]
+                #[cfg(not(feature = "rayon"))]
                 soa_simd_active: false,
                 mean_apply_leaf_tile_calls: acc_hpc.apply_leaf_tile_calls as f64 / n,
                 mean_apply_leaf_tile_i_count: acc_hpc.apply_leaf_tile_i_count as f64 / n,

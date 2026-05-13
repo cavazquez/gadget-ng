@@ -59,7 +59,7 @@
 
 use crate::m1::RadiationField;
 use gadget_ng_core::Particle;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -511,7 +511,7 @@ impl Default for ChemParams {
 /// - `rad`       — campo de radiación M1 (para Γ_HI)
 /// - `params`    — parámetros de química
 /// - `dt`        — paso de tiempo [código]
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn apply_chemistry_impl(
     particles: &mut [Particle],
     chem_states: &mut [ChemState],
@@ -558,7 +558,7 @@ fn apply_chemistry_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn apply_chemistry_par(
     particles: &mut [Particle],
     chem_states: &mut [ChemState],
@@ -610,12 +610,12 @@ pub fn apply_chemistry(
     params: &ChemParams,
     dt: f64,
 ) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         apply_chemistry_par(particles, chem_states, rad, params, dt);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         apply_chemistry_impl(particles, chem_states, rad, params, dt);
     }

@@ -107,13 +107,12 @@ steady-state solves.
 
 ## Roadmap to 1:1 accelerator parity
 
-1. Split `simd` and `rayon` Cargo feature axes so SIMD-without-Rayon is directly testable.
-2. Validate Phase 200 MHD/Tree CUDA kernels on real NVIDIA hardware.
-3. Optimize SPH/MHD/RT CUDA with persistent device buffers after smoke validation.
-4. Port the full RT M1 advection substep with a stencil-safe design.
-5. Wire new CUDA MHD/Tree kernels into runtime config only after hardware parity.
-6. Keep full LET traversal on CPU until there is a concrete compact-tree GPU design.
-7. Extend benchmarks only where both accelerators implement the same operation.
+1. Validate Phase 200 MHD/Tree CUDA kernels on real NVIDIA hardware.
+2. Optimize SPH/MHD/RT CUDA with persistent device buffers after smoke validation.
+3. Port the full RT M1 advection substep with a stencil-safe design.
+4. Wire new CUDA MHD/Tree kernels into runtime config only after hardware parity.
+5. Keep full LET traversal on CPU until there is a concrete compact-tree GPU design.
+6. Extend benchmarks only where both accelerators implement the same operation.
 
 Detailed pending work is tracked in
 [`2026-05-accelerator-parity-pending.md`](2026-05-accelerator-parity-pending.md).

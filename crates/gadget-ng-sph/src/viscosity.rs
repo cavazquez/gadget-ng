@@ -26,12 +26,12 @@
 
 use crate::density::GAMMA;
 use crate::kernel::grad_w;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use crate::kernel::grad_w_batch;
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Regularización para el factor Balsara (evita división por cero).
@@ -79,7 +79,7 @@ pub fn compute_balsara_factors_with_periodic(
         .iter()
         .map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0))
         .collect();
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let updates: Vec<Option<f64>> = (0..n)
             .into_par_iter()
@@ -107,8 +107,8 @@ pub fn compute_balsara_factors_with_periodic(
         }
     }
 
-    #[cfg(not(feature = "simd"))]
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..n {
         if !is_gas[i] {
             continue;
@@ -173,7 +173,7 @@ pub fn compute_balsara_factors_with_periodic(
         }
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let updates: Vec<Option<f64>> = (0..n)
             .into_par_iter()
@@ -202,7 +202,7 @@ pub fn compute_balsara_factors_with_periodic(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 #[expect(
     clippy::too_many_arguments,
     reason = "hot SPH pair loop keeps SoA slices explicit"
@@ -259,7 +259,7 @@ fn balsara_for_particle(
     abs_div / (abs_div + abs_curl + eps_term)
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 #[expect(
     clippy::too_many_arguments,
     reason = "hot SPH pair loop keeps SoA slices explicit"

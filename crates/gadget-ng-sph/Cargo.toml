@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-simd = ["dep:rayon"]
+rayon = ["dep:rayon"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }

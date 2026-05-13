@@ -12,14 +12,14 @@
 //! La implementación usa una lista O(N²) válida para N ~ 10 000 partículas.
 //! Para N mayores se debería usar un árbol KD o cell-linked-list.
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 use crate::kernel::{grad_w, w};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use crate::kernel::{w_and_grad_w_batch, w_batch};
 use crate::particle::SphParticle;
 use crate::periodic_delta;
 use gadget_ng_core::Vec3;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 /// Número objetivo de vecinos SPH.
@@ -42,7 +42,7 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
     // Extrae datos de todas las partículas (pos, mass) para no tener borrowing doble.
     let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
     let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         let gas_state: Vec<Option<(f64, f64)>> = particles
             .iter()
@@ -73,7 +73,7 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
         }
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for i in 0..n {
         let gas = match particles[i].gas.as_mut() {
             Some(g) => g,
@@ -112,7 +112,7 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn density_update_for_particle(
     pos: &[Vec3],
     mass: &[f64],
@@ -151,7 +151,7 @@ fn density_update_for_particle(
 
 /// `ρ(h) = Σ_j m_j W(r_ij, h)` y su derivada `dρ/dh`.
 /// Versión escalar (una partícula a la vez).
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn rho_and_deriv(
     pos: &[Vec3],
     mass: &[f64],
@@ -173,7 +173,7 @@ fn rho_and_deriv(
 
 /// Versión SIMD por lotes de `rho_and_deriv`: recolecta distancias y usa
 /// `w_and_grad_w_batch` para vectorizar el cómputo del kernel Wendland C2.
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn rho_and_deriv_batch(
     pos: &[Vec3],
     mass: &[f64],
@@ -215,7 +215,7 @@ fn rho_and_deriv_batch(
     (rho, drho)
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn rho_sum(
     pos: &[Vec3],
     mass: &[f64],
@@ -230,7 +230,7 @@ fn rho_sum(
 }
 
 /// Versión SIMD por lotes de `rho_sum`.
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn rho_sum_batch(
     pos: &[Vec3],
     mass: &[f64],

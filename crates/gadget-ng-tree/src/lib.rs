@@ -4,7 +4,7 @@ mod hex_dt_patterns;
 mod hexadecapole;
 pub mod let_tree;
 pub mod octree;
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub mod rayon_bh;
 pub mod rmn_soa;
 pub mod sidm;
@@ -22,7 +22,7 @@ pub use octree::{
     NO_CHILD, OctNode, Octree, RMN_FLOATS, RemoteMultipoleNode, WalkStats, accel_from_let,
     pack_let_nodes, unpack_let_nodes, walk_stats_begin, walk_stats_end,
 };
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 pub use rayon_bh::RayonBarnesHutGravity;
 pub use rmn_soa::RmnSoa;
 pub use sidm::{SidmParams, apply_sidm_scattering, scatter_probability};

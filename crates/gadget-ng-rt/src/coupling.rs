@@ -40,7 +40,7 @@
 
 use crate::m1::{C_KMS, M1Params, RadiationField};
 use gadget_ng_core::{Particle, ParticleType};
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
 // ── Constantes ─────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ pub fn photoionization_rate(rad: &RadiationField, params: &M1Params) -> Vec<f64>
     photoionization_rate_impl(&rad.energy_density, c_red)
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
     energy_density
         .par_iter()
@@ -74,7 +74,7 @@ fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
         .collect()
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
     energy_density
         .iter()
@@ -104,14 +104,14 @@ pub fn apply_photoheating(
     let ny = rad.ny;
     let nz = rad.nz;
 
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles.par_iter_mut().for_each(|p| {
             photoheat_particle(p, rad, gamma_hi, dt, box_size, nx, ny, nz);
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         photoheat_particle(p, rad, gamma_hi, dt, box_size, nx, ny, nz);
     }
@@ -163,7 +163,7 @@ fn photoheat_particle(
 /// en la celda más cercana.
 ///
 /// En este modelo simplificado, `η ∝ ρ² × T^(-1/2)` (bremsstrahlung térmico).
-#[cfg(not(feature = "simd"))]
+#[cfg(not(feature = "rayon"))]
 fn deposit_gas_emission_impl(
     particles: &[Particle],
     rad: &mut RadiationField,
@@ -193,7 +193,7 @@ fn deposit_gas_emission_impl(
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(feature = "rayon")]
 fn deposit_gas_emission_par(
     particles: &[Particle],
     rad: &mut RadiationField,
@@ -237,12 +237,12 @@ pub fn deposit_gas_emission(
     box_size: f64,
     emission_coeff: f64,
 ) {
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         deposit_gas_emission_par(particles, rad, dt, box_size, emission_coeff);
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     {
         deposit_gas_emission_impl(particles, rad, dt, box_size, emission_coeff);
     }
@@ -295,14 +295,14 @@ pub fn radiation_gas_coupling_step_with_dust(
 
     // Paso 3: fotocalentamiento con atenuación τ_dust
     // Aplicamos exp(-τ_dust) al fotocalentamiento de cada partícula individualmente
-    #[cfg(feature = "simd")]
+    #[cfg(feature = "rayon")]
     {
         particles.par_iter_mut().for_each(|p| {
             photoheat_dust_particle(p, rad, params, kappa_dust_uv, dt, box_size);
         });
     }
 
-    #[cfg(not(feature = "simd"))]
+    #[cfg(not(feature = "rayon"))]
     for p in particles.iter_mut() {
         photoheat_dust_particle(p, rad, params, kappa_dust_uv, dt, box_size);
     }
