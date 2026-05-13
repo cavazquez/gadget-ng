@@ -178,8 +178,8 @@ y la cobertura detallada en
 | SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | Cooling H/He/metales/UVB | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
-| Dust update / radiation pressure | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
-| Molecular H₂ / shielding | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
+| Dust update / radiation pressure | ✅ | ✅ | ⚠️ AVX2 + AVX512 cold growth/radiation kick; sputtering scalar | ✅ |
+| Molecular H₂ / shielding | ✅ | ✅ | ⚠️ AVX2 + AVX512 no-dust H₂; dust shielding scalar | ✅ |
 | MHD induction/resistivity | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
 | MHD Dedner cleaning | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |

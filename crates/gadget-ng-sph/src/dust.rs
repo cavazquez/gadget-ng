@@ -33,6 +33,20 @@ use crate::cooling::u_to_temperature;
 use gadget_ng_core::{DustSection, DustSpeciesModel, Particle, ParticleType, Vec3};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 /// Radiation constant in cgs, `a_rad` [erg cm^-3 K^-4].
 const A_RAD_CGS: f64 = 7.5657e-15;
@@ -62,6 +76,35 @@ pub fn update_dust(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt
     }
 
     #[cfg(not(feature = "rayon"))]
+    {
+        update_dust_serial(particles, cfg, gamma, dt);
+    }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn update_dust_serial(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt: f64) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return update_dust_avx512(particles, cfg, gamma, dt);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return update_dust_avx2(particles, cfg, gamma, dt);
+            }
+        }
+    }
+
+    update_dust_scalar(particles, cfg, gamma, dt);
+}
+
+#[cfg(not(feature = "rayon"))]
+fn update_dust_scalar(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt: f64) {
     for p in particles.iter_mut() {
         update_dust_particle(p, cfg, gamma, dt);
     }
@@ -173,6 +216,45 @@ pub fn apply_dust_radiation_pressure_kick(
     }
 
     #[cfg(not(feature = "rayon"))]
+    {
+        apply_dust_radiation_pressure_kick_serial(particles, cfg, z_reference, dt);
+    }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn apply_dust_radiation_pressure_kick_serial(
+    particles: &mut [Particle],
+    cfg: &DustSection,
+    z_reference: f64,
+    dt: f64,
+) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return apply_dust_radiation_pressure_kick_avx512(particles, cfg, z_reference, dt);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return apply_dust_radiation_pressure_kick_avx2(particles, cfg, z_reference, dt);
+            }
+        }
+    }
+
+    apply_dust_radiation_pressure_kick_scalar(particles, cfg, z_reference, dt);
+}
+
+#[cfg(not(feature = "rayon"))]
+fn apply_dust_radiation_pressure_kick_scalar(
+    particles: &mut [Particle],
+    cfg: &DustSection,
+    z_reference: f64,
+    dt: f64,
+) {
     for p in particles.iter_mut() {
         apply_dust_radiation_pressure_kick_particle(p, cfg, z_reference, dt);
     }
@@ -244,4 +326,201 @@ pub fn dust_ir_luminosity(p: &Particle, dust_temperature_k: f64, cfg: &DustSecti
         * p.dust_to_gas.max(0.0)
         * p.mass.max(0.0)
         * modified_blackbody
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn update_dust_avx2(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt: f64) {
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let t_factor = (gamma - 1.0) / crate::cooling::KB_OVER_MH_MU_FOR_SIMD;
+    let t_factor_v = _mm256_set1_pd(t_factor);
+    let t_destroy_v = _mm256_set1_pd(cfg.t_destroy_k);
+    let zero_v = _mm256_set1_pd(0.0);
+    let one_v = _mm256_set1_pd(1.0);
+    let dmax_v = _mm256_set1_pd(cfg.d_to_g_max);
+    let grow_v = _mm256_set1_pd(dt / cfg.tau_grow.max(1e-10));
+
+    let mut i = 0;
+    while i < chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            update_dust_scalar(&mut particles[i..i + lanes], cfg, gamma, dt);
+            i += lanes;
+            continue;
+        }
+        let u = _mm256_set_pd(
+            particles[i + 3].internal_energy.max(0.0),
+            particles[i + 2].internal_energy.max(0.0),
+            particles[i + 1].internal_energy.max(0.0),
+            particles[i].internal_energy.max(0.0),
+        );
+        let t = _mm256_mul_pd(u, t_factor_v);
+        let cold_mask = _mm256_movemask_pd(_mm256_cmp_pd(t, t_destroy_v, _CMP_LT_OQ));
+        if cold_mask != 0b1111 {
+            update_dust_scalar(&mut particles[i..i + lanes], cfg, gamma, dt);
+            i += lanes;
+            continue;
+        }
+        let z = _mm256_min_pd(
+            one_v,
+            _mm256_max_pd(
+                zero_v,
+                _mm256_set_pd(
+                    particles[i + 3].metallicity,
+                    particles[i + 2].metallicity,
+                    particles[i + 1].metallicity,
+                    particles[i].metallicity,
+                ),
+            ),
+        );
+        let d = _mm256_set_pd(
+            particles[i + 3].dust_to_gas,
+            particles[i + 2].dust_to_gas,
+            particles[i + 1].dust_to_gas,
+            particles[i].dust_to_gas,
+        );
+        let d_target = _mm256_mul_pd(dmax_v, z);
+        let delta = _mm256_mul_pd(z, _mm256_mul_pd(_mm256_sub_pd(d_target, d), grow_v));
+        let new_d = _mm256_min_pd(dmax_v, _mm256_max_pd(zero_v, _mm256_add_pd(d, delta)));
+        let mut out = [0.0; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr(), new_d) };
+        for lane in 0..lanes {
+            particles[i + lane].dust_to_gas = out[lane];
+        }
+        i += lanes;
+    }
+    update_dust_scalar(&mut particles[chunks..], cfg, gamma, dt);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn update_dust_avx512(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt: f64) {
+    // SAFETY: the caller checked AVX-512F; AVX2 path is used for identical arithmetic until
+    // polynomial vector exp support is added for the hot sputtering branch.
+    unsafe { update_dust_avx2(particles, cfg, gamma, dt) }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_dust_radiation_pressure_kick_avx2(
+    particles: &mut [Particle],
+    cfg: &DustSection,
+    z_reference: f64,
+    dt: f64,
+) {
+    const FOUR_THIRDS_PI: f64 = 4.0 / 3.0 * std::f64::consts::PI;
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let coeff_v = _mm256_set1_pd(cfg.radiation_pressure_kappa * cfg.radiation_pressure_j_uv * dt);
+    let zref_v = _mm256_set1_pd(z_reference);
+    let zero_v = _mm256_set1_pd(0.0);
+    let min_h_v = _mm256_set1_pd(1e-30);
+    let min_rho_v = _mm256_set1_pd(1e-30);
+    let rho_norm_v = _mm256_set1_pd(FOUR_THIRDS_PI);
+
+    let mut i = 0;
+    while i < chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            apply_dust_radiation_pressure_kick_scalar(
+                &mut particles[i..i + lanes],
+                cfg,
+                z_reference,
+                dt,
+            );
+            i += lanes;
+            continue;
+        }
+        let d = _mm256_set_pd(
+            particles[i + 3].dust_to_gas,
+            particles[i + 2].dust_to_gas,
+            particles[i + 1].dust_to_gas,
+            particles[i].dust_to_gas,
+        );
+        let active = _mm256_cmp_pd(d, zero_v, _CMP_GT_OQ);
+        let h = _mm256_max_pd(
+            min_h_v,
+            _mm256_set_pd(
+                particles[i + 3].smoothing_length,
+                particles[i + 2].smoothing_length,
+                particles[i + 1].smoothing_length,
+                particles[i].smoothing_length,
+            ),
+        );
+        let m = _mm256_set_pd(
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let rho = _mm256_max_pd(
+            min_rho_v,
+            _mm256_div_pd(
+                m,
+                _mm256_mul_pd(rho_norm_v, _mm256_mul_pd(h, _mm256_mul_pd(h, h))),
+            ),
+        );
+        let amag_dt = _mm256_div_pd(_mm256_mul_pd(coeff_v, d), rho);
+        let z = _mm256_set_pd(
+            particles[i + 3].position.z,
+            particles[i + 2].position.z,
+            particles[i + 1].position.z,
+            particles[i].position.z,
+        );
+        let sign = _mm256_blendv_pd(
+            _mm256_set1_pd(-1.0),
+            _mm256_set1_pd(1.0),
+            _mm256_cmp_pd(z, zref_v, _CMP_GE_OQ),
+        );
+        let dv = _mm256_and_pd(_mm256_mul_pd(amag_dt, sign), active);
+        let vz = _mm256_set_pd(
+            particles[i + 3].velocity.z,
+            particles[i + 2].velocity.z,
+            particles[i + 1].velocity.z,
+            particles[i].velocity.z,
+        );
+        let new_vz = _mm256_add_pd(vz, dv);
+        let mut out = [0.0; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr(), new_vz) };
+        for lane in 0..lanes {
+            particles[i + lane].velocity.z = out[lane];
+        }
+        i += lanes;
+    }
+    apply_dust_radiation_pressure_kick_scalar(&mut particles[chunks..], cfg, z_reference, dt);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_dust_radiation_pressure_kick_avx512(
+    particles: &mut [Particle],
+    cfg: &DustSection,
+    z_reference: f64,
+    dt: f64,
+) {
+    // SAFETY: the caller checked AVX-512F; AVX2 arithmetic preserves the same update semantics.
+    unsafe { apply_dust_radiation_pressure_kick_avx2(particles, cfg, z_reference, dt) }
 }

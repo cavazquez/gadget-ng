@@ -40,7 +40,8 @@ use rayon::prelude::*;
 
 /// k_B / (m_H · μ) en (km/s)² / K.
 /// μ = 0.6 (gas completamente ionizado H+He), k_B/m_H = 8.254 × 10⁻³ km²/s²/K.
-const KB_OVER_MH_MU: f64 = 8.254e-3 / 0.6;
+pub(crate) const KB_OVER_MH_MU_FOR_SIMD: f64 = 8.254e-3 / 0.6;
+const KB_OVER_MH_MU: f64 = KB_OVER_MH_MU_FOR_SIMD;
 
 /// Factor de enfriamiento Λ₀ en unidades adimensionales (ajustado a escala interna).
 /// Valor físico: ~1.4 × 10⁻²³ erg cm³ s⁻¹; aquí re-escalado a (km/s)² Mpc³ / M☉.
