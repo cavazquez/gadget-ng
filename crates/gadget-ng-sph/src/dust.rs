@@ -344,6 +344,9 @@ unsafe fn update_dust_avx2(particles: &mut [Particle], cfg: &DustSection, gamma:
     let one_v = _mm256_set1_pd(1.0);
     let dmax_v = _mm256_set1_pd(cfg.d_to_g_max);
     let grow_v = _mm256_set1_pd(dt / cfg.tau_grow.max(1e-10));
+    let tau_grow_v = _mm256_set1_pd(cfg.tau_grow);
+    let min_tau_ratio2_v = _mm256_set1_pd(1e-6);
+    let neg_dt_v = _mm256_set1_pd(-dt);
 
     let mut i = 0;
     while i < chunks {
@@ -362,12 +365,7 @@ unsafe fn update_dust_avx2(particles: &mut [Particle], cfg: &DustSection, gamma:
             particles[i].internal_energy.max(0.0),
         );
         let t = _mm256_mul_pd(u, t_factor_v);
-        let cold_mask = _mm256_movemask_pd(_mm256_cmp_pd(t, t_destroy_v, _CMP_LT_OQ));
-        if cold_mask != 0b1111 {
-            update_dust_scalar(&mut particles[i..i + lanes], cfg, gamma, dt);
-            i += lanes;
-            continue;
-        }
+        let cold_mask = _mm256_cmp_pd(t, t_destroy_v, _CMP_LT_OQ);
         let z = _mm256_min_pd(
             one_v,
             _mm256_max_pd(
@@ -388,7 +386,29 @@ unsafe fn update_dust_avx2(particles: &mut [Particle], cfg: &DustSection, gamma:
         );
         let d_target = _mm256_mul_pd(dmax_v, z);
         let delta = _mm256_mul_pd(z, _mm256_mul_pd(_mm256_sub_pd(d_target, d), grow_v));
-        let new_d = _mm256_min_pd(dmax_v, _mm256_max_pd(zero_v, _mm256_add_pd(d, delta)));
+        let cold_d = _mm256_add_pd(d, delta);
+
+        let t_hot = _mm256_max_pd(t, t_destroy_v);
+        let t_ratio = _mm256_div_pd(t_destroy_v, t_hot);
+        let tau_sputter = _mm256_mul_pd(
+            tau_grow_v,
+            _mm256_max_pd(_mm256_mul_pd(t_ratio, t_ratio), min_tau_ratio2_v),
+        );
+        let exp_arg = _mm256_div_pd(neg_dt_v, tau_sputter);
+        let mut exp_args = [0.0; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(exp_args.as_mut_ptr(), exp_arg) };
+        let hot_factor = _mm256_set_pd(
+            exp_args[3].exp(),
+            exp_args[2].exp(),
+            exp_args[1].exp(),
+            exp_args[0].exp(),
+        );
+        let hot_d = _mm256_mul_pd(d, hot_factor);
+        let new_d = _mm256_min_pd(
+            dmax_v,
+            _mm256_max_pd(zero_v, _mm256_blendv_pd(hot_d, cold_d, cold_mask)),
+        );
         let mut out = [0.0; 4];
         // SAFETY: fixed-size stack array has exactly four f64 lanes.
         unsafe { _mm256_storeu_pd(out.as_mut_ptr(), new_d) };
@@ -407,8 +427,7 @@ unsafe fn update_dust_avx2(particles: &mut [Particle], cfg: &DustSection, gamma:
 ))]
 #[target_feature(enable = "avx512f")]
 unsafe fn update_dust_avx512(particles: &mut [Particle], cfg: &DustSection, gamma: f64, dt: f64) {
-    // SAFETY: the caller checked AVX-512F; AVX2 path is used for identical arithmetic until
-    // polynomial vector exp support is added for the hot sputtering branch.
+    // SAFETY: the caller checked AVX-512F; AVX2 arithmetic preserves the same update semantics.
     unsafe { update_dust_avx2(particles, cfg, gamma, dt) }
 }
 
