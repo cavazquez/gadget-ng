@@ -32,6 +32,20 @@ use crate::sps_tables::{Spsband, sps_luminosity};
 use gadget_ng_core::{Particle, ParticleType};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 /// Resultado del cálculo de luminosidad para una galaxia o cúmulo (Phase 118).
 #[derive(Debug, Clone, PartialEq)]
@@ -154,60 +168,7 @@ pub fn galaxy_sed(particles: &[Particle]) -> SedResult {
 
     #[cfg(not(feature = "rayon"))]
     {
-        let mut l_u = 0.0_f64;
-        let mut l_b = 0.0_f64;
-        let mut l_v = 0.0_f64;
-        let mut l_r = 0.0_f64;
-        let mut l_i = 0.0_f64;
-        let mut mass_age = 0.0_f64;
-        let mut mass_tot = 0.0_f64;
-        let mut n_stars = 0_usize;
-
-        for p in particles {
-            if p.ptype != ParticleType::Star {
-                continue;
-            }
-            let age = p.stellar_age.max(1e-3);
-            let z = p.metallicity;
-            let m = p.mass;
-
-            l_u += m * sps_luminosity(age, z, Spsband::U);
-            l_b += m * sps_luminosity(age, z, Spsband::B);
-            l_v += m * sps_luminosity(age, z, Spsband::V);
-            l_r += m * sps_luminosity(age, z, Spsband::R);
-            l_i += m * sps_luminosity(age, z, Spsband::I);
-            mass_age += m * age;
-            mass_tot += m;
-            n_stars += 1;
-        }
-
-        let bv = if l_b > 0.0 && l_v > 0.0 {
-            -2.5 * (l_b / l_v).log10()
-        } else {
-            0.0
-        };
-        let vr = if l_v > 0.0 && l_r > 0.0 {
-            -2.5 * (l_v / l_r).log10()
-        } else {
-            0.0
-        };
-        let mass_weighted_age = if mass_tot > 0.0 {
-            mass_age / mass_tot
-        } else {
-            0.0
-        };
-
-        SedResult {
-            l_u,
-            l_b,
-            l_v,
-            l_r,
-            l_i,
-            bv,
-            vr,
-            mass_weighted_age,
-            n_stars,
-        }
+        galaxy_sed_serial(particles)
     }
 }
 
@@ -235,41 +196,10 @@ pub fn galaxy_luminosity(particles: &[Particle]) -> LuminosityResult {
 
     #[cfg(not(feature = "rayon"))]
     {
-        let mut l_total = 0.0_f64;
-        let mut bv_weighted = 0.0_f64;
-        let mut gr_weighted = 0.0_f64;
-        let mut n_stars = 0_usize;
-
-        for p in particles {
-            if p.ptype != ParticleType::Star {
-                continue;
-            }
-            let age = p.stellar_age.max(1e-4);
-            let z = p.metallicity;
-            let l_i = stellar_luminosity_solar(p.mass, age, z);
-
-            l_total += l_i;
-            bv_weighted += l_i * bv_color(age, z);
-            gr_weighted += l_i * gr_color(age, z);
-            n_stars += 1;
-        }
-
-        let (bv, gr) = if l_total > 0.0 {
-            (bv_weighted / l_total, gr_weighted / l_total)
-        } else {
-            (0.0, 0.0)
-        };
-
-        LuminosityResult {
-            l_total,
-            bv,
-            gr,
-            n_stars,
-        }
+        galaxy_luminosity_serial(particles)
     }
 }
 
-#[cfg(feature = "rayon")]
 #[derive(Default)]
 struct SedAccumulator {
     l_u: f64,
@@ -282,8 +212,8 @@ struct SedAccumulator {
     n_stars: usize,
 }
 
-#[cfg(feature = "rayon")]
 impl SedAccumulator {
+    #[cfg(feature = "rayon")]
     fn combine(self, other: Self) -> Self {
         Self {
             l_u: self.l_u + other.l_u,
@@ -401,4 +331,147 @@ fn luminosity_contribution(p: &Particle) -> LuminosityAccumulator {
         gr_weighted: l_i * gr_color(age, z),
         n_stars: 1,
     }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn galaxy_luminosity_serial(particles: &[Particle]) -> LuminosityResult {
+    let mut l = Vec::new();
+    let mut lbv = Vec::new();
+    let mut lgr = Vec::new();
+
+    for p in particles {
+        if p.ptype != ParticleType::Star {
+            continue;
+        }
+        let age = p.stellar_age.max(1e-4);
+        let z = p.metallicity;
+        let l_i = stellar_luminosity_solar(p.mass, age, z);
+        l.push(l_i);
+        lbv.push(l_i * bv_color(age, z));
+        lgr.push(l_i * gr_color(age, z));
+    }
+
+    let l_total = sum_f64(&l);
+    let bv_weighted = sum_f64(&lbv);
+    let gr_weighted = sum_f64(&lgr);
+    let (bv, gr) = if l_total > 0.0 {
+        (bv_weighted / l_total, gr_weighted / l_total)
+    } else {
+        (0.0, 0.0)
+    };
+
+    LuminosityResult {
+        l_total,
+        bv,
+        gr,
+        n_stars: l.len(),
+    }
+}
+
+#[cfg(not(feature = "rayon"))]
+fn galaxy_sed_serial(particles: &[Particle]) -> SedResult {
+    let mut l_u = Vec::new();
+    let mut l_b = Vec::new();
+    let mut l_v = Vec::new();
+    let mut l_r = Vec::new();
+    let mut l_i = Vec::new();
+    let mut mass_age = Vec::new();
+    let mut mass = Vec::new();
+
+    for p in particles {
+        if p.ptype != ParticleType::Star {
+            continue;
+        }
+        let age = p.stellar_age.max(1e-3);
+        let z = p.metallicity;
+        let m = p.mass;
+
+        l_u.push(m * sps_luminosity(age, z, Spsband::U));
+        l_b.push(m * sps_luminosity(age, z, Spsband::B));
+        l_v.push(m * sps_luminosity(age, z, Spsband::V));
+        l_r.push(m * sps_luminosity(age, z, Spsband::R));
+        l_i.push(m * sps_luminosity(age, z, Spsband::I));
+        mass_age.push(m * age);
+        mass.push(m);
+    }
+
+    let acc = SedAccumulator {
+        l_u: sum_f64(&l_u),
+        l_b: sum_f64(&l_b),
+        l_v: sum_f64(&l_v),
+        l_r: sum_f64(&l_r),
+        l_i: sum_f64(&l_i),
+        mass_age: sum_f64(&mass_age),
+        mass_tot: sum_f64(&mass),
+        n_stars: mass.len(),
+    };
+    acc.into_result()
+}
+
+#[cfg(not(feature = "rayon"))]
+fn sum_f64(values: &[f64]) -> f64 {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return sum_f64_avx512(values);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return sum_f64_avx2(values);
+            }
+        }
+    }
+
+    values.iter().sum()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn sum_f64_avx2(values: &[f64]) -> f64 {
+    let lanes = 4;
+    let chunks = values.len() / lanes * lanes;
+    let mut acc = _mm256_setzero_pd();
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let v = unsafe { _mm256_loadu_pd(values.as_ptr().add(i)) };
+        acc = _mm256_add_pd(acc, v);
+        i += lanes;
+    }
+    let mut tmp = [0.0; 4];
+    // SAFETY: fixed-size stack array has exactly four f64 lanes.
+    unsafe { _mm256_storeu_pd(tmp.as_mut_ptr(), acc) };
+    tmp.into_iter().sum::<f64>() + values[chunks..].iter().sum::<f64>()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn sum_f64_avx512(values: &[f64]) -> f64 {
+    let lanes = 8;
+    let chunks = values.len() / lanes * lanes;
+    let mut acc = _mm512_setzero_pd();
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let v = unsafe { _mm512_loadu_pd(values.as_ptr().add(i)) };
+        acc = _mm512_add_pd(acc, v);
+        i += lanes;
+    }
+    let mut tmp = [0.0; 8];
+    // SAFETY: fixed-size stack array has exactly eight f64 lanes.
+    unsafe { _mm512_storeu_pd(tmp.as_mut_ptr(), acc) };
+    tmp.into_iter().sum::<f64>() + values[chunks..].iter().sum::<f64>()
 }

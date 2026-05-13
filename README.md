@@ -191,7 +191,7 @@ y la cobertura detallada en
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
-| Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ spin reductions AVX2 + AVX512; luminosity/SED scalar | ❌ |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ smoke/parity kernel |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
