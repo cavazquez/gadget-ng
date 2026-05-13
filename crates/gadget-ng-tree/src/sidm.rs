@@ -21,6 +21,9 @@
 
 use gadget_ng_core::Particle;
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 /// Parámetros del modelo SIDM (Phase 157).
 #[derive(Debug, Clone)]
 pub struct SidmParams {
@@ -94,117 +97,90 @@ pub fn apply_sidm_scattering(
         .map(|p| [p.position.x, p.position.y, p.position.z])
         .collect();
     let masses: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let velocities: Vec<[f64; 3]> = particles
+        .iter()
+        .map(|p| [p.velocity.x, p.velocity.y, p.velocity.z])
+        .collect();
+    let is_dm: Vec<bool> = particles
+        .iter()
+        .map(|p| !p.is_gas() && !p.is_star())
+        .collect();
     let h_vals: Vec<f64> = particles
         .iter()
         .map(|p| p.smoothing_length.max(0.01))
         .collect();
 
+    #[cfg(feature = "rayon")]
     let rho_local: Vec<f64> = (0..n)
-        .map(|i| {
-            let h2 = 2.0 * h_vals[i];
-            let mut rho = 0.0_f64;
-            for j in 0..n {
-                let dx = positions[j][0] - positions[i][0];
-                let dy = positions[j][1] - positions[i][1];
-                let dz = positions[j][2] - positions[i][2];
-                let r2 = dx * dx + dy * dy + dz * dz;
-                if r2 < h2 * h2 {
-                    rho += masses[j];
-                }
-            }
-            let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
-            if vol > 0.0 { rho / vol } else { 0.0 }
-        })
+        .into_par_iter()
+        .map(|i| sidm_local_density(i, &positions, &masses, &h_vals))
+        .collect();
+
+    #[cfg(not(feature = "rayon"))]
+    let rho_local: Vec<f64> = (0..n)
+        .map(|i| sidm_local_density(i, &positions, &masses, &h_vals))
         .collect();
 
     // Aplicar scattering por pares (i < j)
     let mut delta_v: Vec<[f64; 3]> = vec![[0.0; 3]; n];
 
+    #[cfg(feature = "rayon")]
+    {
+        let mut pair_deltas: Vec<SidmPairDelta> = (0..n)
+            .into_par_iter()
+            .flat_map_iter(|i| {
+                let positions = &positions;
+                let velocities = &velocities;
+                let masses = &masses;
+                let h_vals = &h_vals;
+                let rho_local = &rho_local;
+                let is_dm = &is_dm;
+                ((i + 1)..n).filter_map(move |j| {
+                    sidm_pair_delta(
+                        i, j, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt,
+                        rng_seed,
+                    )
+                })
+            })
+            .collect();
+        pair_deltas.sort_by_key(|delta| (delta.i, delta.j));
+        for pair in pair_deltas {
+            delta_v[pair.i][0] += pair.dvi[0];
+            delta_v[pair.i][1] += pair.dvi[1];
+            delta_v[pair.i][2] += pair.dvi[2];
+            delta_v[pair.j][0] += pair.dvj[0];
+            delta_v[pair.j][1] += pair.dvj[1];
+            delta_v[pair.j][2] += pair.dvj[2];
+        }
+    }
+
+    #[cfg(not(feature = "rayon"))]
     for i in 0..n {
-        if particles[i].is_gas() || particles[i].is_star() {
+        if !is_dm[i] {
             continue;
         }
-        let h2_i = 2.0 * h_vals[i];
 
         for j in (i + 1)..n {
-            if particles[j].is_gas() || particles[j].is_star() {
-                continue;
+            if let Some(pair) = sidm_pair_delta(
+                i,
+                j,
+                &positions,
+                &velocities,
+                &masses,
+                &h_vals,
+                &rho_local,
+                &is_dm,
+                params,
+                dt,
+                rng_seed,
+            ) {
+                delta_v[pair.i][0] += pair.dvi[0];
+                delta_v[pair.i][1] += pair.dvi[1];
+                delta_v[pair.i][2] += pair.dvi[2];
+                delta_v[pair.j][0] += pair.dvj[0];
+                delta_v[pair.j][1] += pair.dvj[1];
+                delta_v[pair.j][2] += pair.dvj[2];
             }
-
-            let dx = positions[j][0] - positions[i][0];
-            let dy = positions[j][1] - positions[i][1];
-            let dz = positions[j][2] - positions[i][2];
-            let r2 = dx * dx + dy * dy + dz * dz;
-            if r2 >= h2_i * h2_i {
-                continue;
-            }
-
-            let dvx = particles[j].velocity.x - particles[i].velocity.x;
-            let dvy = particles[j].velocity.y - particles[i].velocity.y;
-            let dvz = particles[j].velocity.z - particles[i].velocity.z;
-            let v_rel = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
-
-            if v_rel > params.v_max || v_rel <= 0.0 {
-                continue;
-            }
-
-            let rho_ij = 0.5 * (rho_local[i] + rho_local[j]);
-            let prob = scatter_probability(v_rel, rho_ij, params.sigma_m, dt);
-
-            // Sortear con LCG (semilla determinista por par)
-            let pair_seed = rng_seed
-                .wrapping_add(i as u64 * 1_000_003)
-                .wrapping_add(j as u64 * 7_919);
-            if lcg_rand(pair_seed) > prob {
-                continue;
-            }
-
-            // Scattering elástico isótropo en sistema CM:
-            // velocidades CM del par
-            let m_i = masses[i];
-            let m_j = masses[j];
-            let m_tot = m_i + m_j;
-            let vcm_x = (m_i * particles[i].velocity.x + m_j * particles[j].velocity.x) / m_tot;
-            let vcm_y = (m_i * particles[i].velocity.y + m_j * particles[j].velocity.y) / m_tot;
-            let vcm_z = (m_i * particles[i].velocity.z + m_j * particles[j].velocity.z) / m_tot;
-
-            // Dirección aleatoria isótropa para la velocidad relativa saliente
-            let seed2 = pair_seed.wrapping_add(0xDEAD_BEEF);
-            let seed3 = pair_seed.wrapping_add(0xCAFE_BABE);
-            let cos_theta = 2.0 * lcg_rand(seed2) - 1.0;
-            let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
-            let phi = 2.0 * std::f64::consts::PI * lcg_rand(seed3);
-            let nx = sin_theta * phi.cos();
-            let ny = sin_theta * phi.sin();
-            let nz = cos_theta;
-
-            // Velocidad relativa entrante en CM
-            let vrel_in_x = particles[j].velocity.x - particles[i].velocity.x;
-            let vrel_in_y = particles[j].velocity.y - particles[i].velocity.y;
-            let vrel_in_z = particles[j].velocity.z - particles[i].velocity.z;
-            let v_rel_mag =
-                (vrel_in_x * vrel_in_x + vrel_in_y * vrel_in_y + vrel_in_z * vrel_in_z).sqrt();
-
-            // Velocidad relativa saliente (misma magnitud, nueva dirección)
-            let vrel_out_x = v_rel_mag * nx;
-            let vrel_out_y = v_rel_mag * ny;
-            let vrel_out_z = v_rel_mag * nz;
-
-            // Nuevas velocidades en lab: v_i = v_CM - (m_j/m_tot)*v_rel_out
-            let new_vi_x = vcm_x - (m_j / m_tot) * vrel_out_x;
-            let new_vi_y = vcm_y - (m_j / m_tot) * vrel_out_y;
-            let new_vi_z = vcm_z - (m_j / m_tot) * vrel_out_z;
-            let new_vj_x = vcm_x + (m_i / m_tot) * vrel_out_x;
-            let new_vj_y = vcm_y + (m_i / m_tot) * vrel_out_y;
-            let new_vj_z = vcm_z + (m_i / m_tot) * vrel_out_z;
-
-            // Acumular delta_v (se aplica después del loop para evitar conflictos)
-            delta_v[i][0] += new_vi_x - particles[i].velocity.x;
-            delta_v[i][1] += new_vi_y - particles[i].velocity.y;
-            delta_v[i][2] += new_vi_z - particles[i].velocity.z;
-            delta_v[j][0] += new_vj_x - particles[j].velocity.x;
-            delta_v[j][1] += new_vj_y - particles[j].velocity.y;
-            delta_v[j][2] += new_vj_z - particles[j].velocity.z;
         }
     }
 
@@ -214,4 +190,117 @@ pub fn apply_sidm_scattering(
         p.velocity.y += delta_v[i][1];
         p.velocity.z += delta_v[i][2];
     }
+}
+
+fn sidm_local_density(i: usize, positions: &[[f64; 3]], masses: &[f64], h_vals: &[f64]) -> f64 {
+    let h2 = 2.0 * h_vals[i];
+    let mut rho = 0.0_f64;
+    for j in 0..positions.len() {
+        let dx = positions[j][0] - positions[i][0];
+        let dy = positions[j][1] - positions[i][1];
+        let dz = positions[j][2] - positions[i][2];
+        let r2 = dx * dx + dy * dy + dz * dz;
+        if r2 < h2 * h2 {
+            rho += masses[j];
+        }
+    }
+    let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
+    if vol > 0.0 { rho / vol } else { 0.0 }
+}
+
+struct SidmPairDelta {
+    i: usize,
+    j: usize,
+    dvi: [f64; 3],
+    dvj: [f64; 3],
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SIDM pair kernel keeps SoA slices explicit for Rayon"
+)]
+fn sidm_pair_delta(
+    i: usize,
+    j: usize,
+    positions: &[[f64; 3]],
+    velocities: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+    rho_local: &[f64],
+    is_dm: &[bool],
+    params: &SidmParams,
+    dt: f64,
+    rng_seed: u64,
+) -> Option<SidmPairDelta> {
+    if !is_dm[i] || !is_dm[j] {
+        return None;
+    }
+
+    let h2_i = 2.0 * h_vals[i];
+    let dx = positions[j][0] - positions[i][0];
+    let dy = positions[j][1] - positions[i][1];
+    let dz = positions[j][2] - positions[i][2];
+    let r2 = dx * dx + dy * dy + dz * dz;
+    if r2 >= h2_i * h2_i {
+        return None;
+    }
+
+    let dvx = velocities[j][0] - velocities[i][0];
+    let dvy = velocities[j][1] - velocities[i][1];
+    let dvz = velocities[j][2] - velocities[i][2];
+    let v_rel = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
+    if v_rel > params.v_max || v_rel <= 0.0 {
+        return None;
+    }
+
+    let rho_ij = 0.5 * (rho_local[i] + rho_local[j]);
+    let prob = scatter_probability(v_rel, rho_ij, params.sigma_m, dt);
+    let pair_seed = rng_seed
+        .wrapping_add(i as u64 * 1_000_003)
+        .wrapping_add(j as u64 * 7_919);
+    if lcg_rand(pair_seed) > prob {
+        return None;
+    }
+
+    let m_i = masses[i];
+    let m_j = masses[j];
+    let m_tot = m_i + m_j;
+    let vcm_x = (m_i * velocities[i][0] + m_j * velocities[j][0]) / m_tot;
+    let vcm_y = (m_i * velocities[i][1] + m_j * velocities[j][1]) / m_tot;
+    let vcm_z = (m_i * velocities[i][2] + m_j * velocities[j][2]) / m_tot;
+
+    let seed2 = pair_seed.wrapping_add(0xDEAD_BEEF);
+    let seed3 = pair_seed.wrapping_add(0xCAFE_BABE);
+    let cos_theta = 2.0 * lcg_rand(seed2) - 1.0;
+    let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
+    let phi = 2.0 * std::f64::consts::PI * lcg_rand(seed3);
+    let nx = sin_theta * phi.cos();
+    let ny = sin_theta * phi.sin();
+    let nz = cos_theta;
+
+    let vrel_out_x = v_rel * nx;
+    let vrel_out_y = v_rel * ny;
+    let vrel_out_z = v_rel * nz;
+
+    let new_vi_x = vcm_x - (m_j / m_tot) * vrel_out_x;
+    let new_vi_y = vcm_y - (m_j / m_tot) * vrel_out_y;
+    let new_vi_z = vcm_z - (m_j / m_tot) * vrel_out_z;
+    let new_vj_x = vcm_x + (m_i / m_tot) * vrel_out_x;
+    let new_vj_y = vcm_y + (m_i / m_tot) * vrel_out_y;
+    let new_vj_z = vcm_z + (m_i / m_tot) * vrel_out_z;
+
+    Some(SidmPairDelta {
+        i,
+        j,
+        dvi: [
+            new_vi_x - velocities[i][0],
+            new_vi_y - velocities[i][1],
+            new_vi_z - velocities[i][2],
+        ],
+        dvj: [
+            new_vj_x - velocities[j][0],
+            new_vj_y - velocities[j][1],
+            new_vj_z - velocities[j][2],
+        ],
+    })
 }

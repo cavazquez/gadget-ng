@@ -173,7 +173,7 @@ y la cobertura detallada en
 | Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ❌ full LET traversal |
 | TreePM corto alcance | ✅ | ✅ | ⚠️ CPU/SIMD parcial | ⚠️ wgpu/CUDA híbrido parcial |
 | PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
-| PM FFT/Poisson | ✅ | ⚠️ parcial | ✅ AVX2 + AVX512 spectral kernel | ✅ |
+| PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ |
 | SPH density | ✅ | ✅ | ✅ batch/tiling | ✅ |
 | SPH forces clásico | ✅ | ✅ | ✅ batch/tiling | ✅ |
 | SPH Gadget-2/Balsara | ✅ | ✅ | ✅ batch/tiling | ✅ |
@@ -189,11 +189,11 @@ y la cobertura detallada en
 | MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD flux-freeze / stats | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ⚠️ SIMD parcial | ✅ |
-| RT full M1 advection | ✅ | ⚠️ parcial | ⚠️ final update parcial | ❌ |
+| RT full M1 advection | ✅ | ✅ advección + update | ⚠️ final update parcial | ❌ |
 | RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
-| SIDM | ✅ | ⚠️ parcial | ❌ | ✅ smoke/parity kernel |
-| f(R) / modified gravity PM | ✅ | ⚠️ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
+| SIDM | ✅ | ✅ density + pair evaluation | ❌ | ✅ smoke/parity kernel |
+| f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.

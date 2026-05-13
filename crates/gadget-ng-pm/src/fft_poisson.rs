@@ -27,6 +27,9 @@
 use crate::fft_backend::FftwBackend;
 use crate::fft_backend::{FftBackendKind, PmFftBackend, RustFftBackend};
 use rustfft::{FftPlanner, num_complex::Complex};
+
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -343,71 +346,10 @@ pub(crate) fn solve_forces_impl(
     let mut fz_re = vec![0.0_f64; nm3];
     let mut fz_im = vec![0.0_f64; nm3];
 
-    // Dispatch SIMD del kernel espectral
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        if is_x86_feature_detected!("avx512f") {
-            unsafe {
-                spectral_kernel_avx512(
-                    &rho_re,
-                    &rho_im,
-                    &kx_arr,
-                    &ky_arr,
-                    &kz_arr,
-                    four_pi_g,
-                    r_split,
-                    plummer_eps,
-                    nm,
-                    &mut fx_re,
-                    &mut fx_im,
-                    &mut fy_re,
-                    &mut fy_im,
-                    &mut fz_re,
-                    &mut fz_im,
-                );
-            }
-        } else if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            unsafe {
-                spectral_kernel_avx2(
-                    &rho_re,
-                    &rho_im,
-                    &kx_arr,
-                    &ky_arr,
-                    &kz_arr,
-                    four_pi_g,
-                    r_split,
-                    plummer_eps,
-                    nm,
-                    &mut fx_re,
-                    &mut fx_im,
-                    &mut fy_re,
-                    &mut fy_im,
-                    &mut fz_re,
-                    &mut fz_im,
-                );
-            }
-        } else {
-            spectral_kernel_scalar(
-                &rho_re,
-                &rho_im,
-                &kx_arr,
-                &ky_arr,
-                &kz_arr,
-                four_pi_g,
-                r_split,
-                plummer_eps,
-                nm,
-                &mut fx_re,
-                &mut fx_im,
-                &mut fy_re,
-                &mut fy_im,
-                &mut fz_re,
-                &mut fz_im,
-            );
-        }
-    }
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    spectral_kernel_scalar(
+    // Dispatch del kernel espectral: Rayon cubre el solve k-space completo;
+    // sin Rayon se mantiene el dispatch SIMD explícito de un hilo.
+    #[cfg(feature = "rayon")]
+    spectral_kernel_rayon(
         &rho_re,
         &rho_im,
         &kx_arr,
@@ -424,6 +366,91 @@ pub(crate) fn solve_forces_impl(
         &mut fz_re,
         &mut fz_im,
     );
+
+    #[cfg(not(feature = "rayon"))]
+    {
+        // Dispatch SIMD del kernel espectral
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx512f") {
+                unsafe {
+                    spectral_kernel_avx512(
+                        &rho_re,
+                        &rho_im,
+                        &kx_arr,
+                        &ky_arr,
+                        &kz_arr,
+                        four_pi_g,
+                        r_split,
+                        plummer_eps,
+                        nm,
+                        &mut fx_re,
+                        &mut fx_im,
+                        &mut fy_re,
+                        &mut fy_im,
+                        &mut fz_re,
+                        &mut fz_im,
+                    );
+                }
+            } else if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                unsafe {
+                    spectral_kernel_avx2(
+                        &rho_re,
+                        &rho_im,
+                        &kx_arr,
+                        &ky_arr,
+                        &kz_arr,
+                        four_pi_g,
+                        r_split,
+                        plummer_eps,
+                        nm,
+                        &mut fx_re,
+                        &mut fx_im,
+                        &mut fy_re,
+                        &mut fy_im,
+                        &mut fz_re,
+                        &mut fz_im,
+                    );
+                }
+            } else {
+                spectral_kernel_scalar(
+                    &rho_re,
+                    &rho_im,
+                    &kx_arr,
+                    &ky_arr,
+                    &kz_arr,
+                    four_pi_g,
+                    r_split,
+                    plummer_eps,
+                    nm,
+                    &mut fx_re,
+                    &mut fx_im,
+                    &mut fy_re,
+                    &mut fy_im,
+                    &mut fz_re,
+                    &mut fz_im,
+                );
+            }
+        }
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        spectral_kernel_scalar(
+            &rho_re,
+            &rho_im,
+            &kx_arr,
+            &ky_arr,
+            &kz_arr,
+            four_pi_g,
+            r_split,
+            plummer_eps,
+            nm,
+            &mut fx_re,
+            &mut fx_im,
+            &mut fy_re,
+            &mut fy_im,
+            &mut fz_re,
+            &mut fz_im,
+        );
+    }
 
     // Convertir SoA de vuelta a AoS Complex<f64> para IFFT
     let mut fx_c: Vec<Complex<f64>> = (0..nm3).map(|i| Complex::new(fx_re[i], fx_im[i])).collect();
@@ -452,6 +479,7 @@ pub(crate) fn solve_forces_impl(
     clippy::too_many_arguments,
     reason = "spectral kernel keeps SoA slices explicit"
 )]
+#[cfg(not(feature = "rayon"))]
 fn spectral_kernel_scalar(
     rho_re: &[f64],
     rho_im: &[f64],
@@ -516,8 +544,88 @@ fn spectral_kernel_scalar(
     }
 }
 
+#[cfg(feature = "rayon")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "spectral kernel keeps SoA slices explicit"
+)]
+fn spectral_kernel_rayon(
+    rho_re: &[f64],
+    rho_im: &[f64],
+    kx_arr: &[f64],
+    ky_arr: &[f64],
+    kz_arr: &[f64],
+    four_pi_g: f64,
+    r_split: Option<f64>,
+    plummer_eps: Option<f64>,
+    nm: usize,
+    fx_re: &mut [f64],
+    fx_im: &mut [f64],
+    fy_re: &mut [f64],
+    fy_im: &mut [f64],
+    fz_re: &mut [f64],
+    fz_im: &mut [f64],
+) {
+    let nm2 = nm * nm;
+    let r_split2 = r_split.map(|r| r * r);
+    let eps2 = plummer_eps.map(|e| e * e);
+
+    fx_re
+        .par_iter_mut()
+        .zip(fx_im.par_iter_mut())
+        .zip(fy_re.par_iter_mut())
+        .zip(fy_im.par_iter_mut())
+        .zip(fz_re.par_iter_mut())
+        .zip(fz_im.par_iter_mut())
+        .enumerate()
+        .for_each(
+            |(flat, (((((fx_re, fx_im), fy_re), fy_im), fz_re), fz_im))| {
+                let iz = flat / nm2;
+                let iy = (flat / nm) % nm;
+                let ix = flat % nm;
+                let kx = kx_arr[ix];
+                let ky = ky_arr[iy];
+                let kz = kz_arr[iz];
+                let k2 = kx * kx + ky * ky + kz * kz;
+
+                if k2 < 1e-30 {
+                    *fx_re = 0.0;
+                    *fx_im = 0.0;
+                    *fy_re = 0.0;
+                    *fy_im = 0.0;
+                    *fz_re = 0.0;
+                    *fz_im = 0.0;
+                    return;
+                }
+
+                let mut filter = 1.0_f64;
+                if let Some(r2) = r_split2 {
+                    filter *= (-0.5 * k2 * r2).exp();
+                }
+                if let Some(e2) = eps2
+                    && e2 > 0.0
+                {
+                    filter *= (-k2 * e2).exp();
+                }
+
+                let phi_re = rho_re[flat] * (-four_pi_g * filter / k2);
+                let phi_im = rho_im[flat] * (-four_pi_g * filter / k2);
+
+                *fx_re = kx * phi_im;
+                *fx_im = -kx * phi_re;
+                *fy_re = ky * phi_im;
+                *fy_im = -ky * phi_re;
+                *fz_re = kz * phi_im;
+                *fz_im = -kz * phi_re;
+            },
+        );
+}
+
 /// Kernel AVX2+FMA: fuerza al compilador a emitir instrucciones YMM (4×f64).
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(all(
+    not(feature = "rayon"),
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 #[target_feature(enable = "avx2", enable = "fma")]
 #[expect(
     clippy::too_many_arguments,
@@ -560,7 +668,10 @@ unsafe fn spectral_kernel_avx2(
 }
 
 /// Kernel AVX-512: fuerza al compilador a emitir instrucciones ZMM (8×f64).
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(all(
+    not(feature = "rayon"),
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 #[target_feature(enable = "avx512f")]
 #[expect(
     clippy::too_many_arguments,

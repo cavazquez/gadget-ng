@@ -44,7 +44,7 @@ implementations.
 | MHD flux-freezing/statistics | Yes | Yes, `CudaMhdSolver` | Experimental parity |
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes | Yes, `CudaRtSolver` | Experimental parity |
-| RT M1 full advection substep | Partial CPU SIMD final update | No | CPU-only |
+| RT M1 full advection substep | Yes, CPU Rayon advection/update | No | CPU-only |
 | Analysis spin/luminosity/SED | Yes | No | SIMD-only |
 
 ## Validated commands
@@ -62,6 +62,9 @@ cargo test -p gadget-ng-analysis --features simd
 cargo clippy -p gadget-ng-analysis --features simd --all-targets -- -D warnings
 cargo clippy -p gadget-ng-cli --features simd,rayon,pm-rayon -- -D warnings
 cargo fmt --all --check
+cargo test -p gadget-ng-pm --features rayon
+cargo test -p gadget-ng-rt --features rayon
+cargo test -p gadget-ng-tree --features rayon
 ```
 
 The CUDA side has been validated on NVIDIA GTX 1060 (`sm_61`) with:
@@ -109,7 +112,7 @@ steady-state solves.
 
 1. Validate Phase 200 MHD/Tree CUDA kernels on real NVIDIA hardware.
 2. Optimize SPH/MHD/RT CUDA with persistent device buffers after smoke validation.
-3. Port the full RT M1 advection substep with a stencil-safe design.
+3. Port the full RT M1 advection substep to CUDA with a stencil-safe design.
 4. Wire new CUDA MHD/Tree kernels into runtime config only after hardware parity.
 5. Keep full LET traversal on CPU until there is a concrete compact-tree GPU design.
 6. Extend benchmarks only where both accelerators implement the same operation.

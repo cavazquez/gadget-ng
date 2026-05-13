@@ -210,7 +210,7 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 - Wave numbers `kx_arr`, `ky_arr`, `kz_arr` pre-computed once per direction (size `nm` each), reducing redundant `freq_index()` calls from `nm³` to `nm`.
 - `spectral_kernel_scalar` is the inner loop called by all three `#[target_feature]` wrappers. LLVM emits vector instructions when forced by the `target_feature` attribute.
 - The Poisson kernel remains mathematically identical: `Φ̂(k) = -4πG·ρ̂(k)·filter/k²`, `F̂_α = -i·k_α·Φ̂(k)`. Only the memory layout and dispatch strategy changed.
-- Pre-existing Rayon k-space parallel loop replaced by SIMD dispatch (single-thread vectorized loop over `nm³` elements). Rayon parallelism for the outer FFT level still available via `assign_rayon`/`interpolate_rayon` in `cic.rs`.
+- Phase 202 restored full Rayon coverage for the k-space spectral loop: with `feature = "rayon"` the solver dispatches `spectral_kernel_rayon`; without Rayon it keeps the AVX-512 → AVX2+FMA → scalar SIMD dispatch.
 - All 46 PM tests pass (39 unit + 7 integration). Clippy clean with `-D warnings` for both `rayon` and non-`rayon`.
 
 ---
@@ -282,6 +282,7 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | 8 | Fase 8 completada: Tree LET/RMN SoA AVX-512 monopole pass and dispatch. |
 | 2026-05-13 | 9 | Fase 9 completada: CUDA MHD/Tree smoke surfaces, Rust wrappers, FFI/build wiring, and stub CI validation. |
 | 2026-05-13 | 201/AP-01 | Feature split completado: `rayon` y `simd` son ejes separados; `cargo check -p gadget-ng-cli --features simd`, `rayon`, y `simd,rayon` pasan. |
+| 2026-05-13 | 202/AP-01b | CPU Rayon gaps cerrados: PM FFT/Poisson k-space, RT M1 advection/update y SIDM density/pair evaluation. |
 
 ## Remaining backlog
 

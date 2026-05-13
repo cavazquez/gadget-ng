@@ -209,128 +209,147 @@ pub fn m1_update(rad: &mut RadiationField, dt: f64, params: &M1Params) {
 
 /// Un sub-paso del solver M1 con c_red y opacidades explícitas.
 fn m1_substep(rad: &mut RadiationField, dt: f64, c_red: f64, kappa_abs: f64, kappa_scat: f64) {
-    let nx = rad.nx;
-    let ny = rad.ny;
-    let nz = rad.nz;
-    let n3 = nx * ny * nz;
-    let dx = rad.dx;
+    let n3 = rad.n_cells();
     let kappa = kappa_abs + kappa_scat;
-
-    let mut de = vec![0.0f64; n3];
-    let mut dfx = vec![0.0f64; n3];
-    let mut dfy = vec![0.0f64; n3];
-    let mut dfz = vec![0.0f64; n3];
-
-    // ── Advección en X ────────────────────────────────────────────────────
-    for iz in 0..nz {
-        for iy in 0..ny {
-            for ix in 0..nx {
-                let ixr = (ix + 1) % nx;
-                let il = rad.idx(ix, iy, iz);
-                let ir = rad.idx(ixr, iy, iz);
-                let (fe, ffx) = hll_flux_x(
-                    rad.energy_density[il],
-                    rad.flux_x[il],
-                    rad.flux_y[il],
-                    rad.flux_z[il],
-                    rad.energy_density[ir],
-                    rad.flux_x[ir],
-                    rad.flux_y[ir],
-                    rad.flux_z[ir],
-                    c_red,
-                );
-                let dtdx = dt / dx;
-                de[il] -= dtdx * fe;
-                dfx[il] -= dtdx * ffx;
-                de[ir] += dtdx * fe;
-                dfx[ir] += dtdx * ffx;
-            }
-        }
-    }
-
-    // ── Advección en Y ────────────────────────────────────────────────────
-    for iz in 0..nz {
-        for iy in 0..ny {
-            let iyr = (iy + 1) % ny;
-            for ix in 0..nx {
-                let il = rad.idx(ix, iy, iz);
-                let ir = rad.idx(ix, iyr, iz);
-                let (fe, ffy) = hll_flux_x(
-                    rad.energy_density[il],
-                    rad.flux_y[il],
-                    rad.flux_x[il],
-                    rad.flux_z[il],
-                    rad.energy_density[ir],
-                    rad.flux_y[ir],
-                    rad.flux_x[ir],
-                    rad.flux_z[ir],
-                    c_red,
-                );
-                let dtdx = dt / dx;
-                de[il] -= dtdx * fe;
-                dfy[il] -= dtdx * ffy;
-                de[ir] += dtdx * fe;
-                dfy[ir] += dtdx * ffy;
-            }
-        }
-    }
-
-    // ── Advección en Z ────────────────────────────────────────────────────
-    for iz in 0..nz {
-        let izr = (iz + 1) % nz;
-        for iy in 0..ny {
-            for ix in 0..nx {
-                let il = rad.idx(ix, iy, iz);
-                let ir = rad.idx(ix, iy, izr);
-                let (fe, ffz) = hll_flux_x(
-                    rad.energy_density[il],
-                    rad.flux_z[il],
-                    rad.flux_x[il],
-                    rad.flux_y[il],
-                    rad.energy_density[ir],
-                    rad.flux_z[ir],
-                    rad.flux_x[ir],
-                    rad.flux_y[ir],
-                    c_red,
-                );
-                let dtdx = dt / dx;
-                de[il] -= dtdx * fe;
-                dfz[il] -= dtdx * ffz;
-                de[ir] += dtdx * fe;
-                dfz[ir] += dtdx * ffz;
-            }
-        }
-    }
-
-    // ── Actualizar + fuente implícita ────────────────────────────────────
     let decay = (-c_red * kappa * dt).exp();
+
     #[cfg(feature = "rayon")]
     {
+        let deltas: Vec<M1Delta> = (0..n3)
+            .into_par_iter()
+            .map(|i| m1_cell_delta(rad, i, dt, c_red))
+            .collect();
         rad.energy_density
             .par_iter_mut()
             .zip(rad.flux_x.par_iter_mut())
             .zip(rad.flux_y.par_iter_mut())
             .zip(rad.flux_z.par_iter_mut())
-            .zip(de.par_iter())
-            .zip(dfx.par_iter())
-            .zip(dfy.par_iter())
-            .zip(dfz.par_iter())
-            .for_each(|(((((((e, fx), fy), fz), de), dfx), dfy), dfz)| {
-                let e_new = (*e + *de).max(0.0);
+            .zip(deltas.par_iter())
+            .for_each(|((((e, fx), fy), fz), delta)| {
+                let e_new = (*e + delta.de).max(0.0);
                 *e = e_new * decay;
-                *fx = (*fx + *dfx) * decay;
-                *fy = (*fy + *dfy) * decay;
-                *fz = (*fz + *dfz) * decay;
+                *fx = (*fx + delta.dfx) * decay;
+                *fy = (*fy + delta.dfy) * decay;
+                *fz = (*fz + delta.dfz) * decay;
             });
     }
 
     #[cfg(not(feature = "rayon"))]
     for i in 0..n3 {
-        let e_new = (rad.energy_density[i] + de[i]).max(0.0);
+        let delta = m1_cell_delta(rad, i, dt, c_red);
+        let e_new = (rad.energy_density[i] + delta.de).max(0.0);
         rad.energy_density[i] = e_new * decay;
-        rad.flux_x[i] = (rad.flux_x[i] + dfx[i]) * decay;
-        rad.flux_y[i] = (rad.flux_y[i] + dfy[i]) * decay;
-        rad.flux_z[i] = (rad.flux_z[i] + dfz[i]) * decay;
+        rad.flux_x[i] = (rad.flux_x[i] + delta.dfx) * decay;
+        rad.flux_y[i] = (rad.flux_y[i] + delta.dfy) * decay;
+        rad.flux_z[i] = (rad.flux_z[i] + delta.dfz) * decay;
+    }
+}
+
+#[derive(Clone, Copy)]
+struct M1Delta {
+    de: f64,
+    dfx: f64,
+    dfy: f64,
+    dfz: f64,
+}
+
+#[inline]
+fn m1_cell_delta(rad: &RadiationField, i: usize, dt: f64, c_red: f64) -> M1Delta {
+    let nx = rad.nx;
+    let ny = rad.ny;
+    let iz = i / (nx * ny);
+    let iy = (i / nx) % ny;
+    let ix = i % nx;
+    let dtdx = dt / rad.dx;
+
+    let ix_l = (ix + nx - 1) % nx;
+    let ix_r = (ix + 1) % nx;
+    let iy_l = (iy + ny - 1) % ny;
+    let iy_r = (iy + 1) % ny;
+    let iz_l = (iz + rad.nz - 1) % rad.nz;
+    let iz_r = (iz + 1) % rad.nz;
+
+    let ilx = rad.idx(ix_l, iy, iz);
+    let irx = rad.idx(ix_r, iy, iz);
+    let ily = rad.idx(ix, iy_l, iz);
+    let iry = rad.idx(ix, iy_r, iz);
+    let ilz = rad.idx(ix, iy, iz_l);
+    let irz = rad.idx(ix, iy, iz_r);
+
+    let (fe_x_l, ffx_l) = hll_flux_x(
+        rad.energy_density[ilx],
+        rad.flux_x[ilx],
+        rad.flux_y[ilx],
+        rad.flux_z[ilx],
+        rad.energy_density[i],
+        rad.flux_x[i],
+        rad.flux_y[i],
+        rad.flux_z[i],
+        c_red,
+    );
+    let (fe_x_r, ffx_r) = hll_flux_x(
+        rad.energy_density[i],
+        rad.flux_x[i],
+        rad.flux_y[i],
+        rad.flux_z[i],
+        rad.energy_density[irx],
+        rad.flux_x[irx],
+        rad.flux_y[irx],
+        rad.flux_z[irx],
+        c_red,
+    );
+
+    let (fe_y_l, ffy_l) = hll_flux_x(
+        rad.energy_density[ily],
+        rad.flux_y[ily],
+        rad.flux_x[ily],
+        rad.flux_z[ily],
+        rad.energy_density[i],
+        rad.flux_y[i],
+        rad.flux_x[i],
+        rad.flux_z[i],
+        c_red,
+    );
+    let (fe_y_r, ffy_r) = hll_flux_x(
+        rad.energy_density[i],
+        rad.flux_y[i],
+        rad.flux_x[i],
+        rad.flux_z[i],
+        rad.energy_density[iry],
+        rad.flux_y[iry],
+        rad.flux_x[iry],
+        rad.flux_z[iry],
+        c_red,
+    );
+
+    let (fe_z_l, ffz_l) = hll_flux_x(
+        rad.energy_density[ilz],
+        rad.flux_z[ilz],
+        rad.flux_x[ilz],
+        rad.flux_y[ilz],
+        rad.energy_density[i],
+        rad.flux_z[i],
+        rad.flux_x[i],
+        rad.flux_y[i],
+        c_red,
+    );
+    let (fe_z_r, ffz_r) = hll_flux_x(
+        rad.energy_density[i],
+        rad.flux_z[i],
+        rad.flux_x[i],
+        rad.flux_y[i],
+        rad.energy_density[irz],
+        rad.flux_z[irz],
+        rad.flux_x[irz],
+        rad.flux_y[irz],
+        c_red,
+    );
+
+    M1Delta {
+        de: -dtdx * ((fe_x_r - fe_x_l) + (fe_y_r - fe_y_l) + (fe_z_r - fe_z_l)),
+        dfx: -dtdx * (ffx_r - ffx_l),
+        dfy: -dtdx * (ffy_r - ffy_l),
+        dfz: -dtdx * (ffz_r - ffz_l),
     }
 }
 
