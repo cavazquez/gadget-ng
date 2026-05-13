@@ -40,7 +40,7 @@ implementations.
 | Tree/Barnes-Hut/LET/SIDM | Yes, local walk + LET/RMN; SIDM AVX2/AVX-512 density and pair prefilter | Monopole/SIDM smoke surface | Partial CUDA |
 | SPH density | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH forces/Gadget2 viscosity | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
-| SPH cooling/dust/H2 | Dust growth/sputtering/radiation kick and no-dust H2 AVX2/AVX-512; cooling and shielded H2 branches scalar | Yes, CUDA solvers | Experimental parity |
+| SPH cooling/dust/H2 | Dust growth/sputtering/radiation kick and H2+dust shielding AVX2/AVX-512; cooling scalar | Yes, CUDA solvers | Experimental parity |
 | MHD flux-freezing/statistics | Statistics AVX2/AVX-512; flux-freeze scalar | Yes, `CudaMhdSolver` | Experimental parity |
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
