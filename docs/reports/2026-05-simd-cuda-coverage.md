@@ -3,28 +3,33 @@
 Date: 2026-05-13
 
 This report records the current accelerator coverage after the CUDA availability
-work and the SIMD/Rayon expansion across CPU physics crates.
+work, the SIMD/Rayon expansion across CPU physics crates, and the Phase 200
+AVX-512/CUDA smoke-surface closure.
 
 ## Summary
 
-There is not yet 1:1 parity between CUDA and SIMD/Rayon.
+There is not yet production 1:1 parity between CUDA and SIMD/Rayon.
 
-CUDA currently covers the two gravity paths with native CUDA kernels and has an
-initial SPH O(N²) kernel set:
+CUDA currently covers the two gravity paths with native CUDA kernels and has
+SPH/MHD/RT smoke/parity kernel sets:
 
 - Direct `O(N^2)` gravity.
 - Particle-mesh gravity.
-- SPH density, Balsara viscosity limiter, classical SPH forces, and Gadget-2
-  SPH forces via `CudaSphSolver`.
-- MHD flux-freeze, mean gas density, and magnetic-field statistics via
+- SPH density, Balsara viscosity limiter, classical SPH forces, Gadget-2 SPH
+  forces, cooling, dust and H2 via CUDA solvers.
+- MHD flux-freeze, mean gas density, magnetic-field statistics, induction,
+  resistivity, magnetic forces, Dedner cleaning, scalar diffusion, Braginskii
+  viscosity, reconnection, CR streaming and dynamo smoke surfaces via
   `CudaMhdSolver`.
 - RT field diagnostics/photoionization and gas photoheating via `CudaRtSolver`.
+- Tree/SIDM smoke surfaces via `CudaTreeSolver`.
 
 SIMD/Rayon covers those CPU-side equivalents plus a wider set of CPU physics
 kernels in tree gravity, SPH, MHD, radiative transfer, and analysis.
 
 Therefore, every CUDA-covered function has a CPU/SIMD or CPU/Rayon validation
-path, but many SIMD/Rayon-covered functions do not yet have CUDA kernels.
+path, but some CPU/Rayon-covered functions still do not have production CUDA
+implementations.
 
 ## Coverage matrix
 
@@ -32,11 +37,12 @@ path, but many SIMD/Rayon-covered functions do not yet have CUDA kernels.
 | --- | --- | --- | --- |
 | Direct gravity | Yes, `SimdDirectGravity` | Yes, `CudaDirectGravity` | Real parity |
 | PM gravity | Yes, CPU PM/Rayon path | Yes, `CudaPmSolver` | Real parity |
-| Tree/Barnes-Hut/LET | Yes | No | SIMD-only |
+| Tree/Barnes-Hut/LET | Yes | Monopole/SIDM smoke surface | Partial CUDA |
 | SPH density | Yes | Yes, `CudaSphSolver` | Experimental parity |
 | SPH forces/Gadget2 viscosity | Yes | Yes, `CudaSphSolver` | Experimental parity |
-| SPH cooling/dust/H2 | Yes | No | SIMD-only |
+| SPH cooling/dust/H2 | Yes | Yes, CUDA solvers | Experimental parity |
 | MHD flux-freezing/statistics | Yes | Yes, `CudaMhdSolver` | Experimental parity |
+| MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Partial CPU SIMD final update | No | CPU-only |
 | Analysis spin/luminosity/SED | Yes | No | SIMD-only |
@@ -70,6 +76,17 @@ CUDA_ARCH=sm_61 cargo build -p gadget-ng-cli --features cuda
 CUDA_ARCH=sm_61 cargo clippy -p gadget-ng-cli --features cuda -- -D warnings
 ```
 
+After Phase 200 Fases 8-9, the CUDA stub path was validated with:
+
+```bash
+CUDA_SKIP=1 cargo check -p gadget-ng-cuda
+CUDA_SKIP=1 cargo test -p gadget-ng-cuda
+CUDA_SKIP=1 cargo clippy -p gadget-ng-cuda -- -D warnings
+cargo test -p gadget-ng-tree --lib
+cargo clippy -p gadget-ng-tree -- -D warnings
+cargo fmt --all --check
+```
+
 ## Benchmark
 
 For the current real parity area, run:
@@ -90,8 +107,13 @@ steady-state solves.
 
 ## Roadmap to 1:1 accelerator parity
 
-1. Optimize SPH/MHD/RT CUDA with persistent device buffers after smoke validation.
-2. Port the full RT M1 advection substep with a stencil-safe design.
-3. Wire CUDA SPH/MHD/RT into runtime config once smoke tests pass on real hardware.
-4. Keep tree/LET on CPU until there is a concrete GPU tree traversal design.
-5. Extend benchmarks only where both accelerators implement the same operation.
+1. Split `simd` and `rayon` Cargo feature axes so SIMD-without-Rayon is directly testable.
+2. Validate Phase 200 MHD/Tree CUDA kernels on real NVIDIA hardware.
+3. Optimize SPH/MHD/RT CUDA with persistent device buffers after smoke validation.
+4. Port the full RT M1 advection substep with a stencil-safe design.
+5. Wire new CUDA MHD/Tree kernels into runtime config only after hardware parity.
+6. Keep full LET traversal on CPU until there is a concrete compact-tree GPU design.
+7. Extend benchmarks only where both accelerators implement the same operation.
+
+Detailed pending work is tracked in
+[`2026-05-accelerator-parity-pending.md`](2026-05-accelerator-parity-pending.md).

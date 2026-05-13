@@ -159,6 +159,45 @@
 | **🕳️ AGN avanzado** | Bondi + modo radio/quasar, spin Kerr escalar, eficiencia dependiente de spin, mergers BH y recoil (Phases 96, 116, 183) |
 | **🌀 f(R) PM no lineal** | Hu-Sawicki f(R): boost PM homogéneo `4/3` y screening chameleon espacial en malla PM `ρ×S(x)/3` (Phases 178, 185) |
 
+### Matriz de paridad de aceleradores
+
+Estado resumido de implementación por backend. Para el backlog vivo ver
+[`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md)
+y la cobertura detallada en
+[`docs/reports/2026-05-simd-cuda-coverage.md`](docs/reports/2026-05-simd-cuda-coverage.md).
+
+| Área / módulo | CPU sin Rayon | CPU con Rayon | SIMD sin Rayon AVX2/AVX512 | CUDA |
+|---|---:|---:|---:|---:|
+| Gravedad directa `O(N²)` | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
+| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 parcial | ⚠️ kernel monopole parity |
+| Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ❌ full LET traversal |
+| TreePM corto alcance | ✅ | ✅ | ⚠️ CPU/SIMD parcial | ⚠️ wgpu/CUDA híbrido parcial |
+| PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
+| PM FFT/Poisson | ✅ | ⚠️ parcial | ✅ AVX2 + AVX512 spectral kernel | ✅ |
+| SPH density | ✅ | ✅ | ✅ batch/tiling | ✅ |
+| SPH forces clásico | ✅ | ✅ | ✅ batch/tiling | ✅ |
+| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ batch/tiling | ✅ |
+| Cooling H/He/metales/UVB | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
+| Dust update / radiation pressure | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
+| Molecular H₂ / shielding | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
+| MHD induction/resistivity | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ smoke/parity kernel |
+| MHD magnetic forces | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ smoke/parity kernel |
+| MHD Dedner cleaning | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ |
+| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ scalar diffusion surface |
+| MHD Braginskii | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ |
+| MHD reconnection | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ combined kernel |
+| MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ combined kernel |
+| MHD flux-freeze / stats | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ✅ |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ⚠️ Rayon/SIMD partial | ✅ |
+| RT full M1 advection | ✅ | ⚠️ parcial | ⚠️ final update parcial | ❌ |
+| RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ❌ |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ Rayon, no AVX explícito | ❌ |
+| SIDM | ✅ | ⚠️ parcial | ❌ | ✅ smoke/parity kernel |
+| f(R) / modified gravity PM | ✅ | ⚠️ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
+| Runtime CLI wiring | ✅ | ✅ | ⚠️ feature `simd` mezcla Rayon | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
+
+Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
+
 ---
 
 ## Inicio rápido

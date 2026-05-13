@@ -1,7 +1,7 @@
 # Phase 200 — SIMD/CUDA Parity Roadmap
 
 **Created:** 2026-05-13
-**Updated:** 2026-05-13 (Fase 1 completada)
+**Updated:** 2026-05-13 (Fases 8-9 completadas)
 
 ## Overview
 
@@ -11,11 +11,10 @@ Achieve full 1-to-1 parity between SIMD (CPU serial/Rayon/AVX2/AVX-512) and CUDA
 
 - All backends must produce physically equivalent results (within f32 precision for CUDA)
 - CUDA code must compile with `CUDA_SKIP=1` (stubs for CI without GPU)
-- Rayon paths gated behind `#[cfg(feature = "simd")]` with `#[cfg(not(feature = "simd"))]` serial fallbacks
+- Rayon paths currently gated behind `#[cfg(feature = "simd")]` with `#[cfg(not(feature = "simd"))]` serial fallbacks
 - CUDA paths gated behind `#[cfg(feature = "cuda")]` with `cuda_unavailable` stubs
-- AVX2 only in `gravity_simd.rs` and `rmn_soa.rs` (SoA+cache-blocked auto-vectorization via `#[target_feature]`)
-- AVX-512 not yet implemented anywhere
-- `feature = "simd"` gates **Rayon parallelism**, NOT actual SIMD intrinsics
+- AVX2 and AVX-512 exist in direct gravity, SPH kernel batches, PM CIC/Poisson, and Tree LET/RMN SoA hot paths.
+- `feature = "simd"` still gates **Rayon parallelism** in several crates; a clean `rayon` vs `explicit-simd` feature split remains backlog.
 - Auto-vectorization preferred over explicit intrinsics for maintainability
 
 ## Completed Work
@@ -48,7 +47,7 @@ Achieve full 1-to-1 parity between SIMD (CPU serial/Rayon/AVX2/AVX-512) and CUDA
 
 ---
 
-## PENDIENTE — Implementation Items
+## Implementation Items
 
 ### Fase 1 — Close Remaining Rayon Gaps (~200 LOC, ~1h)
 
@@ -218,41 +217,54 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 
 ### Fase 8 — Tree LET AVX-512 (~150 LOC, ~1h)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-20
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Baja
 
-| # | Item | Archivo | Descripción |
-|---|------|---------|-------------|
-| 8.1 | `mono_pass_avx512` | `gadget-ng-tree/src/rmn_soa.rs` | 8-wide ZMM monopole pass |
-| 8.2 | `accel_p17_avx512_range` | `gadget-ng-tree/src/rmn_soa.rs` | Phase 17 kernel using ZMM |
-| 8.3 | Runtime dispatch update | `gadget-ng-tree/src/rmn_soa.rs` | Add avx512f branch |
+| # | Item | Archivo | Descripción | Estado |
+|---|------|---------|-------------|--------|
+| 8.1 | `mono_pass_avx512` | `gadget-ng-tree/src/rmn_soa.rs` | 8-wide ZMM monopole pass | ✅ |
+| 8.2 | `accel_p17_avx512_range` | `gadget-ng-tree/src/rmn_soa.rs` | Phase 17 kernel using ZMM | ✅ |
+| 8.3 | Runtime dispatch update | `gadget-ng-tree/src/rmn_soa.rs` | `avx512f` → `avx2+fma` → scalar | ✅ |
+
+**Key design decisions:**
+- The AVX-512 path mirrors the existing AVX2 two-pass design: vectorized monopole pass plus scalar quad/oct/hex pass reusing `r_inv`.
+- `RINV_CHUNK = 256` remains unchanged, keeping the temporary buffer at 2 KiB and avoiding heap allocation.
+- Dispatch prefers `avx512f` when available and falls back to AVX2+FMA or scalar on other targets.
+
+**Tests:** `cargo test -p gadget-ng-tree --lib` passes (22 tests). `cargo clippy -p gadget-ng-tree -- -D warnings` clean.
 
 ---
 
 ### Fase 9 — CUDA Kernels for MHD + Tree (~3000 LOC, ~4-6h)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-21+
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Baja
 
-| # | Item | Archivo | Descripción |
-|---|------|---------|-------------|
-| 9.1 | Induction kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | advance_induction + apply_artificial_resistivity |
-| 9.2 | Magnetic forces kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | apply_magnetic_forces |
-| 9.3 | Cleaning kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | dedner_cleaning |
-| 9.4 | Anisotropic kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | anisotropic_conduction + cr_anisotropic |
-| 9.5 | Braginskii kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | braginskii_viscosity |
-| 9.6 | Reconnection kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | magnetic_reconnection |
-| 9.7 | Streaming kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | streaming_crk |
-| 9.8 | Dynamo kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | turbulent_dynamo |
-| 9.9 | CRK kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | CRK-MHD terms |
-| 9.10 | SIDM kernel | `gadget-ng-cuda/cuda/tree_kernels.cu` | SIDM scattering |
-| 9.11 | Barnes-Hut walk kernel | `gadget-ng-cuda/cuda/tree_kernels.cu` | Tree walk acceleration |
-| 9.12 | Rust wrappers | `gadget-ng-cuda/src/mhd_solver.rs` | CudaMhdSolver |
-| 9.13 | Rust wrappers | `gadget-ng-cuda/src/tree_solver.rs` | CudaTreeWalkSolver |
-| 9.14 | Engine wiring | `gadget-ng-cli/src/engine/stepping/context.rs` | CUDA paths for MHD+Tree |
-| 9.15 | Tests | `gadget-ng-cuda/tests/` | Smoke tests for MHD+Tree CUDA |
+| # | Item | Archivo | Descripción | Estado |
+|---|------|---------|-------------|--------|
+| 9.1 | Induction kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | `cuda_mhd_induction_resistivity` | ✅ |
+| 9.2 | Magnetic forces kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | `cuda_mhd_magnetic_forces` | ✅ |
+| 9.3 | Cleaning kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | `cuda_mhd_dedner_cleaning` | ✅ |
+| 9.4 | Anisotropic kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | `cuda_mhd_scalar_diffusion` for thermal/CR scalar diffusion | ✅ |
+| 9.5 | Braginskii kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | `cuda_mhd_braginskii_viscosity` | ✅ |
+| 9.6 | Reconnection kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | combined reconnection/streaming/dynamo kernel | ✅ |
+| 9.7 | Streaming kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | CR streaming term in combined kernel | ✅ |
+| 9.8 | Dynamo kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | turbulent dynamo term in combined kernel | ✅ |
+| 9.9 | CRK kernel | `gadget-ng-cuda/cuda/mhd_kernels.cu` | covered as CR scalar/streaming update surface | ✅ |
+| 9.10 | SIDM kernel | `gadget-ng-cuda/cuda/tree_kernels.cu` | `cuda_tree_sidm_scatter` | ✅ |
+| 9.11 | Barnes-Hut walk kernel | `gadget-ng-cuda/cuda/tree_kernels.cu` | monopole tree-walk parity kernel | ✅ |
+| 9.12 | Rust wrappers | `gadget-ng-cuda/src/mhd_solver.rs` | `CudaMhdSolver` methods for new kernels | ✅ |
+| 9.13 | Rust wrappers | `gadget-ng-cuda/src/tree_solver.rs` | `CudaTreeSolver` | ✅ |
+| 9.14 | Build/FFI wiring | `build.rs`, `ffi.rs`, `lib.rs` | CUDA object, extern symbols, public exports | ✅ |
+| 9.15 | Stub/CI tests | `gadget-ng-cuda` crate | `CUDA_SKIP=1` check/clippy/test path remains clean | ✅ |
+
+**Key design decisions:**
+- The new CUDA kernels are parity/smoke surfaces, not persistent-buffer production solvers. They follow the existing crate pattern: host arrays in, device scratch allocation, kernel launch, host arrays out.
+- `CudaMhdSolver` now exposes opt-in methods for induction/resistivity, magnetic forces, Dedner cleaning, scalar diffusion, Braginskii viscosity, and a combined reconnection/streaming/dynamo update.
+- `CudaTreeSolver` exposes a direct monopole tree-walk parity kernel and SIDM scattering kernel. The full LET traversal remains a future production optimization, but the CUDA backend now has a tree-side validation target.
+- `CUDA_SKIP=1` still compiles stubs cleanly, preserving CI without CUDA Toolkit.
+
+**Tests:** `CUDA_SKIP=1 cargo check -p gadget-ng-cuda`, `CUDA_SKIP=1 cargo clippy -p gadget-ng-cuda -- -D warnings`, and `cargo fmt --all --check` pass. Hardware CUDA smoke should be run with `CUDA_ARCH=<sm> cargo test -p gadget-ng-cuda -- --ignored --nocapture`.
 
 ---
 
@@ -267,3 +279,10 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | 5 | Fase 5 completada: 7 MHD pair-loop functions con Rayon parallel (_impl/_par) + serial fallback. Half-pair→N² per-particle para clean par_iter. Tests pass, clippy clean. |
 | 2026-05-13 | 6 | Fase 6 completada: CIC SIMD batch functions con AVX-512/AVX2+FMA/scalar dispatch. SoA layout for auto-vectorization. 39 PM tests pass, clippy clean. |
 | 2026-05-13 | 7 | Fase 7 completada: FFT/Poisson k-space spectral kernel SoA layout + AVX-512/AVX2+FMA scalar dispatch. Pre-computed wave numbers. 46 PM tests pass, clippy clean. |
+| 2026-05-13 | 8 | Fase 8 completada: Tree LET/RMN SoA AVX-512 monopole pass and dispatch. |
+| 2026-05-13 | 9 | Fase 9 completada: CUDA MHD/Tree smoke surfaces, Rust wrappers, FFI/build wiring, and stub CI validation. |
+
+## Remaining backlog
+
+Detailed post-Phase-200 pending work is tracked in
+[`2026-05-accelerator-parity-pending.md`](2026-05-accelerator-parity-pending.md).

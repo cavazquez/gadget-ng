@@ -4,7 +4,6 @@ use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 use gadget_ng_core::Particle;
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::ParticleType;
-#[cfg(not(cuda_unavailable))]
 use gadget_ng_core::Vec3;
 use gadget_ng_mhd::stats::BFieldStats;
 
@@ -19,6 +18,15 @@ struct MhdSoa {
     mass: Vec<f32>,
     internal_energy: Vec<f32>,
     h: Vec<f32>,
+    x: Vec<f32>,
+    y: Vec<f32>,
+    z: Vec<f32>,
+    vx: Vec<f32>,
+    vy: Vec<f32>,
+    vz: Vec<f32>,
+    rho: Vec<f32>,
+    psi: Vec<f32>,
+    cr: Vec<f32>,
     bx: Vec<f32>,
     by: Vec<f32>,
     bz: Vec<f32>,
@@ -191,6 +199,342 @@ impl CudaMhdSolver {
             }))
         }
     }
+
+    pub fn try_induction_resistivity(
+        &self,
+        particles: &mut [Particle],
+        dt: f64,
+        resistivity: f64,
+        periodic_box: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, dt, resistivity, periodic_box);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut bx = vec![0.0_f32; n];
+            let mut by = vec![0.0_f32; n];
+            let mut bz = vec![0.0_f32; n];
+            let code = unsafe {
+                crate::ffi::cuda_mhd_induction_resistivity(
+                    soa.ptype.as_ptr(),
+                    soa.x.as_ptr(),
+                    soa.y.as_ptr(),
+                    soa.z.as_ptr(),
+                    soa.vx.as_ptr(),
+                    soa.vy.as_ptr(),
+                    soa.vz.as_ptr(),
+                    soa.mass.as_ptr(),
+                    soa.rho.as_ptr(),
+                    soa.h.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    bx.as_mut_ptr(),
+                    by.as_mut_ptr(),
+                    bz.as_mut_ptr(),
+                    n as i32,
+                    dt as f32,
+                    resistivity as f32,
+                    periodic_box as f32,
+                )
+            };
+            check_kernel("cuda_mhd_induction_resistivity", code)?;
+            for (i, p) in particles.iter_mut().enumerate() {
+                p.b_field = Vec3::new(bx[i] as f64, by[i] as f64, bz[i] as f64);
+            }
+            Ok(())
+        }
+    }
+
+    pub fn try_magnetic_forces(
+        &self,
+        particles: &[Particle],
+        mu0: f64,
+        periodic_box: f64,
+    ) -> Result<Vec<Vec3>, CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, mu0, periodic_box);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut ax = vec![0.0_f32; n];
+            let mut ay = vec![0.0_f32; n];
+            let mut az = vec![0.0_f32; n];
+            let code = unsafe {
+                crate::ffi::cuda_mhd_magnetic_forces(
+                    soa.ptype.as_ptr(),
+                    soa.x.as_ptr(),
+                    soa.y.as_ptr(),
+                    soa.z.as_ptr(),
+                    soa.mass.as_ptr(),
+                    soa.rho.as_ptr(),
+                    soa.h.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    ax.as_mut_ptr(),
+                    ay.as_mut_ptr(),
+                    az.as_mut_ptr(),
+                    n as i32,
+                    mu0 as f32,
+                    periodic_box as f32,
+                )
+            };
+            check_kernel("cuda_mhd_magnetic_forces", code)?;
+            Ok((0..n)
+                .map(|i| Vec3::new(ax[i] as f64, ay[i] as f64, az[i] as f64))
+                .collect())
+        }
+    }
+
+    pub fn try_dedner_cleaning(
+        &self,
+        particles: &mut [Particle],
+        div_b: &[f32],
+        dt: f64,
+        ch: f64,
+        cr: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+        if div_b.len() != n {
+            return Err(CudaExecutionError::KernelFailed {
+                kernel: "cuda_mhd_dedner_cleaning",
+                code: -2,
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, div_b, dt, ch, cr);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut psi = vec![0.0_f32; n];
+            let mut bx = vec![0.0_f32; n];
+            let mut by = vec![0.0_f32; n];
+            let mut bz = vec![0.0_f32; n];
+            let code = unsafe {
+                crate::ffi::cuda_mhd_dedner_cleaning(
+                    soa.ptype.as_ptr(),
+                    div_b.as_ptr(),
+                    soa.psi.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    psi.as_mut_ptr(),
+                    bx.as_mut_ptr(),
+                    by.as_mut_ptr(),
+                    bz.as_mut_ptr(),
+                    n as i32,
+                    dt as f32,
+                    ch as f32,
+                    cr as f32,
+                )
+            };
+            check_kernel("cuda_mhd_dedner_cleaning", code)?;
+            for (i, p) in particles.iter_mut().enumerate() {
+                p.psi_div = psi[i] as f64;
+                p.b_field = Vec3::new(bx[i] as f64, by[i] as f64, bz[i] as f64);
+            }
+            Ok(())
+        }
+    }
+
+    pub fn try_scalar_diffusion(
+        &self,
+        particles: &[Particle],
+        scalar: &[f32],
+        dt: f64,
+        kappa_par: f64,
+        kappa_perp: f64,
+    ) -> Result<Vec<f32>, CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        if scalar.len() != n {
+            return Err(CudaExecutionError::KernelFailed {
+                kernel: "cuda_mhd_scalar_diffusion",
+                code: -2,
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, scalar, dt, kappa_par, kappa_perp);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut out = vec![0.0_f32; n];
+            let code = unsafe {
+                crate::ffi::cuda_mhd_scalar_diffusion(
+                    soa.ptype.as_ptr(),
+                    scalar.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    out.as_mut_ptr(),
+                    n as i32,
+                    dt as f32,
+                    kappa_par as f32,
+                    kappa_perp as f32,
+                )
+            };
+            check_kernel("cuda_mhd_scalar_diffusion", code)?;
+            Ok(out)
+        }
+    }
+
+    pub fn try_braginskii_viscosity(
+        &self,
+        particles: &mut [Particle],
+        dt: f64,
+        eta: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, dt, eta);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut vx = vec![0.0_f32; n];
+            let mut vy = vec![0.0_f32; n];
+            let mut vz = vec![0.0_f32; n];
+            let code = unsafe {
+                crate::ffi::cuda_mhd_braginskii_viscosity(
+                    soa.ptype.as_ptr(),
+                    soa.vx.as_ptr(),
+                    soa.vy.as_ptr(),
+                    soa.vz.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    vx.as_mut_ptr(),
+                    vy.as_mut_ptr(),
+                    vz.as_mut_ptr(),
+                    n as i32,
+                    dt as f32,
+                    eta as f32,
+                )
+            };
+            check_kernel("cuda_mhd_braginskii_viscosity", code)?;
+            for (i, p) in particles.iter_mut().enumerate() {
+                p.velocity = Vec3::new(vx[i] as f64, vy[i] as f64, vz[i] as f64);
+            }
+            Ok(())
+        }
+    }
+
+    pub fn try_reconnection_streaming_dynamo(
+        &self,
+        particles: &mut [Particle],
+        dt: f64,
+        stream_coeff: f64,
+        reconnection_frac: f64,
+        dynamo_alpha: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, dt, stream_coeff, reconnection_frac, dynamo_alpha);
+            Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }
+            .into())
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut cr = vec![0.0_f32; n];
+            let mut bx = vec![0.0_f32; n];
+            let mut by = vec![0.0_f32; n];
+            let mut bz = vec![0.0_f32; n];
+            let mut u = vec![0.0_f32; n];
+            let code = unsafe {
+                crate::ffi::cuda_mhd_reconnection_streaming_dynamo(
+                    soa.ptype.as_ptr(),
+                    soa.cr.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    soa.internal_energy.as_ptr(),
+                    cr.as_mut_ptr(),
+                    bx.as_mut_ptr(),
+                    by.as_mut_ptr(),
+                    bz.as_mut_ptr(),
+                    u.as_mut_ptr(),
+                    n as i32,
+                    dt as f32,
+                    stream_coeff as f32,
+                    reconnection_frac as f32,
+                    dynamo_alpha as f32,
+                )
+            };
+            check_kernel("cuda_mhd_reconnection_streaming_dynamo", code)?;
+            for (i, p) in particles.iter_mut().enumerate() {
+                p.cr_energy = cr[i] as f64;
+                p.internal_energy = u[i] as f64;
+                p.b_field = Vec3::new(bx[i] as f64, by[i] as f64, bz[i] as f64);
+            }
+            Ok(())
+        }
+    }
 }
 
 #[cfg(not(cuda_unavailable))]
@@ -201,6 +545,15 @@ impl MhdSoa {
         let mut mass = Vec::with_capacity(n);
         let mut internal_energy = Vec::with_capacity(n);
         let mut h = Vec::with_capacity(n);
+        let mut x = Vec::with_capacity(n);
+        let mut y = Vec::with_capacity(n);
+        let mut z = Vec::with_capacity(n);
+        let mut vx = Vec::with_capacity(n);
+        let mut vy = Vec::with_capacity(n);
+        let mut vz = Vec::with_capacity(n);
+        let mut rho = Vec::with_capacity(n);
+        let mut psi = Vec::with_capacity(n);
+        let mut cr = Vec::with_capacity(n);
         let mut bx = Vec::with_capacity(n);
         let mut by = Vec::with_capacity(n);
         let mut bz = Vec::with_capacity(n);
@@ -213,7 +566,17 @@ impl MhdSoa {
             });
             mass.push(p.mass as f32);
             internal_energy.push(p.internal_energy as f32);
-            h.push(p.smoothing_length as f32);
+            let h_i = p.smoothing_length.max(1.0e-12);
+            h.push(h_i as f32);
+            x.push(p.position.x as f32);
+            y.push(p.position.y as f32);
+            z.push(p.position.z as f32);
+            vx.push(p.velocity.x as f32);
+            vy.push(p.velocity.y as f32);
+            vz.push(p.velocity.z as f32);
+            rho.push((p.mass / (h_i * h_i * h_i)) as f32);
+            psi.push(p.psi_div as f32);
+            cr.push(p.cr_energy as f32);
             bx.push(p.b_field.x as f32);
             by.push(p.b_field.y as f32);
             bz.push(p.b_field.z as f32);
@@ -224,6 +587,15 @@ impl MhdSoa {
             mass,
             internal_energy,
             h,
+            x,
+            y,
+            z,
+            vx,
+            vy,
+            vz,
+            rho,
+            psi,
+            cr,
             bx,
             by,
             bz,

@@ -113,8 +113,8 @@ fn apply_magnetic_forces_impl(particles: &mut [Particle], dt: f64) {
 
             let mut a = [0.0_f64; 3];
             for k in 0..3 {
-                for l in 0..3 {
-                    a[k] += (m_i[k][l] / rho_i2 + m_j[k][l] / rho_j2) * gw[l];
+                for (l, &gw_l) in gw.iter().enumerate() {
+                    a[k] += (m_i[k][l] / rho_i2 + m_j[k][l] / rho_j2) * gw_l;
                 }
             }
 

@@ -191,6 +191,146 @@ unsafe extern "C" {
         n: i32,
     ) -> i32;
 
+    pub fn cuda_mhd_induction_resistivity(
+        ptype: *const u8,
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        rho: *const f32,
+        h_sml: *const f32,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        n: i32,
+        dt: f32,
+        resistivity: f32,
+        periodic_box: f32,
+    ) -> i32;
+
+    pub fn cuda_mhd_magnetic_forces(
+        ptype: *const u8,
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        mass: *const f32,
+        rho: *const f32,
+        h_sml: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        n: i32,
+        mu0: f32,
+        periodic_box: f32,
+    ) -> i32;
+
+    pub fn cuda_mhd_dedner_cleaning(
+        ptype: *const u8,
+        div_b: *const f32,
+        psi_in: *const f32,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        psi_out: *mut f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        n: i32,
+        dt: f32,
+        ch: f32,
+        cr: f32,
+    ) -> i32;
+
+    pub fn cuda_mhd_scalar_diffusion(
+        ptype: *const u8,
+        scalar_in: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        scalar_out: *mut f32,
+        n: i32,
+        dt: f32,
+        kappa_par: f32,
+        kappa_perp: f32,
+    ) -> i32;
+
+    pub fn cuda_mhd_braginskii_viscosity(
+        ptype: *const u8,
+        vx_in: *const f32,
+        vy_in: *const f32,
+        vz_in: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        vx_out: *mut f32,
+        vy_out: *mut f32,
+        vz_out: *mut f32,
+        n: i32,
+        dt: f32,
+        eta: f32,
+    ) -> i32;
+
+    pub fn cuda_mhd_reconnection_streaming_dynamo(
+        ptype: *const u8,
+        cr_in: *const f32,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        u_in: *const f32,
+        cr_out: *mut f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        u_out: *mut f32,
+        n: i32,
+        dt: f32,
+        stream_coeff: f32,
+        reconnection_frac: f32,
+        dynamo_alpha: f32,
+    ) -> i32;
+
+    // ── Kernels Tree / SIDM ─────────────────────────────────────────────────
+
+    pub fn cuda_tree_walk_monopole(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        mass: *const f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        n: i32,
+        g: f32,
+        eps2: f32,
+    ) -> i32;
+
+    pub fn cuda_tree_sidm_scatter(
+        ptype: *const u8,
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        vx_in: *const f32,
+        vy_in: *const f32,
+        vz_in: *const f32,
+        mass: *const f32,
+        vx_out: *mut f32,
+        vy_out: *mut f32,
+        vz_out: *mut f32,
+        n: i32,
+        dt: f32,
+        sigma_over_m: f32,
+        h: f32,
+    ) -> i32;
+
     // ── Kernels RT ──────────────────────────────────────────────────────────
 
     pub fn cuda_rt_energy_xi_photoion(

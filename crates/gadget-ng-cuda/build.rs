@@ -84,6 +84,7 @@ fn main() {
         ("direct_gravity", "cuda/direct_gravity.cu"),
         ("sph_kernels", "cuda/sph_kernels.cu"),
         ("mhd_kernels", "cuda/mhd_kernels.cu"),
+        ("tree_kernels", "cuda/tree_kernels.cu"),
         ("rt_kernels", "cuda/rt_kernels.cu"),
         ("cooling_kernels", "cuda/cooling_kernels.cu"),
         ("dust_kernels", "cuda/dust_kernels.cu"),

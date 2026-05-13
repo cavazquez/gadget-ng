@@ -43,6 +43,7 @@ pub mod molecular_solver;
 pub mod pm_solver;
 pub mod rt_solver;
 pub mod sph_solver;
+pub mod tree_solver;
 
 pub use availability::{CudaAvailability, CudaExecutionError, CudaUnavailable};
 pub use cooling_solver::CudaCoolingSolver;
@@ -53,3 +54,4 @@ pub use molecular_solver::CudaMolecularSolver;
 pub use pm_solver::CudaPmSolver;
 pub use rt_solver::CudaRtSolver;
 pub use sph_solver::CudaSphSolver;
+pub use tree_solver::CudaTreeSolver;

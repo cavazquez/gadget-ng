@@ -432,6 +432,100 @@ unsafe fn mono_pass_avx2(
     (ax, ay, az)
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn hadd_m512d(v: std::arch::x86_64::__m512d) -> f64 {
+    use std::arch::x86_64::*;
+    unsafe { _mm512_reduce_add_pd(v) }
+}
+
+/// **Fase 200/8 — Pass 1 (AVX-512 explícito)**: monopolar con registros ZMM.
+///
+/// Procesa 8 RMNs por iteración y guarda `r_inv` para reutilizarlo en el paso
+/// escalar quad/oct/hex, igual que el kernel AVX2 two-pass.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn mono_pass_avx512(
+    xi: f64,
+    yi: f64,
+    zi: f64,
+    cx: &[f64],
+    cy: &[f64],
+    cz: &[f64],
+    mass: &[f64],
+    neg_g: f64,
+    eps2: f64,
+    r_inv_out: &mut [f64],
+) -> (f64, f64, f64) {
+    use std::arch::x86_64::*;
+
+    let n = cx.len();
+    debug_assert_eq!(n, r_inv_out.len());
+
+    let xi8 = _mm512_set1_pd(xi);
+    let yi8 = _mm512_set1_pd(yi);
+    let zi8 = _mm512_set1_pd(zi);
+    let eps28 = _mm512_set1_pd(eps2);
+    let ng8 = _mm512_set1_pd(neg_g);
+    let ones = _mm512_set1_pd(1.0);
+
+    let mut ax8 = _mm512_setzero_pd();
+    let mut ay8 = _mm512_setzero_pd();
+    let mut az8 = _mm512_setzero_pd();
+
+    let chunks = n / 8;
+    let tail_start = chunks * 8;
+
+    for i in 0..chunks {
+        let base = i * 8;
+        let cxj = unsafe { _mm512_loadu_pd(cx.as_ptr().add(base)) };
+        let cyj = unsafe { _mm512_loadu_pd(cy.as_ptr().add(base)) };
+        let czj = unsafe { _mm512_loadu_pd(cz.as_ptr().add(base)) };
+        let mj = unsafe { _mm512_loadu_pd(mass.as_ptr().add(base)) };
+
+        let rx = _mm512_sub_pd(xi8, cxj);
+        let ry = _mm512_sub_pd(yi8, cyj);
+        let rz = _mm512_sub_pd(zi8, czj);
+        let r2 = _mm512_add_pd(
+            _mm512_mul_pd(rz, rz),
+            _mm512_add_pd(
+                _mm512_mul_pd(ry, ry),
+                _mm512_add_pd(_mm512_mul_pd(rx, rx), eps28),
+            ),
+        );
+        let r_inv = _mm512_div_pd(ones, _mm512_sqrt_pd(r2));
+        unsafe { _mm512_storeu_pd(r_inv_out.as_mut_ptr().add(base), r_inv) };
+
+        let r_inv2 = _mm512_mul_pd(r_inv, r_inv);
+        let r3_inv = _mm512_mul_pd(r_inv2, r_inv);
+        let factor = _mm512_mul_pd(ng8, _mm512_mul_pd(mj, r3_inv));
+
+        ax8 = _mm512_add_pd(ax8, _mm512_mul_pd(factor, rx));
+        ay8 = _mm512_add_pd(ay8, _mm512_mul_pd(factor, ry));
+        az8 = _mm512_add_pd(az8, _mm512_mul_pd(factor, rz));
+    }
+
+    let mut ax = unsafe { hadd_m512d(ax8) };
+    let mut ay = unsafe { hadd_m512d(ay8) };
+    let mut az = unsafe { hadd_m512d(az8) };
+
+    for j in tail_start..n {
+        let rx = xi - cx[j];
+        let ry = yi - cy[j];
+        let rz = zi - cz[j];
+        let r2 = rx * rx + ry * ry + rz * rz + eps2;
+        let r_inv_j = 1.0 / r2.sqrt();
+        r_inv_out[j] = r_inv_j;
+        let r3_inv = r_inv_j * r_inv_j * r_inv_j;
+        let fac = neg_g * mass[j] * r3_inv;
+        ax += fac * rx;
+        ay += fac * ry;
+        az += fac * rz;
+    }
+
+    (ax, ay, az)
+}
+
 /// **Fase 15 — Pass 2 (escalar)**: cuadrupolo + octupolo usando `r_inv` pre-computado.
 ///
 /// No llama a `sqrt` — usa los valores `r_inv[j]` almacenados por [`mono_pass_avx2`].
@@ -633,6 +727,63 @@ unsafe fn accel_p15_avx2_range(
     Vec3::new(total_ax, total_ay, total_az)
 }
 
+/// **Fase 200/8 — kernel two-pass AVX-512** para un sub-rango.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn accel_p17_avx512_range(
+    xi: f64,
+    yi: f64,
+    zi: f64,
+    start: usize,
+    len: usize,
+    soa: &RmnSoa,
+    g: f64,
+    eps2: f64,
+) -> Vec3 {
+    let mut total_ax = 0.0_f64;
+    let mut total_ay = 0.0_f64;
+    let mut total_az = 0.0_f64;
+    let mut r_inv_buf = [0.0_f64; RINV_CHUNK];
+
+    let neg_g = -g;
+    let mut chunk_start = start;
+    let full_end = start + len;
+
+    while chunk_start < full_end {
+        let chunk_end = (chunk_start + RINV_CHUNK).min(full_end);
+        let chunk_len = chunk_end - chunk_start;
+        let rinv_slice = &mut r_inv_buf[..chunk_len];
+
+        let (ax1, ay1, az1) = unsafe {
+            mono_pass_avx512(
+                xi,
+                yi,
+                zi,
+                &soa.cx[chunk_start..chunk_end],
+                &soa.cy[chunk_start..chunk_end],
+                &soa.cz[chunk_start..chunk_end],
+                &soa.mass[chunk_start..chunk_end],
+                neg_g,
+                eps2,
+                rinv_slice,
+            )
+        };
+        total_ax += ax1;
+        total_ay += ay1;
+        total_az += az1;
+
+        let (ax2, ay2, az2) =
+            quad_oct_pass_scalar(xi, yi, zi, chunk_start, chunk_len, soa, rinv_slice, g);
+        total_ax += ax2;
+        total_ay += ay2;
+        total_az += az2;
+
+        chunk_start += RINV_CHUNK;
+    }
+
+    Vec3::new(total_ax, total_ay, total_az)
+}
+
 // ── API pública ───────────────────────────────────────────────────────────────
 
 impl RmnSoa {
@@ -658,6 +809,13 @@ impl RmnSoa {
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: verificamos AVX-512F en runtime.
+                return unsafe {
+                    accel_p17_avx512_range(pos_i.x, pos_i.y, pos_i.z, start, len, self, g, eps2)
+                };
+            }
             if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
                 // SAFETY: verificamos AVX2+FMA en runtime.
                 return unsafe {
