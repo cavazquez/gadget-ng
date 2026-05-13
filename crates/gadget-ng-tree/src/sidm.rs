@@ -23,6 +23,20 @@ use gadget_ng_core::Particle;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 /// Parámetros del modelo SIDM (Phase 157).
 #[derive(Debug, Clone)]
@@ -160,27 +174,24 @@ pub fn apply_sidm_scattering(
             continue;
         }
 
-        for j in (i + 1)..n {
-            if let Some(pair) = sidm_pair_delta(
-                i,
-                j,
-                &positions,
-                &velocities,
-                &masses,
-                &h_vals,
-                &rho_local,
-                &is_dm,
-                params,
-                dt,
-                rng_seed,
-            ) {
-                delta_v[pair.i][0] += pair.dvi[0];
-                delta_v[pair.i][1] += pair.dvi[1];
-                delta_v[pair.i][2] += pair.dvi[2];
-                delta_v[pair.j][0] += pair.dvj[0];
-                delta_v[pair.j][1] += pair.dvj[1];
-                delta_v[pair.j][2] += pair.dvj[2];
-            }
+        for pair in sidm_pair_deltas_for_i(
+            i,
+            &positions,
+            &velocities,
+            &masses,
+            &h_vals,
+            &rho_local,
+            &is_dm,
+            params,
+            dt,
+            rng_seed,
+        ) {
+            delta_v[pair.i][0] += pair.dvi[0];
+            delta_v[pair.i][1] += pair.dvi[1];
+            delta_v[pair.i][2] += pair.dvi[2];
+            delta_v[pair.j][0] += pair.dvj[0];
+            delta_v[pair.j][1] += pair.dvj[1];
+            delta_v[pair.j][2] += pair.dvj[2];
         }
     }
 
@@ -193,6 +204,36 @@ pub fn apply_sidm_scattering(
 }
 
 fn sidm_local_density(i: usize, positions: &[[f64; 3]], masses: &[f64], h_vals: &[f64]) -> f64 {
+    #[cfg(all(
+        not(feature = "rayon"),
+        feature = "simd",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return sidm_local_density_avx512(i, positions, masses, h_vals);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return sidm_local_density_avx2(i, positions, masses, h_vals);
+            }
+        }
+    }
+
+    sidm_local_density_scalar(i, positions, masses, h_vals)
+}
+
+fn sidm_local_density_scalar(
+    i: usize,
+    positions: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+) -> f64 {
     let h2 = 2.0 * h_vals[i];
     let mut rho = 0.0_f64;
     for j in 0..positions.len() {
@@ -206,6 +247,79 @@ fn sidm_local_density(i: usize, positions: &[[f64; 3]], masses: &[f64], h_vals: 
     }
     let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
     if vol > 0.0 { rho / vol } else { 0.0 }
+}
+
+#[cfg(not(feature = "rayon"))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SIDM pair scan keeps SoA slices explicit for SIMD"
+)]
+fn sidm_pair_deltas_for_i(
+    i: usize,
+    positions: &[[f64; 3]],
+    velocities: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+    rho_local: &[f64],
+    is_dm: &[bool],
+    params: &SidmParams,
+    dt: f64,
+    rng_seed: u64,
+) -> Vec<SidmPairDelta> {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return sidm_pair_deltas_for_i_avx512(
+                    i, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt,
+                    rng_seed,
+                );
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return sidm_pair_deltas_for_i_avx2(
+                    i, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt,
+                    rng_seed,
+                );
+            }
+        }
+    }
+
+    sidm_pair_deltas_for_i_scalar(
+        i, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt, rng_seed,
+    )
+}
+
+#[cfg(not(feature = "rayon"))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SIDM pair scan keeps SoA slices explicit"
+)]
+fn sidm_pair_deltas_for_i_scalar(
+    i: usize,
+    positions: &[[f64; 3]],
+    velocities: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+    rho_local: &[f64],
+    is_dm: &[bool],
+    params: &SidmParams,
+    dt: f64,
+    rng_seed: u64,
+) -> Vec<SidmPairDelta> {
+    let mut out = Vec::new();
+    for j in (i + 1)..positions.len() {
+        if let Some(pair) = sidm_pair_delta(
+            i, j, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt, rng_seed,
+        ) {
+            out.push(pair);
+        }
+    }
+    out
 }
 
 struct SidmPairDelta {
@@ -303,4 +417,400 @@ fn sidm_pair_delta(
             new_vj_z - velocities[j][2],
         ],
     })
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn sidm_local_density_avx2(
+    i: usize,
+    positions: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+) -> f64 {
+    let h2 = 2.0 * h_vals[i];
+    let h2_sq = h2 * h2;
+    let lanes = 4;
+    let chunks = positions.len() / lanes * lanes;
+    let pix = _mm256_set1_pd(positions[i][0]);
+    let piy = _mm256_set1_pd(positions[i][1]);
+    let piz = _mm256_set1_pd(positions[i][2]);
+    let cutoff = _mm256_set1_pd(h2_sq);
+    let mut acc = _mm256_setzero_pd();
+
+    let mut j = 0;
+    while j < chunks {
+        let x = _mm256_set_pd(
+            positions[j + 3][0],
+            positions[j + 2][0],
+            positions[j + 1][0],
+            positions[j][0],
+        );
+        let y = _mm256_set_pd(
+            positions[j + 3][1],
+            positions[j + 2][1],
+            positions[j + 1][1],
+            positions[j][1],
+        );
+        let z = _mm256_set_pd(
+            positions[j + 3][2],
+            positions[j + 2][2],
+            positions[j + 1][2],
+            positions[j][2],
+        );
+        // SAFETY: `j..j+4` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm256_loadu_pd(masses.as_ptr().add(j)) };
+        let dx = _mm256_sub_pd(x, pix);
+        let dy = _mm256_sub_pd(y, piy);
+        let dz = _mm256_sub_pd(z, piz);
+        let r2 = _mm256_fmadd_pd(dx, dx, _mm256_fmadd_pd(dy, dy, _mm256_mul_pd(dz, dz)));
+        let mask = _mm256_cmp_pd(r2, cutoff, _CMP_LT_OQ);
+        acc = _mm256_add_pd(acc, _mm256_and_pd(mask, m));
+        j += lanes;
+    }
+
+    let mut tmp = [0.0; 4];
+    // SAFETY: fixed-size stack array has exactly four f64 lanes.
+    unsafe { _mm256_storeu_pd(tmp.as_mut_ptr(), acc) };
+    let mut rho = tmp.into_iter().sum::<f64>();
+    for k in chunks..positions.len() {
+        let dx = positions[k][0] - positions[i][0];
+        let dy = positions[k][1] - positions[i][1];
+        let dz = positions[k][2] - positions[i][2];
+        if dx * dx + dy * dy + dz * dz < h2_sq {
+            rho += masses[k];
+        }
+    }
+
+    let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
+    if vol > 0.0 { rho / vol } else { 0.0 }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn sidm_local_density_avx512(
+    i: usize,
+    positions: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+) -> f64 {
+    let h2 = 2.0 * h_vals[i];
+    let h2_sq = h2 * h2;
+    let lanes = 8;
+    let chunks = positions.len() / lanes * lanes;
+    let pix = _mm512_set1_pd(positions[i][0]);
+    let piy = _mm512_set1_pd(positions[i][1]);
+    let piz = _mm512_set1_pd(positions[i][2]);
+    let cutoff = _mm512_set1_pd(h2_sq);
+    let mut acc = _mm512_setzero_pd();
+
+    let mut j = 0;
+    while j < chunks {
+        let x = _mm512_set_pd(
+            positions[j + 7][0],
+            positions[j + 6][0],
+            positions[j + 5][0],
+            positions[j + 4][0],
+            positions[j + 3][0],
+            positions[j + 2][0],
+            positions[j + 1][0],
+            positions[j][0],
+        );
+        let y = _mm512_set_pd(
+            positions[j + 7][1],
+            positions[j + 6][1],
+            positions[j + 5][1],
+            positions[j + 4][1],
+            positions[j + 3][1],
+            positions[j + 2][1],
+            positions[j + 1][1],
+            positions[j][1],
+        );
+        let z = _mm512_set_pd(
+            positions[j + 7][2],
+            positions[j + 6][2],
+            positions[j + 5][2],
+            positions[j + 4][2],
+            positions[j + 3][2],
+            positions[j + 2][2],
+            positions[j + 1][2],
+            positions[j][2],
+        );
+        // SAFETY: `j..j+8` is in-bounds by construction and unaligned loads are permitted.
+        let m = unsafe { _mm512_loadu_pd(masses.as_ptr().add(j)) };
+        let dx = _mm512_sub_pd(x, pix);
+        let dy = _mm512_sub_pd(y, piy);
+        let dz = _mm512_sub_pd(z, piz);
+        let r2 = _mm512_fmadd_pd(dx, dx, _mm512_fmadd_pd(dy, dy, _mm512_mul_pd(dz, dz)));
+        let mask = _mm512_cmp_pd_mask(r2, cutoff, _CMP_LT_OQ);
+        acc = _mm512_mask_add_pd(acc, mask, acc, m);
+        j += lanes;
+    }
+
+    let mut tmp = [0.0; 8];
+    // SAFETY: fixed-size stack array has exactly eight f64 lanes.
+    unsafe { _mm512_storeu_pd(tmp.as_mut_ptr(), acc) };
+    let mut rho = tmp.into_iter().sum::<f64>();
+    for k in chunks..positions.len() {
+        let dx = positions[k][0] - positions[i][0];
+        let dy = positions[k][1] - positions[i][1];
+        let dz = positions[k][2] - positions[i][2];
+        if dx * dx + dy * dy + dz * dz < h2_sq {
+            rho += masses[k];
+        }
+    }
+
+    let vol = std::f64::consts::FRAC_PI_6 * h2.powi(3);
+    if vol > 0.0 { rho / vol } else { 0.0 }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SIDM pair scan keeps SoA slices explicit for SIMD"
+)]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn sidm_pair_deltas_for_i_avx2(
+    i: usize,
+    positions: &[[f64; 3]],
+    velocities: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+    rho_local: &[f64],
+    is_dm: &[bool],
+    params: &SidmParams,
+    dt: f64,
+    rng_seed: u64,
+) -> Vec<SidmPairDelta> {
+    let mut out = Vec::new();
+    let lanes = 4;
+    let mut j = i + 1;
+    let chunks_end = j + (positions.len() - j) / lanes * lanes;
+    let pix = _mm256_set1_pd(positions[i][0]);
+    let piy = _mm256_set1_pd(positions[i][1]);
+    let piz = _mm256_set1_pd(positions[i][2]);
+    let vix = _mm256_set1_pd(velocities[i][0]);
+    let viy = _mm256_set1_pd(velocities[i][1]);
+    let viz = _mm256_set1_pd(velocities[i][2]);
+    let cutoff = _mm256_set1_pd((2.0 * h_vals[i]).powi(2));
+    let vmax2 = _mm256_set1_pd(params.v_max * params.v_max);
+    let zero = _mm256_set1_pd(0.0);
+
+    while j < chunks_end {
+        let x = _mm256_set_pd(
+            positions[j + 3][0],
+            positions[j + 2][0],
+            positions[j + 1][0],
+            positions[j][0],
+        );
+        let y = _mm256_set_pd(
+            positions[j + 3][1],
+            positions[j + 2][1],
+            positions[j + 1][1],
+            positions[j][1],
+        );
+        let z = _mm256_set_pd(
+            positions[j + 3][2],
+            positions[j + 2][2],
+            positions[j + 1][2],
+            positions[j][2],
+        );
+        let vx = _mm256_set_pd(
+            velocities[j + 3][0],
+            velocities[j + 2][0],
+            velocities[j + 1][0],
+            velocities[j][0],
+        );
+        let vy = _mm256_set_pd(
+            velocities[j + 3][1],
+            velocities[j + 2][1],
+            velocities[j + 1][1],
+            velocities[j][1],
+        );
+        let vz = _mm256_set_pd(
+            velocities[j + 3][2],
+            velocities[j + 2][2],
+            velocities[j + 1][2],
+            velocities[j][2],
+        );
+        let dx = _mm256_sub_pd(x, pix);
+        let dy = _mm256_sub_pd(y, piy);
+        let dz = _mm256_sub_pd(z, piz);
+        let r2 = _mm256_fmadd_pd(dx, dx, _mm256_fmadd_pd(dy, dy, _mm256_mul_pd(dz, dz)));
+        let dvx = _mm256_sub_pd(vx, vix);
+        let dvy = _mm256_sub_pd(vy, viy);
+        let dvz = _mm256_sub_pd(vz, viz);
+        let v2 = _mm256_fmadd_pd(dvx, dvx, _mm256_fmadd_pd(dvy, dvy, _mm256_mul_pd(dvz, dvz)));
+        let mask = _mm256_movemask_pd(_mm256_and_pd(
+            _mm256_and_pd(
+                _mm256_cmp_pd(r2, cutoff, _CMP_LT_OQ),
+                _mm256_cmp_pd(v2, zero, _CMP_GT_OQ),
+            ),
+            _mm256_cmp_pd(v2, vmax2, _CMP_LE_OQ),
+        ));
+        for lane in 0..lanes {
+            let jj = j + lane;
+            if (mask & (1 << lane)) != 0
+                && is_dm[jj]
+                && let Some(pair) = sidm_pair_delta(
+                    i, jj, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt,
+                    rng_seed,
+                )
+            {
+                out.push(pair);
+            }
+        }
+        j += lanes;
+    }
+    for jj in chunks_end..positions.len() {
+        if let Some(pair) = sidm_pair_delta(
+            i, jj, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt, rng_seed,
+        ) {
+            out.push(pair);
+        }
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "SIDM pair scan keeps SoA slices explicit for SIMD"
+)]
+#[target_feature(enable = "avx512f")]
+unsafe fn sidm_pair_deltas_for_i_avx512(
+    i: usize,
+    positions: &[[f64; 3]],
+    velocities: &[[f64; 3]],
+    masses: &[f64],
+    h_vals: &[f64],
+    rho_local: &[f64],
+    is_dm: &[bool],
+    params: &SidmParams,
+    dt: f64,
+    rng_seed: u64,
+) -> Vec<SidmPairDelta> {
+    let mut out = Vec::new();
+    let lanes = 8;
+    let mut j = i + 1;
+    let chunks_end = j + (positions.len() - j) / lanes * lanes;
+    let pix = _mm512_set1_pd(positions[i][0]);
+    let piy = _mm512_set1_pd(positions[i][1]);
+    let piz = _mm512_set1_pd(positions[i][2]);
+    let vix = _mm512_set1_pd(velocities[i][0]);
+    let viy = _mm512_set1_pd(velocities[i][1]);
+    let viz = _mm512_set1_pd(velocities[i][2]);
+    let cutoff = _mm512_set1_pd((2.0 * h_vals[i]).powi(2));
+    let vmax2 = _mm512_set1_pd(params.v_max * params.v_max);
+    let zero = _mm512_set1_pd(0.0);
+
+    while j < chunks_end {
+        let x = _mm512_set_pd(
+            positions[j + 7][0],
+            positions[j + 6][0],
+            positions[j + 5][0],
+            positions[j + 4][0],
+            positions[j + 3][0],
+            positions[j + 2][0],
+            positions[j + 1][0],
+            positions[j][0],
+        );
+        let y = _mm512_set_pd(
+            positions[j + 7][1],
+            positions[j + 6][1],
+            positions[j + 5][1],
+            positions[j + 4][1],
+            positions[j + 3][1],
+            positions[j + 2][1],
+            positions[j + 1][1],
+            positions[j][1],
+        );
+        let z = _mm512_set_pd(
+            positions[j + 7][2],
+            positions[j + 6][2],
+            positions[j + 5][2],
+            positions[j + 4][2],
+            positions[j + 3][2],
+            positions[j + 2][2],
+            positions[j + 1][2],
+            positions[j][2],
+        );
+        let vx = _mm512_set_pd(
+            velocities[j + 7][0],
+            velocities[j + 6][0],
+            velocities[j + 5][0],
+            velocities[j + 4][0],
+            velocities[j + 3][0],
+            velocities[j + 2][0],
+            velocities[j + 1][0],
+            velocities[j][0],
+        );
+        let vy = _mm512_set_pd(
+            velocities[j + 7][1],
+            velocities[j + 6][1],
+            velocities[j + 5][1],
+            velocities[j + 4][1],
+            velocities[j + 3][1],
+            velocities[j + 2][1],
+            velocities[j + 1][1],
+            velocities[j][1],
+        );
+        let vz = _mm512_set_pd(
+            velocities[j + 7][2],
+            velocities[j + 6][2],
+            velocities[j + 5][2],
+            velocities[j + 4][2],
+            velocities[j + 3][2],
+            velocities[j + 2][2],
+            velocities[j + 1][2],
+            velocities[j][2],
+        );
+        let dx = _mm512_sub_pd(x, pix);
+        let dy = _mm512_sub_pd(y, piy);
+        let dz = _mm512_sub_pd(z, piz);
+        let r2 = _mm512_fmadd_pd(dx, dx, _mm512_fmadd_pd(dy, dy, _mm512_mul_pd(dz, dz)));
+        let dvx = _mm512_sub_pd(vx, vix);
+        let dvy = _mm512_sub_pd(vy, viy);
+        let dvz = _mm512_sub_pd(vz, viz);
+        let v2 = _mm512_fmadd_pd(dvx, dvx, _mm512_fmadd_pd(dvy, dvy, _mm512_mul_pd(dvz, dvz)));
+        let mask = _mm512_cmp_pd_mask(r2, cutoff, _CMP_LT_OQ)
+            & _mm512_cmp_pd_mask(v2, zero, _CMP_GT_OQ)
+            & _mm512_cmp_pd_mask(v2, vmax2, _CMP_LE_OQ);
+        for lane in 0..lanes {
+            let jj = j + lane;
+            if (mask & (1 << lane)) != 0
+                && is_dm[jj]
+                && let Some(pair) = sidm_pair_delta(
+                    i, jj, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt,
+                    rng_seed,
+                )
+            {
+                out.push(pair);
+            }
+        }
+        j += lanes;
+    }
+    for jj in chunks_end..positions.len() {
+        if let Some(pair) = sidm_pair_delta(
+            i, jj, positions, velocities, masses, h_vals, rho_local, is_dm, params, dt, rng_seed,
+        ) {
+            out.push(pair);
+        }
+    }
+    out
 }

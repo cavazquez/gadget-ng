@@ -192,7 +192,7 @@ y la cobertura detallada en
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ spin reductions AVX2 + AVX512; luminosity/SED scalar | ❌ |
-| SIDM | ✅ | ✅ density + pair evaluation | ❌ | ✅ smoke/parity kernel |
+| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ smoke/parity kernel |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
 

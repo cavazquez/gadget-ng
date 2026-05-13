@@ -37,7 +37,7 @@ implementations.
 | --- | --- | --- | --- |
 | Direct gravity | Yes, `SimdDirectGravity` | Yes, `CudaDirectGravity` | Real parity |
 | PM gravity | Yes, CPU PM/Rayon path | Yes, `CudaPmSolver` | Real parity |
-| Tree/Barnes-Hut/LET | Yes, local walk + LET/RMN | Monopole/SIDM smoke surface | Partial CUDA |
+| Tree/Barnes-Hut/LET/SIDM | Yes, local walk + LET/RMN; SIDM AVX2/AVX-512 density and pair prefilter | Monopole/SIDM smoke surface | Partial CUDA |
 | SPH density | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH forces/Gadget2 viscosity | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH cooling/dust/H2 | Yes | Yes, CUDA solvers | Experimental parity |

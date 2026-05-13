@@ -36,6 +36,7 @@ fn lattice_cfg(n: usize) -> RunConfig {
         turbulence: Default::default(),
         two_fluid: Default::default(),
         sidm: Default::default(),
+        dark_matter: Default::default(),
         modified_gravity: Default::default(),
     }
 }
