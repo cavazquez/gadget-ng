@@ -42,6 +42,20 @@ use crate::m1::{C_KMS, M1Params, RadiationField};
 use gadget_ng_core::{Particle, ParticleType};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 // ── Constantes ─────────────────────────────────────────────────────────────
 
@@ -76,10 +90,94 @@ fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
 
 #[cfg(not(feature = "rayon"))]
 fn photoionization_rate_impl(energy_density: &[f64], c_red: f64) -> Vec<f64> {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return photoionization_rate_avx512(energy_density, c_red);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return photoionization_rate_avx2(energy_density, c_red);
+            }
+        }
+    }
+
+    photoionization_rate_scalar(energy_density, c_red)
+}
+
+#[cfg(not(feature = "rayon"))]
+fn photoionization_rate_scalar(energy_density: &[f64], c_red: f64) -> Vec<f64> {
     energy_density
         .iter()
         .map(|&e| SIGMA_HI * c_red * e.max(0.0) / H_NU_0_ERG)
         .collect()
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn photoionization_rate_avx2(energy_density: &[f64], c_red: f64) -> Vec<f64> {
+    let scale = SIGMA_HI * c_red / H_NU_0_ERG;
+    let mut out = vec![0.0; energy_density.len()];
+    let lanes = 4;
+    let chunks = energy_density.len() / lanes * lanes;
+
+    let zero = _mm256_set1_pd(0.0);
+    let scale_v = _mm256_set1_pd(scale);
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+4` is in-bounds by construction and unaligned loads are permitted.
+        let e = unsafe { _mm256_loadu_pd(energy_density.as_ptr().add(i)) };
+        let clipped = _mm256_max_pd(e, zero);
+        let gamma = _mm256_mul_pd(clipped, scale_v);
+        // SAFETY: `out` has the same length as `energy_density`, so this store is in-bounds.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr().add(i), gamma) };
+        i += lanes;
+    }
+
+    for (dst, &e) in out[chunks..].iter_mut().zip(&energy_density[chunks..]) {
+        *dst = e.max(0.0) * scale;
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn photoionization_rate_avx512(energy_density: &[f64], c_red: f64) -> Vec<f64> {
+    let scale = SIGMA_HI * c_red / H_NU_0_ERG;
+    let mut out = vec![0.0; energy_density.len()];
+    let lanes = 8;
+    let chunks = energy_density.len() / lanes * lanes;
+
+    let zero = _mm512_set1_pd(0.0);
+    let scale_v = _mm512_set1_pd(scale);
+    let mut i = 0;
+    while i < chunks {
+        // SAFETY: `i..i+8` is in-bounds by construction and unaligned loads are permitted.
+        let e = unsafe { _mm512_loadu_pd(energy_density.as_ptr().add(i)) };
+        let clipped = _mm512_max_pd(e, zero);
+        let gamma = _mm512_mul_pd(clipped, scale_v);
+        // SAFETY: `out` has the same length as `energy_density`, so this store is in-bounds.
+        unsafe { _mm512_storeu_pd(out.as_mut_ptr().add(i), gamma) };
+        i += lanes;
+    }
+
+    for (dst, &e) in out[chunks..].iter_mut().zip(&energy_density[chunks..]) {
+        *dst = e.max(0.0) * scale;
+    }
+    out
 }
 
 /// Aplica el fotocalentamiento a las partículas de gas SPH.
@@ -112,9 +210,112 @@ pub fn apply_photoheating(
     }
 
     #[cfg(not(feature = "rayon"))]
+    {
+        apply_photoheating_serial(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
+    }
+}
+
+#[cfg(not(feature = "rayon"))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "photoheating maps particle coordinates with grid dimensions"
+)]
+fn apply_photoheating_serial(
+    particles: &mut [Particle],
+    rad: &RadiationField,
+    gamma_hi: &[f64],
+    dt: f64,
+    box_size: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            unsafe {
+                return apply_photoheating_avx512(
+                    particles, rad, gamma_hi, dt, box_size, nx, ny, nz,
+                );
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                return apply_photoheating_avx2(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
+            }
+        }
+    }
+
+    apply_photoheating_scalar(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
+}
+
+#[cfg(not(feature = "rayon"))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "photoheating maps particle coordinates with grid dimensions"
+)]
+fn apply_photoheating_scalar(
+    particles: &mut [Particle],
+    rad: &RadiationField,
+    gamma_hi: &[f64],
+    dt: f64,
+    box_size: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) {
     for p in particles.iter_mut() {
         photoheat_particle(p, rad, gamma_hi, dt, box_size, nx, ny, nz);
     }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "photoheating maps particle coordinates with grid dimensions"
+)]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_photoheating_avx2(
+    particles: &mut [Particle],
+    rad: &RadiationField,
+    gamma_hi: &[f64],
+    dt: f64,
+    box_size: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) {
+    apply_photoheating_scalar(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "photoheating maps particle coordinates with grid dimensions"
+)]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_photoheating_avx512(
+    particles: &mut [Particle],
+    rad: &RadiationField,
+    gamma_hi: &[f64],
+    dt: f64,
+    box_size: f64,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) {
+    apply_photoheating_scalar(particles, rad, gamma_hi, dt, box_size, nx, ny, nz);
 }
 
 #[expect(

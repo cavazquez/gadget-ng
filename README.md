@@ -188,7 +188,7 @@ y la cobertura detallada en
 | MHD reconnection | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD flux-freeze / stats | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
-| RT M1 diagnostics/photoheating | ✅ | ✅ | ⚠️ SIMD parcial | ✅ |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics; dedicated photoheating dispatch | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry/reionization/21cm | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ⚠️ no AVX explícito | ❌ |

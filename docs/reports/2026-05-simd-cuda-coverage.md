@@ -43,7 +43,7 @@ implementations.
 | SPH cooling/dust/H2 | Yes | Yes, CUDA solvers | Experimental parity |
 | MHD flux-freezing/statistics | Yes | Yes, `CudaMhdSolver` | Experimental parity |
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
-| RT M1 reductions/photoheating | Yes | Yes, `CudaRtSolver` | Experimental parity |
+| RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and dedicated photoheating dispatch | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
 | Analysis spin/luminosity/SED | Yes | No | SIMD-only |
 
