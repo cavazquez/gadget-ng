@@ -163,7 +163,8 @@ fn photoheat_particle(
 /// en la celda más cercana.
 ///
 /// En este modelo simplificado, `η ∝ ρ² × T^(-1/2)` (bremsstrahlung térmico).
-pub fn deposit_gas_emission(
+#[cfg(not(feature = "simd"))]
+fn deposit_gas_emission_impl(
     particles: &[Particle],
     rad: &mut RadiationField,
     dt: f64,
@@ -185,10 +186,65 @@ pub fn deposit_gas_emission(
         let cell = rad.idx(ix, iy, iz);
 
         let rho = p.mass / (p.smoothing_length.max(1e-10)).powi(3);
-        let temp = p.internal_energy.max(0.0).sqrt(); // proxy de √T
+        let temp = p.internal_energy.max(0.0).sqrt();
         let eta = emission_coeff * rho * rho / temp.max(1e-10);
 
         rad.energy_density[cell] += eta * dv * dt;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn deposit_gas_emission_par(
+    particles: &[Particle],
+    rad: &mut RadiationField,
+    dt: f64,
+    box_size: f64,
+    emission_coeff: f64,
+) {
+    let nx = rad.nx;
+    let ny = rad.ny;
+    let nz = rad.nz;
+    let dv = rad.dx.powi(3);
+
+    let contributions: Vec<(usize, f64)> = particles
+        .par_iter()
+        .filter_map(|p| {
+            if p.ptype != ParticleType::Gas || p.internal_energy < 1e-30 {
+                return None;
+            }
+            let ix = ((p.position.x / box_size * nx as f64).floor() as usize).min(nx - 1);
+            let iy = ((p.position.y / box_size * ny as f64).floor() as usize).min(ny - 1);
+            let iz = ((p.position.z / box_size * nz as f64).floor() as usize).min(nz - 1);
+            let cell = ix * ny * nz + iy * nz + iz;
+
+            let rho = p.mass / (p.smoothing_length.max(1e-10)).powi(3);
+            let temp = p.internal_energy.max(0.0).sqrt();
+            let eta = emission_coeff * rho * rho / temp.max(1e-10);
+
+            Some((cell, eta * dv * dt))
+        })
+        .collect();
+
+    for (cell, delta) in contributions {
+        rad.energy_density[cell] += delta;
+    }
+}
+
+pub fn deposit_gas_emission(
+    particles: &[Particle],
+    rad: &mut RadiationField,
+    dt: f64,
+    box_size: f64,
+    emission_coeff: f64,
+) {
+    #[cfg(feature = "simd")]
+    {
+        deposit_gas_emission_par(particles, rad, dt, box_size, emission_coeff);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        deposit_gas_emission_impl(particles, rad, dt, box_size, emission_coeff);
     }
 }
 

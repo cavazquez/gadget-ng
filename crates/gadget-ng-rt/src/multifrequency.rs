@@ -8,6 +8,8 @@
 use crate::chemistry::ChemState;
 use crate::m1::{C_KMS, M1Params, RadiationField};
 use gadget_ng_core::{DustSection, Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Photon groups transported or sampled by the reduced RT model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -182,10 +184,6 @@ impl MultiFrequencyField {
     }
 }
 
-/// Applies Lyman-Werner photodissociation to `H2` and `HD`.
-///
-/// The update is exact for first-order destruction, conserves H/D nuclei through
-/// [`ChemState::clamp_and_normalize`], and leaves ionization fractions untouched.
 pub fn apply_lw_photodissociation(state: &mut ChemState, rates: &MultiFrequencyRates, dt: f64) {
     if dt <= 0.0 {
         return;
@@ -215,7 +213,8 @@ pub fn single_group_rates(
 /// `radiation_energy_density` is the local heating proxy used to estimate the
 /// equilibrium dust temperature. The deposited quantity is energy density:
 /// luminosity times `dt` divided by the cell volume.
-pub fn deposit_dust_ir_emission(
+#[cfg(not(feature = "simd"))]
+fn deposit_dust_ir_emission_impl(
     particles: &[Particle],
     field: &mut MultiFrequencyField,
     cfg: &DustSection,
@@ -243,5 +242,83 @@ pub fn deposit_dust_ir_emission(
         let cell = ir.idx(ix, iy, iz);
         let luminosity = gadget_ng_sph::dust_ir_luminosity(p, dust_temperature, cfg);
         ir.energy_density[cell] += luminosity * dt / dv;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn deposit_dust_ir_emission_par(
+    particles: &[Particle],
+    field: &mut MultiFrequencyField,
+    cfg: &DustSection,
+    radiation_energy_density: f64,
+    dt: f64,
+    box_size: f64,
+) {
+    if !cfg.enabled || !cfg.ir_emission_enabled || dt <= 0.0 || box_size <= 0.0 {
+        return;
+    }
+
+    let ir = field.group_mut(PhotonGroup::Infrared);
+    let dv = ir.dx.powi(3).max(1e-30);
+    let dust_temperature =
+        gadget_ng_sph::dust_equilibrium_temperature(radiation_energy_density, cfg);
+    let nx = ir.nx;
+    let ny = ir.ny;
+    let nz = ir.nz;
+
+    let contributions: Vec<(usize, f64)> = particles
+        .par_iter()
+        .filter_map(|p| {
+            if p.ptype != ParticleType::Gas || p.dust_to_gas <= 0.0 {
+                return None;
+            }
+
+            let ix = ((p.position.x / box_size * nx as f64).floor() as usize).min(nx - 1);
+            let iy = ((p.position.y / box_size * ny as f64).floor() as usize).min(ny - 1);
+            let iz = ((p.position.z / box_size * nz as f64).floor() as usize).min(nz - 1);
+            let cell = ix * ny * nz + iy * nz + iz;
+            let luminosity = gadget_ng_sph::dust_ir_luminosity(p, dust_temperature, cfg);
+            Some((cell, luminosity * dt / dv))
+        })
+        .collect();
+
+    let ir_field = field.group_mut(PhotonGroup::Infrared);
+    for (cell, delta) in contributions {
+        if cell < ir_field.energy_density.len() {
+            ir_field.energy_density[cell] += delta;
+        }
+    }
+}
+
+pub fn deposit_dust_ir_emission(
+    particles: &[Particle],
+    field: &mut MultiFrequencyField,
+    cfg: &DustSection,
+    radiation_energy_density: f64,
+    dt: f64,
+    box_size: f64,
+) {
+    #[cfg(feature = "simd")]
+    {
+        deposit_dust_ir_emission_par(
+            particles,
+            field,
+            cfg,
+            radiation_energy_density,
+            dt,
+            box_size,
+        );
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        deposit_dust_ir_emission_impl(
+            particles,
+            field,
+            cfg,
+            radiation_energy_density,
+            dt,
+            box_size,
+        );
     }
 }

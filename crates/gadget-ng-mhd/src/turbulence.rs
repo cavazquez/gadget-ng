@@ -33,6 +33,8 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, TurbulenceSection};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Generador de números pseudo-aleatorios simple (LCG para reproducibilidad).
 fn lcg_next(state: &mut u64) -> f64 {
@@ -141,7 +143,8 @@ pub fn apply_turbulent_forcing(
 /// - `alfven_mach = v_rms / v_A` (número de Mach Alfvénico)
 ///
 /// `c_s = sqrt(γ P / ρ)` y `v_A = B / sqrt(μ₀ ρ)`.
-pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
+#[cfg(not(feature = "simd"))]
+fn turbulence_stats_impl(particles: &[Particle], gamma: f64) -> (f64, f64) {
     let mut v2_sum = 0.0_f64;
     let mut b2_rho_sum = 0.0_f64;
     let mut cs2_sum = 0.0_f64;
@@ -176,4 +179,59 @@ pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
     let alfven_mach = if v_a > 1e-30 { v_rms / v_a } else { 0.0 };
 
     (mach_rms, alfven_mach)
+}
+
+#[cfg(feature = "simd")]
+fn turbulence_stats_par(particles: &[Particle], gamma: f64) -> (f64, f64) {
+    let (v2_sum, b2_rho_sum, cs2_sum, n) = particles
+        .par_iter()
+        .filter(|p| p.ptype == ParticleType::Gas)
+        .fold(
+            || (0.0_f64, 0.0_f64, 0.0_f64, 0usize),
+            |(v2, b2r, cs2, cnt), p| {
+                let h = p.smoothing_length.max(1e-10);
+                let rho = (p.mass / (h * h * h)).max(1e-30);
+                let p_th = (gamma - 1.0) * rho * p.internal_energy.max(0.0);
+                let v2_p = p.velocity.x * p.velocity.x
+                    + p.velocity.y * p.velocity.y
+                    + p.velocity.z * p.velocity.z;
+                let b2_p = p.b_field.x * p.b_field.x
+                    + p.b_field.y * p.b_field.y
+                    + p.b_field.z * p.b_field.z;
+                (
+                    v2 + v2_p,
+                    b2r + b2_p / (MU0 * rho),
+                    cs2 + gamma * p_th / rho,
+                    cnt + 1,
+                )
+            },
+        )
+        .reduce(
+            || (0.0, 0.0, 0.0, 0),
+            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3),
+        );
+
+    if n == 0 {
+        return (0.0, 0.0);
+    }
+    let v_rms = (v2_sum / n as f64).sqrt();
+    let v_a = (b2_rho_sum / n as f64).sqrt();
+    let c_s = (cs2_sum / n as f64).sqrt();
+
+    let mach_rms = if c_s > 1e-30 { v_rms / c_s } else { 0.0 };
+    let alfven_mach = if v_a > 1e-30 { v_rms / v_a } else { 0.0 };
+
+    (mach_rms, alfven_mach)
+}
+
+pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
+    #[cfg(feature = "simd")]
+    {
+        turbulence_stats_par(particles, gamma)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        turbulence_stats_impl(particles, gamma)
+    }
 }

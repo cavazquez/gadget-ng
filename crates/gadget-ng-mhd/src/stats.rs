@@ -125,7 +125,8 @@ pub fn b_field_stats(particles: &[Particle]) -> Option<BFieldStats> {
 ///
 /// Vector de `(k [1/unidades], P_B(k) [B² × volumen])` para cada bin.
 /// Bins vacíos se omiten del resultado.
-pub fn magnetic_power_spectrum(
+#[cfg(not(feature = "simd"))]
+fn magnetic_power_spectrum_impl(
     particles: &[Particle],
     box_size: f64,
     n_bins: usize,
@@ -134,7 +135,6 @@ pub fn magnetic_power_spectrum(
         return Vec::new();
     }
 
-    // Rango de k: de k_min = 2π/L hasta k_max = 2π/h_min
     let k_fund = 2.0 * std::f64::consts::PI / box_size;
 
     let mut k_vals: Vec<f64> = Vec::new();
@@ -190,6 +190,83 @@ pub fn magnetic_power_spectrum(
         result.push((k_center, bin_power[i]));
     }
     result
+}
+
+#[cfg(feature = "simd")]
+fn magnetic_power_spectrum_par(
+    particles: &[Particle],
+    box_size: f64,
+    n_bins: usize,
+) -> Vec<(f64, f64)> {
+    if n_bins == 0 || box_size <= 0.0 {
+        return Vec::new();
+    }
+
+    let k_fund = 2.0 * std::f64::consts::PI / box_size;
+
+    let pairs: Vec<(f64, f64)> = particles
+        .par_iter()
+        .filter(|p| p.ptype == ParticleType::Gas && p.smoothing_length > 0.0)
+        .map(|p| {
+            let b2 =
+                p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+            let k_p = 2.0 * std::f64::consts::PI / p.smoothing_length;
+            (k_p, b2 * p.mass)
+        })
+        .collect();
+
+    if pairs.is_empty() {
+        return Vec::new();
+    }
+
+    let k_min = k_fund.min(pairs.iter().map(|(k, _)| *k).fold(f64::INFINITY, f64::min));
+    let k_max = pairs.iter().map(|(k, _)| *k).fold(0.0_f64, f64::max);
+    if k_max <= k_min {
+        return Vec::new();
+    }
+
+    let log_k_min = k_min.ln();
+    let log_k_max = k_max.ln();
+    let dlog_k = (log_k_max - log_k_min) / n_bins as f64;
+    if dlog_k <= 0.0 {
+        return Vec::new();
+    }
+
+    let mut bin_power = vec![0.0_f64; n_bins];
+    let mut bin_count = vec![0usize; n_bins];
+
+    for (k, b2m) in &pairs {
+        let i = ((k.ln() - log_k_min) / dlog_k) as usize;
+        let i = i.min(n_bins - 1);
+        bin_power[i] += b2m;
+        bin_count[i] += 1;
+    }
+
+    let mut result = Vec::new();
+    for i in 0..n_bins {
+        if bin_count[i] == 0 {
+            continue;
+        }
+        let k_center = (log_k_min + (i as f64 + 0.5) * dlog_k).exp();
+        result.push((k_center, bin_power[i]));
+    }
+    result
+}
+
+pub fn magnetic_power_spectrum(
+    particles: &[Particle],
+    box_size: f64,
+    n_bins: usize,
+) -> Vec<(f64, f64)> {
+    #[cfg(feature = "simd")]
+    {
+        magnetic_power_spectrum_par(particles, box_size, n_bins)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        magnetic_power_spectrum_impl(particles, box_size, n_bins)
+    }
 }
 
 #[cfg(test)]

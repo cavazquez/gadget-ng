@@ -20,6 +20,8 @@
 
 use crate::ChemState;
 use gadget_ng_core::Particle;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Parámetros para el cálculo de estadísticas 21cm.
@@ -80,7 +82,8 @@ pub fn brightness_temperature(x_hii: f64, overdensity: f64, z: f64, _params: &Cm
 /// Calcula el campo de temperatura de brillo δT_b para cada partícula de gas.
 ///
 /// Devuelve un vector con δT_b [mK] por partícula.
-pub fn compute_delta_tb_field(
+#[cfg(not(feature = "simd"))]
+fn compute_delta_tb_field_impl(
     particles: &[Particle],
     chem_states: &[ChemState],
     z: f64,
@@ -91,7 +94,6 @@ pub fn compute_delta_tb_field(
     }
     let n = particles.len().min(chem_states.len());
 
-    // Densidad media para calcular sobredensidad
     let total_mass: f64 = particles[..n].iter().map(|p| p.mass).sum();
     let total_vol: f64 = particles[..n]
         .iter()
@@ -116,6 +118,61 @@ pub fn compute_delta_tb_field(
             brightness_temperature(chem.x_hii, overdensity, z, params)
         })
         .collect()
+}
+
+#[cfg(feature = "simd")]
+fn compute_delta_tb_field_par(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    z: f64,
+    params: &Cm21Params,
+) -> Vec<f64> {
+    if particles.is_empty() || chem_states.is_empty() {
+        return Vec::new();
+    }
+    let n = particles.len().min(chem_states.len());
+
+    let total_mass: f64 = particles[..n].par_iter().map(|p| p.mass).sum();
+    let total_vol: f64 = particles[..n]
+        .par_iter()
+        .map(|p| {
+            let h = p.smoothing_length.max(1e-30);
+            h * h * h
+        })
+        .sum();
+    let rho_mean = if total_vol > 0.0 {
+        total_mass / total_vol
+    } else {
+        1.0
+    };
+
+    particles[..n]
+        .par_iter()
+        .zip(chem_states[..n].par_iter())
+        .map(|(p, chem)| {
+            let h = p.smoothing_length.max(1e-30);
+            let rho_local = p.mass / (h * h * h);
+            let overdensity = (rho_local / rho_mean).max(0.0);
+            brightness_temperature(chem.x_hii, overdensity, z, params)
+        })
+        .collect()
+}
+
+pub fn compute_delta_tb_field(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    z: f64,
+    params: &Cm21Params,
+) -> Vec<f64> {
+    #[cfg(feature = "simd")]
+    {
+        compute_delta_tb_field_par(particles, chem_states, z, params)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        compute_delta_tb_field_impl(particles, chem_states, z, params)
+    }
 }
 
 /// Calcula estadísticas 21cm completas: <δT_b>, σ, y P(k)₂₁cm.

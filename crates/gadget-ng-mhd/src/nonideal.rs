@@ -6,6 +6,8 @@
 //! proxy de ionización térmica y por el contenido de polvo.
 
 use gadget_ng_core::{Particle, ParticleType};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Proxy acotado de fracción ionizada local.
 ///
@@ -26,7 +28,8 @@ pub fn ionization_fraction_proxy(p: &Particle, ion_floor: f64, dust_coupling: f6
 /// El amortiguamiento es `B(t+dt)=B(t) exp[-eta_ad dt (1/x_i - 1)]`, de modo que
 /// gas completamente ionizado (`x_i≈1`) casi no cambia, mientras que gas neutro
 /// difunde más rápido. La energía magnética disipada se deposita como calor.
-pub fn apply_ambipolar_diffusion(
+#[cfg(not(feature = "simd"))]
+fn apply_ambipolar_diffusion_impl(
     particles: &mut [Particle],
     eta_ad: f64,
     ion_floor: f64,
@@ -53,6 +56,56 @@ pub fn apply_ambipolar_diffusion(
         let b2_after = p.b_field.dot(p.b_field);
         let dissipated = 0.5 * (b2_before - b2_after).max(0.0);
         p.internal_energy += heat_eff * dissipated / p.mass.max(1e-30);
+    }
+}
+
+#[cfg(feature = "simd")]
+fn apply_ambipolar_diffusion_par(
+    particles: &mut [Particle],
+    eta_ad: f64,
+    ion_floor: f64,
+    dust_coupling: f64,
+    gamma: f64,
+    dt: f64,
+) {
+    if eta_ad <= 0.0 || dt <= 0.0 {
+        return;
+    }
+    let heat_eff = (gamma - 1.0).max(0.0);
+    particles.par_iter_mut().for_each(|p| {
+        if p.ptype != ParticleType::Gas {
+            return;
+        }
+        let b2_before = p.b_field.dot(p.b_field);
+        if b2_before <= 0.0 {
+            return;
+        }
+        let x_i = ionization_fraction_proxy(p, ion_floor, dust_coupling);
+        let rate = eta_ad.max(0.0) * (1.0 / x_i - 1.0).max(0.0);
+        let damping = (-rate * dt).exp().clamp(0.0, 1.0);
+        p.b_field *= damping;
+        let b2_after = p.b_field.dot(p.b_field);
+        let dissipated = 0.5 * (b2_before - b2_after).max(0.0);
+        p.internal_energy += heat_eff * dissipated / p.mass.max(1e-30);
+    });
+}
+
+pub fn apply_ambipolar_diffusion(
+    particles: &mut [Particle],
+    eta_ad: f64,
+    ion_floor: f64,
+    dust_coupling: f64,
+    gamma: f64,
+    dt: f64,
+) {
+    #[cfg(feature = "simd")]
+    {
+        apply_ambipolar_diffusion_par(particles, eta_ad, ion_floor, dust_coupling, gamma, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_ambipolar_diffusion_impl(particles, eta_ad, ion_floor, dust_coupling, gamma, dt);
     }
 }
 

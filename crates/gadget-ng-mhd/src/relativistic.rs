@@ -34,6 +34,8 @@
 //! Balsara & Spicer (1999), JCP 149, 270 — preservación ∇·B.
 
 use gadget_ng_core::{Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Velocidad de la luz en unidades de código (aproximación: c=1 en unidades naturales).
 pub const C_LIGHT: f64 = 1.0;
@@ -140,7 +142,8 @@ pub fn srmhd_conserved_to_primitive(
 /// no relativista estándar.
 ///
 /// La corrección de momento: `p_i → γ m_i v_i` (en lugar de `m_i v_i`).
-pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
+#[cfg(not(feature = "simd"))]
+fn advance_srmhd_impl(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
     for p in particles.iter_mut() {
         if p.ptype != ParticleType::Gas {
             continue;
@@ -152,21 +155,58 @@ pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f
 
         if v_over_c < v_threshold {
             continue;
-        } // sub-relativista: MHD estándar
+        }
 
         let gamma = lorentz_factor(vel, c);
         if !gamma.is_finite() {
             continue;
         }
 
-        // Corrección relativista: el "momentum" efectivo incluye factor γ
-        // Esto modifica la aceleración neta aplicada al paso de tiempo
         let gamma_inv = 1.0 / gamma;
 
-        // Posición: dX/dt = v (igual en SR; la posición avanza como v × dt)
         p.position.x += vel.x * dt * gamma_inv;
         p.position.y += vel.y * dt * gamma_inv;
         p.position.z += vel.z * dt * gamma_inv;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn advance_srmhd_par(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
+    particles.par_iter_mut().for_each(|p| {
+        if p.ptype != ParticleType::Gas {
+            return;
+        }
+
+        let vel = p.velocity;
+        let v2 = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
+        let v_over_c = v2.sqrt() / c;
+
+        if v_over_c < v_threshold {
+            return;
+        }
+
+        let gamma = lorentz_factor(vel, c);
+        if !gamma.is_finite() {
+            return;
+        }
+
+        let gamma_inv = 1.0 / gamma;
+
+        p.position.x += vel.x * dt * gamma_inv;
+        p.position.y += vel.y * dt * gamma_inv;
+        p.position.z += vel.z * dt * gamma_inv;
+    });
+}
+
+pub fn advance_srmhd(particles: &mut [Particle], dt: f64, c: f64, v_threshold: f64) {
+    #[cfg(feature = "simd")]
+    {
+        advance_srmhd_par(particles, dt, c, v_threshold);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        advance_srmhd_impl(particles, dt, c, v_threshold);
     }
 }
 

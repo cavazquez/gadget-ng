@@ -34,6 +34,8 @@
 use gadget_ng_core::Particle;
 
 use crate::chemistry::ChemState;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 // ── Structs ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +108,8 @@ pub fn temperature_from_particle(internal_energy: f64, chem: &ChemState, gamma: 
 ///
 /// # Retorna
 /// `IgmTempBin` con las estadísticas de temperatura del IGM.
-pub fn compute_igm_temp_profile(
+#[cfg(not(feature = "simd"))]
+fn compute_igm_temp_profile_impl(
     particles: &[Particle],
     chem_states: &[ChemState],
     mean_density: f64,
@@ -121,21 +124,17 @@ pub fn compute_igm_temp_profile(
     }
 
     let n = particles.len().min(chem_states.len());
-    // Filtrar partículas del IGM y calcular temperaturas
-    // Proxy de densidad: ρ ≈ mass / h_sml³ (densidad SPH estimada)
     let mut temperatures: Vec<f64> = Vec::new();
     for i in 0..n {
         let p = &particles[i];
-        // Solo partículas de gas (internal_energy > 0)
         if p.internal_energy <= 0.0 {
             continue;
         }
-        // Filtro de densidad vía smoothing_length (mayor h → menor densidad)
         if mean_density > 0.0 && params.delta_max > 0.0 && p.smoothing_length > 0.0 {
             let rho_sph = p.mass / (p.smoothing_length * p.smoothing_length * p.smoothing_length);
             let delta_threshold = params.delta_max * mean_density;
             if rho_sph > delta_threshold {
-                continue; // partícula en halo denso
+                continue;
             }
         }
         let t = temperature_from_particle(p.internal_energy, &chem_states[i], params.gamma);
@@ -160,7 +159,6 @@ pub fn compute_igm_temp_profile(
         / n_p as f64;
     let t_sigma = t_var.sqrt();
 
-    // Percentiles (sortear)
     temperatures.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let t_median = percentile(&temperatures, 0.50);
     let t_p16 = percentile(&temperatures, 0.16);
@@ -174,6 +172,97 @@ pub fn compute_igm_temp_profile(
         t_p16,
         t_p84,
         n_particles: n_p,
+    }
+}
+
+#[cfg(feature = "simd")]
+fn compute_igm_temp_profile_par(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    mean_density: f64,
+    z: f64,
+    params: &IgmTempParams,
+) -> IgmTempBin {
+    if particles.is_empty() || chem_states.is_empty() {
+        return IgmTempBin {
+            z,
+            ..Default::default()
+        };
+    }
+
+    let n = particles.len().min(chem_states.len());
+
+    let mut temperatures: Vec<f64> = particles[..n]
+        .par_iter()
+        .zip(chem_states[..n].par_iter())
+        .filter_map(|(p, chem)| {
+            if p.internal_energy <= 0.0 {
+                return None;
+            }
+            if mean_density > 0.0 && params.delta_max > 0.0 && p.smoothing_length > 0.0 {
+                let rho_sph =
+                    p.mass / (p.smoothing_length * p.smoothing_length * p.smoothing_length);
+                let delta_threshold = params.delta_max * mean_density;
+                if rho_sph > delta_threshold {
+                    return None;
+                }
+            }
+            let t = temperature_from_particle(p.internal_energy, chem, params.gamma);
+            if t > 0.0 && t.is_finite() {
+                Some(t)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if temperatures.is_empty() {
+        return IgmTempBin {
+            z,
+            ..Default::default()
+        };
+    }
+
+    let n_p = temperatures.len();
+    let t_mean = temperatures.iter().sum::<f64>() / n_p as f64;
+    let t_var = temperatures
+        .iter()
+        .map(|&t| (t - t_mean).powi(2))
+        .sum::<f64>()
+        / n_p as f64;
+    let t_sigma = t_var.sqrt();
+
+    temperatures.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let t_median = percentile(&temperatures, 0.50);
+    let t_p16 = percentile(&temperatures, 0.16);
+    let t_p84 = percentile(&temperatures, 0.84);
+
+    IgmTempBin {
+        z,
+        t_mean,
+        t_median,
+        t_sigma,
+        t_p16,
+        t_p84,
+        n_particles: n_p,
+    }
+}
+
+pub fn compute_igm_temp_profile(
+    particles: &[Particle],
+    chem_states: &[ChemState],
+    mean_density: f64,
+    z: f64,
+    params: &IgmTempParams,
+) -> IgmTempBin {
+    #[cfg(feature = "simd")]
+    {
+        compute_igm_temp_profile_par(particles, chem_states, mean_density, z, params)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        compute_igm_temp_profile_impl(particles, chem_states, mean_density, z, params)
     }
 }
 

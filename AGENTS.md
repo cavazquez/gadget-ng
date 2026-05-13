@@ -59,6 +59,21 @@ Pick the smallest useful tier for the change:
 
 Run physics baseline/deep tests when touching cosmology, ICs, gravity, SPH, MHD, or validation logic.
 
+### Parity: serial CPU, Rayon, SIMD, and GPU
+
+Aim for **numerical parity** (within explicit tolerances) across, at minimum:
+
+1. **CPU without Rayon** — default build paths (serial iterators); reproducibility baseline.
+2. **CPU with Rayon** — typically `cfg(feature = "simd")` branches that use `rayon`; must match (1).
+3. **SIMD / intrinsics without relying on Rayon** — only where Cargo features or code paths separate true vectorization from thread parallelism; must still match (1). Today several crates alias `simd` to optional `rayon`; if you split features, document and test both axes.
+4. **CUDA / HIP** — GPU solvers vs CPU reference; parity/smoke tests in the owning crate when practical. CI may skip GPUs via `CUDA_SKIP=1` / `HIP_SKIP=1`.
+
+**x86 vector tiers:** for new `#[target_feature]` / intrinsic `f64` paths on **x86_64**, provide both **AVX2 + FMA** and **AVX512F** (`avx512f`) implementations when batching pays off, with `is_x86_feature_detected!` dispatch (typically `avx512f` → `avx2`+`fma` → scalar) and parity against (1). Other targets stay portable/scalar unless there is a dedicated port.
+
+Track accelerator gaps in `docs/reports/2026-05-simd-cuda-coverage.md` when touching SIMD/CUDA scope.
+
+Keep **unit tests and coverage** in step with new branches: add focused tests for new `cfg` paths; do not drop physics assertions or shrink coverage when landing optimizations unless the team explicitly replaces them with stronger checks.
+
 ## Feature / Phase Pattern
 
 For a new phase or user-visible feature:

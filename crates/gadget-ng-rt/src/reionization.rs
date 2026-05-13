@@ -34,6 +34,8 @@ use gadget_ng_core::Vec3;
 
 use crate::chemistry::ChemState;
 use crate::m1::RadiationField;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -104,30 +106,73 @@ impl Default for ReionizationParams {
 /// - `sources`  — lista de fuentes UV
 /// - `box_size` — tamaño de la caja periódica
 /// - `dt`       — paso de tiempo
-pub fn deposit_uv_sources(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
+#[cfg(not(feature = "simd"))]
+fn deposit_uv_sources_impl(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
     let nx = rad.nx;
     let ny = rad.ny;
     let nz = rad.nz;
     let dx = rad.dx;
 
     for src in sources {
-        // Coordenadas de celda (con wrapping periódico)
         let cx = ((src.pos.x / dx).floor() as isize).rem_euclid(nx as isize) as usize;
         let cy = ((src.pos.y / dx).floor() as isize).rem_euclid(ny as isize) as usize;
         let cz = ((src.pos.z / dx).floor() as isize).rem_euclid(nz as isize) as usize;
 
-        // NGP: depositar toda la energía en la celda más cercana
         let idx = rad.idx(cx, cy, cz);
         let dv = dx * dx * dx;
         rad.energy_density[idx] += src.luminosity * dt / dv;
 
-        // Asegurar positividad
         if rad.energy_density[idx] < 0.0 {
             rad.energy_density[idx] = 0.0;
         }
     }
 
-    let _ = box_size; // utilizado implícitamente vía dx = box_size / n
+    let _ = box_size;
+}
+
+#[cfg(feature = "simd")]
+fn deposit_uv_sources_par(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
+    let nx = rad.nx;
+    let ny = rad.ny;
+    let nz = rad.nz;
+    let dx = rad.dx;
+    let dv = dx * dx * dx;
+
+    let contributions: Vec<(usize, f64)> = sources
+        .par_iter()
+        .map(|src| {
+            let cx = ((src.pos.x / dx).floor() as isize).rem_euclid(nx as isize) as usize;
+            let cy = ((src.pos.y / dx).floor() as isize).rem_euclid(ny as isize) as usize;
+            let cz = ((src.pos.z / dx).floor() as isize).rem_euclid(nz as isize) as usize;
+            let idx = cx * ny * nz + cy * nz + cz;
+            let mut delta = src.luminosity * dt / dv;
+            let current = rad.energy_density.get(idx).copied().unwrap_or(0.0);
+            if current + delta < 0.0 {
+                delta = -current;
+            }
+            (idx, delta)
+        })
+        .collect();
+
+    for (idx, delta) in contributions {
+        if idx < rad.energy_density.len() {
+            rad.energy_density[idx] += delta;
+        }
+    }
+
+    let _ = box_size;
+}
+
+pub fn deposit_uv_sources(rad: &mut RadiationField, sources: &[UvSource], box_size: f64, dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        deposit_uv_sources_par(rad, sources, box_size, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        deposit_uv_sources_impl(rad, sources, box_size, dt);
+    }
 }
 
 /// Calcula el estado de reionización a partir de los estados químicos de las partículas de gas.
@@ -136,7 +181,8 @@ pub fn deposit_uv_sources(rad: &mut RadiationField, sources: &[UvSource], box_si
 /// - `chem_states` — fracciones de ionización por partícula de gas
 /// - `z`           — redshift actual
 /// - `n_sources`   — número de fuentes UV activas
-pub fn compute_reionization_state(
+#[cfg(not(feature = "simd"))]
+fn compute_reionization_state_impl(
     chem_states: &[ChemState],
     z: f64,
     n_sources: usize,
@@ -165,6 +211,65 @@ pub fn compute_reionization_state(
         ionized_volume_fraction: ionized_fraction,
         z,
         n_sources,
+    }
+}
+
+#[cfg(feature = "simd")]
+fn compute_reionization_state_par(
+    chem_states: &[ChemState],
+    z: f64,
+    n_sources: usize,
+) -> ReionizationState {
+    if chem_states.is_empty() {
+        return ReionizationState {
+            z,
+            n_sources,
+            ..Default::default()
+        };
+    }
+
+    let n = chem_states.len() as f64;
+    let (sum_xhii, sum_sq, ionized_count) = chem_states
+        .par_iter()
+        .fold(
+            || (0.0_f64, 0.0_f64, 0usize),
+            |(sum, sq, cnt), s| {
+                (
+                    sum + s.x_hii,
+                    sq + s.x_hii * s.x_hii,
+                    cnt + (s.x_hii > 0.5) as usize,
+                )
+            },
+        )
+        .reduce(|| (0.0, 0.0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+
+    let mean = sum_xhii / n;
+    let variance = sum_sq / n - mean * mean;
+    let sigma = variance.sqrt();
+    let ionized_fraction = ionized_count as f64 / n;
+
+    ReionizationState {
+        x_hii_mean: mean,
+        x_hii_sigma: sigma,
+        ionized_volume_fraction: ionized_fraction,
+        z,
+        n_sources,
+    }
+}
+
+pub fn compute_reionization_state(
+    chem_states: &[ChemState],
+    z: f64,
+    n_sources: usize,
+) -> ReionizationState {
+    #[cfg(feature = "simd")]
+    {
+        compute_reionization_state_par(chem_states, z, n_sources)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        compute_reionization_state_impl(chem_states, z, n_sources)
     }
 }
 

@@ -38,6 +38,8 @@
 //! Rudd & Nagai (2009), ApJL 701, L16 — T_e/T_i en simulaciones de cúmulos.
 
 use gadget_ng_core::{Particle, ParticleType, TwoFluidSection};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 /// Convierte energía interna `u` a temperatura proporcional (en unidades arbitrarias).
 ///
@@ -55,7 +57,8 @@ fn u_to_t_code(u: f64, gamma: f64) -> f64 {
 /// 3. Calcula `ν_ei = nu_ei_coeff × ρ / T_e^{3/2}` (ρ ≈ m/h³)
 /// 4. Actualiza `T_e` con el paso implícito:
 ///    `T_e_new = T_e + (T_i − T_e) × (1 − exp(−ν_ei × dt))`
-pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
+#[cfg(not(feature = "simd"))]
+fn apply_electron_ion_coupling_impl(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
     const GAMMA: f64 = 5.0 / 3.0;
 
     for p in particles.iter_mut() {
@@ -65,7 +68,6 @@ pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSec
 
         let t_i = u_to_t_code(p.internal_energy, GAMMA);
 
-        // Inicializar T_e = T_i si no se ha seteado aún
         if p.t_electron <= 0.0 {
             p.t_electron = t_i;
             continue;
@@ -75,18 +77,55 @@ pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSec
         let h = p.smoothing_length.max(1e-10);
         let rho = (p.mass / (h * h * h)).max(1e-30);
 
-        // Frecuencia de acoplamiento: ν_ei ∝ n_e / T_e^{3/2}
-        let t_e_32 = (t_e * t_e * t_e).cbrt().max(1e-30); // T_e^{1/2} → aproximado
         let t_e_eff = t_e.abs().max(1e-30);
         let nu_ei = cfg.nu_ei_coeff * rho / (t_e_eff * t_e_eff.sqrt());
 
-        // Paso implícito exponencial: evita inestabilidades numéricas
         let factor = 1.0 - (-nu_ei * dt).exp();
         p.t_electron = t_e + (t_i - t_e) * factor;
-        let _ = t_e_32;
 
-        // Asegurar T_e positiva
         p.t_electron = p.t_electron.max(0.0);
+    }
+}
+
+#[cfg(feature = "simd")]
+fn apply_electron_ion_coupling_par(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
+    const GAMMA: f64 = 5.0 / 3.0;
+
+    particles.par_iter_mut().for_each(|p| {
+        if p.ptype != ParticleType::Gas {
+            return;
+        }
+
+        let t_i = u_to_t_code(p.internal_energy, GAMMA);
+
+        if p.t_electron <= 0.0 {
+            p.t_electron = t_i;
+            return;
+        }
+
+        let t_e = p.t_electron;
+        let h = p.smoothing_length.max(1e-10);
+        let rho = (p.mass / (h * h * h)).max(1e-30);
+
+        let t_e_eff = t_e.abs().max(1e-30);
+        let nu_ei = cfg.nu_ei_coeff * rho / (t_e_eff * t_e_eff.sqrt());
+
+        let factor = 1.0 - (-nu_ei * dt).exp();
+        p.t_electron = t_e + (t_i - t_e) * factor;
+
+        p.t_electron = p.t_electron.max(0.0);
+    });
+}
+
+pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSection, dt: f64) {
+    #[cfg(feature = "simd")]
+    {
+        apply_electron_ion_coupling_par(particles, cfg, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_electron_ion_coupling_impl(particles, cfg, dt);
     }
 }
 
@@ -94,7 +133,8 @@ pub fn apply_electron_ion_coupling(particles: &mut [Particle], cfg: &TwoFluidSec
 ///
 /// Útil para monitoreo: en ICM sin shocks → T_e/T_i ≈ 1.
 /// Detrás de shocks fuertes → T_e/T_i << 1.
-pub fn mean_te_over_ti(particles: &[Particle]) -> f64 {
+#[cfg(not(feature = "simd"))]
+fn mean_te_over_ti_impl(particles: &[Particle]) -> f64 {
     const GAMMA: f64 = 5.0 / 3.0;
     let mut sum = 0.0_f64;
     let mut n = 0usize;
@@ -107,4 +147,33 @@ pub fn mean_te_over_ti(particles: &[Particle]) -> f64 {
         n += 1;
     }
     if n == 0 { 1.0 } else { sum / n as f64 }
+}
+
+#[cfg(feature = "simd")]
+fn mean_te_over_ti_par(particles: &[Particle]) -> f64 {
+    const GAMMA: f64 = 5.0 / 3.0;
+    let (sum, n) = particles
+        .par_iter()
+        .filter(|p| p.ptype == ParticleType::Gas)
+        .fold(
+            || (0.0_f64, 0usize),
+            |(s, c), p| {
+                let t_i = u_to_t_code(p.internal_energy, GAMMA).max(1e-30);
+                (s + p.t_electron / t_i, c + 1)
+            },
+        )
+        .reduce(|| (0.0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+    if n == 0 { 1.0 } else { sum / n as f64 }
+}
+
+pub fn mean_te_over_ti(particles: &[Particle]) -> f64 {
+    #[cfg(feature = "simd")]
+    {
+        mean_te_over_ti_par(particles)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        mean_te_over_ti_impl(particles)
+    }
 }

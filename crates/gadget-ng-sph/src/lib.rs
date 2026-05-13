@@ -86,7 +86,7 @@ pub use gmc::inject_sn_from_cluster_periodic;
 pub use gmc::{GmcCluster, KroupaImf, collapse_gmc, inject_sn_from_cluster, sample_stellar_mass};
 pub use integrator::{courant_dt, sph_cosmo_kdk_step, sph_kdk_step, sph_kdk_step_gadget2};
 pub use ism::{effective_pressure, effective_u, update_ism_phases};
-pub use kernel::{grad_w, w};
+pub use kernel::{grad_w, grad_w_batch, w, w_and_grad_w_batch, w_batch};
 pub use molecular_gas::{update_h2_fraction, update_h2_fraction_with_dust};
 pub use particle::{GasData, ParticleType, SphParticle};
 pub use phase_transitions::{

@@ -41,6 +41,8 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 const C_ALPHA: f64 = 1.0 / 3.0;
 
@@ -61,7 +63,8 @@ pub fn dynamo_growth_rate(v_rms: f64, b_rms: f64, rho: f64) -> f64 {
     growth.max(0.0)
 }
 
-pub fn apply_turbulent_dynamo(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
+#[cfg(not(feature = "simd"))]
+fn apply_turbulent_dynamo_impl(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
     let alpha = alpha_coefficient(v_rms, 0.5);
     if alpha < 1e-30 {
         return;
@@ -107,7 +110,67 @@ pub fn apply_turbulent_dynamo(particles: &mut [Particle], v_rms: f64, dt: f64, d
     }
 }
 
-pub fn magnetic_energy_ratio(particles: &[Particle], _gamma: f64) -> f64 {
+#[cfg(feature = "simd")]
+fn apply_turbulent_dynamo_par(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
+    let alpha = alpha_coefficient(v_rms, 0.5);
+    if alpha < 1e-30 {
+        return;
+    }
+
+    let decay = (-dt / decay_time.max(1e-10)).exp();
+
+    particles.par_iter_mut().for_each(|p| {
+        if p.ptype != ParticleType::Gas {
+            return;
+        }
+
+        let b2 = p.b_field.x.powi(2) + p.b_field.y.powi(2) + p.b_field.z.powi(2);
+        if b2 < 1e-60 {
+            return;
+        }
+
+        let h = p.smoothing_length.max(1e-10);
+        let rho = (p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h)).max(1e-30);
+
+        let growth = dynamo_growth_rate(v_rms, b2.sqrt(), rho);
+        let growth_factor = (growth * dt).exp();
+
+        let b_norm = b2.sqrt().max(1e-30);
+        let bx = p.b_field.x / b_norm;
+        let by = p.b_field.y / b_norm;
+        let bz = p.b_field.z / b_norm;
+
+        let curl_b = alpha * (b_norm / h);
+
+        p.b_field.x += dt * curl_b * bx;
+        p.b_field.y += dt * curl_b * by;
+        p.b_field.z += dt * curl_b * bz;
+
+        let b_new = (p.b_field.x.powi(2) + p.b_field.y.powi(2) + p.b_field.z.powi(2)).sqrt();
+        if b_new > 1e-30 {
+            let grown = b_new * growth_factor;
+            let renormalized = grown * decay;
+            p.b_field.x *= renormalized / b_new;
+            p.b_field.y *= renormalized / b_new;
+            p.b_field.z *= renormalized / b_new;
+        }
+    });
+}
+
+pub fn apply_turbulent_dynamo(particles: &mut [Particle], v_rms: f64, dt: f64, decay_time: f64) {
+    #[cfg(feature = "simd")]
+    {
+        apply_turbulent_dynamo_par(particles, v_rms, dt, decay_time);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_turbulent_dynamo_impl(particles, v_rms, dt, decay_time);
+    }
+}
+
+#[cfg(not(feature = "simd"))]
+fn magnetic_energy_ratio_impl(particles: &[Particle], _gamma: f64) -> f64 {
     let mut e_kin_sum = 0.0_f64;
     let mut e_mag_sum = 0.0_f64;
     let mut n = 0usize;
@@ -128,9 +191,46 @@ pub fn magnetic_energy_ratio(particles: &[Particle], _gamma: f64) -> f64 {
     }
 
     if e_kin_sum < 1e-30 || n == 0 {
-        return 0.0;
+        0.0
+    } else {
+        e_mag_sum / e_kin_sum
     }
-    e_mag_sum / e_kin_sum
+}
+
+#[cfg(feature = "simd")]
+fn magnetic_energy_ratio_par(particles: &[Particle], _gamma: f64) -> f64 {
+    let (e_kin, e_mag, n) = particles
+        .par_iter()
+        .filter(|p| p.ptype == ParticleType::Gas)
+        .fold(
+            || (0.0_f64, 0.0_f64, 0usize),
+            |(ek, em, cnt), p| {
+                let h = p.smoothing_length.max(1e-10);
+                let rho = (p.mass / (h * h * h)).max(1e-30);
+                let v2 = p.velocity.x.powi(2) + p.velocity.y.powi(2) + p.velocity.z.powi(2);
+                let b2 = p.b_field.x.powi(2) + p.b_field.y.powi(2) + p.b_field.z.powi(2);
+                (ek + 0.5 * rho * v2, em + b2 / (2.0 * MU0), cnt + 1)
+            },
+        )
+        .reduce(|| (0.0, 0.0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+
+    if e_kin < 1e-30 || n == 0 {
+        0.0
+    } else {
+        e_mag / e_kin
+    }
+}
+
+pub fn magnetic_energy_ratio(particles: &[Particle], gamma: f64) -> f64 {
+    #[cfg(feature = "simd")]
+    {
+        magnetic_energy_ratio_par(particles, gamma)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        magnetic_energy_ratio_impl(particles, gamma)
+    }
 }
 
 pub fn maxwell_stress_tensor(b: Vec3, rho: f64) -> f64 {

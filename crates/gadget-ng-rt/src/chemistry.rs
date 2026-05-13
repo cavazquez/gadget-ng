@@ -59,6 +59,8 @@
 
 use crate::m1::RadiationField;
 use gadget_ng_core::Particle;
+#[cfg(feature = "simd")]
+use rayon::prelude::*;
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -509,7 +511,8 @@ impl Default for ChemParams {
 /// - `rad`       — campo de radiación M1 (para Γ_HI)
 /// - `params`    — parámetros de química
 /// - `dt`        — paso de tiempo [código]
-pub fn apply_chemistry(
+#[cfg(not(feature = "simd"))]
+fn apply_chemistry_impl(
     particles: &mut [Particle],
     chem_states: &mut [ChemState],
     rad: &RadiationField,
@@ -538,27 +541,83 @@ pub fn apply_chemistry(
     for (i, p) in particles.iter_mut().enumerate() {
         let st = &mut chem_states[i];
 
-        // Temperatura del gas
         let u_code = p.internal_energy;
         let t_gas = st.temperature_from_internal_energy(u_code, params.gamma);
 
-        // Tasa de fotoionización de HI desde el campo de radiación
-        // Se evalúa en la celda más cercana a la posición de la partícula
         let gamma_hi = photoionization_rate_at_pos(rad, p.position, box_size, &m1_dummy);
-        let gamma_hei = 0.0; // HeI fotoionización no implementada en M1 básico
+        let gamma_hei = 0.0;
 
-        // Resolver red química
         *st = solve_chemistry_implicit(st, gamma_hi, gamma_hei, t_gas, dt);
 
-        // Calentamiento/enfriamiento: modificar energía interna
-        // Aproximación: ΔU ≈ -Λ_cool × n_e × n_H × dt / ρ
-        // Se aplica una corrección pequeña proporcional a la ionización.
         let cool_rate = cooling_rate_approx(t_gas, st.x_e, params.n_h_ref)
             + cooling_rate_hd(t_gas, st.x_hd, params.n_h_ref);
         let delta_u = -cool_rate * dt / U_CODE_TO_ERG_G;
         p.internal_energy = (p.internal_energy + delta_u).max(0.0);
 
-        let _ = dv; // usado para diagnósticos futuros
+        let _ = dv;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn apply_chemistry_par(
+    particles: &mut [Particle],
+    chem_states: &mut [ChemState],
+    rad: &RadiationField,
+    params: &ChemParams,
+    dt: f64,
+) {
+    use crate::m1::M1Params;
+
+    let m1_dummy = M1Params {
+        c_red_factor: 100.0,
+        kappa_abs: 1.0,
+        kappa_scat: 0.0,
+        substeps: 1,
+        sigma_dust: 0.1,
+    };
+
+    assert_eq!(
+        particles.len(),
+        chem_states.len(),
+        "apply_chemistry: particles y chem_states deben tener la misma longitud"
+    );
+
+    let box_size = rad.dx * rad.nx as f64;
+
+    particles
+        .par_iter_mut()
+        .zip(chem_states.par_iter_mut())
+        .for_each(|(p, st)| {
+            let u_code = p.internal_energy;
+            let t_gas = st.temperature_from_internal_energy(u_code, params.gamma);
+
+            let gamma_hi = photoionization_rate_at_pos(rad, p.position, box_size, &m1_dummy);
+            let gamma_hei = 0.0;
+
+            *st = solve_chemistry_implicit(st, gamma_hi, gamma_hei, t_gas, dt);
+
+            let cool_rate = cooling_rate_approx(t_gas, st.x_e, params.n_h_ref)
+                + cooling_rate_hd(t_gas, st.x_hd, params.n_h_ref);
+            let delta_u = -cool_rate * dt / U_CODE_TO_ERG_G;
+            p.internal_energy = (p.internal_energy + delta_u).max(0.0);
+        });
+}
+
+pub fn apply_chemistry(
+    particles: &mut [Particle],
+    chem_states: &mut [ChemState],
+    rad: &RadiationField,
+    params: &ChemParams,
+    dt: f64,
+) {
+    #[cfg(feature = "simd")]
+    {
+        apply_chemistry_par(particles, chem_states, rad, params, dt);
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        apply_chemistry_impl(particles, chem_states, rad, params, dt);
     }
 }
 
