@@ -8,6 +8,7 @@ description = "Magnetohydrodynamics (MHD) for gadget-ng simulations"
 [features]
 default = []
 rayon = ["dep:rayon"]
+simd = []
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }

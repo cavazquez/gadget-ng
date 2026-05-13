@@ -41,7 +41,7 @@ implementations.
 | SPH density | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH forces/Gadget2 viscosity | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH cooling/dust/H2 | Yes | Yes, CUDA solvers | Experimental parity |
-| MHD flux-freezing/statistics | Yes | Yes, `CudaMhdSolver` | Experimental parity |
+| MHD flux-freezing/statistics | Statistics AVX2/AVX-512; flux-freeze scalar | Yes, `CudaMhdSolver` | Experimental parity |
 | MHD induction/forces/cleaning/transport | Yes | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
