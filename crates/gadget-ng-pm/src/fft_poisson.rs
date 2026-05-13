@@ -30,9 +30,6 @@ use rustfft::{FftPlanner, num_complex::Complex};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
-
 type PmFftPlanPair = (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>);
 type PmFftPlanCache = Mutex<HashMap<usize, PmFftPlanPair>>;
 
@@ -312,10 +309,6 @@ pub(crate) fn solve_forces_impl(
 
     // Volumen total y volumen de celda (para normalizar la densidad volumétrica).
     let cell_vol = (box_size / nm as f64).powi(3);
-    // El grid almacena masa/celda; convertir a densidad volumétrica (masa/volumen).
-    // La FFT de rustfft ya normaliza por 1/N en la IFFT; no necesitamos factor
-    // adicional, pero sí convertir ρ_celda → ρ_volumétrica para que las unidades
-    // de Φ sean [G·masa/longitud].
     let rho_scale = 1.0 / cell_vol;
 
     // ── FFT 3D de la densidad ─────────────────────────────────────────────────
@@ -331,62 +324,114 @@ pub(crate) fn solve_forces_impl(
     fft3d_inplace(&mut rho_c, nm, &fft_fwd);
 
     // ── Resolver Poisson y construir F̂_x, F̂_y, F̂_z en k-space ────────────
-    let dk = 2.0 * std::f64::consts::PI / box_size; // espaciado en k
+    let dk = 2.0 * std::f64::consts::PI / box_size;
     let four_pi_g = 4.0 * std::f64::consts::PI * g;
 
-    let mut fx_c = vec![Complex::new(0.0, 0.0); nm3];
-    let mut fy_c = vec![Complex::new(0.0, 0.0); nm3];
-    let mut fz_c = vec![Complex::new(0.0, 0.0); nm3];
+    // Convertir a SoA (Structure of Arrays) para vectorización
+    let rho_re: Vec<f64> = rho_c.iter().map(|c| c.re).collect();
+    let rho_im: Vec<f64> = rho_c.iter().map(|c| c.im).collect();
 
-    // Bucle k-space: calcular Φ̂(k) y las tres componentes F̂_α.
-    // Con la feature `rayon`, se paraleliza el índice plano (independiente por celda).
-    #[cfg(not(feature = "rayon"))]
-    let kspace_iter = 0..nm3;
-    #[cfg(feature = "rayon")]
-    let kspace_iter = (0..nm3).into_par_iter();
+    // Pre-calcular wave numbers para cada eje
+    let kx_arr: Vec<f64> = (0..nm).map(|ix| dk * freq_index(ix, nm) as f64).collect();
+    let ky_arr: Vec<f64> = (0..nm).map(|iy| dk * freq_index(iy, nm) as f64).collect();
+    let kz_arr: Vec<f64> = (0..nm).map(|iz| dk * freq_index(iz, nm) as f64).collect();
 
-    let results: Vec<(Complex<f64>, Complex<f64>, Complex<f64>)> = kspace_iter
-        .map(|flat| {
-            let iz = flat / nm2;
-            let iy = (flat / nm) % nm;
-            let ix = flat % nm;
-            let kx = dk * freq_index(ix, nm) as f64;
-            let ky = dk * freq_index(iy, nm) as f64;
-            let kz = dk * freq_index(iz, nm) as f64;
-            let k2 = kx * kx + ky * ky + kz * kz;
-            if k2 < 1e-30 {
-                return (
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
+    let mut fx_re = vec![0.0_f64; nm3];
+    let mut fx_im = vec![0.0_f64; nm3];
+    let mut fy_re = vec![0.0_f64; nm3];
+    let mut fy_im = vec![0.0_f64; nm3];
+    let mut fz_re = vec![0.0_f64; nm3];
+    let mut fz_im = vec![0.0_f64; nm3];
+
+    // Dispatch SIMD del kernel espectral
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            unsafe {
+                spectral_kernel_avx512(
+                    &rho_re,
+                    &rho_im,
+                    &kx_arr,
+                    &ky_arr,
+                    &kz_arr,
+                    four_pi_g,
+                    r_split,
+                    plummer_eps,
+                    nm,
+                    &mut fx_re,
+                    &mut fx_im,
+                    &mut fy_re,
+                    &mut fy_im,
+                    &mut fz_re,
+                    &mut fz_im,
                 );
             }
-            let mut filter = 1.0_f64;
-            if let Some(r_s) = r_split {
-                filter *= (-0.5 * k2 * r_s * r_s).exp();
+        } else if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            unsafe {
+                spectral_kernel_avx2(
+                    &rho_re,
+                    &rho_im,
+                    &kx_arr,
+                    &ky_arr,
+                    &kz_arr,
+                    four_pi_g,
+                    r_split,
+                    plummer_eps,
+                    nm,
+                    &mut fx_re,
+                    &mut fx_im,
+                    &mut fy_re,
+                    &mut fy_im,
+                    &mut fz_re,
+                    &mut fz_im,
+                );
             }
-            if let Some(eps) = plummer_eps
-                && eps > 0.0
-            {
-                filter *= (-k2 * eps * eps).exp();
-            }
-            let phi_k = rho_c[flat] * (-four_pi_g * filter / k2);
-            (
-                Complex::new(kx * phi_k.im, -kx * phi_k.re),
-                Complex::new(ky * phi_k.im, -ky * phi_k.re),
-                Complex::new(kz * phi_k.im, -kz * phi_k.re),
-            )
-        })
-        .collect();
-
-    for (flat, (fx_v, fy_v, fz_v)) in results.into_iter().enumerate() {
-        fx_c[flat] = fx_v;
-        fy_c[flat] = fy_v;
-        fz_c[flat] = fz_v;
+        } else {
+            spectral_kernel_scalar(
+                &rho_re,
+                &rho_im,
+                &kx_arr,
+                &ky_arr,
+                &kz_arr,
+                four_pi_g,
+                r_split,
+                plummer_eps,
+                nm,
+                &mut fx_re,
+                &mut fx_im,
+                &mut fy_re,
+                &mut fy_im,
+                &mut fz_re,
+                &mut fz_im,
+            );
+        }
     }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    spectral_kernel_scalar(
+        &rho_re,
+        &rho_im,
+        &kx_arr,
+        &ky_arr,
+        &kz_arr,
+        four_pi_g,
+        r_split,
+        plummer_eps,
+        nm,
+        &mut fx_re,
+        &mut fx_im,
+        &mut fy_re,
+        &mut fy_im,
+        &mut fz_re,
+        &mut fz_im,
+    );
+
+    // Convertir SoA de vuelta a AoS Complex<f64> para IFFT
+    let mut fx_c: Vec<Complex<f64>> = (0..nm3).map(|i| Complex::new(fx_re[i], fx_im[i])).collect();
+    let mut fy_c: Vec<Complex<f64>> = (0..nm3).map(|i| Complex::new(fy_re[i], fy_im[i])).collect();
+    let mut fz_c: Vec<Complex<f64>> = (0..nm3).map(|i| Complex::new(fz_re[i], fz_im[i])).collect();
 
     // ── IFFT 3D de cada componente de fuerza ─────────────────────────────────
-    let norm = 1.0 / nm3 as f64; // normalización IFFT
+    let norm = 1.0 / nm3 as f64;
     ifft3d_inplace(&mut fx_c, nm, &fft_inv);
     ifft3d_inplace(&mut fy_c, nm, &fft_inv);
     ifft3d_inplace(&mut fz_c, nm, &fft_inv);
@@ -396,6 +441,165 @@ pub(crate) fn solve_forces_impl(
     let fz: Vec<f64> = fz_c.iter().map(|c| c.re * norm).collect();
 
     [fx, fy, fz]
+}
+
+// ── Kernels espectrales Poisson (SoA layout para vectorización) ──────────────
+
+/// Kernel escalar: calcula Φ̂(k) y F̂_α(k) para cada punto del grid k-space.
+///
+/// Usa layout SoA (arrays separados de re/im) para permitir auto-vectorización.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "spectral kernel keeps SoA slices explicit"
+)]
+fn spectral_kernel_scalar(
+    rho_re: &[f64],
+    rho_im: &[f64],
+    kx_arr: &[f64],
+    ky_arr: &[f64],
+    kz_arr: &[f64],
+    four_pi_g: f64,
+    r_split: Option<f64>,
+    plummer_eps: Option<f64>,
+    nm: usize,
+    fx_re: &mut [f64],
+    fx_im: &mut [f64],
+    fy_re: &mut [f64],
+    fy_im: &mut [f64],
+    fz_re: &mut [f64],
+    fz_im: &mut [f64],
+) {
+    let nm2 = nm * nm;
+    let r_split2 = r_split.map(|r| r * r);
+    let eps2 = plummer_eps.map(|e| e * e);
+
+    for flat in 0..rho_re.len() {
+        let iz = flat / nm2;
+        let iy = (flat / nm) % nm;
+        let ix = flat % nm;
+        let kx = kx_arr[ix];
+        let ky = ky_arr[iy];
+        let kz = kz_arr[iz];
+        let k2 = kx * kx + ky * ky + kz * kz;
+
+        if k2 < 1e-30 {
+            fx_re[flat] = 0.0;
+            fx_im[flat] = 0.0;
+            fy_re[flat] = 0.0;
+            fy_im[flat] = 0.0;
+            fz_re[flat] = 0.0;
+            fz_im[flat] = 0.0;
+            continue;
+        }
+
+        let mut filter = 1.0_f64;
+        if let Some(r2) = r_split2 {
+            filter *= (-0.5 * k2 * r2).exp();
+        }
+        if let Some(e2) = eps2
+            && e2 > 0.0
+        {
+            filter *= (-k2 * e2).exp();
+        }
+
+        // phi_k = rho_c[flat] * (-4πG * filter / k2)
+        let phi_re = rho_re[flat] * (-four_pi_g * filter / k2);
+        let phi_im = rho_im[flat] * (-four_pi_g * filter / k2);
+
+        // F̂_α = -i k_α Φ̂(k) = Complex(k_α * phi_im, -k_α * phi_re)
+        fx_re[flat] = kx * phi_im;
+        fx_im[flat] = -kx * phi_re;
+        fy_re[flat] = ky * phi_im;
+        fy_im[flat] = -ky * phi_re;
+        fz_re[flat] = kz * phi_im;
+        fz_im[flat] = -kz * phi_re;
+    }
+}
+
+/// Kernel AVX2+FMA: fuerza al compilador a emitir instrucciones YMM (4×f64).
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2", enable = "fma")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "spectral kernel keeps SoA slices explicit"
+)]
+unsafe fn spectral_kernel_avx2(
+    rho_re: &[f64],
+    rho_im: &[f64],
+    kx_arr: &[f64],
+    ky_arr: &[f64],
+    kz_arr: &[f64],
+    four_pi_g: f64,
+    r_split: Option<f64>,
+    plummer_eps: Option<f64>,
+    nm: usize,
+    fx_re: &mut [f64],
+    fx_im: &mut [f64],
+    fy_re: &mut [f64],
+    fy_im: &mut [f64],
+    fz_re: &mut [f64],
+    fz_im: &mut [f64],
+) {
+    spectral_kernel_scalar(
+        rho_re,
+        rho_im,
+        kx_arr,
+        ky_arr,
+        kz_arr,
+        four_pi_g,
+        r_split,
+        plummer_eps,
+        nm,
+        fx_re,
+        fx_im,
+        fy_re,
+        fy_im,
+        fz_re,
+        fz_im,
+    )
+}
+
+/// Kernel AVX-512: fuerza al compilador a emitir instrucciones ZMM (8×f64).
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx512f")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "spectral kernel keeps SoA slices explicit"
+)]
+unsafe fn spectral_kernel_avx512(
+    rho_re: &[f64],
+    rho_im: &[f64],
+    kx_arr: &[f64],
+    ky_arr: &[f64],
+    kz_arr: &[f64],
+    four_pi_g: f64,
+    r_split: Option<f64>,
+    plummer_eps: Option<f64>,
+    nm: usize,
+    fx_re: &mut [f64],
+    fx_im: &mut [f64],
+    fy_re: &mut [f64],
+    fy_im: &mut [f64],
+    fz_re: &mut [f64],
+    fz_im: &mut [f64],
+) {
+    spectral_kernel_scalar(
+        rho_re,
+        rho_im,
+        kx_arr,
+        ky_arr,
+        kz_arr,
+        four_pi_g,
+        r_split,
+        plummer_eps,
+        nm,
+        fx_re,
+        fx_im,
+        fy_re,
+        fy_im,
+        fz_re,
+        fz_im,
+    )
 }
 
 /// Convierte un índice DFT `j ∈ [0, nm)` en el número de onda entero correspondiente.

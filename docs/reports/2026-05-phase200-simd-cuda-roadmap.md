@@ -195,15 +195,24 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 
 ### Fase 7 — FFT/Poisson SIMD (~200 LOC, ~1h)
 
-**Estado:** PENDIENTE
-**Fecha planificada:** 2026-05-19
+**Estado:** ✅ COMPLETADO (2026-05-13)
 **Prioridad:** Media
 
-| # | Item | Archivo | Descripción |
-|---|------|---------|-------------|
-| 7.1 | SoA complex grid | `gadget-ng-pm/src/fft_poisson.rs` | Convert AoS complex grid to SoA for SIMD |
-| 7.2 | Spectral kernel SIMD | `gadget-ng-pm/src/fft_poisson.rs` | `#[target_feature]` for k-space Poisson kernel |
-| 7.3 | Runtime dispatch | `gadget-ng-pm/src/fft_poisson.rs` | avx512f → avx2 → scalar |
+| # | Item | Archivo | Descripción | Estado |
+|---|------|---------|-------------|--------|
+| 7.1 | SoA complex grid | `gadget-ng-pm/src/fft_poisson.rs` | Convert AoS `Complex<f64>` to SoA (`rho_re`, `rho_im`, output 6 slices) | ✅ |
+| 7.2 | Spectral kernel SIMD | `gadget-ng-pm/src/fft_poisson.rs` | `spectral_kernel_scalar` + `spectral_kernel_avx2` + `spectral_kernel_avx512` with `#[target_feature]` | ✅ |
+| 7.3 | Runtime dispatch | `gadget-ng-pm/src/fft_poisson.rs` | `is_x86_feature_detected!("avx512f")` → `avx2+fma` → scalar | ✅ |
+| 7.4 | Pre-computed wave numbers | `gadget-ng-pm/src/fft_poisson.rs` | `kx_arr`, `ky_arr`, `kz_arr` computed once, indexed per element | ✅ |
+| 7.5 | Tests | `gadget-ng-pm/src/fft_poisson.rs` | Existing `uniform_density_zero_force`, `fft3d_roundtrip`, `modified_gravity_*` tests pass | ✅ |
+
+**Key design decisions:**
+- k-space spectral kernel converted from AoS `Complex<f64>` to SoA layout (separate `rho_re`/`rho_im` input, `fx_re`/`fx_im`/`fy_re`/`fy_im`/`fz_re`/`fz_im` output) for better auto-vectorization.
+- Wave numbers `kx_arr`, `ky_arr`, `kz_arr` pre-computed once per direction (size `nm` each), reducing redundant `freq_index()` calls from `nm³` to `nm`.
+- `spectral_kernel_scalar` is the inner loop called by all three `#[target_feature]` wrappers. LLVM emits vector instructions when forced by the `target_feature` attribute.
+- The Poisson kernel remains mathematically identical: `Φ̂(k) = -4πG·ρ̂(k)·filter/k²`, `F̂_α = -i·k_α·Φ̂(k)`. Only the memory layout and dispatch strategy changed.
+- Pre-existing Rayon k-space parallel loop replaced by SIMD dispatch (single-thread vectorized loop over `nm³` elements). Rayon parallelism for the outer FFT level still available via `assign_rayon`/`interpolate_rayon` in `cic.rs`.
+- All 46 PM tests pass (39 unit + 7 integration). Clippy clean with `-D warnings` for both `rayon` and non-`rayon`.
 
 ---
 
@@ -257,3 +266,4 @@ Added branch-free batch versions of `w()` and `grad_w()` with runtime SIMD dispa
 | 2026-05-13 | 3 | Fase 3 completada: Gravity AVX-512 with BLOCK_J=128, inner_scalar_128, runtime dispatch avx512f→avx2+fma→scalar. |
 | 2026-05-13 | 5 | Fase 5 completada: 7 MHD pair-loop functions con Rayon parallel (_impl/_par) + serial fallback. Half-pair→N² per-particle para clean par_iter. Tests pass, clippy clean. |
 | 2026-05-13 | 6 | Fase 6 completada: CIC SIMD batch functions con AVX-512/AVX2+FMA/scalar dispatch. SoA layout for auto-vectorization. 39 PM tests pass, clippy clean. |
+| 2026-05-13 | 7 | Fase 7 completada: FFT/Poisson k-space spectral kernel SoA layout + AVX-512/AVX2+FMA scalar dispatch. Pre-computed wave numbers. 46 PM tests pass, clippy clean. |
