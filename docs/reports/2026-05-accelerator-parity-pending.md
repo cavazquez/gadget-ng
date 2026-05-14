@@ -90,6 +90,7 @@ The main pieces still required are:
 Phase 203 closed AP-01c; AP-10/11/12 close additional SIMD-without-Rayon gaps.
 The next recommended phase is AP-03: validate the new MHD/Tree CUDA kernels on real
 NVIDIA hardware before wiring them into production runtime paths. For SIMD,
-the next targets are the remaining Level 2-3 items: MHD nonideal (ambipolar diffusion),
-MHD two-fluid, RT IGM temperature, SPH metal cooling (table lookup), and MHD per-particle O(N)
-operations (CR streaming).
+AP-13 (dynamo), AP-14 (ambipolar diffusion), and AP-15 (two-fluid) close additional
+SIMD-without-Rayon gaps. RT IGM temperature remains scalar-optimal (ChemState AoS
+layout prevents profitable vectorization). The next targets are SPH metal cooling
+(table lookup) and MHD CR streaming.

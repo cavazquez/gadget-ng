@@ -95,19 +95,6 @@ pub fn temperature_from_particle(internal_energy: f64, chem: &ChemState, gamma: 
     chem.temperature_from_internal_energy(internal_energy, gamma)
 }
 
-/// Calcula el perfil de temperatura del IGM para un conjunto de partículas de gas.
-///
-/// Filtra las partículas del IGM (baja densidad) y computa estadísticas de temperatura.
-///
-/// # Argumentos
-/// - `particles`    — partículas de gas SPH
-/// - `chem_states`  — estados de ionización por partícula (misma longitud que `particles`)
-/// - `mean_density` — densidad media del universo en unidades internas (para calcular δ)
-/// - `z`            — redshift actual
-/// - `params`       — parámetros del cálculo
-///
-/// # Retorna
-/// `IgmTempBin` con las estadísticas de temperatura del IGM.
 #[cfg(not(feature = "rayon"))]
 fn compute_igm_temp_profile_impl(
     particles: &[Particle],
@@ -143,36 +130,7 @@ fn compute_igm_temp_profile_impl(
         }
     }
 
-    if temperatures.is_empty() {
-        return IgmTempBin {
-            z,
-            ..Default::default()
-        };
-    }
-
-    let n_p = temperatures.len();
-    let t_mean = temperatures.iter().sum::<f64>() / n_p as f64;
-    let t_var = temperatures
-        .iter()
-        .map(|&t| (t - t_mean).powi(2))
-        .sum::<f64>()
-        / n_p as f64;
-    let t_sigma = t_var.sqrt();
-
-    temperatures.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let t_median = percentile(&temperatures, 0.50);
-    let t_p16 = percentile(&temperatures, 0.16);
-    let t_p84 = percentile(&temperatures, 0.84);
-
-    IgmTempBin {
-        z,
-        t_mean,
-        t_median,
-        t_sigma,
-        t_p16,
-        t_p84,
-        n_particles: n_p,
-    }
+    compute_igm_temp_stats(&mut temperatures, z)
 }
 
 #[cfg(feature = "rayon")]
@@ -216,6 +174,10 @@ fn compute_igm_temp_profile_par(
         })
         .collect();
 
+    compute_igm_temp_stats(&mut temperatures, z)
+}
+
+fn compute_igm_temp_stats(temperatures: &mut [f64], z: f64) -> IgmTempBin {
     if temperatures.is_empty() {
         return IgmTempBin {
             z,
@@ -233,9 +195,9 @@ fn compute_igm_temp_profile_par(
     let t_sigma = t_var.sqrt();
 
     temperatures.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let t_median = percentile(&temperatures, 0.50);
-    let t_p16 = percentile(&temperatures, 0.16);
-    let t_p84 = percentile(&temperatures, 0.84);
+    let t_median = percentile(temperatures, 0.50);
+    let t_p16 = percentile(temperatures, 0.16);
+    let t_p84 = percentile(temperatures, 0.84);
 
     IgmTempBin {
         z,
@@ -298,14 +260,12 @@ mod tests {
     use super::*;
     use gadget_ng_core::Vec3;
 
-    /// Crea partícula de gas con `smoothing_length` tal que ρ_SPH ≈ target_density.
-    /// ρ ≈ m / h³ → h = (m / ρ)^(1/3)
     fn make_gas_particle(internal_energy: f64, target_density: f64) -> Particle {
         let mass = 1e-6f64;
         let h = if target_density > 0.0 {
             (mass / target_density).cbrt()
         } else {
-            0.1 // default
+            0.1
         };
         Particle::new_gas(
             0,
@@ -327,12 +287,8 @@ mod tests {
 
     #[test]
     fn temperature_from_particle_reasonable() {
-        // Partícula con energía interna equivalente a ~10⁴ K en unidades internas (km²/s²)
-        // T ~ 10⁴ K → u ~ k_B T / ((γ-1) μ m_p) / U_CODE_TO_ERG_G
-        // U_CODE_TO_ERG_G = 1e10 (gadget-ng units: km²/s² → erg/g)
-        // u_code ≈ 2.1e13 erg/g / 1e10 = 2100 km²/s²
         let chem = warm_ionized_chem();
-        let u_code = 2100.0_f64; // ~10⁴ K en unidades internas
+        let u_code = 2100.0_f64;
         let t = temperature_from_particle(u_code, &chem, 5.0 / 3.0);
         assert!(t > 1e3 && t < 1e7, "T = {t:.2e} K fuera del rango esperado");
     }
@@ -352,11 +308,8 @@ mod tests {
         };
         let mean_density = 1e-4;
 
-        // u_code en unidades internas (km²/s²)
         let u_code = 2100.0_f64;
-        // Partícula IGM: ρ_SPH ≈ mean_density * 5 < delta_max * mean_density → incluida
         let igm_particle = make_gas_particle(u_code, mean_density * 5.0);
-        // Partícula en halo: ρ_SPH ≈ mean_density * 100 > delta_max * mean_density → excluida
         let halo_particle = make_gas_particle(u_code, mean_density * 100.0);
 
         let chem = vec![warm_ionized_chem(), warm_ionized_chem()];
@@ -370,7 +323,6 @@ mod tests {
     fn compute_igm_temp_profile_mean_and_median_reasonable() {
         let n = 100;
         let params = IgmTempParams::default();
-        // Partículas con energía interna uniforme en unidades internas
         let u_code = 2100.0_f64;
         let particles: Vec<Particle> = (0..n).map(|_| make_gas_particle(u_code, 0.0)).collect();
         let chems: Vec<ChemState> = (0..n).map(|_| warm_ionized_chem()).collect();
@@ -391,8 +343,8 @@ mod tests {
     fn compute_igm_temp_all_includes_all_particles() {
         let u_code = 2100.0_f64;
         let particles = vec![
-            make_gas_particle(u_code, 1e-2), // alta densidad
-            make_gas_particle(u_code, 1e-6), // baja densidad
+            make_gas_particle(u_code, 1e-2),
+            make_gas_particle(u_code, 1e-6),
         ];
         let chems = vec![warm_ionized_chem(), warm_ionized_chem()];
         let result = compute_igm_temp_all(&particles, &chems, 7.0, 5.0 / 3.0);
