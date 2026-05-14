@@ -177,22 +177,25 @@ y la cobertura detallada en
 | SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
-| Cooling H/He/metales/UVB | ✅ | ✅ | ⚠️ no intrinsics dedicados | ✅ |
+| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch (all modes) | ✅ |
 | Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ |
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
-| MHD induction/resistivity | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
+| MHD induction/resistivity | ✅ | ✅ | ⚠️ no AVX explícito (cleaning final-update has AVX2 + AVX512) | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
+| MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 final-update | ✅ |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ no AVX explícito | ✅ scalar diffusion surface |
 | MHD Braginskii | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
 | MHD reconnection | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
-| MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
+| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 dynamo B-field update + energy ratio | ✅ combined kernel |
+| MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ |
+| MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ |
 | SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ |
 | MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ✅ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
 | RT chemistry stiff solver | ✅ | ✅ | ⚠️ subciclo implícito escalar | ❌ |
+| RT IGM temperature profile | ✅ | ✅ | ⚠️ scalar-optimal (ChemState AoS prevents vectorization) | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
