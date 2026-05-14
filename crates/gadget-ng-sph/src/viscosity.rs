@@ -25,8 +25,9 @@
 //! donde `∇_i W(r_ij, h_i) = grad_w(r, h_i) / h_i · r̂_ij`.
 
 use crate::density::GAMMA;
-use crate::kernel::grad_w;
 #[cfg(feature = "rayon")]
+#[cfg(feature = "rayon")]
+use crate::kernel::grad_w;
 use crate::kernel::grad_w_batch;
 use crate::particle::SphParticle;
 use crate::periodic_delta;
@@ -108,7 +109,6 @@ pub fn compute_balsara_factors_with_periodic(
     }
 
     #[cfg(not(feature = "rayon"))]
-    #[cfg(not(feature = "rayon"))]
     for i in 0..n {
         if !is_gas[i] {
             continue;
@@ -127,8 +127,11 @@ pub fn compute_balsara_factors_with_periodic(
 
         let inv_rho_i = 1.0 / rho[i];
 
-        let mut div_v = 0.0_f64; // ∇·v  (escalar)
-        let mut curl_v = Vec3::zero(); // ∇×v  (vector 3D)
+        let mut div_v = 0.0_f64;
+        let mut curl_v = Vec3::zero();
+
+        let mut r_buf: Vec<f64> = Vec::with_capacity(n);
+        let mut idx_buf: Vec<usize> = Vec::with_capacity(n);
 
         for j in 0..n {
             if j == i || !is_gas[j] || rho[j] < 1e-200 {
@@ -136,35 +139,51 @@ pub fn compute_balsara_factors_with_periodic(
             }
             let r_ij = periodic_delta(pos[j], pi, periodic_box);
             let r = r_ij.norm();
+            if r >= 2.0 * hi {
+                continue;
+            }
+            r_buf.push(r);
+            idx_buf.push(j);
+        }
 
-            let gw = grad_w(r, hi);
+        let m = r_buf.len();
+        if m == 0 {
+            let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(1e-30);
+            let eps_term = EPS_BAL * cs_i / hi;
+            if let Some(gas) = particles[i].gas.as_mut() {
+                gas.balsara = 0.0 / eps_term;
+            }
+            continue;
+        }
+
+        let mut gw_buf = vec![0.0_f64; m];
+        grad_w_batch(&r_buf, hi, &mut gw_buf);
+
+        let inv_hi = 1.0 / hi;
+        for k in 0..m {
+            let gw = gw_buf[k];
             if gw == 0.0 {
                 continue;
             }
-
+            let j = idx_buf[k];
+            let r = r_buf[k];
+            let r_ij = periodic_delta(pos[j], pi, periodic_box);
             let r_hat = if r > 1e-300 {
                 r_ij * (1.0 / r)
             } else {
                 Vec3::zero()
             };
-            // ∇_i W(r_ij, h_i)  (apunta de j hacia i)
-            let nabla_w = r_hat * (gw / hi);
-
-            let dv = vel[j] - vi; // v_j − v_i
-
-            // ∇·v  =  (1/ρ_i) Σ m_j (v_j−v_i)·∇W_ij
+            let nabla_w = r_hat * (gw * inv_hi);
+            let dv = vel[j] - vi;
             div_v += mass[j] * dv.dot(nabla_w);
-
-            // ∇×v  =  (1/ρ_i) Σ m_j ∇W_ij × (v_j−v_i)
             curl_v += cross(nabla_w, dv) * mass[j];
         }
 
         div_v *= inv_rho_i;
         curl_v *= inv_rho_i;
-
         let abs_div = div_v.abs();
         let abs_curl = curl_v.norm();
-        let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
+        let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(1e-30);
         let eps_term = EPS_BAL * cs_i / hi;
 
         let balsara_val = abs_div / (abs_div + abs_curl + eps_term);

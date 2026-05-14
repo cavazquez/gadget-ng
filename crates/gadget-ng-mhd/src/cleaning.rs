@@ -30,6 +30,20 @@
 use gadget_ng_core::{Particle, ParticleType, Vec3};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 /// Gradiente SPH del campo escalar ψ para un par (i, j).
 fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
@@ -112,6 +126,46 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
     }
 
     let decay = (-c_r * dt).exp();
+
+    #[cfg(all(
+        not(feature = "rayon"),
+        feature = "simd",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime.
+            // Only the final update step is vectorized;
+            // the O(N²) pairwise loop stays scalar.
+            unsafe {
+                dedner_cleaning_update_simd(
+                    particles,
+                    &div_b,
+                    &grad_psi,
+                    c_h * c_h * dt,
+                    decay,
+                    dt,
+                );
+                return;
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime.
+            unsafe {
+                dedner_cleaning_update_simd(
+                    particles,
+                    &div_b,
+                    &grad_psi,
+                    c_h * c_h * dt,
+                    decay,
+                    dt,
+                );
+                return;
+            }
+        }
+    }
+
     for i in 0..n {
         if particles[i].ptype == ParticleType::Gas {
             particles[i].psi_div = particles[i].psi_div * decay - c_h * c_h * div_b[i] * dt;
@@ -221,5 +275,122 @@ pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
     #[cfg(not(feature = "rayon"))]
     {
         dedner_cleaning_step_impl(particles, c_h, c_r, dt);
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn dedner_cleaning_update_simd(
+    particles: &mut [Particle],
+    div_b: &[f64],
+    grad_psi: &[Vec3],
+    c_h_sq_dt: f64,
+    decay: f64,
+    dt: f64,
+) {
+    let lanes = 4;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let c_h_sq_dt_v = _mm256_set1_pd(c_h_sq_dt);
+    let decay_v = _mm256_set1_pd(decay);
+    let dt_v = _mm256_set1_pd(dt);
+    let mut i = 0;
+    while i + lanes <= chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            for lane in 0..lanes {
+                if particles[i + lane].ptype == ParticleType::Gas {
+                    particles[i + lane].psi_div =
+                        particles[i + lane].psi_div * decay - c_h_sq_dt * div_b[i + lane];
+                    particles[i + lane].b_field.x -= grad_psi[i + lane].x * dt;
+                    particles[i + lane].b_field.y -= grad_psi[i + lane].y * dt;
+                    particles[i + lane].b_field.z -= grad_psi[i + lane].z * dt;
+                }
+            }
+            i += lanes;
+            continue;
+        }
+        let psi = _mm256_set_pd(
+            particles[i + 3].psi_div,
+            particles[i + 2].psi_div,
+            particles[i + 1].psi_div,
+            particles[i].psi_div,
+        );
+        let div_b_v = _mm256_set_pd(div_b[i + 3], div_b[i + 2], div_b[i + 1], div_b[i]);
+        let new_psi = _mm256_sub_pd(
+            _mm256_mul_pd(psi, decay_v),
+            _mm256_mul_pd(c_h_sq_dt_v, div_b_v),
+        );
+        let gp_x = _mm256_set_pd(
+            grad_psi[i + 3].x,
+            grad_psi[i + 2].x,
+            grad_psi[i + 1].x,
+            grad_psi[i].x,
+        );
+        let gp_y = _mm256_set_pd(
+            grad_psi[i + 3].y,
+            grad_psi[i + 2].y,
+            grad_psi[i + 1].y,
+            grad_psi[i].y,
+        );
+        let gp_z = _mm256_set_pd(
+            grad_psi[i + 3].z,
+            grad_psi[i + 2].z,
+            grad_psi[i + 1].z,
+            grad_psi[i].z,
+        );
+        let bx = _mm256_set_pd(
+            particles[i + 3].b_field.x,
+            particles[i + 2].b_field.x,
+            particles[i + 1].b_field.x,
+            particles[i].b_field.x,
+        );
+        let by = _mm256_set_pd(
+            particles[i + 3].b_field.y,
+            particles[i + 2].b_field.y,
+            particles[i + 1].b_field.y,
+            particles[i].b_field.y,
+        );
+        let bz = _mm256_set_pd(
+            particles[i + 3].b_field.z,
+            particles[i + 2].b_field.z,
+            particles[i + 1].b_field.z,
+            particles[i].b_field.z,
+        );
+        let new_bx = _mm256_sub_pd(bx, _mm256_mul_pd(dt_v, gp_x));
+        let new_by = _mm256_sub_pd(by, _mm256_mul_pd(dt_v, gp_y));
+        let new_bz = _mm256_sub_pd(bz, _mm256_mul_pd(dt_v, gp_z));
+        let mut out_psi = [0.0f64; 4];
+        let mut out_bx = [0.0f64; 4];
+        let mut out_by = [0.0f64; 4];
+        let mut out_bz = [0.0f64; 4];
+        // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+        unsafe {
+            _mm256_storeu_pd(out_psi.as_mut_ptr(), new_psi);
+            _mm256_storeu_pd(out_bx.as_mut_ptr(), new_bx);
+            _mm256_storeu_pd(out_by.as_mut_ptr(), new_by);
+            _mm256_storeu_pd(out_bz.as_mut_ptr(), new_bz);
+        }
+        for lane in 0..lanes {
+            particles[i + lane].psi_div = out_psi[lane];
+            particles[i + lane].b_field.x = out_bx[lane];
+            particles[i + lane].b_field.y = out_by[lane];
+            particles[i + lane].b_field.z = out_bz[lane];
+        }
+        i += lanes;
+    }
+    for j in chunks..n {
+        if particles[j].ptype == ParticleType::Gas {
+            particles[j].psi_div = particles[j].psi_div * decay - c_h_sq_dt * div_b[j];
+            particles[j].b_field.x -= grad_psi[j].x * dt;
+            particles[j].b_field.y -= grad_psi[j].y * dt;
+            particles[j].b_field.z -= grad_psi[j].z * dt;
+        }
     }
 }

@@ -19,11 +19,13 @@ the remaining scalar/stiff solver rows.
 | Barnes-Hut local tree | Complete | Complete | AVX2 + AVX-512 local walk | Monopole smoke/parity surface |
 | Tree LET / RMN SoA | Complete | Complete | AVX2 + AVX-512 | No full LET traversal |
 | TreePM hybrid | Complete | Complete | AVX2 + AVX-512 short-range CPU kernel | Partial GPU hybrid |
-| SPH density/forces/Gadget-2 | Complete | Complete | Batch/tiling kernels | Smoke/parity kernels |
-| SPH cooling/dust/H2 | Complete | Complete | Dust growth/sputtering/radiation kick, H2+dust shielding AVX2+AVX-512, **cooling per-particle AVX2+AVX-512** | Smoke/parity kernels |
-| MHD induction/forces/cleaning | Complete | Complete | **Cleaning final update AVX2+AVX-512 (pairwise loop scalar)** | Smoke/parity kernels |
+| SPH density/forces/Gadget-2 | Complete | Complete | **Batch kernels in all paths**; Wendland AVX2 + AVX-512 | Smoke/parity kernels |
+| SPH cooling/dust/H2 | Complete | Complete | **Cooling per-particle AVX2+AVX-512 (all modes)**; dust AVX2+AVX-512; H2+dust shielding AVX2+AVX-512 | Smoke/parity kernels |
+| SPH viscosity (Balsara) | Complete | Complete | **grad_w_batch in all paths** | Smoke/parity kernels |
+| MHD induction/forces/cleaning | Complete | Complete | **Cleaning final-update AVX2+AVX-512** (pairwise loop scalar) | Smoke/parity kernels |
 | MHD flux-freeze | Complete | Complete | **AVX2 + AVX-512 (B-field scaling + mean density)** | Smoke/parity kernels |
-| MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | No dedicated AVX | Smoke/parity kernels |
+| MHD two-fluid (electron-ion coupling) | Complete | Complete | **AVX2+AVX-512 e-i coupling + T_e/T_i reduction** | Smoke/parity kernels |
+| MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | **Dynamo AVX2+AVX-512 (B-field update + energy ratio)**; **Ambipolar diffusion AVX2+AVX-512** | Smoke/parity kernels |
 | MHD stats b_field_stats | Complete | Complete | **AVX-512 real 8-lane (was stub)** | Smoke/parity kernels |
 | RT diagnostics/photoheating | Complete | Complete | AVX2 + AVX-512 diagnostics/photoheating | Smoke/parity kernels |
 | RT full M1 advection | Complete | Complete advection + update | AVX2 + AVX-512 final update | Pending |
@@ -51,6 +53,9 @@ the remaining scalar/stiff solver rows.
 | AP-10 | SPH cooling SIMD without Rayon | Cooling was the only per-particle O(N) SPH loop with no SIMD path. | `apply_cooling_with_redshift` and `apply_cooling_mhd_with_redshift` dispatch AVX2/AVX-512 when `feature = "simd"` and `not(feature = "rayon")`; all cooling modes (AtomicHHe, MetalCooling, MetalTabular, UvBackground) handled via scalar-per-lane fallback inside batch. | Complete |
 | AP-11 | MHD flux-freeze / mean_density SIMD without Rayon | No SIMD path existed for B-field scaling or density reduction. | `apply_flux_freeze` and `mean_gas_density` dispatch AVX2/AVX-512 with `feature = "simd"`; `f64::powf(2/3)` computed scalar-per-lane; all tests pass. | Complete |
 | AP-12 | MHD b_field_stats AVX-512 real 8-lane | AVX-512 path delegated to AVX-512 4-lane stub, not a true 8-lane implementation. | `b_field_stats_avx512` processes 8 particles per iteration with `_mm512_*` intrinsics and k-mask gas filtering; passes existing tests. | Complete |
+| AP-13 | MHD dynamo SIMD without Rayon | Dynamo B-field update and magnetic energy ratio had no SIMD path. | `apply_turbulent_dynamo` and `magnetic_energy_ratio` dispatch AVX2/AVX-512 when `feature = "simd"` and `not(feature = "rayon")`; scalar-per-lane fallback for `dynamo_growth_rate` branches and `exp()`; all tests pass. | Complete |
+| AP-14 | MHD ambipolar diffusion SIMD without Rayon | Ambipolar diffusion had no SIMD path. | `apply_ambipolar_diffusion` dispatches AVX2/AVX-512 when `feature = "simd"` and `not(feature = "rayon")`; vectorized ionization fraction proxy, B-field damping, and energy deposition; scalar-per-lane for `exp()`; all tests pass. | Complete |
+| AP-15 | MHD two-fluid SIMD without Rayon | Electron-ion coupling and T_e/T_i ratio had no SIMD path. | `apply_electron_ion_coupling` and `mean_te_over_ti` dispatch AVX2/AVX-512 when `feature = "simd"` and `not(feature = "rayon")`; vectorized Coulomb coupling rate and T_e/T_i reduction; scalar-per-lane for `exp()`; all tests pass. | Complete |
 
 ## RT chemistry remaining scalar work
 
@@ -85,6 +90,6 @@ The main pieces still required are:
 Phase 203 closed AP-01c; AP-10/11/12 close additional SIMD-without-Rayon gaps.
 The next recommended phase is AP-03: validate the new MHD/Tree CUDA kernels on real
 NVIDIA hardware before wiring them into production runtime paths. For SIMD,
-the next targets are the remaining Level 2-3 items: MHD cleaning final-step SIMD,
-RT IGM temperature, SPH metal cooling (table lookup), and MHD per-particle O(N)
-operations (dynamo, CR streaming, nonideal, two-fluid).
+the next targets are the remaining Level 2-3 items: MHD nonideal (ambipolar diffusion),
+MHD two-fluid, RT IGM temperature, SPH metal cooling (table lookup), and MHD per-particle O(N)
+operations (CR streaming).

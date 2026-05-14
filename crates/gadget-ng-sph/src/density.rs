@@ -12,9 +12,6 @@
 //! La implementación usa una lista O(N²) válida para N ~ 10 000 partículas.
 //! Para N mayores se debería usar un árbol KD o cell-linked-list.
 
-#[cfg(not(feature = "rayon"))]
-use crate::kernel::{grad_w, w};
-#[cfg(feature = "rayon")]
 use crate::kernel::{w_and_grad_w_batch, w_batch};
 use crate::particle::SphParticle;
 use crate::periodic_delta;
@@ -81,19 +78,15 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
         };
 
         let pi = pos[i];
-        // Newton-Raphson para h_sml: f(h) = ρ(h) − N_neigh * m / ((4π/3)(2h)³) = 0
         let m_i = mass[i];
         let mut h = gas.h_sml.max(1e-10);
 
         for _ in 0..MAX_ITER {
-            // ρ(h) = Σ_j m_j W(r_ij, h)
-            let (rho, drho_dh) = rho_and_deriv(&pos, &mass, pi, h, n, periodic_box);
-            // Residuo
+            let (rho, drho_dh) = rho_and_deriv_batch(&pos, &mass, pi, h, n, periodic_box);
             let n_eff = (4.0 * std::f64::consts::PI / 3.0) * (2.0 * h).powi(3) * rho / m_i;
             if (n_eff - N_NEIGH).abs() < 1e-2 {
                 break;
             }
-            // Derivada de n_eff respecto a h
             let dn_dh = (4.0 * std::f64::consts::PI / 3.0)
                 * (24.0 * h * h * rho + (2.0 * h).powi(3) * drho_dh)
                 / m_i;
@@ -101,11 +94,8 @@ pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box
             h = (h + dh.clamp(-0.5 * h, 0.5 * h)).max(1e-10);
         }
         gas.h_sml = h;
-        // Densidad final
-        gas.rho = rho_sum(&pos, &mass, pi, h, n, periodic_box);
-        // Presión adiabática P = (γ-1) ρ u
+        gas.rho = rho_sum_batch(&pos, &mass, pi, h, n, periodic_box);
         gas.pressure = (GAMMA - 1.0) * gas.rho * gas.u;
-        // Función entrópica A = P / ρ^γ  (usada por el integrador Gadget-2)
         if gas.rho > 0.0 {
             gas.entropy = (GAMMA - 1.0) * gas.u / gas.rho.powf(GAMMA - 1.0);
         }
@@ -149,31 +139,8 @@ fn density_update_for_particle(
     (h, rho, pressure, entropy)
 }
 
-/// `ρ(h) = Σ_j m_j W(r_ij, h)` y su derivada `dρ/dh`.
-/// Versión escalar (una partícula a la vez).
-#[cfg(not(feature = "rayon"))]
-fn rho_and_deriv(
-    pos: &[Vec3],
-    mass: &[f64],
-    pi: Vec3,
-    h: f64,
-    n: usize,
-    periodic_box: Option<f64>,
-) -> (f64, f64) {
-    let mut rho = 0.0_f64;
-    let mut drho = 0.0_f64;
-    for (j, pj) in pos.iter().enumerate().take(n) {
-        let r = periodic_delta(pi, *pj, periodic_box).norm();
-        rho += mass[j] * w(r, h);
-        let gw = grad_w(r, h);
-        drho += mass[j] * (-1.0 / h) * (3.0 * w(r, h) + r * gw);
-    }
-    (rho, drho)
-}
-
 /// Versión SIMD por lotes de `rho_and_deriv`: recolecta distancias y usa
 /// `w_and_grad_w_batch` para vectorizar el cómputo del kernel Wendland C2.
-#[cfg(feature = "rayon")]
 fn rho_and_deriv_batch(
     pos: &[Vec3],
     mass: &[f64],
@@ -215,22 +182,7 @@ fn rho_and_deriv_batch(
     (rho, drho)
 }
 
-#[cfg(not(feature = "rayon"))]
-fn rho_sum(
-    pos: &[Vec3],
-    mass: &[f64],
-    pi: Vec3,
-    h: f64,
-    n: usize,
-    periodic_box: Option<f64>,
-) -> f64 {
-    (0..n)
-        .map(|j| mass[j] * w(periodic_delta(pi, pos[j], periodic_box).norm(), h))
-        .sum()
-}
-
 /// Versión SIMD por lotes de `rho_sum`.
-#[cfg(feature = "rayon")]
 fn rho_sum_batch(
     pos: &[Vec3],
     mass: &[f64],
