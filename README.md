@@ -181,7 +181,7 @@ y la cobertura detallada en
 | Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ |
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
 | MHD induction/resistivity | ✅ | ✅ | ⚠️ induction pair accumulation AVX2 + AVX512; resistivity scalar | ✅ smoke/parity kernel |
-| MHD magnetic forces | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
+| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity kernel |
 | MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 final-update | ✅ |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ no AVX explícito | ✅ scalar diffusion surface |
 | MHD Braginskii | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
@@ -194,7 +194,7 @@ y la cobertura detallada en
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
-| RT chemistry stiff solver | ✅ | ✅ | ⚠️ subciclo implícito escalar | ❌ |
+| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane | ❌ |
 | RT IGM temperature profile | ✅ | ✅ | ⚠️ scalar-optimal (ChemState AoS prevents vectorization) | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |

@@ -489,6 +489,312 @@ pub fn solve_chemistry_implicit(
     st
 }
 
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[derive(Clone, Copy)]
+struct ChemistryRates {
+    a_hii: f64,
+    a_heii: f64,
+    a_heiii: f64,
+    b_hi: f64,
+    b_hei: f64,
+    b_heii: f64,
+    k_hm_form: f64,
+    k_hm_to_h2: f64,
+    k_h2p_form: f64,
+    k_h2p_to_h2: f64,
+    k_h2_diss: f64,
+    k_d_to_dp: f64,
+    k_dp_to_d: f64,
+    k_dp_h2_to_hd: f64,
+    k_hd_to_h2: f64,
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+impl ChemistryRates {
+    fn at_temperature(t: f64) -> Self {
+        Self {
+            a_hii: alpha_hii(t),
+            a_heii: alpha_heii(t),
+            a_heiii: alpha_heiii(t),
+            b_hi: beta_hi(t),
+            b_hei: beta_hei(t),
+            b_heii: beta_heii(t),
+            k_hm_form: k_hm_formation(t),
+            k_hm_to_h2: k_h2_from_hm(t),
+            k_h2p_form: k_h2p_formation(t),
+            k_h2p_to_h2: k_h2_from_h2p(t),
+            k_h2_diss: k_h2_collisional_dissociation(t),
+            k_d_to_dp: k_d_ionization_exchange(t),
+            k_dp_to_d: k_d_recombination_exchange(t),
+            k_dp_h2_to_hd: k_hd_formation(t),
+            k_hd_to_h2: k_hd_destruction(t),
+        }
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[derive(Clone, Copy)]
+struct ChemistryStep {
+    dt_chem: f64,
+    rate_hii: f64,
+    rate_hei: f64,
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn chemistry_step_info(
+    st: &ChemState,
+    rates: &ChemistryRates,
+    gamma_hi: f64,
+    gamma_hei: f64,
+    dt_left: f64,
+) -> ChemistryStep {
+    let xe = st.x_e.max(1e-20);
+    let rate_hii = (gamma_hi + rates.b_hi * xe) * st.x_hi - rates.a_hii * xe * st.x_hii;
+    let rate_hei = (gamma_hei + rates.b_hei * xe) * st.x_hei
+        - rates.a_heii * xe * st.x_heii
+        - rates.b_heii * xe * st.x_heii
+        + rates.a_heiii * xe * st.x_heiii;
+    let h2_form_rate =
+        rates.k_hm_form * st.x_hi * xe + rates.k_h2p_form * st.x_hi * st.x_hii.max(0.0);
+    let h2_dest_rate = rates.k_h2_diss * st.x_h2 * st.x_hi.max(0.0);
+    let hd_form_rate = rates.k_dp_h2_to_hd * st.x_dp * st.x_h2;
+    let hd_dest_rate = rates.k_hd_to_h2 * st.x_hd * st.x_hii.max(0.0);
+    let max_rate = rate_hii
+        .abs()
+        .max(rate_hei.abs())
+        .max(h2_form_rate.abs())
+        .max(h2_dest_rate.abs())
+        .max(hd_form_rate.abs())
+        .max(hd_dest_rate.abs())
+        .max(1e-30);
+
+    ChemistryStep {
+        dt_chem: (0.1 / max_rate).min(dt_left).max(1e-20),
+        rate_hii,
+        rate_hei,
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn advance_chemistry_substep(
+    st: &mut ChemState,
+    rates: &ChemistryRates,
+    gamma_hi: f64,
+    gamma_hei: f64,
+    dt_chem: f64,
+) {
+    let xe = st.x_e.max(1e-20);
+
+    let i_hi = (gamma_hi + rates.b_hi * xe) * st.x_hi;
+    let r_hii_denom = rates.a_hii * xe * dt_chem;
+    st.x_hii = (st.x_hii + dt_chem * i_hi) / (1.0 + r_hii_denom);
+
+    let i_hei = (gamma_hei + rates.b_hei * xe) * st.x_hei;
+    let r_heii = (rates.a_heii + rates.b_heii) * xe;
+    st.x_heii = (st.x_heii + dt_chem * (i_hei + rates.a_heiii * xe * st.x_heiii))
+        / (1.0 + dt_chem * r_heii);
+
+    let i_heii = rates.b_heii * xe * st.x_heii;
+    let r_heiii = rates.a_heiii * xe;
+    st.x_heiii = (st.x_heiii + dt_chem * i_heii) / (1.0 + dt_chem * r_heiii);
+
+    let hm_create = rates.k_hm_form * st.x_hi * xe;
+    let hm_destroy = rates.k_hm_to_h2 * st.x_hi.max(0.0);
+    let h2p_create = rates.k_h2p_form * st.x_hi * st.x_hii.max(0.0);
+    let h2p_destroy = rates.k_h2p_to_h2 * st.x_hi.max(0.0);
+    let hm_next = (st.x_hm + dt_chem * hm_create) / (1.0 + dt_chem * hm_destroy);
+    let h2p_next = (st.x_h2p + dt_chem * h2p_create) / (1.0 + dt_chem * h2p_destroy);
+    let h2_create = hm_destroy * hm_next + h2p_destroy * h2p_next;
+    let h2_destroy = rates.k_h2_diss * st.x_hi.max(0.0);
+    st.x_hm = hm_next;
+    st.x_h2p = h2p_next;
+    st.x_h2 = (st.x_h2 + dt_chem * h2_create) / (1.0 + dt_chem * h2_destroy);
+
+    let dp_create = rates.k_d_to_dp * st.x_d * st.x_hii.max(0.0);
+    let dp_destroy = rates.k_dp_to_d * st.x_hi.max(0.0);
+    st.x_dp = (st.x_dp + dt_chem * dp_create) / (1.0 + dt_chem * dp_destroy);
+
+    let hd_create = rates.k_dp_h2_to_hd * st.x_dp * st.x_h2;
+    let hd_destroy = rates.k_hd_to_h2 * st.x_hii.max(0.0);
+    let hd_next = (st.x_hd + dt_chem * hd_create) / (1.0 + dt_chem * hd_destroy);
+    let hd_delta = (hd_next - st.x_hd).max(0.0);
+    st.x_hd = hd_next;
+    st.x_h2 = (st.x_h2 - hd_delta).max(0.0);
+
+    st.clamp_and_normalize();
+}
+
+#[cfg(not(feature = "rayon"))]
+fn solve_chemistry_implicit_slice(
+    states: &mut [ChemState],
+    gamma_hi: &[f64],
+    gamma_hei: f64,
+    t_gas: &[f64],
+    dt: f64,
+) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime immediately above.
+            unsafe {
+                solve_chemistry_implicit_slice_avx512(states, gamma_hi, gamma_hei, t_gas, dt);
+                return;
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime immediately above.
+            unsafe {
+                solve_chemistry_implicit_slice_avx2(states, gamma_hi, gamma_hei, t_gas, dt);
+                return;
+            }
+        }
+    }
+
+    solve_chemistry_implicit_slice_scalar(states, gamma_hi, gamma_hei, t_gas, dt);
+}
+
+#[cfg(not(feature = "rayon"))]
+fn solve_chemistry_implicit_slice_scalar(
+    states: &mut [ChemState],
+    gamma_hi: &[f64],
+    gamma_hei: f64,
+    t_gas: &[f64],
+    dt: f64,
+) {
+    for ((st, &gamma_hi_i), &t) in states.iter_mut().zip(gamma_hi.iter()).zip(t_gas.iter()) {
+        *st = solve_chemistry_implicit(st, gamma_hi_i, gamma_hei, t, dt);
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn solve_chemistry_implicit_slice_avx2(
+    states: &mut [ChemState],
+    gamma_hi: &[f64],
+    gamma_hei: f64,
+    t_gas: &[f64],
+    dt: f64,
+) {
+    solve_chemistry_implicit_slice_masked::<4>(states, gamma_hi, gamma_hei, t_gas, dt);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn solve_chemistry_implicit_slice_avx512(
+    states: &mut [ChemState],
+    gamma_hi: &[f64],
+    gamma_hei: f64,
+    t_gas: &[f64],
+    dt: f64,
+) {
+    solve_chemistry_implicit_slice_masked::<8>(states, gamma_hi, gamma_hei, t_gas, dt);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn solve_chemistry_implicit_slice_masked<const LANES: usize>(
+    states: &mut [ChemState],
+    gamma_hi: &[f64],
+    gamma_hei: f64,
+    t_gas: &[f64],
+    dt: f64,
+) {
+    let chunks = states.len() / LANES * LANES;
+    let mut base = 0;
+    while base < chunks {
+        solve_chemistry_implicit_masked_chunk::<LANES>(
+            &mut states[base..base + LANES],
+            &gamma_hi[base..base + LANES],
+            gamma_hei,
+            &t_gas[base..base + LANES],
+            dt,
+        );
+        base += LANES;
+    }
+    solve_chemistry_implicit_slice_scalar(
+        &mut states[chunks..],
+        &gamma_hi[chunks..],
+        gamma_hei,
+        &t_gas[chunks..],
+        dt,
+    );
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn solve_chemistry_implicit_masked_chunk<const LANES: usize>(
+    states: &mut [ChemState],
+    gamma_hi: &[f64],
+    gamma_hei: f64,
+    t_gas: &[f64],
+    dt: f64,
+) {
+    let rates =
+        std::array::from_fn::<_, LANES, _>(|lane| ChemistryRates::at_temperature(t_gas[lane]));
+    let mut elapsed = [0.0_f64; LANES];
+    let mut active = [true; LANES];
+
+    while active.iter().any(|&is_active| is_active) {
+        for lane in 0..LANES {
+            if !active[lane] {
+                continue;
+            }
+            let step = chemistry_step_info(
+                &states[lane],
+                &rates[lane],
+                gamma_hi[lane],
+                gamma_hei,
+                dt - elapsed[lane],
+            );
+            advance_chemistry_substep(
+                &mut states[lane],
+                &rates[lane],
+                gamma_hi[lane],
+                gamma_hei,
+                step.dt_chem,
+            );
+            elapsed[lane] += step.dt_chem;
+            active[lane] = elapsed[lane] < dt
+                && (step.rate_hii.abs() * dt >= 1e-6 || step.rate_hei.abs() * dt >= 1e-6);
+        }
+    }
+}
+
 // ── Acoplamiento a partículas de gas ─────────────────────────────────────────
 
 /// Parámetros para el módulo de química no-equilibrio.
@@ -553,17 +859,12 @@ fn apply_chemistry_impl(
     let gamma_hi = photoionization_rates_for_particles(particles, rad, box_size, &m1_dummy);
     let mut t_gas = vec![0.0; particles.len()];
 
-    for (i, p) in particles.iter_mut().enumerate() {
-        let st = &mut chem_states[i];
-
+    for (i, p) in particles.iter().enumerate() {
         let u_code = p.internal_energy;
-        t_gas[i] = st.temperature_from_internal_energy(u_code, params.gamma);
-
-        let gamma_hei = 0.0;
-
-        *st = solve_chemistry_implicit(st, gamma_hi[i], gamma_hei, t_gas[i], dt);
+        t_gas[i] = chem_states[i].temperature_from_internal_energy(u_code, params.gamma);
     }
 
+    solve_chemistry_implicit_slice(chem_states, &gamma_hi, 0.0, &t_gas, dt);
     apply_chemistry_cooling(particles, chem_states, &t_gas, params.n_h_ref, dt);
 }
 
@@ -1204,5 +1505,68 @@ mod tests {
         assert!(st.x_hei >= 0.0);
         assert!(st.x_e >= 0.0);
         assert!((st.deuterium_nuclei_fraction() - F_D).abs() < 1e-12);
+    }
+
+    fn assert_chem_close(actual: &ChemState, expected: &ChemState) {
+        let fields = [
+            (actual.x_hi, expected.x_hi),
+            (actual.x_hii, expected.x_hii),
+            (actual.x_hei, expected.x_hei),
+            (actual.x_heii, expected.x_heii),
+            (actual.x_heiii, expected.x_heiii),
+            (actual.x_e, expected.x_e),
+            (actual.x_hm, expected.x_hm),
+            (actual.x_h2, expected.x_h2),
+            (actual.x_h2p, expected.x_h2p),
+            (actual.x_d, expected.x_d),
+            (actual.x_dp, expected.x_dp),
+            (actual.x_hd, expected.x_hd),
+        ];
+        for (got, want) in fields {
+            assert!(
+                (got - want).abs() <= 1e-12,
+                "masked SIMD chemistry diverged: got {got}, expected {want}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(not(feature = "rayon"))]
+    fn implicit_chemistry_slice_dispatch_matches_scalar_mixed_states() {
+        let mut states = vec![
+            ChemState::neutral(),
+            ChemState::fully_ionized(),
+            {
+                let mut st = ChemState::neutral();
+                st.x_e = 1e-4;
+                st
+            },
+            {
+                let mut st = ChemState::neutral();
+                st.x_h2 = 1e-3;
+                st.x_hi = 1.0 - 2.0 * st.x_h2;
+                st.x_hii = 1e-4;
+                st.x_dp = F_D * 0.5;
+                st.x_d = F_D - st.x_dp;
+                st.x_e = st.x_hii + st.x_dp;
+                st
+            },
+            ChemState::neutral(),
+            ChemState::fully_ionized(),
+            ChemState::neutral(),
+            ChemState::fully_ionized(),
+        ];
+        let gamma_hi = vec![0.0, 0.0, 1e-13, 0.0, 1e-10, 0.0, 5e-12, 2e-13];
+        let t_gas = vec![1e3, 1e4, 3e3, 200.0, 1e4, 1e6, 8e3, 5e5];
+        let mut expected = states.clone();
+        solve_chemistry_implicit_slice_scalar(&mut expected, &gamma_hi, 0.0, &t_gas, 1e10);
+
+        solve_chemistry_implicit_slice(&mut states, &gamma_hi, 0.0, &t_gas, 1e10);
+
+        for (got, want) in states.iter().zip(expected.iter()) {
+            // The masked AVX path keeps stiff, branch-heavy chemistry scalar-per-lane while
+            // coordinating active lanes; parity should therefore be bit-near scalar.
+            assert_chem_close(got, want);
+        }
     }
 }
