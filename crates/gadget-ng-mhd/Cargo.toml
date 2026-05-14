@@ -25,3 +25,8 @@ harness = false
 [[bench]]
 name = "advanced_bench"
 harness = false
+
+[[bench]]
+name = "simd_cpu_bench"
+harness = false
+required-features = ["simd"]

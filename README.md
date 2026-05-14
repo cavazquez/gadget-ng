@@ -177,10 +177,10 @@ y la cobertura detallada en
 | SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
 | SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
-| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch (all modes) | ✅ |
+| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ✅ |
 | Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ |
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
-| MHD induction/resistivity | ✅ | ✅ | ⚠️ no AVX explícito (cleaning final-update has AVX2 + AVX512) | ✅ smoke/parity kernel |
+| MHD induction/resistivity | ✅ | ✅ | ⚠️ induction pair accumulation AVX2 + AVX512; resistivity scalar | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ⚠️ no AVX explícito | ✅ smoke/parity kernel |
 | MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 final-update | ✅ |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ no AVX explícito | ✅ scalar diffusion surface |

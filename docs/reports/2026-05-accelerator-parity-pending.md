@@ -22,7 +22,7 @@ the remaining scalar/stiff solver rows.
 | SPH density/forces/Gadget-2 | Complete | Complete | **Batch kernels in all paths**; Wendland AVX2 + AVX-512 | Smoke/parity kernels |
 | SPH cooling/dust/H2 | Complete | Complete | **Cooling per-particle AVX2+AVX-512 (all modes)**; dust AVX2+AVX-512; H2+dust shielding AVX2+AVX-512 | Smoke/parity kernels |
 | SPH viscosity (Balsara) | Complete | Complete | **grad_w_batch in all paths** | Smoke/parity kernels |
-| MHD induction/forces/cleaning | Complete | Complete | **Cleaning final-update AVX2+AVX-512** (pairwise loop scalar) | Smoke/parity kernels |
+| MHD induction/forces/cleaning | Complete | Complete | **Induction pair accumulation AVX2+AVX-512**; cleaning final-update AVX2+AVX-512 | Smoke/parity kernels |
 | MHD flux-freeze | Complete | Complete | **AVX2 + AVX-512 (B-field scaling + mean density)** | Smoke/parity kernels |
 | MHD two-fluid (electron-ion coupling) | Complete | Complete | **AVX2+AVX-512 e-i coupling + T_e/T_i reduction** | Smoke/parity kernels |
 | MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | **Dynamo AVX2+AVX-512 (B-field update + energy ratio)**; **Ambipolar diffusion AVX2+AVX-512** | Smoke/parity kernels |
@@ -92,5 +92,7 @@ The next recommended phase is AP-03: validate the new MHD/Tree CUDA kernels on r
 NVIDIA hardware before wiring them into production runtime paths. For SIMD,
 AP-13 (dynamo), AP-14 (ambipolar diffusion), and AP-15 (two-fluid) close additional
 SIMD-without-Rayon gaps. RT IGM temperature remains scalar-optimal (ChemState AoS
-layout prevents profitable vectorization). The next targets are SPH metal cooling
-(table lookup) and MHD CR streaming.
+layout prevents profitable vectorization). The SPH MetalTabular logT lookup now has
+AVX2/AVX-512 batch coverage; TODO: continue with MHD CR streaming, reconnection,
+Braginskii, anisotropic transport, additional Dedner local phases, and magnetic
+forces in focused follow-up patches.

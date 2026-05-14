@@ -214,6 +214,10 @@ pub fn cooling_rate_tabular(
 
     let log_t = t.log10();
 
+    cooling_rate_tabular_from_log_t(log_t, metallicity)
+}
+
+fn cooling_rate_tabular_from_log_t(log_t: f64, metallicity: f64) -> f64 {
     // Clamping de log_t al rango de la tabla
     let log_t_min = COOLING_TABLE_LOG_T[0];
     let log_t_max = COOLING_TABLE_LOG_T[COOLING_TABLE_LOG_T.len() - 1];
@@ -263,6 +267,98 @@ pub fn cooling_rate_tabular(
         + l11 * fz * ft;
 
     lambda.max(0.0)
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn cooling_rate_tabular_batch_avx2(log_t: [f64; 4], metallicity: [f64; 4]) -> [f64; 4] {
+    let log_t_v = _mm256_set_pd(log_t[3], log_t[2], log_t[1], log_t[0]);
+    let clamped = _mm256_min_pd(
+        _mm256_set1_pd(COOLING_TABLE_LOG_T[COOLING_TABLE_LOG_T.len() - 1]),
+        _mm256_max_pd(_mm256_set1_pd(COOLING_TABLE_LOG_T[0]), log_t_v),
+    );
+    let scaled = _mm256_mul_pd(
+        _mm256_sub_pd(clamped, _mm256_set1_pd(COOLING_TABLE_LOG_T[0])),
+        _mm256_set1_pd(4.0),
+    );
+    let mut scaled_arr = [0.0; 4];
+    // SAFETY: fixed-size stack array has exactly four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(scaled_arr.as_mut_ptr(), scaled);
+    }
+    let mut out = [0.0; 4];
+    for lane in 0..4 {
+        let i_t = (scaled_arr[lane].floor() as usize).min(COOLING_TABLE_LOG_T.len() - 2);
+        let ft = (scaled_arr[lane] - i_t as f64).clamp(0.0, 1.0);
+        out[lane] = cooling_rate_tabular_with_t_index(i_t, ft, metallicity[lane]);
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn cooling_rate_tabular_batch_avx512(log_t: [f64; 8], metallicity: [f64; 8]) -> [f64; 8] {
+    let log_t_v = _mm512_set_pd(
+        log_t[7], log_t[6], log_t[5], log_t[4], log_t[3], log_t[2], log_t[1], log_t[0],
+    );
+    let clamped = _mm512_min_pd(
+        _mm512_set1_pd(COOLING_TABLE_LOG_T[COOLING_TABLE_LOG_T.len() - 1]),
+        _mm512_max_pd(_mm512_set1_pd(COOLING_TABLE_LOG_T[0]), log_t_v),
+    );
+    let scaled = _mm512_mul_pd(
+        _mm512_sub_pd(clamped, _mm512_set1_pd(COOLING_TABLE_LOG_T[0])),
+        _mm512_set1_pd(4.0),
+    );
+    let mut scaled_arr = [0.0; 8];
+    // SAFETY: fixed-size stack array has exactly eight f64 lanes.
+    unsafe {
+        _mm512_storeu_pd(scaled_arr.as_mut_ptr(), scaled);
+    }
+    let mut out = [0.0; 8];
+    for lane in 0..8 {
+        let i_t = (scaled_arr[lane].floor() as usize).min(COOLING_TABLE_LOG_T.len() - 2);
+        let ft = (scaled_arr[lane] - i_t as f64).clamp(0.0, 1.0);
+        out[lane] = cooling_rate_tabular_with_t_index(i_t, ft, metallicity[lane]);
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn cooling_rate_tabular_with_t_index(i_t: usize, ft: f64, metallicity: f64) -> f64 {
+    const Z_SUN: f64 = 0.0127;
+    let z_over_zsun = (metallicity / Z_SUN).max(0.0);
+    let z_cl = z_over_zsun.clamp(
+        COOLING_TABLE_Z[0],
+        COOLING_TABLE_Z[COOLING_TABLE_Z.len() - 1],
+    );
+    let i_z = COOLING_TABLE_Z
+        .windows(2)
+        .position(|w| z_cl >= w[0] && z_cl <= w[1])
+        .unwrap_or(COOLING_TABLE_Z.len() - 2);
+    let dz = COOLING_TABLE_Z[i_z + 1] - COOLING_TABLE_Z[i_z];
+    let fz = if dz > 0.0 {
+        (z_cl - COOLING_TABLE_Z[i_z]) / dz
+    } else {
+        0.0
+    };
+    let l00 = COOLING_TABLE[i_z][i_t];
+    let l10 = COOLING_TABLE[i_z + 1][i_t];
+    let l01 = COOLING_TABLE[i_z][i_t + 1];
+    let l11 = COOLING_TABLE[i_z + 1][i_t + 1];
+    (l00 * (1.0 - fz) * (1.0 - ft) + l10 * fz * (1.0 - ft) + l01 * (1.0 - fz) * ft + l11 * fz * ft)
+        .max(0.0)
 }
 
 /// Factor de fotoionización suave para la transición de reionización.
@@ -471,14 +567,24 @@ unsafe fn apply_cooling_avx2(particles: &mut [Particle], cfg: &SphSection, dt: f
             i += lanes;
             continue;
         }
-        let mut du_dt_arr = [0.0f64; 4];
-        let mut dt_eff_arr = [0.0f64; 4];
         let mut u_new_arr = [0.0f64; 4];
+        let tabular_lambda = if cfg.cooling == CoolingKind::MetalTabular {
+            let mut log_t = [0.0; 4];
+            let mut metallicity = [0.0; 4];
+            for lane in 0..lanes {
+                let p = &particles[i + lane];
+                log_t[lane] = (p.internal_energy * t_factor).log10();
+                metallicity[lane] = p.metallicity;
+            }
+            // SAFETY: caller reached this function only after runtime AVX2+FMA dispatch.
+            Some(unsafe { cooling_rate_tabular_batch_avx2(log_t, metallicity) })
+        } else {
+            None
+        };
         for lane in 0..lanes {
             let p = &particles[i + lane];
             let h = p.smoothing_length.max(1e-10);
             let rho_local = (p.mass / (four_thirds_pi * h * h * h)).max(1e-30);
-            let _t = p.internal_energy * t_factor;
             let lambda = match cfg.cooling {
                 CoolingKind::None => 0.0,
                 CoolingKind::AtomicHHe => {
@@ -491,12 +597,17 @@ unsafe fn apply_cooling_avx2(particles: &mut [Particle], cfg: &SphSection, dt: f
                     gamma,
                     t_floor_k,
                 ),
-                CoolingKind::MetalTabular => cooling_rate_tabular(
-                    p.internal_energy,
-                    rho_local,
-                    p.metallicity,
-                    gamma,
-                    t_floor_k,
+                CoolingKind::MetalTabular => tabular_lambda.map_or_else(
+                    || {
+                        cooling_rate_tabular(
+                            p.internal_energy,
+                            rho_local,
+                            p.metallicity,
+                            gamma,
+                            t_floor_k,
+                        )
+                    },
+                    |lambda| lambda[lane],
                 ),
                 CoolingKind::UvBackground => cooling_rate_uvb(
                     p.internal_energy,
@@ -514,8 +625,6 @@ unsafe fn apply_cooling_avx2(particles: &mut [Particle], cfg: &SphSection, dt: f
             } else {
                 dt
             };
-            du_dt_arr[lane] = du_dt;
-            dt_eff_arr[lane] = dt_eff;
             u_new_arr[lane] = (p.internal_energy + du_dt * dt_eff).max(u_floor);
         }
         let u_new_v = _mm256_set_pd(u_new_arr[3], u_new_arr[2], u_new_arr[1], u_new_arr[0]);
@@ -576,11 +685,23 @@ unsafe fn apply_cooling_avx512(
             continue;
         }
         let mut u_new_arr = [0.0f64; 8];
+        let tabular_lambda = if cfg.cooling == CoolingKind::MetalTabular {
+            let mut log_t = [0.0; 8];
+            let mut metallicity = [0.0; 8];
+            for lane in 0..lanes {
+                let p = &particles[i + lane];
+                log_t[lane] = (p.internal_energy * t_factor).log10();
+                metallicity[lane] = p.metallicity;
+            }
+            // SAFETY: caller reached this function only after runtime AVX-512F dispatch.
+            Some(unsafe { cooling_rate_tabular_batch_avx512(log_t, metallicity) })
+        } else {
+            None
+        };
         for lane in 0..lanes {
             let p = &particles[i + lane];
             let h = p.smoothing_length.max(1e-10);
             let rho_local = (p.mass / (four_thirds_pi * h * h * h)).max(1e-30);
-            let _t = p.internal_energy * t_factor;
             let lambda = match cfg.cooling {
                 CoolingKind::None => 0.0,
                 CoolingKind::AtomicHHe => {
@@ -593,12 +714,17 @@ unsafe fn apply_cooling_avx512(
                     gamma,
                     t_floor_k,
                 ),
-                CoolingKind::MetalTabular => cooling_rate_tabular(
-                    p.internal_energy,
-                    rho_local,
-                    p.metallicity,
-                    gamma,
-                    t_floor_k,
+                CoolingKind::MetalTabular => tabular_lambda.map_or_else(
+                    || {
+                        cooling_rate_tabular(
+                            p.internal_energy,
+                            rho_local,
+                            p.metallicity,
+                            gamma,
+                            t_floor_k,
+                        )
+                    },
+                    |lambda| lambda[lane],
                 ),
                 CoolingKind::UvBackground => cooling_rate_uvb(
                     p.internal_energy,
@@ -787,5 +913,41 @@ mod tests {
         let richer = cooling_rate_hd(200.0, 1e-3, 2e-6);
         assert!(base > 0.0);
         assert!((richer / base - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    #[cfg(all(
+        not(feature = "rayon"),
+        feature = "simd",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    fn metal_tabular_batch_lookup_matches_scalar() {
+        let gamma = 5.0 / 3.0;
+        let log_t4 = [4.1, 5.3, 6.8, 8.6];
+        let z4 = [0.0, 1.0e-4, 0.0127, 0.03];
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime immediately above.
+            let got = unsafe { cooling_rate_tabular_batch_avx2(log_t4, z4) };
+            for lane in 0..4 {
+                let u = temperature_to_u(10.0_f64.powf(log_t4[lane]), gamma);
+                let expected = cooling_rate_tabular(u, 1.0, z4[lane], gamma, 1.0);
+                // The SIMD helper vectorizes the uniform logT-bin lookup but performs the
+                // same table interpolation; differences should stay at roundoff.
+                assert!((got[lane] - expected).abs() < 1e-15);
+            }
+        }
+
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            let log_t8 = [4.0, 4.25, 4.9, 5.75, 6.25, 7.4, 8.2, 8.75];
+            let z8 = [0.0, 1e-6, 1e-5, 0.001, 0.006, 0.0127, 0.02, 0.04];
+            // SAFETY: AVX-512F availability was checked at runtime immediately above.
+            let got = unsafe { cooling_rate_tabular_batch_avx512(log_t8, z8) };
+            for lane in 0..8 {
+                let u = temperature_to_u(10.0_f64.powf(log_t8[lane]), gamma);
+                let expected = cooling_rate_tabular(u, 1.0, z8[lane], gamma, 1.0);
+                assert!((got[lane] - expected).abs() < 1e-15);
+            }
+        }
     }
 }
