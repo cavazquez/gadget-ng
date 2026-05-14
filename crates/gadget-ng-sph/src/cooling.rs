@@ -37,6 +37,20 @@
 use gadget_ng_core::{CoolingKind, Particle, ParticleType, SphSection, UvBackgroundModel};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
 
 /// k_B / (m_H · μ) en (km/s)² / K.
 /// μ = 0.6 (gas completamente ionizado H+He), k_B/m_H = 8.254 × 10⁻³ km²/s²/K.
@@ -339,8 +353,26 @@ pub fn apply_cooling_with_redshift(
     }
 
     #[cfg(not(feature = "rayon"))]
-    for p in particles.iter_mut() {
-        apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor);
+    {
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: AVX-512F availability was checked at runtime.
+                unsafe {
+                    return apply_cooling_avx512(particles, cfg, dt, redshift);
+                }
+            }
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2+FMA availability was checked at runtime.
+                unsafe {
+                    return apply_cooling_avx2(particles, cfg, dt, redshift);
+                }
+            }
+        }
+        for p in particles.iter_mut() {
+            apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor);
+        }
     }
 }
 
@@ -356,7 +388,6 @@ fn apply_cooling_particle(
     if p.ptype != ParticleType::Gas || p.internal_energy <= u_floor {
         return;
     }
-    // Densidad estimada localmente: ρ ≈ m / (4/3 π h³)
     let h = p.smoothing_length.max(1e-10);
     let rho_local = p.mass / (4.0 / 3.0 * std::f64::consts::PI * h * h * h);
 
@@ -392,9 +423,7 @@ fn apply_cooling_particle(
     if lambda == 0.0 {
         return;
     }
-    // du/dt = -Λ_net · X_H² · ρ ; si Λ_net<0 domina heating y du/dt>0.
     let du_dt = -lambda * X_H * X_H * rho_local;
-    // Subciclo: limitar dt para que Euler explícito no cruce u=0 de un salto no físico.
     let dt_eff = if du_dt < 0.0 {
         let dt_cool = p.internal_energy / (-du_dt).max(1e-300);
         dt.min(dt_cool)
@@ -402,6 +431,214 @@ fn apply_cooling_particle(
         dt
     };
     p.internal_energy = (p.internal_energy + du_dt * dt_eff).max(u_floor);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_cooling_avx2(particles: &mut [Particle], cfg: &SphSection, dt: f64, redshift: f64) {
+    let gamma = cfg.gamma;
+    let t_floor_k = cfg.t_floor_k;
+    let u_floor = temperature_to_u(t_floor_k, gamma);
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let t_factor = (gamma - 1.0) / KB_OVER_MH_MU;
+    let four_thirds_pi = 4.0 / 3.0 * std::f64::consts::PI;
+    let mut i = 0;
+    while i < chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas
+            || particles[i..i + lanes]
+                .iter()
+                .any(|p| p.internal_energy <= u_floor)
+        {
+            for lane in 0..lanes {
+                apply_cooling_particle(
+                    &mut particles[i + lane],
+                    cfg,
+                    dt,
+                    redshift,
+                    gamma,
+                    t_floor_k,
+                    u_floor,
+                );
+            }
+            i += lanes;
+            continue;
+        }
+        let mut du_dt_arr = [0.0f64; 4];
+        let mut dt_eff_arr = [0.0f64; 4];
+        let mut u_new_arr = [0.0f64; 4];
+        for lane in 0..lanes {
+            let p = &particles[i + lane];
+            let h = p.smoothing_length.max(1e-10);
+            let rho_local = (p.mass / (four_thirds_pi * h * h * h)).max(1e-30);
+            let _t = p.internal_energy * t_factor;
+            let lambda = match cfg.cooling {
+                CoolingKind::None => 0.0,
+                CoolingKind::AtomicHHe => {
+                    cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
+                }
+                CoolingKind::MetalCooling => cooling_rate_metal(
+                    p.internal_energy,
+                    rho_local,
+                    p.metallicity,
+                    gamma,
+                    t_floor_k,
+                ),
+                CoolingKind::MetalTabular => cooling_rate_tabular(
+                    p.internal_energy,
+                    rho_local,
+                    p.metallicity,
+                    gamma,
+                    t_floor_k,
+                ),
+                CoolingKind::UvBackground => cooling_rate_uvb(
+                    p.internal_energy,
+                    rho_local,
+                    p.metallicity,
+                    gamma,
+                    t_floor_k,
+                    cfg,
+                    redshift,
+                ),
+            };
+            let du_dt = -lambda * X_H * X_H * rho_local;
+            let dt_eff = if du_dt < 0.0 {
+                dt.min(p.internal_energy / (-du_dt).max(1e-300))
+            } else {
+                dt
+            };
+            du_dt_arr[lane] = du_dt;
+            dt_eff_arr[lane] = dt_eff;
+            u_new_arr[lane] = (p.internal_energy + du_dt * dt_eff).max(u_floor);
+        }
+        let u_new_v = _mm256_set_pd(u_new_arr[3], u_new_arr[2], u_new_arr[1], u_new_arr[0]);
+        let mut out = [0.0f64; 4];
+        // SAFETY: fixed-size stack array has exactly four f64 lanes.
+        unsafe { _mm256_storeu_pd(out.as_mut_ptr(), u_new_v) };
+        for lane in 0..lanes {
+            particles[i + lane].internal_energy = out[lane];
+        }
+        i += lanes;
+    }
+    for p in particles[chunks..].iter_mut() {
+        apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor);
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_cooling_avx512(
+    particles: &mut [Particle],
+    cfg: &SphSection,
+    dt: f64,
+    redshift: f64,
+) {
+    let gamma = cfg.gamma;
+    let t_floor_k = cfg.t_floor_k;
+    let u_floor = temperature_to_u(t_floor_k, gamma);
+    let lanes = 8;
+    let chunks = particles.len() / lanes * lanes;
+    let t_factor = (gamma - 1.0) / KB_OVER_MH_MU;
+    let four_thirds_pi = 4.0 / 3.0 * std::f64::consts::PI;
+    let mut i = 0;
+    while i < chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas
+            || particles[i..i + lanes]
+                .iter()
+                .any(|p| p.internal_energy <= u_floor)
+        {
+            for lane in 0..lanes {
+                apply_cooling_particle(
+                    &mut particles[i + lane],
+                    cfg,
+                    dt,
+                    redshift,
+                    gamma,
+                    t_floor_k,
+                    u_floor,
+                );
+            }
+            i += lanes;
+            continue;
+        }
+        let mut u_new_arr = [0.0f64; 8];
+        for lane in 0..lanes {
+            let p = &particles[i + lane];
+            let h = p.smoothing_length.max(1e-10);
+            let rho_local = (p.mass / (four_thirds_pi * h * h * h)).max(1e-30);
+            let _t = p.internal_energy * t_factor;
+            let lambda = match cfg.cooling {
+                CoolingKind::None => 0.0,
+                CoolingKind::AtomicHHe => {
+                    cooling_rate_atomic(p.internal_energy, rho_local, gamma, t_floor_k)
+                }
+                CoolingKind::MetalCooling => cooling_rate_metal(
+                    p.internal_energy,
+                    rho_local,
+                    p.metallicity,
+                    gamma,
+                    t_floor_k,
+                ),
+                CoolingKind::MetalTabular => cooling_rate_tabular(
+                    p.internal_energy,
+                    rho_local,
+                    p.metallicity,
+                    gamma,
+                    t_floor_k,
+                ),
+                CoolingKind::UvBackground => cooling_rate_uvb(
+                    p.internal_energy,
+                    rho_local,
+                    p.metallicity,
+                    gamma,
+                    t_floor_k,
+                    cfg,
+                    redshift,
+                ),
+            };
+            let du_dt = -lambda * X_H * X_H * rho_local;
+            let dt_eff = if du_dt < 0.0 {
+                dt.min(p.internal_energy / (-du_dt).max(1e-300))
+            } else {
+                dt
+            };
+            u_new_arr[lane] = (p.internal_energy + du_dt * dt_eff).max(u_floor);
+        }
+        let u_new_v = _mm512_set_pd(
+            u_new_arr[7],
+            u_new_arr[6],
+            u_new_arr[5],
+            u_new_arr[4],
+            u_new_arr[3],
+            u_new_arr[2],
+            u_new_arr[1],
+            u_new_arr[0],
+        );
+        let mut out = [0.0f64; 8];
+        // SAFETY: fixed-size stack array has exactly eight f64 lanes.
+        unsafe { _mm512_storeu_pd(out.as_mut_ptr(), u_new_v) };
+        for lane in 0..lanes {
+            particles[i + lane].internal_energy = out[lane];
+        }
+        i += lanes;
+    }
+    for p in particles[chunks..].iter_mut() {
+        apply_cooling_particle(p, cfg, dt, redshift, gamma, t_floor_k, u_floor);
+    }
 }
 
 /// Cooling con supresión magnética por β-plasma (Phase 134).

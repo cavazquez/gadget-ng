@@ -270,8 +270,110 @@ unsafe fn b_field_stats_avx2(particles: &[Particle]) -> Option<BFieldStats> {
 ))]
 #[target_feature(enable = "avx512f")]
 unsafe fn b_field_stats_avx512(particles: &[Particle]) -> Option<BFieldStats> {
-    // SAFETY: this AVX-512 dispatch path is only entered after runtime x86 feature checks.
-    unsafe { b_field_stats_avx2(particles) }
+    use crate::MU0;
+    let lanes = 8;
+    let chunks = particles.len() / lanes * lanes;
+    let mut m_total_v = _mm512_setzero_pd();
+    let mut mb_sum_v = _mm512_setzero_pd();
+    let mut mb2_sum_v = _mm512_setzero_pd();
+    let mut b_max_v = _mm512_setzero_pd();
+    let mut n_gas = 0usize;
+    let mut i = 0;
+    while i < chunks {
+        let mut mask_bits: u8 = 0;
+        for lane in 0..lanes {
+            if particles[i + lane].ptype == ParticleType::Gas {
+                mask_bits |= 1 << lane;
+            }
+        }
+        n_gas += mask_bits.count_ones() as usize;
+        let m = _mm512_set_pd(
+            particles[i + 7].mass,
+            particles[i + 6].mass,
+            particles[i + 5].mass,
+            particles[i + 4].mass,
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let bx = _mm512_set_pd(
+            particles[i + 7].b_field.x,
+            particles[i + 6].b_field.x,
+            particles[i + 5].b_field.x,
+            particles[i + 4].b_field.x,
+            particles[i + 3].b_field.x,
+            particles[i + 2].b_field.x,
+            particles[i + 1].b_field.x,
+            particles[i].b_field.x,
+        );
+        let by = _mm512_set_pd(
+            particles[i + 7].b_field.y,
+            particles[i + 6].b_field.y,
+            particles[i + 5].b_field.y,
+            particles[i + 4].b_field.y,
+            particles[i + 3].b_field.y,
+            particles[i + 2].b_field.y,
+            particles[i + 1].b_field.y,
+            particles[i].b_field.y,
+        );
+        let bz = _mm512_set_pd(
+            particles[i + 7].b_field.z,
+            particles[i + 6].b_field.z,
+            particles[i + 5].b_field.z,
+            particles[i + 4].b_field.z,
+            particles[i + 3].b_field.z,
+            particles[i + 2].b_field.z,
+            particles[i + 1].b_field.z,
+            particles[i].b_field.z,
+        );
+        let b2 = _mm512_fmadd_pd(bx, bx, _mm512_fmadd_pd(by, by, _mm512_mul_pd(bz, bz)));
+        let b = _mm512_sqrt_pd(b2);
+        let m_masked = _mm512_maskz_add_pd(mask_bits, m, _mm512_setzero_pd());
+        let b_masked = _mm512_maskz_add_pd(mask_bits, b, _mm512_setzero_pd());
+        m_total_v = _mm512_add_pd(m_total_v, m_masked);
+        mb_sum_v = _mm512_fmadd_pd(m_masked, b, mb_sum_v);
+        mb2_sum_v = _mm512_fmadd_pd(m_masked, b2, mb2_sum_v);
+        b_max_v = _mm512_max_pd(b_max_v, b_masked);
+        i += lanes;
+    }
+    let mut mt = [0.0; 8];
+    let mut mb = [0.0; 8];
+    let mut mb2 = [0.0; 8];
+    let mut bm = [0.0; 8];
+    // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
+    unsafe {
+        _mm512_storeu_pd(mt.as_mut_ptr(), m_total_v);
+        _mm512_storeu_pd(mb.as_mut_ptr(), mb_sum_v);
+        _mm512_storeu_pd(mb2.as_mut_ptr(), mb2_sum_v);
+        _mm512_storeu_pd(bm.as_mut_ptr(), b_max_v);
+    }
+    let mut m_total = mt.into_iter().sum::<f64>();
+    let mut mb_sum = mb.into_iter().sum::<f64>();
+    let mut mb2_sum = mb2.into_iter().sum::<f64>();
+    let mut b_max = bm.into_iter().fold(0.0_f64, f64::max);
+    for p in &particles[chunks..] {
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
+        let b2 = p.b_field.x * p.b_field.x + p.b_field.y * p.b_field.y + p.b_field.z * p.b_field.z;
+        let b = b2.sqrt();
+        m_total += p.mass;
+        mb_sum += p.mass * b;
+        mb2_sum += p.mass * b2;
+        b_max = b_max.max(b);
+        n_gas += 1;
+    }
+    if n_gas == 0 || m_total <= 0.0 {
+        return None;
+    }
+    Some(BFieldStats {
+        b_mean: mb_sum / m_total,
+        b_rms: (mb2_sum / m_total).sqrt(),
+        b_max,
+        e_mag: mb2_sum / (2.0 * MU0),
+        n_gas,
+    })
 }
 
 /// Espectro de potencia magnético P_B(k) estimado por histograma de |B|² (Phase 147).

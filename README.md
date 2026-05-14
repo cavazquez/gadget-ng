@@ -187,7 +187,8 @@ y la cobertura detallada en
 | MHD Braginskii | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
 | MHD reconnection | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
 | MHD CR streaming / dynamo | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
-| MHD flux-freeze / stats | ✅ | ✅ | ⚠️ b-field stats AVX2 + AVX512; flux-freeze scalar | ✅ |
+| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ |
+| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ✅ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
