@@ -35,6 +35,8 @@ pub mod two_fluid;
 pub use anisotropic::{apply_anisotropic_conduction, beta_plasma, diffuse_cr_anisotropic};
 pub use braginskii::apply_braginskii_viscosity;
 pub use cleaning::dedner_cleaning_step;
+#[cfg(feature = "bench-all-dedner-paths")]
+pub use cleaning::{DednerCleaningBackend, dedner_cleaning_step_with_backend};
 pub use dynamo::{
     alpha_coefficient, apply_turbulent_dynamo, dynamo_growth_rate, magnetic_energy_ratio,
     maxwell_stress_tensor,

@@ -1843,6 +1843,10 @@ cargo test -p gadget-ng-physics --test phase149_two_fluid         --release
 
 # Benchmarks Criterion MHD avanzados
 cargo bench -p gadget-ng-mhd --bench advanced_bench
+
+# Dedner: comparar CPU serial / Rayon / SIMD AVX2 / SIMD AVX-512 y gráfico de barras
+cargo bench -p gadget-ng-mhd --bench dedner_backend_bench --features bench-all-dedner-paths
+python3 scripts/plot_dedner_backend_benchmark.py --n 1024
 ```
 
 Tests de validación cubiertos en Phases 142–150:

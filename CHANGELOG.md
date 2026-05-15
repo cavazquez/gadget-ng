@@ -26,6 +26,9 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
   `docs/reports/2026-05-accelerator-parity-pending.md` y
   `docs/reports/2026-05-simd-cuda-coverage.md` alineados con esa cobertura y con
   la ruta Rayon de Dedner (paralelo por partícula, pares escalar).
+- Benchmark Criterion `dedner_backend_bench` (`feature = "bench-all-dedner-paths"`)
+  y script `scripts/plot_dedner_backend_benchmark.py` para gráfico de barras de
+  los cuatro backends Dedner (CPU sin Rayon, Rayon, SIMD AVX2, SIMD AVX-512).
 
 ## [0.2.0] - 2026-05-12
 

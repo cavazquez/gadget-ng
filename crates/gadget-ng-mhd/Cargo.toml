@@ -9,6 +9,9 @@ description = "Magnetohydrodynamics (MHD) for gadget-ng simulations"
 default = []
 rayon = ["dep:rayon"]
 simd = []
+# Bench-only: compile Dedner serial (`dedner_cleaning_step_impl`) alongside Rayon so
+# `dedner_cleaning_step_with_backend` can compare CPU serial, Rayon, and forced AVX2/AVX-512 tiers.
+bench-all-dedner-paths = ["rayon", "simd"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
@@ -30,3 +33,8 @@ harness = false
 name = "simd_cpu_bench"
 harness = false
 required-features = ["simd"]
+
+[[bench]]
+name = "dedner_backend_bench"
+harness = false
+required-features = ["bench-all-dedner-paths"]
