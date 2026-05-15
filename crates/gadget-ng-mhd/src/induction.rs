@@ -925,11 +925,28 @@ pub fn alfven_dt(particles: &[Particle], cfl: f64) -> f64 {
 }
 
 #[cfg(not(feature = "rayon"))]
-#[expect(
-    clippy::needless_range_loop,
-    reason = "hot MHD pair loop indexes multiple SoA arrays"
-)]
 fn apply_artificial_resistivity_impl(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: AVX-512F availability was checked at runtime immediately above.
+            unsafe {
+                return apply_artificial_resistivity_avx512(particles, alpha_b, dt);
+            }
+        }
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            // SAFETY: AVX2+FMA availability was checked at runtime immediately above.
+            unsafe {
+                return apply_artificial_resistivity_avx2(particles, alpha_b, dt);
+            }
+        }
+    }
+    apply_artificial_resistivity_scalar(particles, alpha_b, dt);
+}
+
+#[cfg(not(feature = "rayon"))]
+fn apply_artificial_resistivity_scalar(particles: &mut [Particle], alpha_b: f64, dt: f64) {
     if alpha_b <= 0.0 {
         return;
     }
@@ -950,61 +967,619 @@ fn apply_artificial_resistivity_impl(particles: &mut [Particle], alpha_b: f64, d
         let vel_i = particles[i].velocity;
 
         for j in 0..n {
-            if i == j {
-                continue;
-            }
-            if particles[j].ptype != ParticleType::Gas {
-                continue;
-            }
-
-            let dx = particles[j].position.x - pos_i.x;
-            let dy = particles[j].position.y - pos_i.y;
-            let dz = particles[j].position.z - pos_i.z;
-            let r2 = dx * dx + dy * dy + dz * dz;
-            let r = r2.sqrt();
-            if r < 1e-14 {
-                continue;
-            }
-
-            let h_j = particles[j].smoothing_length.max(1e-10);
-            let h_avg = 0.5 * (h_i + h_j);
-            if r > 2.0 * h_avg {
-                continue;
-            }
-
-            let dvx = particles[j].velocity.x - vel_i.x;
-            let dvy = particles[j].velocity.y - vel_i.y;
-            let dvz = particles[j].velocity.z - vel_i.z;
-            let v_sig = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
-
-            let eta_art = alpha_b * h_i * v_sig;
-
-            let q = r / h_avg;
-            let dw_dr = if q <= 1.0 {
-                -3.0 * q * (2.0 - q) / (h_avg.powi(4))
-            } else if q <= 2.0 {
-                -3.0 * (2.0 - q).powi(2) / (2.0 * h_avg.powi(4))
-            } else {
-                0.0
-            };
-            let grad_w_mag = dw_dr.abs();
-
-            let rho_j = (particles[j].mass / (h_j * h_j * h_j)).max(1e-30);
-            let factor = eta_art * particles[j].mass / rho_j * 2.0 * grad_w_mag / r;
-
-            db[i].x += factor * (particles[j].b_field.x - b_i.x);
-            db[i].y += factor * (particles[j].b_field.y - b_i.y);
-            db[i].z += factor * (particles[j].b_field.z - b_i.z);
+            let contrib =
+                resistivity_pair_contribution(particles, i, j, pos_i, vel_i, b_i, h_i, alpha_b);
+            db[i].x += contrib.x;
+            db[i].y += contrib.y;
+            db[i].z += contrib.z;
         }
     }
 
+    apply_induction_updates(particles, &db, dt);
+}
+
+#[cfg(not(feature = "rayon"))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "hot pair helper keeps scalar context explicit and allocation-free"
+)]
+#[inline]
+fn resistivity_pair_contribution(
+    particles: &[Particle],
+    i: usize,
+    j: usize,
+    pos_i: Vec3,
+    vel_i: Vec3,
+    b_i: Vec3,
+    h_i: f64,
+    alpha_b: f64,
+) -> Vec3 {
+    if i == j || particles[j].ptype != ParticleType::Gas {
+        return Vec3::zero();
+    }
+
+    let dx = particles[j].position.x - pos_i.x;
+    let dy = particles[j].position.y - pos_i.y;
+    let dz = particles[j].position.z - pos_i.z;
+    let r2 = dx * dx + dy * dy + dz * dz;
+    let r = r2.sqrt();
+    if r < 1e-14 {
+        return Vec3::zero();
+    }
+
+    let h_j = particles[j].smoothing_length.max(1e-10);
+    let h_avg = 0.5 * (h_i + h_j);
+    if r > 2.0 * h_avg {
+        return Vec3::zero();
+    }
+
+    let dvx = particles[j].velocity.x - vel_i.x;
+    let dvy = particles[j].velocity.y - vel_i.y;
+    let dvz = particles[j].velocity.z - vel_i.z;
+    let v_sig = (dvx * dvx + dvy * dvy + dvz * dvz).sqrt();
+    let eta_art = alpha_b * h_i * v_sig;
+
+    let q = r / h_avg;
+    let dw_dr = if q <= 1.0 {
+        -3.0 * q * (2.0 - q) / (h_avg.powi(4))
+    } else if q <= 2.0 {
+        -3.0 * (2.0 - q).powi(2) / (2.0 * h_avg.powi(4))
+    } else {
+        0.0
+    };
+    let grad_w_mag = dw_dr.abs();
+
+    let rho_j = (particles[j].mass / (h_j * h_j * h_j)).max(1e-30);
+    let factor = eta_art * particles[j].mass / rho_j * 2.0 * grad_w_mag / r;
+
+    Vec3 {
+        x: factor * (particles[j].b_field.x - b_i.x),
+        y: factor * (particles[j].b_field.y - b_i.y),
+        z: factor * (particles[j].b_field.z - b_i.z),
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_artificial_resistivity_avx2(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+    if alpha_b <= 0.0 {
+        return;
+    }
+    let n = particles.len();
+    let mut db = vec![Vec3::zero(); n];
     for i in 0..n {
-        if particles[i].ptype == ParticleType::Gas {
-            particles[i].b_field.x += db[i].x * dt;
-            particles[i].b_field.y += db[i].y * dt;
-            particles[i].b_field.z += db[i].z * dt;
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
         }
+        // SAFETY: caller reached this AVX2 function only after runtime AVX2+FMA dispatch.
+        db[i] = unsafe { resistivity_sum_avx2(particles, i, alpha_b) };
     }
+    apply_induction_updates(particles, &db, dt);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_artificial_resistivity_avx512(particles: &mut [Particle], alpha_b: f64, dt: f64) {
+    if alpha_b <= 0.0 {
+        return;
+    }
+    let n = particles.len();
+    let mut db = vec![Vec3::zero(); n];
+    for i in 0..n {
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
+        // SAFETY: caller reached this AVX-512F function only after runtime AVX-512F dispatch.
+        db[i] = unsafe { resistivity_sum_avx512(particles, i, alpha_b) };
+    }
+    apply_induction_updates(particles, &db, dt);
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn resistivity_sum_avx2(particles: &[Particle], i: usize, alpha_b: f64) -> Vec3 {
+    let lanes = 4;
+    let chunks = particles.len() / lanes * lanes;
+    let h_i = particles[i].smoothing_length.max(1e-10);
+    let pos_i = particles[i].position;
+    let vel_i = particles[i].velocity;
+    let b_i = particles[i].b_field;
+    let mut sum_x = _mm256_setzero_pd();
+    let mut sum_y = _mm256_setzero_pd();
+    let mut sum_z = _mm256_setzero_pd();
+    let mut j = 0;
+    while j < chunks {
+        let all_valid = i < j || i >= j + lanes;
+        let all_gas = particles[j..j + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_valid || !all_gas {
+            for lane in 0..lanes {
+                let contrib = resistivity_pair_contribution(
+                    particles,
+                    i,
+                    j + lane,
+                    pos_i,
+                    vel_i,
+                    b_i,
+                    h_i,
+                    alpha_b,
+                );
+                sum_x = _mm256_add_pd(sum_x, _mm256_set_pd(0.0, 0.0, 0.0, contrib.x));
+                sum_y = _mm256_add_pd(sum_y, _mm256_set_pd(0.0, 0.0, 0.0, contrib.y));
+                sum_z = _mm256_add_pd(sum_z, _mm256_set_pd(0.0, 0.0, 0.0, contrib.z));
+            }
+            j += lanes;
+            continue;
+        }
+
+        let (cx, cy, cz) = resistivity_batch_avx2(particles, j, pos_i, vel_i, b_i, h_i, alpha_b);
+        sum_x = _mm256_add_pd(sum_x, cx);
+        sum_y = _mm256_add_pd(sum_y, cy);
+        sum_z = _mm256_add_pd(sum_z, cz);
+        j += lanes;
+    }
+
+    let mut out_x = [0.0; 4];
+    let mut out_y = [0.0; 4];
+    let mut out_z = [0.0; 4];
+    // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(out_x.as_mut_ptr(), sum_x);
+        _mm256_storeu_pd(out_y.as_mut_ptr(), sum_y);
+        _mm256_storeu_pd(out_z.as_mut_ptr(), sum_z);
+    }
+    let mut db = Vec3::new(
+        out_x.into_iter().sum(),
+        out_y.into_iter().sum(),
+        out_z.into_iter().sum(),
+    );
+    for j_tail in chunks..particles.len() {
+        let contrib =
+            resistivity_pair_contribution(particles, i, j_tail, pos_i, vel_i, b_i, h_i, alpha_b);
+        db.x += contrib.x;
+        db.y += contrib.y;
+        db.z += contrib.z;
+    }
+    db
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+fn resistivity_batch_avx2(
+    particles: &[Particle],
+    j: usize,
+    pos_i: Vec3,
+    vel_i: Vec3,
+    b_i: Vec3,
+    h_i: f64,
+    alpha_b: f64,
+) -> (__m256d, __m256d, __m256d) {
+    let px = _mm256_set_pd(
+        particles[j + 3].position.x,
+        particles[j + 2].position.x,
+        particles[j + 1].position.x,
+        particles[j].position.x,
+    );
+    let py = _mm256_set_pd(
+        particles[j + 3].position.y,
+        particles[j + 2].position.y,
+        particles[j + 1].position.y,
+        particles[j].position.y,
+    );
+    let pz = _mm256_set_pd(
+        particles[j + 3].position.z,
+        particles[j + 2].position.z,
+        particles[j + 1].position.z,
+        particles[j].position.z,
+    );
+    let dx = _mm256_sub_pd(px, _mm256_set1_pd(pos_i.x));
+    let dy = _mm256_sub_pd(py, _mm256_set1_pd(pos_i.y));
+    let dz = _mm256_sub_pd(pz, _mm256_set1_pd(pos_i.z));
+    let r2 = _mm256_fmadd_pd(dx, dx, _mm256_fmadd_pd(dy, dy, _mm256_mul_pd(dz, dz)));
+    let r = _mm256_sqrt_pd(r2);
+
+    let h_j = _mm256_max_pd(
+        _mm256_set_pd(
+            particles[j + 3].smoothing_length,
+            particles[j + 2].smoothing_length,
+            particles[j + 1].smoothing_length,
+            particles[j].smoothing_length,
+        ),
+        _mm256_set1_pd(1e-10),
+    );
+    let h_avg = _mm256_mul_pd(_mm256_add_pd(_mm256_set1_pd(h_i), h_j), _mm256_set1_pd(0.5));
+    let q = _mm256_div_pd(r, h_avg);
+    let q_le_1 = _mm256_cmp_pd(q, _mm256_set1_pd(1.0), _CMP_LE_OQ);
+    let q_le_2 = _mm256_cmp_pd(q, _mm256_set1_pd(2.0), _CMP_LE_OQ);
+    let h2 = _mm256_mul_pd(h_avg, h_avg);
+    let h4 = _mm256_mul_pd(h2, h2);
+    let dw_inner = _mm256_div_pd(
+        _mm256_mul_pd(
+            _mm256_set1_pd(-3.0),
+            _mm256_mul_pd(q, _mm256_sub_pd(_mm256_set1_pd(2.0), q)),
+        ),
+        h4,
+    );
+    let two_minus_q = _mm256_sub_pd(_mm256_set1_pd(2.0), q);
+    let dw_outer = _mm256_div_pd(
+        _mm256_mul_pd(
+            _mm256_set1_pd(-1.5),
+            _mm256_mul_pd(two_minus_q, two_minus_q),
+        ),
+        h4,
+    );
+    let dw = _mm256_or_pd(
+        _mm256_and_pd(q_le_1, dw_inner),
+        _mm256_andnot_pd(q_le_1, _mm256_and_pd(q_le_2, dw_outer)),
+    );
+    let grad_w_mag = _mm256_andnot_pd(_mm256_set1_pd(-0.0), dw);
+
+    let vx = _mm256_set_pd(
+        particles[j + 3].velocity.x,
+        particles[j + 2].velocity.x,
+        particles[j + 1].velocity.x,
+        particles[j].velocity.x,
+    );
+    let vy = _mm256_set_pd(
+        particles[j + 3].velocity.y,
+        particles[j + 2].velocity.y,
+        particles[j + 1].velocity.y,
+        particles[j].velocity.y,
+    );
+    let vz = _mm256_set_pd(
+        particles[j + 3].velocity.z,
+        particles[j + 2].velocity.z,
+        particles[j + 1].velocity.z,
+        particles[j].velocity.z,
+    );
+    let dvx = _mm256_sub_pd(vx, _mm256_set1_pd(vel_i.x));
+    let dvy = _mm256_sub_pd(vy, _mm256_set1_pd(vel_i.y));
+    let dvz = _mm256_sub_pd(vz, _mm256_set1_pd(vel_i.z));
+    let v_sig = _mm256_sqrt_pd(_mm256_fmadd_pd(
+        dvx,
+        dvx,
+        _mm256_fmadd_pd(dvy, dvy, _mm256_mul_pd(dvz, dvz)),
+    ));
+    let eta_art = _mm256_mul_pd(_mm256_set1_pd(alpha_b * h_i), v_sig);
+    let rho_j = _mm256_max_pd(
+        _mm256_div_pd(
+            _mm256_set_pd(
+                particles[j + 3].mass,
+                particles[j + 2].mass,
+                particles[j + 1].mass,
+                particles[j].mass,
+            ),
+            _mm256_mul_pd(_mm256_mul_pd(h_j, h_j), h_j),
+        ),
+        _mm256_set1_pd(1e-30),
+    );
+    let mass_over_rho = _mm256_div_pd(
+        _mm256_set_pd(
+            particles[j + 3].mass,
+            particles[j + 2].mass,
+            particles[j + 1].mass,
+            particles[j].mass,
+        ),
+        rho_j,
+    );
+    let r_safe = _mm256_max_pd(r, _mm256_set1_pd(1e-14));
+    let factor = _mm256_mul_pd(
+        _mm256_mul_pd(eta_art, mass_over_rho),
+        _mm256_div_pd(_mm256_mul_pd(_mm256_set1_pd(2.0), grad_w_mag), r_safe),
+    );
+    let valid = _mm256_and_pd(
+        _mm256_cmp_pd(r, _mm256_set1_pd(1e-14), _CMP_GE_OQ),
+        _mm256_cmp_pd(r, _mm256_mul_pd(_mm256_set1_pd(2.0), h_avg), _CMP_LE_OQ),
+    );
+    let factor = _mm256_and_pd(factor, valid);
+    let bx = _mm256_set_pd(
+        particles[j + 3].b_field.x,
+        particles[j + 2].b_field.x,
+        particles[j + 1].b_field.x,
+        particles[j].b_field.x,
+    );
+    let by = _mm256_set_pd(
+        particles[j + 3].b_field.y,
+        particles[j + 2].b_field.y,
+        particles[j + 1].b_field.y,
+        particles[j].b_field.y,
+    );
+    let bz = _mm256_set_pd(
+        particles[j + 3].b_field.z,
+        particles[j + 2].b_field.z,
+        particles[j + 1].b_field.z,
+        particles[j].b_field.z,
+    );
+    (
+        _mm256_mul_pd(factor, _mm256_sub_pd(bx, _mm256_set1_pd(b_i.x))),
+        _mm256_mul_pd(factor, _mm256_sub_pd(by, _mm256_set1_pd(b_i.y))),
+        _mm256_mul_pd(factor, _mm256_sub_pd(bz, _mm256_set1_pd(b_i.z))),
+    )
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn resistivity_sum_avx512(particles: &[Particle], i: usize, alpha_b: f64) -> Vec3 {
+    let lanes = 8;
+    let chunks = particles.len() / lanes * lanes;
+    let h_i = particles[i].smoothing_length.max(1e-10);
+    let pos_i = particles[i].position;
+    let vel_i = particles[i].velocity;
+    let b_i = particles[i].b_field;
+    let mut sum_x = _mm512_setzero_pd();
+    let mut sum_y = _mm512_setzero_pd();
+    let mut sum_z = _mm512_setzero_pd();
+    let mut j = 0;
+    while j < chunks {
+        let all_valid = i < j || i >= j + lanes;
+        let all_gas = particles[j..j + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_valid || !all_gas {
+            for lane in 0..lanes {
+                let contrib = resistivity_pair_contribution(
+                    particles,
+                    i,
+                    j + lane,
+                    pos_i,
+                    vel_i,
+                    b_i,
+                    h_i,
+                    alpha_b,
+                );
+                sum_x = _mm512_add_pd(
+                    sum_x,
+                    _mm512_set_pd(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, contrib.x),
+                );
+                sum_y = _mm512_add_pd(
+                    sum_y,
+                    _mm512_set_pd(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, contrib.y),
+                );
+                sum_z = _mm512_add_pd(
+                    sum_z,
+                    _mm512_set_pd(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, contrib.z),
+                );
+            }
+            j += lanes;
+            continue;
+        }
+
+        let (cx, cy, cz) = resistivity_batch_avx512(particles, j, pos_i, vel_i, b_i, h_i, alpha_b);
+        sum_x = _mm512_add_pd(sum_x, cx);
+        sum_y = _mm512_add_pd(sum_y, cy);
+        sum_z = _mm512_add_pd(sum_z, cz);
+        j += lanes;
+    }
+
+    let mut out_x = [0.0; 8];
+    let mut out_y = [0.0; 8];
+    let mut out_z = [0.0; 8];
+    // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
+    unsafe {
+        _mm512_storeu_pd(out_x.as_mut_ptr(), sum_x);
+        _mm512_storeu_pd(out_y.as_mut_ptr(), sum_y);
+        _mm512_storeu_pd(out_z.as_mut_ptr(), sum_z);
+    }
+    let mut db = Vec3::new(
+        out_x.into_iter().sum(),
+        out_y.into_iter().sum(),
+        out_z.into_iter().sum(),
+    );
+    for j_tail in chunks..particles.len() {
+        let contrib =
+            resistivity_pair_contribution(particles, i, j_tail, pos_i, vel_i, b_i, h_i, alpha_b);
+        db.x += contrib.x;
+        db.y += contrib.y;
+        db.z += contrib.z;
+    }
+    db
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+fn resistivity_batch_avx512(
+    particles: &[Particle],
+    j: usize,
+    pos_i: Vec3,
+    vel_i: Vec3,
+    b_i: Vec3,
+    h_i: f64,
+    alpha_b: f64,
+) -> (__m512d, __m512d, __m512d) {
+    let px = _mm512_set_pd(
+        particles[j + 7].position.x,
+        particles[j + 6].position.x,
+        particles[j + 5].position.x,
+        particles[j + 4].position.x,
+        particles[j + 3].position.x,
+        particles[j + 2].position.x,
+        particles[j + 1].position.x,
+        particles[j].position.x,
+    );
+    let py = _mm512_set_pd(
+        particles[j + 7].position.y,
+        particles[j + 6].position.y,
+        particles[j + 5].position.y,
+        particles[j + 4].position.y,
+        particles[j + 3].position.y,
+        particles[j + 2].position.y,
+        particles[j + 1].position.y,
+        particles[j].position.y,
+    );
+    let pz = _mm512_set_pd(
+        particles[j + 7].position.z,
+        particles[j + 6].position.z,
+        particles[j + 5].position.z,
+        particles[j + 4].position.z,
+        particles[j + 3].position.z,
+        particles[j + 2].position.z,
+        particles[j + 1].position.z,
+        particles[j].position.z,
+    );
+    let dx = _mm512_sub_pd(px, _mm512_set1_pd(pos_i.x));
+    let dy = _mm512_sub_pd(py, _mm512_set1_pd(pos_i.y));
+    let dz = _mm512_sub_pd(pz, _mm512_set1_pd(pos_i.z));
+    let r2 = _mm512_fmadd_pd(dx, dx, _mm512_fmadd_pd(dy, dy, _mm512_mul_pd(dz, dz)));
+    let r = _mm512_sqrt_pd(r2);
+
+    let h_j = _mm512_max_pd(
+        _mm512_set_pd(
+            particles[j + 7].smoothing_length,
+            particles[j + 6].smoothing_length,
+            particles[j + 5].smoothing_length,
+            particles[j + 4].smoothing_length,
+            particles[j + 3].smoothing_length,
+            particles[j + 2].smoothing_length,
+            particles[j + 1].smoothing_length,
+            particles[j].smoothing_length,
+        ),
+        _mm512_set1_pd(1e-10),
+    );
+    let h_avg = _mm512_mul_pd(_mm512_add_pd(_mm512_set1_pd(h_i), h_j), _mm512_set1_pd(0.5));
+    let q = _mm512_div_pd(r, h_avg);
+    let q_le_1 = _mm512_cmp_pd_mask(q, _mm512_set1_pd(1.0), _CMP_LE_OQ);
+    let q_le_2 = _mm512_cmp_pd_mask(q, _mm512_set1_pd(2.0), _CMP_LE_OQ);
+    let h2 = _mm512_mul_pd(h_avg, h_avg);
+    let h4 = _mm512_mul_pd(h2, h2);
+    let dw_inner = _mm512_div_pd(
+        _mm512_mul_pd(
+            _mm512_set1_pd(-3.0),
+            _mm512_mul_pd(q, _mm512_sub_pd(_mm512_set1_pd(2.0), q)),
+        ),
+        h4,
+    );
+    let two_minus_q = _mm512_sub_pd(_mm512_set1_pd(2.0), q);
+    let dw_outer = _mm512_div_pd(
+        _mm512_mul_pd(
+            _mm512_set1_pd(-1.5),
+            _mm512_mul_pd(two_minus_q, two_minus_q),
+        ),
+        h4,
+    );
+    let dw = _mm512_mask_blend_pd(q_le_1, _mm512_maskz_mov_pd(q_le_2, dw_outer), dw_inner);
+    let grad_w_mag = _mm512_sub_pd(_mm512_setzero_pd(), dw);
+
+    let vx = _mm512_set_pd(
+        particles[j + 7].velocity.x,
+        particles[j + 6].velocity.x,
+        particles[j + 5].velocity.x,
+        particles[j + 4].velocity.x,
+        particles[j + 3].velocity.x,
+        particles[j + 2].velocity.x,
+        particles[j + 1].velocity.x,
+        particles[j].velocity.x,
+    );
+    let vy = _mm512_set_pd(
+        particles[j + 7].velocity.y,
+        particles[j + 6].velocity.y,
+        particles[j + 5].velocity.y,
+        particles[j + 4].velocity.y,
+        particles[j + 3].velocity.y,
+        particles[j + 2].velocity.y,
+        particles[j + 1].velocity.y,
+        particles[j].velocity.y,
+    );
+    let vz = _mm512_set_pd(
+        particles[j + 7].velocity.z,
+        particles[j + 6].velocity.z,
+        particles[j + 5].velocity.z,
+        particles[j + 4].velocity.z,
+        particles[j + 3].velocity.z,
+        particles[j + 2].velocity.z,
+        particles[j + 1].velocity.z,
+        particles[j].velocity.z,
+    );
+    let dvx = _mm512_sub_pd(vx, _mm512_set1_pd(vel_i.x));
+    let dvy = _mm512_sub_pd(vy, _mm512_set1_pd(vel_i.y));
+    let dvz = _mm512_sub_pd(vz, _mm512_set1_pd(vel_i.z));
+    let v_sig = _mm512_sqrt_pd(_mm512_fmadd_pd(
+        dvx,
+        dvx,
+        _mm512_fmadd_pd(dvy, dvy, _mm512_mul_pd(dvz, dvz)),
+    ));
+    let eta_art = _mm512_mul_pd(_mm512_set1_pd(alpha_b * h_i), v_sig);
+    let mass = _mm512_set_pd(
+        particles[j + 7].mass,
+        particles[j + 6].mass,
+        particles[j + 5].mass,
+        particles[j + 4].mass,
+        particles[j + 3].mass,
+        particles[j + 2].mass,
+        particles[j + 1].mass,
+        particles[j].mass,
+    );
+    let rho_j = _mm512_max_pd(
+        _mm512_div_pd(mass, _mm512_mul_pd(_mm512_mul_pd(h_j, h_j), h_j)),
+        _mm512_set1_pd(1e-30),
+    );
+    let r_safe = _mm512_max_pd(r, _mm512_set1_pd(1e-14));
+    let factor = _mm512_mul_pd(
+        _mm512_mul_pd(eta_art, _mm512_div_pd(mass, rho_j)),
+        _mm512_div_pd(_mm512_mul_pd(_mm512_set1_pd(2.0), grad_w_mag), r_safe),
+    );
+    let valid = _mm512_cmp_pd_mask(r, _mm512_set1_pd(1e-14), _CMP_GE_OQ)
+        & _mm512_cmp_pd_mask(r, _mm512_mul_pd(_mm512_set1_pd(2.0), h_avg), _CMP_LE_OQ);
+    let factor = _mm512_maskz_mov_pd(valid, factor);
+    let bx = _mm512_set_pd(
+        particles[j + 7].b_field.x,
+        particles[j + 6].b_field.x,
+        particles[j + 5].b_field.x,
+        particles[j + 4].b_field.x,
+        particles[j + 3].b_field.x,
+        particles[j + 2].b_field.x,
+        particles[j + 1].b_field.x,
+        particles[j].b_field.x,
+    );
+    let by = _mm512_set_pd(
+        particles[j + 7].b_field.y,
+        particles[j + 6].b_field.y,
+        particles[j + 5].b_field.y,
+        particles[j + 4].b_field.y,
+        particles[j + 3].b_field.y,
+        particles[j + 2].b_field.y,
+        particles[j + 1].b_field.y,
+        particles[j].b_field.y,
+    );
+    let bz = _mm512_set_pd(
+        particles[j + 7].b_field.z,
+        particles[j + 6].b_field.z,
+        particles[j + 5].b_field.z,
+        particles[j + 4].b_field.z,
+        particles[j + 3].b_field.z,
+        particles[j + 2].b_field.z,
+        particles[j + 1].b_field.z,
+        particles[j].b_field.z,
+    );
+    (
+        _mm512_mul_pd(factor, _mm512_sub_pd(bx, _mm512_set1_pd(b_i.x))),
+        _mm512_mul_pd(factor, _mm512_sub_pd(by, _mm512_set1_pd(b_i.y))),
+        _mm512_mul_pd(factor, _mm512_sub_pd(bz, _mm512_set1_pd(b_i.z))),
+    )
 }
 
 #[cfg(feature = "rayon")]
@@ -1194,6 +1769,42 @@ mod tests {
 
         advance_induction_scalar(&mut scalar, 0.018);
         advance_induction_impl(&mut dispatched, 0.018);
+
+        assert_b_fields_close(&dispatched, &scalar);
+        for (idx, b_before) in dm_before {
+            assert_abs_diff_eq!(dispatched[idx].b_field.x, b_before.x, epsilon = 0.0);
+            assert_abs_diff_eq!(dispatched[idx].b_field.y, b_before.y, epsilon = 0.0);
+            assert_abs_diff_eq!(dispatched[idx].b_field.z, b_before.z, epsilon = 0.0);
+        }
+    }
+
+    #[test]
+    #[cfg(not(feature = "rayon"))]
+    fn resistivity_dispatch_matches_scalar_for_all_gas() {
+        let mut scalar = make_induction_particles(16, false);
+        let mut dispatched = scalar.clone();
+
+        apply_artificial_resistivity_scalar(&mut scalar, 0.35, 0.02);
+        apply_artificial_resistivity_impl(&mut dispatched, 0.35, 0.02);
+
+        assert_b_fields_close(&dispatched, &scalar);
+    }
+
+    #[test]
+    #[cfg(not(feature = "rayon"))]
+    fn resistivity_dispatch_matches_scalar_with_dark_matter() {
+        let mut scalar = make_induction_particles(16, true);
+        let mut dispatched = scalar.clone();
+        let dm_before: Vec<(usize, Vec3)> = dispatched
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, p)| {
+                (p.ptype == ParticleType::DarkMatter).then_some((idx, p.b_field))
+            })
+            .collect();
+
+        apply_artificial_resistivity_scalar(&mut scalar, 0.28, 0.018);
+        apply_artificial_resistivity_impl(&mut dispatched, 0.28, 0.018);
 
         assert_b_fields_close(&dispatched, &scalar);
         for (idx, b_before) in dm_before {

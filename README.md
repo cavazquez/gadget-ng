@@ -180,13 +180,13 @@ y la cobertura detallada en
 | Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ✅ |
 | Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ |
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
-| MHD induction/resistivity | ✅ | ✅ | ⚠️ induction pair accumulation AVX2 + AVX512; resistivity scalar | ✅ smoke/parity kernel |
+| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 final-update | ✅ |
-| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ⚠️ no AVX explícito | ✅ scalar diffusion surface |
-| MHD Braginskii | ✅ | ✅ | ⚠️ no AVX explícito | ✅ |
-| MHD reconnection | ✅ | ✅ | ⚠️ no AVX explícito | ✅ combined kernel |
-| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 dynamo B-field update + energy ratio | ✅ combined kernel |
+| MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 density + final-update; pairwise block scalar | ✅ |
+| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface |
+| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ |
+| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel |
+| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ combined kernel |
 | MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ |
 | MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ |
 | SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ |
@@ -194,7 +194,7 @@ y la cobertura detallada en
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
-| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane | ❌ |
+| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests | ❌ |
 | RT IGM temperature profile | ✅ | ✅ | ⚠️ scalar-optimal (ChemState AoS prevents vectorization) | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |

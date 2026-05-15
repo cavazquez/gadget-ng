@@ -1530,18 +1530,16 @@ mod tests {
         }
     }
 
-    #[test]
-    #[cfg(not(feature = "rayon"))]
-    fn implicit_chemistry_slice_dispatch_matches_scalar_mixed_states() {
-        let mut states = vec![
-            ChemState::neutral(),
-            ChemState::fully_ionized(),
-            {
+    fn parity_chem_state(seed: usize) -> ChemState {
+        match seed % 8 {
+            0 => ChemState::neutral(),
+            1 => ChemState::fully_ionized(),
+            2 => {
                 let mut st = ChemState::neutral();
                 st.x_e = 1e-4;
                 st
-            },
-            {
+            }
+            3 => {
                 let mut st = ChemState::neutral();
                 st.x_h2 = 1e-3;
                 st.x_hi = 1.0 - 2.0 * st.x_h2;
@@ -1550,23 +1548,167 @@ mod tests {
                 st.x_d = F_D - st.x_dp;
                 st.x_e = st.x_hii + st.x_dp;
                 st
-            },
-            ChemState::neutral(),
-            ChemState::fully_ionized(),
-            ChemState::neutral(),
-            ChemState::fully_ionized(),
-        ];
-        let gamma_hi = vec![0.0, 0.0, 1e-13, 0.0, 1e-10, 0.0, 5e-12, 2e-13];
-        let t_gas = vec![1e3, 1e4, 3e3, 200.0, 1e4, 1e6, 8e3, 5e5];
-        let mut expected = states.clone();
-        solve_chemistry_implicit_slice_scalar(&mut expected, &gamma_hi, 0.0, &t_gas, 1e10);
+            }
+            4 => {
+                let mut st = ChemState::neutral();
+                st.x_hm = 1e-8;
+                st.x_h2p = 2e-8;
+                st.x_h2 = 2e-4;
+                st.x_hii = 2e-3;
+                st.x_hi = 1.0 - st.x_hii - st.x_hm - 2.0 * st.x_h2 - 2.0 * st.x_h2p;
+                st.x_e = st.x_hii + st.x_h2p - st.x_hm;
+                st
+            }
+            5 => {
+                let mut st = ChemState::neutral();
+                st.x_hei = F_HE * 0.4;
+                st.x_heii = F_HE * 0.4;
+                st.x_heiii = F_HE * 0.2;
+                st.x_hii = 0.15;
+                st.x_hi = 0.85;
+                st.clamp_and_normalize();
+                st
+            }
+            6 => {
+                let mut st = ChemState::neutral();
+                st.x_hd = F_D * 0.2;
+                st.x_dp = F_D * 0.3;
+                st.x_d = F_D - st.x_hd - st.x_dp;
+                st.x_h2 = 5e-4;
+                st.x_hii = 5e-4;
+                st.x_hi = 1.0 - st.x_hii - 2.0 * st.x_h2 - st.x_hd;
+                st.x_e = st.x_hii + st.x_dp;
+                st
+            }
+            _ => {
+                let mut st = ChemState::neutral();
+                st.x_hii = 0.02;
+                st.x_hi = 0.98;
+                st.x_heii = F_HE * 0.1;
+                st.x_hei = F_HE * 0.9;
+                st.x_e = st.x_hii + st.x_heii;
+                st
+            }
+        }
+    }
 
-        solve_chemistry_implicit_slice(&mut states, &gamma_hi, 0.0, &t_gas, 1e10);
+    fn parity_inputs(n: usize) -> (Vec<ChemState>, Vec<f64>, Vec<f64>) {
+        let states = (0..n).map(parity_chem_state).collect::<Vec<_>>();
+        let gamma_hi = (0..n)
+            .map(|i| match i % 5 {
+                0 => 0.0,
+                1 => 1e-13,
+                2 => 1e-10,
+                3 => 5e-12,
+                _ => 2e-14,
+            })
+            .collect::<Vec<_>>();
+        let t_gas = (0..n)
+            .map(|i| match i % 8 {
+                0 => 200.0,
+                1 => 1e3,
+                2 => 3e3,
+                3 => 1e4,
+                4 => 8e4,
+                5 => 5e5,
+                6 => 1e6,
+                _ => 2e6,
+            })
+            .collect::<Vec<_>>();
+        (states, gamma_hi, t_gas)
+    }
+
+    #[test]
+    #[cfg(not(feature = "rayon"))]
+    fn implicit_chemistry_slice_dispatch_matches_scalar_mixed_states() {
+        let (mut states, gamma_hi, t_gas) = parity_inputs(8);
+        let mut expected = states.clone();
+        solve_chemistry_implicit_slice_scalar(&mut expected, &gamma_hi, 2e-13, &t_gas, 1e10);
+
+        solve_chemistry_implicit_slice(&mut states, &gamma_hi, 2e-13, &t_gas, 1e10);
 
         for (got, want) in states.iter().zip(expected.iter()) {
             // The masked AVX path keeps stiff, branch-heavy chemistry scalar-per-lane while
             // coordinating active lanes; parity should therefore be bit-near scalar.
             assert_chem_close(got, want);
+        }
+    }
+
+    #[test]
+    #[cfg(not(feature = "rayon"))]
+    fn implicit_chemistry_slice_dispatch_matches_scalar_for_chunk_and_tail_sizes() {
+        for n in [1usize, 3, 4, 5, 8, 9, 16, 17] {
+            let (mut states, gamma_hi, t_gas) = parity_inputs(n);
+            let mut expected = states.clone();
+
+            solve_chemistry_implicit_slice_scalar(&mut expected, &gamma_hi, 7e-14, &t_gas, 3e9);
+            solve_chemistry_implicit_slice(&mut states, &gamma_hi, 7e-14, &t_gas, 3e9);
+
+            for (got, want) in states.iter().zip(expected.iter()) {
+                assert_chem_close(got, want);
+                assert!((got.hydrogen_nuclei_fraction() - 1.0).abs() < 1e-8);
+                assert!((got.deuterium_nuclei_fraction() - F_D).abs() < 1e-10);
+                assert!((got.x_hei + got.x_heii + got.x_heiii - F_HE).abs() < 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(not(feature = "rayon"))]
+    fn apply_chemistry_dispatch_matches_scalar_end_to_end() {
+        use crate::m1::RadiationField;
+        use gadget_ng_core::{Particle, Vec3};
+
+        let n = 9;
+        let (mut states, _gamma_hi, _t_gas) = parity_inputs(n);
+        let mut expected_states = states.clone();
+        let mut particles = (0..n)
+            .map(|i| {
+                Particle::new_gas(
+                    i,
+                    1.0,
+                    Vec3::new(0.02 * i as f64, 0.01 * i as f64, 0.03 * i as f64),
+                    Vec3::zero(),
+                    0.8 + 0.03 * (i % 4) as f64,
+                    0.1,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut expected_particles = particles.clone();
+        let rad = RadiationField::uniform(4, 4, 4, 1.0, 2e-12);
+        let params = ChemParams::default();
+
+        let box_size = rad.dx * rad.nx as f64;
+        let m1_dummy = crate::m1::M1Params {
+            c_red_factor: 100.0,
+            kappa_abs: 1.0,
+            kappa_scat: 0.0,
+            substeps: 1,
+            sigma_dust: 0.1,
+        };
+        let gamma_hi =
+            photoionization_rates_for_particles(&expected_particles, &rad, box_size, &m1_dummy);
+        let t_gas = expected_particles
+            .iter()
+            .zip(expected_states.iter())
+            .map(|(p, st)| st.temperature_from_internal_energy(p.internal_energy, params.gamma))
+            .collect::<Vec<_>>();
+        solve_chemistry_implicit_slice_scalar(&mut expected_states, &gamma_hi, 0.0, &t_gas, 5e8);
+        apply_chemistry_cooling(
+            &mut expected_particles,
+            &expected_states,
+            &t_gas,
+            params.n_h_ref,
+            5e8,
+        );
+
+        apply_chemistry(&mut particles, &mut states, &rad, &params, 5e8);
+
+        for (got, want) in states.iter().zip(expected_states.iter()) {
+            assert_chem_close(got, want);
+        }
+        for (got, want) in particles.iter().zip(expected_particles.iter()) {
+            assert!((got.internal_energy - want.internal_energy).abs() < 1e-12);
         }
     }
 }
