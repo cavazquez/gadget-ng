@@ -119,34 +119,51 @@ impl CudaPool {
     /// por encima de la capacidad actual.
     #[cfg(not(cuda_unavailable))]
     pub unsafe fn upload_f32(&self, slot: i32, data: &[f32]) -> *mut f32 {
-        crate::ffi::cuda_pool_upload_f32(self.handle, slot, data.as_ptr(), data.len() as i32)
+        // SAFETY: `self.handle` es un pool CUDA válido; el FFI copia `data` al slot indicado.
+        unsafe {
+            crate::ffi::cuda_pool_upload_f32(self.handle, slot, data.as_ptr(), data.len() as i32)
+        }
     }
 
     /// Sube datos u8 al device en el slot `slot_index`.
+    ///
+    /// # Safety
+    /// El puntero devuelto es válido mientras el pool no sea destruido ni redimensionado
+    /// por encima de la capacidad actual.
     #[cfg(not(cuda_unavailable))]
     pub unsafe fn upload_u8(&self, slot: i32, data: &[u8]) -> *mut u8 {
-        crate::ffi::cuda_pool_upload_u8(self.handle, slot, data.as_ptr(), data.len() as i32)
+        // SAFETY: `self.handle` es un pool CUDA válido; el FFI copia `data` al slot indicado.
+        unsafe {
+            crate::ffi::cuda_pool_upload_u8(self.handle, slot, data.as_ptr(), data.len() as i32)
+        }
     }
 
     /// Aloca un buffer f32 de salida (cero-inicializado) en el slot `slot_index`.
+    ///
+    /// # Safety
+    /// El puntero devuelto es válido mientras el pool no sea destruido ni redimensionado
+    /// por encima de la capacidad actual.
     #[cfg(not(cuda_unavailable))]
     pub unsafe fn alloc_f32(&self, slot: i32, n: usize) -> *mut f32 {
-        crate::ffi::cuda_pool_alloc_f32(self.handle, slot, n as i32)
+        // SAFETY: `self.handle` es un pool CUDA válido; el FFI reserva `n` elementos en el slot.
+        unsafe { crate::ffi::cuda_pool_alloc_f32(self.handle, slot, n as i32) }
     }
 
     /// Descarga datos f32 del device al host.
+    ///
+    /// # Safety
+    /// `src` debe ser un puntero device devuelto por este pool para el mismo slot y tamaño
+    /// que `dst.len()`, y válido mientras no se haya reseteado o redimensionado el pool.
     #[cfg(not(cuda_unavailable))]
     pub unsafe fn download_f32(
         &self,
         dst: &mut [f32],
         src: *const f32,
     ) -> Result<(), crate::availability::CudaExecutionError> {
-        let ret = crate::ffi::cuda_pool_download_f32(
-            self.handle,
-            dst.as_mut_ptr(),
-            src,
-            dst.len() as i32,
-        );
+        // SAFETY: el FFI copia desde `src` (device) a `dst` (host) con longitud coherente.
+        let ret = unsafe {
+            crate::ffi::cuda_pool_download_f32(self.handle, dst.as_mut_ptr(), src, dst.len() as i32)
+        };
         if ret != 0 {
             Err(crate::availability::CudaExecutionError::KernelFailed {
                 kernel: "cuda_pool_download_f32",

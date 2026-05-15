@@ -1,5 +1,56 @@
 use serde::{Deserialize, Serialize};
 
+/// Configuración opt-in para kernels CUDA smoke/parity por módulo.
+///
+/// Cada flag habilita el path CUDA para un módulo de física específico cuando
+/// `[performance] use_gpu_cuda = true`. Sin el flag, el módulo usa CPU
+/// independientemente de `use_gpu_cuda`. Los flags solo tienen efecto cuando
+/// se compila con `--features cuda` y hay un dispositivo NVIDIA disponible.
+///
+/// **Paridad real (✅):** `use_gpu_cuda` por sí solo activa gravedad directa y PM.
+/// **Paridad smoke/parity (⚠️):** estos flags opt-in activan kernels que aún no
+/// tienen validación 1:1 contra CPU en hardware real. Si el kernel CUDA falla
+/// (dispositivo no disponible, error de ejecución), se cae al path CPU sin error fatal.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AcceleratorsSection {
+    /// Activar kernels CUDA SPH (densidad Wendland, Balsara, fuerzas clásicas/Gadget-2).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_sph: bool,
+
+    /// Activar kernels CUDA MHD (inducción, resistividad, fuerzas magnéticas,
+    /// limpieza Dedner, flux-freeze, Braginskii, reconexión/dinamo, ambipolar,
+    /// two-fluid, estadísticas B).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_mhd: bool,
+
+    /// Activar kernel CUDA cooling (H/He, metales, UVB).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_cooling: bool,
+
+    /// Activar kernel CUDA dust (crecimiento/sputtering/radiation pressure).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_dust: bool,
+
+    /// Activar kernel CUDA H₂ molecular (HI→H₂ con dust shielding).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_h2: bool,
+
+    /// Activar kernels CUDA RT (diagnósticos M1, foto-calentamiento).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_rt: bool,
+
+    /// Activar kernels CUDA árbol local (walk monopolo Barnes–Hut) y SIDM.
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_tree: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapshotFormat {

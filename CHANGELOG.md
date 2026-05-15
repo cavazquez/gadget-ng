@@ -8,6 +8,29 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CLI (`gadget-ng-cli`)
+
+- Sección TOML **`[accelerators]`** (opt-in por módulo): flags `cuda_sph`, `cuda_mhd`,
+  `cuda_cooling`, `cuda_dust`, `cuda_h2`, `cuda_rt`, `cuda_tree` (tipos en
+  `gadget-ng-core`). Con **`[performance] use_gpu_cuda = true`**, los kernels
+  CUDA smoke/parity solo se intentan si el flag del módulo correspondiente está
+  en `true`; si no, se usa CPU sin error fatal.
+- **Cambio de comportamiento:** RT (foto-calentamiento CUDA), cooling, polvo e H₂
+  molecular ya no usan CUDA solo con `use_gpu_cuda`; hace falta activar el flag
+  en `[accelerators]` (p. ej. `cuda_rt = true`, `cuda_cooling = true`, …).
+  Gravedad directa/PM siguen gobernadas solo por `use_gpu_cuda` y el solver.
+
+### Core (`gadget-ng-core`)
+
+- `RunConfig`: campo `accelerators` con valores por defecto `false` en todos los
+  flags CUDA por módulo.
+
+### CUDA (`gadget-ng-cuda`)
+
+- `CudaPool`: llamadas FFI dentro de `unsafe fn` envueltas en bloques `unsafe`
+  (Rust 2024) y documentación `# Safety` / comentarios `SAFETY` en helpers de
+  upload/alloc/download.
+
 ### Documentación
 
 - README (matriz de paridad de aceleradores): backlog CUDA **AP-03–AP-08**,

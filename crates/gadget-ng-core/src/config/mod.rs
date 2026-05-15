@@ -61,6 +61,9 @@ pub struct RunConfig {
     /// Materia oscura warm/fuzzy: cutoff de pequeña escala en ICs (Phase 184).
     #[serde(default)]
     pub dark_matter: DarkMatterSection,
+    /// Kernels CUDA opt-in por módulo de física (smoke/parity; requiere `use_gpu_cuda = true`).
+    #[serde(default)]
+    pub accelerators: AcceleratorsSection,
 }
 
 // ── RunConfig ─────────────────────────────────────────────────────────────────

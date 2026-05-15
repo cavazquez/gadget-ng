@@ -22,7 +22,9 @@ pub use extended::{
 };
 pub use gravity::{GravitySection, MacSoftening, OpeningCriterion, SolverKind};
 pub use mhd::{BFieldKind, MhdSection};
-pub use output_perf::{OutputSection, PerformanceSection, SfcKind, SnapshotFormat};
+pub use output_perf::{
+    AcceleratorsSection, OutputSection, PerformanceSection, SfcKind, SnapshotFormat,
+};
 pub use rt_reion::{ReionizationSection, RtSection};
 pub use simulation_ic::{
     IcKind, InitialConditionsSection, IntegratorKind, NormalizationMode, SimulationSection,

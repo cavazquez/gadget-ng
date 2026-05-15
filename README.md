@@ -204,7 +204,7 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ AP-06 |
 | SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ⚠️ smoke/parity ⚡ |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
-| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM only; smoke/parity paths not wired (AP-04) |
+| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM con `use_gpu_cuda`; smoke/parity por flags **`[accelerators]`** (`cuda_*`; ver `RunConfig` / CHANGELOG) — AP-03 validación hardware |
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ sin ruta CUDA de producción o paridad GPU aún por cerrar (ver informe de backlog).
 ⚡ = buffers persistentes `CudaPool` (AP-02): sin `cudaMalloc`/`cudaFree` por paso; redimensionamiento automático por duplicación.

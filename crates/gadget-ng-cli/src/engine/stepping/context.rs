@@ -15,11 +15,30 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
     }
     let dt_alfven = gadget_ng_mhd::alfven_dt(local, cfg.mhd.cfl_mhd);
     let dt_mhd = cfg.simulation.dt.min(dt_alfven);
-    gadget_ng_mhd::advance_induction(local, dt_mhd);
 
-    if cfg.mhd.alpha_b > 0.0 {
-        gadget_ng_mhd::apply_artificial_resistivity(local, cfg.mhd.alpha_b, dt_mhd);
+    // Induction + resistivity: CUDA si `cuda_mhd` opt-in, else CPU.
+    #[cfg(feature = "cuda")]
+    let cuda_induction_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+        if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+            solver
+                .try_induction_resistivity(local, dt_mhd, cfg.mhd.alpha_b, cfg.simulation.box_size)
+                .is_ok()
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    #[cfg(not(feature = "cuda"))]
+    let cuda_induction_ok = false;
+
+    if !cuda_induction_ok {
+        gadget_ng_mhd::advance_induction(local, dt_mhd);
+        if cfg.mhd.alpha_b > 0.0 {
+            gadget_ng_mhd::apply_artificial_resistivity(local, cfg.mhd.alpha_b, dt_mhd);
+        }
     }
+
     if cfg.mhd.ambipolar_diffusion_enabled {
         gadget_ng_mhd::apply_ambipolar_diffusion(
             local,
@@ -30,7 +49,37 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
             dt_mhd,
         );
     }
-    gadget_ng_mhd::apply_magnetic_forces(local, dt_mhd);
+
+    // Magnetic forces: CUDA si `cuda_mhd` opt-in, else CPU.
+    // El kernel CUDA retorna aceleraciones puras (sin dt), mismas unidades que CPU.
+    #[cfg(feature = "cuda")]
+    let cuda_mag_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+        if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+            if let Ok(acc) = solver.try_magnetic_forces(local, 1.0, cfg.simulation.box_size) {
+                for (p, a) in local.iter_mut().zip(acc.iter()) {
+                    if p.ptype == gadget_ng_core::ParticleType::Gas {
+                        p.velocity.x += a.x * dt_mhd;
+                        p.velocity.y += a.y * dt_mhd;
+                        p.velocity.z += a.z * dt_mhd;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    #[cfg(not(feature = "cuda"))]
+    let cuda_mag_ok = false;
+
+    if !cuda_mag_ok {
+        gadget_ng_mhd::apply_magnetic_forces(local, dt_mhd);
+    }
+
     gadget_ng_mhd::dedner_cleaning_step(local, cfg.mhd.c_h, cfg.mhd.c_r, dt_mhd);
 
     if cfg.mhd.relativistic_mhd {
@@ -43,9 +92,9 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
     }
 
     {
-        // Flux freeze: CPU path por defecto; CUDA si está disponible.
+        // Flux freeze: CUDA si `cuda_mhd` opt-in, else CPU.
         #[cfg(feature = "cuda")]
-        let cuda_ok = if cfg.performance.use_gpu_cuda {
+        let cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
             if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
                 solver
                     .try_mean_gas_density(local)
@@ -81,17 +130,60 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
         }
     }
 
+    // Braginskii viscosity: CUDA si `cuda_mhd` opt-in, else CPU.
     if cfg.mhd.eta_braginskii > 0.0 {
-        gadget_ng_mhd::apply_braginskii_viscosity(local, cfg.mhd.eta_braginskii, dt_mhd);
+        #[cfg(feature = "cuda")]
+        let cuda_brag_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_braginskii_viscosity(local, dt_mhd, cfg.mhd.eta_braginskii)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_brag_ok = false;
+
+        if !cuda_brag_ok {
+            gadget_ng_mhd::apply_braginskii_viscosity(local, cfg.mhd.eta_braginskii, dt_mhd);
+        }
     }
 
+    // Reconnection + CR streaming + dynamo: CUDA si `cuda_mhd` opt-in, else CPU.
+    // El kernel CUDA combina reconnection y dynamo en una sola pasada.
     if cfg.mhd.reconnection_enabled {
-        gadget_ng_mhd::apply_magnetic_reconnection(
-            local,
-            cfg.mhd.f_reconnection,
-            cfg.sph.gamma,
-            dt_mhd,
-        );
+        #[cfg(feature = "cuda")]
+        let cuda_recon_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_reconnection_streaming_dynamo(
+                        local,
+                        dt_mhd,
+                        cfg.sph.cr.streaming_coefficient,
+                        cfg.mhd.f_reconnection,
+                        cfg.mhd.dynamo_decay_time,
+                    )
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_recon_ok = false;
+
+        if !cuda_recon_ok {
+            gadget_ng_mhd::apply_magnetic_reconnection(
+                local,
+                cfg.mhd.f_reconnection,
+                cfg.sph.gamma,
+                dt_mhd,
+            );
+        }
     }
 
     // Phase 172: dinamo turbulento α-effect
@@ -135,7 +227,7 @@ pub(crate) fn step_rt(
 
         // RT→gas coupling: CUDA path para photoheating si disponible.
         #[cfg(feature = "cuda")]
-        let cuda_ok = if cfg.performance.use_gpu_cuda {
+        let cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_rt {
             if let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked() {
                 let gamma = gadget_ng_rt::photoionization_rate(rf, &m1p);
                 solver
@@ -438,7 +530,7 @@ pub(crate) fn step_sph(
         };
         // CUDA path para cooling (reemplaza apply_cooling_*).
         #[cfg(feature = "cuda")]
-        let cuda_cooling = if cfg.performance.use_gpu_cuda {
+        let cuda_cooling = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_cooling {
             if let Ok(solver) = gadget_ng_cuda::CudaCoolingSolver::try_new_checked() {
                 let f_mag_method = if cfg.sph.mag_suppress_cooling > 0.0 && cfg.mhd.enabled {
                     cfg.sph.mag_suppress_cooling
@@ -478,7 +570,7 @@ pub(crate) fn step_sph(
 
     if cfg.sph.dust.enabled {
         #[cfg(feature = "cuda")]
-        let cuda_dust = if cfg.performance.use_gpu_cuda {
+        let cuda_dust = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_dust {
             if let Ok(solver) = gadget_ng_cuda::CudaDustSolver::try_new_checked() {
                 solver
                     .try_update_dust(local, &cfg.sph.dust, cfg.sph.gamma, cfg.simulation.dt)
@@ -530,7 +622,7 @@ pub(crate) fn step_sph(
     if cfg.sph.molecular.enabled {
         let dust_cfg = cfg.sph.dust.enabled.then_some(&cfg.sph.dust);
         #[cfg(feature = "cuda")]
-        let cuda_h2 = if cfg.performance.use_gpu_cuda {
+        let cuda_h2 = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_h2 {
             if let Ok(solver) = gadget_ng_cuda::CudaMolecularSolver::try_new_checked() {
                 solver
                     .try_update_h2(local, &cfg.sph.molecular, dust_cfg, cfg.simulation.dt)
