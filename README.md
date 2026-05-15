@@ -182,7 +182,7 @@ y la cobertura detallada en
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
 | MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update | ✅ |
+| MHD Dedner cleaning | ✅ | ✅ paralelo por partícula; pares escalar | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update | ✅ |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface |
 | MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ |
 | MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel |
@@ -204,6 +204,11 @@ y la cobertura detallada en
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
+
+Nota MHD Dedner con Rayon: la columna «CPU con Rayon» indica que el paso paralelo
+(`dedner_cleaning_step_par`) reparte el trabajo por partícula gas; el bucle de
+pares `i`–`j` sigue escalar. Las rutas AVX2/AVX512 de densidad, acumulación por
+lotes y actualización final aplican en **CPU sin Rayon** con `feature = "simd"`.
 
 Nota RT chemistry: `rates/cooling` está vectorizado con AVX2/AVX512 en la ruta
 CPU sin Rayon. El paso stiff (`solve_chemistry_implicit`) ya usa dispatch SIMD

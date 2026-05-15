@@ -18,8 +18,10 @@ SPH/MHD/RT smoke/parity kernel sets:
 - SPH density, Balsara viscosity limiter, classical SPH forces, Gadget-2 SPH
   forces, cooling, dust and H2 via CUDA solvers.
 - MHD flux-freeze, mean gas density, magnetic-field statistics, induction,
-  resistivity, magnetic forces, Dedner cleaning, scalar diffusion, Braginskii
-  viscosity, reconnection, CR streaming and dynamo smoke surfaces via
+  resistivity, magnetic forces, Dedner cleaning (`CudaMhdSolver` smoke surface;
+  CPU `not(rayon)` + `simd`: density + pairwise div-B/∇ψ AVX2/AVX-512 inner batches
+  + SIMD final ψ/B update), scalar diffusion, Braginskii viscosity, reconnection, CR
+  streaming and dynamo smoke surfaces via
   `CudaMhdSolver`.
 - RT field diagnostics/photoionization and gas photoheating via `CudaRtSolver`.
 - Tree/SIDM smoke surfaces via `CudaTreeSolver`.
@@ -42,14 +44,26 @@ implementations.
 | SPH forces/Gadget2 viscosity | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH cooling/dust/H2 | Cooling per-particle batches, dust growth/sputtering/radiation kick, and H2+dust shielding AVX2/AVX-512 | Yes, CUDA solvers | Experimental parity |
 | MHD flux-freezing/statistics | Flux-freeze scaling + mean density AVX2/AVX-512; statistics AVX2/AVX-512 with real AVX-512 8-lane path | Yes, `CudaMhdSolver` | Experimental parity |
-| MHD induction/forces/cleaning/transport | Induction pair accumulation AVX2/AVX-512; cleaning final-update AVX2/AVX-512; other transport coverage mixed | Yes, smoke surfaces | Experimental parity |
+| MHD induction/forces/cleaning/transport | Induction pair accumulation AVX2/AVX-512; Dedner without Rayon+simd: density + pairwise div-B/∇ψ AVX2/AVX-512 inner batches + SIMD final ψ/B update; with Rayon, Dedner outer loop parallel per gas particle, scalar inner pair loop; other transport coverage mixed | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
 | RT chemistry rates/cooling | AVX2/AVX-512 particle photoionization-rate batches and cooling update | No | SIMD-only |
-| RT chemistry stiff solver | Scalar implicit subcycling | No | CPU-only |
+| RT chemistry stiff solver | AVX2/AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane; chunk/tail parity tests | No | SIMD-only (CUDA pending) |
 | RT reionization state | AVX2/AVX-512 reductions | No | SIMD-only |
 | RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | No | SIMD-only |
 | Analysis spin/luminosity/SED | AVX2/AVX-512 reductions for spin, luminosity and SED contributions | No | SIMD-only |
+
+### MHD Dedner cleaning (CPU detail)
+
+- **`not(feature = "rayon")` + `feature = "simd"` (x86/x86_64):** density and the
+  O(N²) pair accumulation for `div_B` and `∇ψ` use AVX-512F when available, else
+  AVX2+FMA, with the same Wendland kernel structure as MHD induction batching; the
+  final `ψ`/`B` update is also SIMD-batched. Batches that include self-index `i`,
+  non-gas neighbors, or tail lengths fall back to the scalar pair kernel for
+  parity with the reference double loop.
+- **`feature = "rayon"`:** `dedner_cleaning_step_par` uses `par_iter` over gas
+  particles (outer parallelism); the inner `j` pair loop remains scalar and does
+  not use the AVX2/AVX-512 path compiled for `not(rayon)` + `simd`.
 
 ## Validated commands
 

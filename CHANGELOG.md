@@ -17,6 +17,16 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 - Nuevo reporte de auditoría: `docs/reports/2026-05-phase173-cli-pk-model-audit.md`.
 - Tests de integración: `crates/gadget-ng-cli/tests/fisher_pk_model.rs`.
 
+### MHD (`gadget-ng-mhd`)
+
+- Dedner div-B cleaning en ruta `not(rayon)` + `simd`: acumulación por pares de
+  `div_B` y `∇ψ` con lotes internos AVX2/AVX-512 (kernel Wendland alineado con
+  inducción) y test `dedner_pairwise_dispatch_matches_scalar`.
+- Documentación: README (matriz de aceleradores y notas),
+  `docs/reports/2026-05-accelerator-parity-pending.md` y
+  `docs/reports/2026-05-simd-cuda-coverage.md` alineados con esa cobertura y con
+  la ruta Rayon de Dedner (paralelo por partícula, pares escalar).
+
 ## [0.2.0] - 2026-05-12
 
 ### Publicación
