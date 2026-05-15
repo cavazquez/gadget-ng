@@ -177,37 +177,39 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial |
 | PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ |
 | PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ ⚡ |
-| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ ⚡ |
-| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ ⚡ |
-| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ ⚡ |
-| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ✅ ⚡ |
-| Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ ⚡ |
-| Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ ⚡ |
-| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity ⚡ |
-| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity ⚡ |
-| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ✅ smoke/parity ⚡ |
-| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface ⚡ |
-| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ ⚡ |
-| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel ⚡ |
-| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ combined kernel ⚡ |
-| MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ ⚡ |
-| MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ ⚡ |
-| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ ⚡ |
-| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ✅ ⚡ |
-| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ ⚡ |
+| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ⚠️ smoke/parity ⚡ |
+| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ⚠️ smoke/parity ⚡ |
+| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ⚠️ smoke/parity ⚡ |
+| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ⚠️ smoke/parity ⚡ |
+| Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ⚠️ smoke/parity ⚡ |
+| Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ⚠️ smoke/parity ⚡ |
+| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ⚠️ smoke/parity ⚡ |
+| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ⚠️ smoke/parity ⚡ |
+| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ⚠️ smoke/parity ⚡ |
+| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ⚠️ scalar diffusion surface ⚡ |
+| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ⚠️ smoke/parity ⚡ |
+| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ⚠️ combined kernel ⚡ |
+| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ⚠️ combined kernel ⚡ |
+| MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ⚠️ smoke/parity ⚡ |
+| MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ⚠️ smoke/parity ⚡ |
+| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ⚠️ smoke/parity ⚡ |
+| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ⚠️ smoke/parity ⚡ |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ⚠️ smoke/parity ⚡ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ AP-05 |
-| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ AP-09 |
-| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests | ❌ AP-09 |
+| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ CUDA pendiente |
+| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests (AP-09 CPU cerrado) | ❌ CUDA pendiente |
 | RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ AP-06 |
-| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ smoke/parity ⚡ |
+| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ⚠️ smoke/parity ⚡ |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
-| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial (AP-04) |
+| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM only; smoke/parity paths not wired (AP-04) |
 
-Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía (ID de backlog AP-*).
+Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ sin ruta CUDA de producción o paridad GPU aún por cerrar (ver informe de backlog).
 ⚡ = buffers persistentes `CudaPool` (AP-02): sin `cudaMalloc`/`cudaFree` por paso; redimensionamiento automático por duplicación.
+
+**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA de kernels MHD/árbol (tests `--ignored`, tolerancias documentadas). **AP-04** — cableado opt-in en CLI/config para rutas CUDA ya existentes más allá de gravedad/PM. **AP-05** — kernel CUDA de advección M1 RT completa. **AP-06** — kernels CUDA de análisis (spin, luminosidad, SED) donde compense. **AP-07** — recorrido LET/árbol completo en GPU (hoy monopolo/smoke). **AP-08** — benchmarks comparables CUDA vs CPU/SIMD fuera de N². **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver, no una tarea CUDA.
 
 Nota MHD Dedner: con **`rayon` + `simd`** en **x86/x86_64**, si en tiempo de
 ejecución hay **AVX-512F** o **AVX2+FMA**, `dedner_cleaning_step` usa
@@ -220,9 +222,9 @@ densidad + pares en lotes AVX2/AVX-512 + actualización final SIMD.
 Nota RT chemistry: `rates/cooling` está vectorizado con AVX2/AVX512 en la ruta
 CPU sin Rayon. El paso stiff (`solve_chemistry_implicit`) ya usa dispatch SIMD
 enmascarado por lote y actualización stiff escalar por lane, con tests de paridad
-chunk/cola; la complejidad restante es adaptativa por partícula (subciclos,
-ramas moleculares/D/HD, clamps), no la ausencia de SIMD en CPU. Lo que sigue
-abierto en la matriz es sobre todo CUDA y el backlog en
+chunk/cola (**AP-09** en CPU). La complejidad restante es adaptativa por partícula
+(subciclos, ramas moleculares/D/HD, clamps). En **CUDA** siguen abiertas las rutas
+de química RT (tasas, cooling y stiff) y el resto del backlog en
 [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md).
 
 **Nota RT — perfil de temperatura IGM** (`crates/gadget-ng-rt/src/igm_temp.rs`,

@@ -8,6 +8,12 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Documentación
+
+- README (matriz de paridad de aceleradores): backlog CUDA **AP-03–AP-08**,
+  aclaración de **AP-09** (cierre SIMD CPU del stiff solver, no tarea GPU), y
+  filas RT chemistry con estado CUDA pendiente sin id erróneo.
+
 ### CLI (`gadget-ng-cli`)
 
 - `gadget-ng fisher`: el flag `--use-nonlinear` se sustituye por `--pk-model linear|nonlinear`
