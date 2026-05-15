@@ -182,7 +182,7 @@ y la cobertura detallada en
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
 | MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 density + final-update; pairwise block scalar | ✅ |
+| MHD Dedner cleaning | ✅ | ✅ | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update | ✅ |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface |
 | MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ |
 | MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel |
@@ -195,7 +195,7 @@ y la cobertura detallada en
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
 | RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests | ❌ |
-| RT IGM temperature profile | ✅ | ✅ | ⚠️ scalar-optimal (ChemState AoS prevents vectorization) | ❌ |
+| RT IGM temperature profile | ✅ | ✅ | ⚠️ scalar-optimal por diseño (ChemState AoS / química; no es un olvido) | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
@@ -206,10 +206,11 @@ y la cobertura detallada en
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
 
 Nota RT chemistry: `rates/cooling` está vectorizado con AVX2/AVX512 en la ruta
-CPU sin Rayon. El `stiff solver` queda separado porque `solve_chemistry_implicit`
-usa subciclado adaptativo por partícula, ramas moleculares/D/HD, clamps de
-conservación y salida temprana; cerrarlo requiere un diseño SIMD con máscaras de
-lanes activas y tests de paridad específicos. El detalle pendiente está en
+CPU sin Rayon. El paso stiff (`solve_chemistry_implicit`) ya usa dispatch SIMD
+enmascarado por lote y actualización stiff escalar por lane, con tests de paridad
+chunk/cola; la complejidad restante es adaptativa por partícula (subciclos,
+ramas moleculares/D/HD, clamps), no la ausencia de SIMD en CPU. Lo que sigue
+abierto en la matriz es sobre todo CUDA y el backlog en
 [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md).
 
 ---

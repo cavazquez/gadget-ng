@@ -57,25 +57,19 @@ the remaining scalar/stiff solver rows.
 | AP-14 | MHD ambipolar diffusion SIMD without Rayon | Ambipolar diffusion had no SIMD path. | `apply_ambipolar_diffusion` dispatches AVX2/AVX-512 when `feature = "simd"` and `not(feature = "rayon")`; vectorized ionization fraction proxy, B-field damping, and energy deposition; scalar-per-lane for `exp()`; all tests pass. | Complete |
 | AP-15 | MHD two-fluid SIMD without Rayon | Electron-ion coupling and T_e/T_i ratio had no SIMD path. | `apply_electron_ion_coupling` and `mean_te_over_ti` dispatch AVX2/AVX-512 when `feature = "simd"` and `not(feature = "rayon")`; vectorized Coulomb coupling rate and T_e/T_i reduction; scalar-per-lane for `exp()`; all tests pass. | Complete |
 
-## RT chemistry remaining scalar work
+## RT chemistry remaining work
 
-The remaining non-green RT chemistry component is the stiff implicit solver,
-`solve_chemistry_implicit`. It is intentionally kept scalar for now because each
-particle may take a different number of chemistry substeps and may leave the loop
-through the early-convergence condition. A production SIMD implementation should
-therefore be a masked-lane solver, not a simple four-particle loop.
+CPU SIMD for the stiff implicit path (`solve_chemistry_implicit`) is closed: masked
+AVX2/AVX-512 dispatch batches lanes, keeps branch-heavy chemistry scalar-per-lane,
+and has chunk/tail/end-to-end parity tests (see AP-09 in the table above). What
+remains open is mainly **CUDA** for that path and any **performance** follow-up
+(benchmarks proving batching wins on representative workloads), not a missing SIMD
+design on CPU.
 
-The main pieces still required are:
-
-- active-lane masks for particles whose `t_elapsed < dt`;
-- per-lane `dt_chem` and convergence decisions;
-- vectorized updates for H/He, molecular H2 intermediates, D/HD exchange, and
-  charge-normalization bookkeeping;
-- scalar tail handling with exact fallback;
-- parity tests against scalar for neutral gas, fully ionized recombination,
-  high-UV ionization, trace H2 formation, trace HD formation, and conservation
-  of H/He/D nuclei;
-- benchmarks proving the masked solver pays for its extra control flow.
+The adaptive subcycling and early-exit behaviour per particle still mean the inner
+solver is not a trivial “four independent SIMD lanes” problem; the implemented
+approach is the masked-lane pattern described in AP-09 rather than a fully
+vectorized implicit integrator.
 
 ## Implementation policy
 
@@ -94,5 +88,5 @@ AP-13 (dynamo), AP-14 (ambipolar diffusion), and AP-15 (two-fluid) close additio
 SIMD-without-Rayon gaps. RT IGM temperature remains scalar-optimal (ChemState AoS
 layout prevents profitable vectorization). The SPH MetalTabular logT lookup now has
 AVX2/AVX-512 batch coverage; TODO: continue with MHD CR streaming, reconnection,
-Braginskii, anisotropic transport, additional Dedner local phases, and magnetic
+Braginskii, anisotropic transport, and magnetic
 forces in focused follow-up patches.

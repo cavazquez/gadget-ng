@@ -70,6 +70,115 @@ fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
 }
 
 #[cfg(not(feature = "rayon"))]
+fn dedner_pair_increment(
+    particles: &[Particle],
+    rho: &[f64],
+    i: usize,
+    j: usize,
+    b_i: Vec3,
+    psi_i: f64,
+) -> (f64, Vec3) {
+    if j == i || particles[j].ptype != ParticleType::Gas {
+        return (0.0, Vec3::zero());
+    }
+    let b_j = particles[j].b_field;
+    let psi_j = particles[j].psi_div;
+    let h_ij = 0.5 * (particles[i].smoothing_length + particles[j].smoothing_length).max(1e-10);
+    let r_ij = Vec3 {
+        x: particles[j].position.x - particles[i].position.x,
+        y: particles[j].position.y - particles[i].position.y,
+        z: particles[j].position.z - particles[i].position.z,
+    };
+    let grad_w = grad_w_scalar(r_ij, h_ij);
+    let factor = particles[j].mass / rho[j];
+    let db = Vec3 {
+        x: b_j.x - b_i.x,
+        y: b_j.y - b_i.y,
+        z: b_j.z - b_i.z,
+    };
+    let div_inc = factor * (db.x * grad_w.x + db.y * grad_w.y + db.z * grad_w.z);
+    let dpsi = psi_j - psi_i;
+    let gp = Vec3::new(
+        factor * dpsi * grad_w.x,
+        factor * dpsi * grad_w.y,
+        factor * dpsi * grad_w.z,
+    );
+    (div_inc, gp)
+}
+
+#[cfg(not(feature = "rayon"))]
+fn dedner_pairwise_accumulate_scalar(
+    particles: &[Particle],
+    rho: &[f64],
+    div_b: &mut [f64],
+    grad_psi: &mut [Vec3],
+) {
+    let n = particles.len();
+    for i in 0..n {
+        if particles[i].ptype != ParticleType::Gas {
+            continue;
+        }
+        let b_i = particles[i].b_field;
+        let psi_i = particles[i].psi_div;
+        for j in 0..n {
+            let (d, g) = dedner_pair_increment(particles, rho, i, j, b_i, psi_i);
+            div_b[i] += d;
+            grad_psi[i].x += g.x;
+            grad_psi[i].y += g.y;
+            grad_psi[i].z += g.z;
+        }
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn dedner_pairwise_accumulate_dispatch(
+    particles: &[Particle],
+    rho: &[f64],
+    div_b: &mut [f64],
+    grad_psi: &mut [Vec3],
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx512f") {
+            // SAFETY: `avx512f` was detected immediately above.
+            unsafe {
+                dedner_pairwise_accumulate_avx512(particles, rho, div_b, grad_psi);
+            }
+            return;
+        }
+    }
+    if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+        // SAFETY: `avx2` and `fma` were detected immediately above.
+        unsafe {
+            dedner_pairwise_accumulate_avx2(particles, rho, div_b, grad_psi);
+        }
+        return;
+    }
+    dedner_pairwise_accumulate_scalar(particles, rho, div_b, grad_psi);
+}
+
+#[cfg(not(feature = "rayon"))]
+fn dedner_pairwise_accumulate(
+    particles: &[Particle],
+    rho: &[f64],
+    div_b: &mut [f64],
+    grad_psi: &mut [Vec3],
+) {
+    #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        dedner_pairwise_accumulate_dispatch(particles, rho, div_b, grad_psi);
+    }
+    #[cfg(not(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64"))))]
+    {
+        dedner_pairwise_accumulate_scalar(particles, rho, div_b, grad_psi);
+    }
+}
+
+#[cfg(not(feature = "rayon"))]
 fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
     let n = particles.len();
 
@@ -78,46 +187,7 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
     let mut div_b = vec![0.0_f64; n];
     let mut grad_psi = vec![Vec3::zero(); n];
 
-    for i in 0..n {
-        if particles[i].ptype != ParticleType::Gas {
-            continue;
-        }
-        let b_i = particles[i].b_field;
-        let psi_i = particles[i].psi_div;
-
-        for j in 0..n {
-            if i == j {
-                continue;
-            }
-            if particles[j].ptype != ParticleType::Gas {
-                continue;
-            }
-
-            let b_j = particles[j].b_field;
-            let psi_j = particles[j].psi_div;
-            let h_ij =
-                0.5 * (particles[i].smoothing_length + particles[j].smoothing_length).max(1e-10);
-            let r_ij = Vec3 {
-                x: particles[j].position.x - particles[i].position.x,
-                y: particles[j].position.y - particles[i].position.y,
-                z: particles[j].position.z - particles[i].position.z,
-            };
-            let grad_w = grad_w_scalar(r_ij, h_ij);
-            let factor = particles[j].mass / rho[j];
-
-            let db = Vec3 {
-                x: b_j.x - b_i.x,
-                y: b_j.y - b_i.y,
-                z: b_j.z - b_i.z,
-            };
-            div_b[i] += factor * (db.x * grad_w.x + db.y * grad_w.y + db.z * grad_w.z);
-
-            let dpsi = psi_j - psi_i;
-            grad_psi[i].x += factor * dpsi * grad_w.x;
-            grad_psi[i].y += factor * dpsi * grad_w.y;
-            grad_psi[i].z += factor * dpsi * grad_w.z;
-        }
-    }
+    dedner_pairwise_accumulate(particles, &rho, &mut div_b, &mut grad_psi);
 
     let decay = (-c_r * dt).exp();
 
@@ -130,8 +200,7 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
         #[cfg(target_arch = "x86_64")]
         if is_x86_feature_detected!("avx512f") {
             // SAFETY: AVX-512F availability was checked at runtime.
-            // The local density/update phases are vectorized;
-            // the O(N²) pairwise loop stays scalar.
+            // Density, pairwise div-B / ∇ψ accumulation, and final ψ/B update are vectorized.
             unsafe {
                 dedner_cleaning_update_avx512(
                     particles,
@@ -665,6 +734,551 @@ unsafe fn dedner_cleaning_update_avx512(
     }
 }
 
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+fn dedner_grad_kernel_batch_avx2(
+    particles: &[Particle],
+    j: usize,
+    pos_i: Vec3,
+    h_i: f64,
+) -> (__m256d, __m256d, __m256d) {
+    let px = _mm256_set_pd(
+        particles[j + 3].position.x,
+        particles[j + 2].position.x,
+        particles[j + 1].position.x,
+        particles[j].position.x,
+    );
+    let py = _mm256_set_pd(
+        particles[j + 3].position.y,
+        particles[j + 2].position.y,
+        particles[j + 1].position.y,
+        particles[j].position.y,
+    );
+    let pz = _mm256_set_pd(
+        particles[j + 3].position.z,
+        particles[j + 2].position.z,
+        particles[j + 1].position.z,
+        particles[j].position.z,
+    );
+    let dx = _mm256_sub_pd(px, _mm256_set1_pd(pos_i.x));
+    let dy = _mm256_sub_pd(py, _mm256_set1_pd(pos_i.y));
+    let dz = _mm256_sub_pd(pz, _mm256_set1_pd(pos_i.z));
+    let r2 = _mm256_fmadd_pd(dx, dx, _mm256_fmadd_pd(dy, dy, _mm256_mul_pd(dz, dz)));
+    let r = _mm256_sqrt_pd(r2);
+
+    let h_j = _mm256_max_pd(
+        _mm256_set1_pd(1e-10),
+        _mm256_set_pd(
+            particles[j + 3].smoothing_length,
+            particles[j + 2].smoothing_length,
+            particles[j + 1].smoothing_length,
+            particles[j].smoothing_length,
+        ),
+    );
+    let h_ij = _mm256_mul_pd(_mm256_set1_pd(0.5), _mm256_add_pd(_mm256_set1_pd(h_i), h_j));
+    let q = _mm256_div_pd(r, h_ij);
+    let norm = _mm256_div_pd(
+        _mm256_set1_pd(8.0 / std::f64::consts::PI),
+        _mm256_mul_pd(h_ij, _mm256_mul_pd(h_ij, h_ij)),
+    );
+    let q2 = _mm256_mul_pd(q, q);
+    let dw_inner = _mm256_mul_pd(
+        norm,
+        _mm256_fmadd_pd(
+            _mm256_set1_pd(9.0),
+            q2,
+            _mm256_mul_pd(_mm256_set1_pd(-6.0), q),
+        ),
+    );
+    let two_minus_q = _mm256_sub_pd(_mm256_set1_pd(2.0), q);
+    let dw_outer = _mm256_mul_pd(
+        norm,
+        _mm256_mul_pd(
+            _mm256_set1_pd(-1.5),
+            _mm256_mul_pd(two_minus_q, two_minus_q),
+        ),
+    );
+    let dw_dq = _mm256_blendv_pd(
+        _mm256_setzero_pd(),
+        _mm256_blendv_pd(
+            dw_outer,
+            dw_inner,
+            _mm256_cmp_pd(q, _mm256_set1_pd(1.0), _CMP_LT_OQ),
+        ),
+        _mm256_cmp_pd(q, _mm256_set1_pd(2.0), _CMP_LT_OQ),
+    );
+    let scale = _mm256_div_pd(
+        _mm256_div_pd(dw_dq, h_ij),
+        _mm256_blendv_pd(
+            r,
+            _mm256_set1_pd(1.0),
+            _mm256_cmp_pd(r, _mm256_set1_pd(1e-10), _CMP_LT_OQ),
+        ),
+    );
+    let valid_r = _mm256_cmp_pd(r, _mm256_set1_pd(1e-10), _CMP_GE_OQ);
+    let grad_x = _mm256_and_pd(_mm256_mul_pd(scale, dx), valid_r);
+    let grad_y = _mm256_and_pd(_mm256_mul_pd(scale, dy), valid_r);
+    let grad_z = _mm256_and_pd(_mm256_mul_pd(scale, dz), valid_r);
+    (grad_x, grad_y, grad_z)
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+fn dedner_div_gradpsi_contrib_batch_avx2(
+    particles: &[Particle],
+    rho: &[f64],
+    j: usize,
+    pos_i: Vec3,
+    b_i: Vec3,
+    psi_i: f64,
+    h_i: f64,
+) -> (f64, Vec3) {
+    let (grad_x, grad_y, grad_z) = dedner_grad_kernel_batch_avx2(particles, j, pos_i, h_i);
+    let rho_j = _mm256_max_pd(
+        _mm256_set1_pd(1e-300),
+        _mm256_set_pd(rho[j + 3], rho[j + 2], rho[j + 1], rho[j]),
+    );
+    let mass = _mm256_set_pd(
+        particles[j + 3].mass,
+        particles[j + 2].mass,
+        particles[j + 1].mass,
+        particles[j].mass,
+    );
+    let factor = _mm256_div_pd(mass, rho_j);
+    let bjx = _mm256_set_pd(
+        particles[j + 3].b_field.x,
+        particles[j + 2].b_field.x,
+        particles[j + 1].b_field.x,
+        particles[j].b_field.x,
+    );
+    let bjy = _mm256_set_pd(
+        particles[j + 3].b_field.y,
+        particles[j + 2].b_field.y,
+        particles[j + 1].b_field.y,
+        particles[j].b_field.y,
+    );
+    let bjz = _mm256_set_pd(
+        particles[j + 3].b_field.z,
+        particles[j + 2].b_field.z,
+        particles[j + 1].b_field.z,
+        particles[j].b_field.z,
+    );
+    let dbx = _mm256_sub_pd(bjx, _mm256_set1_pd(b_i.x));
+    let dby = _mm256_sub_pd(bjy, _mm256_set1_pd(b_i.y));
+    let dbz = _mm256_sub_pd(bjz, _mm256_set1_pd(b_i.z));
+    let div_lane = _mm256_mul_pd(
+        factor,
+        _mm256_fmadd_pd(
+            dbx,
+            grad_x,
+            _mm256_fmadd_pd(dby, grad_y, _mm256_mul_pd(dbz, grad_z)),
+        ),
+    );
+    let psij = _mm256_set_pd(
+        particles[j + 3].psi_div,
+        particles[j + 2].psi_div,
+        particles[j + 1].psi_div,
+        particles[j].psi_div,
+    );
+    let dpsi = _mm256_sub_pd(psij, _mm256_set1_pd(psi_i));
+    let gpx = _mm256_mul_pd(_mm256_mul_pd(factor, dpsi), grad_x);
+    let gpy = _mm256_mul_pd(_mm256_mul_pd(factor, dpsi), grad_y);
+    let gpz = _mm256_mul_pd(_mm256_mul_pd(factor, dpsi), grad_z);
+
+    let mut div_buf = [0.0f64; 4];
+    let mut gx_buf = [0.0f64; 4];
+    let mut gy_buf = [0.0f64; 4];
+    let mut gz_buf = [0.0f64; 4];
+    // SAFETY: fixed-size stack arrays for four f64 lanes.
+    unsafe {
+        _mm256_storeu_pd(div_buf.as_mut_ptr(), div_lane);
+        _mm256_storeu_pd(gx_buf.as_mut_ptr(), gpx);
+        _mm256_storeu_pd(gy_buf.as_mut_ptr(), gpy);
+        _mm256_storeu_pd(gz_buf.as_mut_ptr(), gpz);
+    }
+    let div = div_buf.iter().sum();
+    let gx = gx_buf.iter().sum();
+    let gy = gy_buf.iter().sum();
+    let gz = gz_buf.iter().sum();
+    (div, Vec3::new(gx, gy, gz))
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+fn dedner_sum_for_i_avx2(particles: &[Particle], rho: &[f64], i: usize) -> (f64, Vec3) {
+    if particles[i].ptype != ParticleType::Gas {
+        return (0.0, Vec3::zero());
+    }
+    let lanes = 4;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let h_i = particles[i].smoothing_length.max(1e-10);
+    let pos_i = particles[i].position;
+    let b_i = particles[i].b_field;
+    let psi_i = particles[i].psi_div;
+    let mut div_acc = 0.0_f64;
+    let mut gx_acc = 0.0_f64;
+    let mut gy_acc = 0.0_f64;
+    let mut gz_acc = 0.0_f64;
+    let mut j = 0usize;
+    while j < chunks {
+        let all_valid = i < j || i >= j + lanes;
+        let all_gas = particles[j..j + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_valid || !all_gas {
+            for lane in 0..lanes {
+                let (d, g) = dedner_pair_increment(particles, rho, i, j + lane, b_i, psi_i);
+                div_acc += d;
+                gx_acc += g.x;
+                gy_acc += g.y;
+                gz_acc += g.z;
+            }
+            j += lanes;
+            continue;
+        }
+        let (d, g) =
+            dedner_div_gradpsi_contrib_batch_avx2(particles, rho, j, pos_i, b_i, psi_i, h_i);
+        div_acc += d;
+        gx_acc += g.x;
+        gy_acc += g.y;
+        gz_acc += g.z;
+        j += lanes;
+    }
+    for j_tail in chunks..n {
+        let (d, g) = dedner_pair_increment(particles, rho, i, j_tail, b_i, psi_i);
+        div_acc += d;
+        gx_acc += g.x;
+        gy_acc += g.y;
+        gz_acc += g.z;
+    }
+    (div_acc, Vec3::new(gx_acc, gy_acc, gz_acc))
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+fn dedner_pairwise_accumulate_avx2(
+    particles: &[Particle],
+    rho: &[f64],
+    div_b: &mut [f64],
+    grad_psi: &mut [Vec3],
+) {
+    for i in 0..particles.len() {
+        let (d, g) = dedner_sum_for_i_avx2(particles, rho, i);
+        div_b[i] = d;
+        grad_psi[i] = g;
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+fn dedner_grad_kernel_batch_avx512(
+    particles: &[Particle],
+    j: usize,
+    pos_i: Vec3,
+    h_i: f64,
+) -> (__m512d, __m512d, __m512d) {
+    let px = _mm512_set_pd(
+        particles[j + 7].position.x,
+        particles[j + 6].position.x,
+        particles[j + 5].position.x,
+        particles[j + 4].position.x,
+        particles[j + 3].position.x,
+        particles[j + 2].position.x,
+        particles[j + 1].position.x,
+        particles[j].position.x,
+    );
+    let py = _mm512_set_pd(
+        particles[j + 7].position.y,
+        particles[j + 6].position.y,
+        particles[j + 5].position.y,
+        particles[j + 4].position.y,
+        particles[j + 3].position.y,
+        particles[j + 2].position.y,
+        particles[j + 1].position.y,
+        particles[j].position.y,
+    );
+    let pz = _mm512_set_pd(
+        particles[j + 7].position.z,
+        particles[j + 6].position.z,
+        particles[j + 5].position.z,
+        particles[j + 4].position.z,
+        particles[j + 3].position.z,
+        particles[j + 2].position.z,
+        particles[j + 1].position.z,
+        particles[j].position.z,
+    );
+    let dx = _mm512_sub_pd(px, _mm512_set1_pd(pos_i.x));
+    let dy = _mm512_sub_pd(py, _mm512_set1_pd(pos_i.y));
+    let dz = _mm512_sub_pd(pz, _mm512_set1_pd(pos_i.z));
+    let r2 = _mm512_fmadd_pd(dx, dx, _mm512_fmadd_pd(dy, dy, _mm512_mul_pd(dz, dz)));
+    let r = _mm512_sqrt_pd(r2);
+
+    let h_j = _mm512_max_pd(
+        _mm512_set1_pd(1e-10),
+        _mm512_set_pd(
+            particles[j + 7].smoothing_length,
+            particles[j + 6].smoothing_length,
+            particles[j + 5].smoothing_length,
+            particles[j + 4].smoothing_length,
+            particles[j + 3].smoothing_length,
+            particles[j + 2].smoothing_length,
+            particles[j + 1].smoothing_length,
+            particles[j].smoothing_length,
+        ),
+    );
+    let h_ij = _mm512_mul_pd(_mm512_set1_pd(0.5), _mm512_add_pd(_mm512_set1_pd(h_i), h_j));
+    let q = _mm512_div_pd(r, h_ij);
+    let norm = _mm512_div_pd(
+        _mm512_set1_pd(8.0 / std::f64::consts::PI),
+        _mm512_mul_pd(h_ij, _mm512_mul_pd(h_ij, h_ij)),
+    );
+    let q2 = _mm512_mul_pd(q, q);
+    let dw_inner = _mm512_mul_pd(
+        norm,
+        _mm512_fmadd_pd(
+            _mm512_set1_pd(9.0),
+            q2,
+            _mm512_mul_pd(_mm512_set1_pd(-6.0), q),
+        ),
+    );
+    let two_minus_q = _mm512_sub_pd(_mm512_set1_pd(2.0), q);
+    let dw_outer = _mm512_mul_pd(
+        norm,
+        _mm512_mul_pd(
+            _mm512_set1_pd(-1.5),
+            _mm512_mul_pd(two_minus_q, two_minus_q),
+        ),
+    );
+    let inner_mask = _mm512_cmp_pd_mask(q, _mm512_set1_pd(1.0), _CMP_LT_OQ);
+    let support_mask = _mm512_cmp_pd_mask(q, _mm512_set1_pd(2.0), _CMP_LT_OQ);
+    let dw_dq = _mm512_mask_blend_pd(
+        support_mask,
+        _mm512_setzero_pd(),
+        _mm512_mask_blend_pd(inner_mask, dw_outer, dw_inner),
+    );
+    let safe_r = _mm512_mask_blend_pd(
+        _mm512_cmp_pd_mask(r, _mm512_set1_pd(1e-10), _CMP_LT_OQ),
+        r,
+        _mm512_set1_pd(1.0),
+    );
+    let scale = _mm512_div_pd(_mm512_div_pd(dw_dq, h_ij), safe_r);
+    let valid_r = _mm512_cmp_pd_mask(r, _mm512_set1_pd(1e-10), _CMP_GE_OQ);
+    let grad_x = _mm512_maskz_mul_pd(valid_r, scale, dx);
+    let grad_y = _mm512_maskz_mul_pd(valid_r, scale, dy);
+    let grad_z = _mm512_maskz_mul_pd(valid_r, scale, dz);
+    (grad_x, grad_y, grad_z)
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+fn dedner_div_gradpsi_contrib_batch_avx512(
+    particles: &[Particle],
+    rho: &[f64],
+    j: usize,
+    pos_i: Vec3,
+    b_i: Vec3,
+    psi_i: f64,
+    h_i: f64,
+) -> (f64, Vec3) {
+    let (grad_x, grad_y, grad_z) = dedner_grad_kernel_batch_avx512(particles, j, pos_i, h_i);
+    let rho_j = _mm512_max_pd(
+        _mm512_set1_pd(1e-300),
+        _mm512_set_pd(
+            rho[j + 7],
+            rho[j + 6],
+            rho[j + 5],
+            rho[j + 4],
+            rho[j + 3],
+            rho[j + 2],
+            rho[j + 1],
+            rho[j],
+        ),
+    );
+    let mass = _mm512_set_pd(
+        particles[j + 7].mass,
+        particles[j + 6].mass,
+        particles[j + 5].mass,
+        particles[j + 4].mass,
+        particles[j + 3].mass,
+        particles[j + 2].mass,
+        particles[j + 1].mass,
+        particles[j].mass,
+    );
+    let factor = _mm512_div_pd(mass, rho_j);
+    let bjx = _mm512_set_pd(
+        particles[j + 7].b_field.x,
+        particles[j + 6].b_field.x,
+        particles[j + 5].b_field.x,
+        particles[j + 4].b_field.x,
+        particles[j + 3].b_field.x,
+        particles[j + 2].b_field.x,
+        particles[j + 1].b_field.x,
+        particles[j].b_field.x,
+    );
+    let bjy = _mm512_set_pd(
+        particles[j + 7].b_field.y,
+        particles[j + 6].b_field.y,
+        particles[j + 5].b_field.y,
+        particles[j + 4].b_field.y,
+        particles[j + 3].b_field.y,
+        particles[j + 2].b_field.y,
+        particles[j + 1].b_field.y,
+        particles[j].b_field.y,
+    );
+    let bjz = _mm512_set_pd(
+        particles[j + 7].b_field.z,
+        particles[j + 6].b_field.z,
+        particles[j + 5].b_field.z,
+        particles[j + 4].b_field.z,
+        particles[j + 3].b_field.z,
+        particles[j + 2].b_field.z,
+        particles[j + 1].b_field.z,
+        particles[j].b_field.z,
+    );
+    let dbx = _mm512_sub_pd(bjx, _mm512_set1_pd(b_i.x));
+    let dby = _mm512_sub_pd(bjy, _mm512_set1_pd(b_i.y));
+    let dbz = _mm512_sub_pd(bjz, _mm512_set1_pd(b_i.z));
+    let div_lane = _mm512_mul_pd(
+        factor,
+        _mm512_fmadd_pd(
+            dbx,
+            grad_x,
+            _mm512_fmadd_pd(dby, grad_y, _mm512_mul_pd(dbz, grad_z)),
+        ),
+    );
+    let psij = _mm512_set_pd(
+        particles[j + 7].psi_div,
+        particles[j + 6].psi_div,
+        particles[j + 5].psi_div,
+        particles[j + 4].psi_div,
+        particles[j + 3].psi_div,
+        particles[j + 2].psi_div,
+        particles[j + 1].psi_div,
+        particles[j].psi_div,
+    );
+    let dpsi = _mm512_sub_pd(psij, _mm512_set1_pd(psi_i));
+    let gpx = _mm512_mul_pd(_mm512_mul_pd(factor, dpsi), grad_x);
+    let gpy = _mm512_mul_pd(_mm512_mul_pd(factor, dpsi), grad_y);
+    let gpz = _mm512_mul_pd(_mm512_mul_pd(factor, dpsi), grad_z);
+
+    let mut div_buf = [0.0f64; 8];
+    let mut gx_buf = [0.0f64; 8];
+    let mut gy_buf = [0.0f64; 8];
+    let mut gz_buf = [0.0f64; 8];
+    // SAFETY: fixed-size stack arrays for eight f64 lanes.
+    unsafe {
+        _mm512_storeu_pd(div_buf.as_mut_ptr(), div_lane);
+        _mm512_storeu_pd(gx_buf.as_mut_ptr(), gpx);
+        _mm512_storeu_pd(gy_buf.as_mut_ptr(), gpy);
+        _mm512_storeu_pd(gz_buf.as_mut_ptr(), gpz);
+    }
+    let div = div_buf.iter().sum();
+    let gx = gx_buf.iter().sum();
+    let gy = gy_buf.iter().sum();
+    let gz = gz_buf.iter().sum();
+    (div, Vec3::new(gx, gy, gz))
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+fn dedner_sum_for_i_avx512(particles: &[Particle], rho: &[f64], i: usize) -> (f64, Vec3) {
+    if particles[i].ptype != ParticleType::Gas {
+        return (0.0, Vec3::zero());
+    }
+    let lanes = 8;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let h_i = particles[i].smoothing_length.max(1e-10);
+    let pos_i = particles[i].position;
+    let b_i = particles[i].b_field;
+    let psi_i = particles[i].psi_div;
+    let mut div_acc = 0.0_f64;
+    let mut gx_acc = 0.0_f64;
+    let mut gy_acc = 0.0_f64;
+    let mut gz_acc = 0.0_f64;
+    let mut j = 0usize;
+    while j < chunks {
+        let all_valid = i < j || i >= j + lanes;
+        let all_gas = particles[j..j + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_valid || !all_gas {
+            for lane in 0..lanes {
+                let (d, g) = dedner_pair_increment(particles, rho, i, j + lane, b_i, psi_i);
+                div_acc += d;
+                gx_acc += g.x;
+                gy_acc += g.y;
+                gz_acc += g.z;
+            }
+            j += lanes;
+            continue;
+        }
+        let (d, g) =
+            dedner_div_gradpsi_contrib_batch_avx512(particles, rho, j, pos_i, b_i, psi_i, h_i);
+        div_acc += d;
+        gx_acc += g.x;
+        gy_acc += g.y;
+        gz_acc += g.z;
+        j += lanes;
+    }
+    for j_tail in chunks..n {
+        let (d, g) = dedner_pair_increment(particles, rho, i, j_tail, b_i, psi_i);
+        div_acc += d;
+        gx_acc += g.x;
+        gy_acc += g.y;
+        gz_acc += g.z;
+    }
+    (div_acc, Vec3::new(gx_acc, gy_acc, gz_acc))
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+fn dedner_pairwise_accumulate_avx512(
+    particles: &[Particle],
+    rho: &[f64],
+    div_b: &mut [f64],
+    grad_psi: &mut [Vec3],
+) {
+    for i in 0..particles.len() {
+        let (d, g) = dedner_sum_for_i_avx512(particles, rho, i);
+        div_b[i] = d;
+        grad_psi[i] = g;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +1321,30 @@ mod tests {
             // Density is a local m/h^3 computation; SIMD only batches lanes, so
             // scalar and vector paths should agree to roundoff for this setup.
             assert_abs_diff_eq!(*actual, expected, epsilon = 1e-12);
+        }
+    }
+
+    #[test]
+    #[cfg(all(
+        not(feature = "rayon"),
+        feature = "simd",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    fn dedner_pairwise_dispatch_matches_scalar() {
+        let particles = cleaning_particles();
+        let n = particles.len();
+        let rho = dedner_density_scalar(&particles);
+        let mut div_s = vec![0.0_f64; n];
+        let mut gp_s = vec![Vec3::zero(); n];
+        dedner_pairwise_accumulate_scalar(&particles, &rho, &mut div_s, &mut gp_s);
+        let mut div_d = vec![0.0_f64; n];
+        let mut gp_d = vec![Vec3::zero(); n];
+        dedner_pairwise_accumulate(&particles, &rho, &mut div_d, &mut gp_d);
+        for i in 0..n {
+            assert_abs_diff_eq!(div_d[i], div_s[i], epsilon = 1e-9);
+            assert_abs_diff_eq!(gp_d[i].x, gp_s[i].x, epsilon = 1e-9);
+            assert_abs_diff_eq!(gp_d[i].y, gp_s[i].y, epsilon = 1e-9);
+            assert_abs_diff_eq!(gp_d[i].z, gp_s[i].z, epsilon = 1e-9);
         }
     }
 
