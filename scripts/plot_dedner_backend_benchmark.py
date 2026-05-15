@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera un gráfico de barras con los cuatro backends de Dedner (Criterion).
+"""Genera un gráfico de barras con los cinco backends de Dedner (Criterion).
 
 Uso (tras `cargo bench -p gadget-ng-mhd --bench dedner_backend_bench --features bench-all-dedner-paths`):
 
@@ -22,6 +22,7 @@ DEFAULT_CRIT = ROOT / "target" / "criterion" / "dedner_cleaning_backends"
 BACKENDS = [
     ("cpu_sin_rayon_scalar", "CPU sin Rayon (escalar)"),
     ("cpu_con_rayon", "CPU con Rayon"),
+    ("simd_con_rayon", "SIMD + Rayon (AVX2/AVX-512)"),
     ("simd_sin_rayon_avx2", "SIMD sin Rayon AVX2"),
     ("simd_sin_rayon_avx512", "SIMD sin Rayon AVX-512"),
 ]
@@ -74,11 +75,11 @@ def main() -> int:
         labels.append(label)
         means_us.append(ns / 1000.0)
 
-    fig, ax = plt.subplots(figsize=(9, 5))
-    colors = ["#4e79a7", "#f28e2b", "#59a14f", "#e15759"]
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = ["#4e79a7", "#f28e2b", "#76b7b2", "#59a14f", "#e15759"]
     bars = ax.bar(labels, means_us, color=colors)
     ax.set_ylabel("Tiempo medio (µs)")
-    ax.set_title(f"dedner_cleaning_step — N = {n} (Criterion mean)")
+    ax.set_title(f"dedner_cleaning_step — N = {n} (Criterion mean, 5 backends)")
     ax.bar_label(bars, fmt="{:.1f}", padding=3)
     plt.xticks(rotation=15, ha="right")
     fig.tight_layout()

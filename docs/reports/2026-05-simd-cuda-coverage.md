@@ -44,11 +44,12 @@ implementations.
 | SPH forces/Gadget2 viscosity | Yes, Wendland AVX2/AVX-512 batch kernels | Yes, `CudaSphSolver` | Experimental parity |
 | SPH cooling/dust/H2 | Cooling per-particle batches, dust growth/sputtering/radiation kick, and H2+dust shielding AVX2/AVX-512 | Yes, CUDA solvers | Experimental parity |
 | MHD flux-freezing/statistics | Flux-freeze scaling + mean density AVX2/AVX-512; statistics AVX2/AVX-512 with real AVX-512 8-lane path | Yes, `CudaMhdSolver` | Experimental parity |
-| MHD induction/forces/cleaning/transport | Induction / resistivity / magnetic forces: AVX2/AVX-512 pair batches.<br>Dedner (`not(rayon)` + `simd`): density + div-B/∇ψ pairwise AVX2/AVX-512 inner batches + SIMD final ψ/B update.<br>Dedner (`rayon`): outer `par_iter` per gas particle, scalar inner pair loop.<br>Other MHD transport: mixed coverage — see [MHD Dedner cleaning](#mhd-dedner-cleaning-cpu-detail). | Yes, smoke surfaces | Experimental parity |
+| MHD induction/forces/cleaning/transport | Induction / resistivity / magnetic forces: AVX2/AVX-512 pair batches.<br>Dedner (`not(rayon)` + `simd`): density + div-B/∇ψ pairwise AVX2/AVX-512 inner batches + SIMD final ψ/B update.<br>Dedner (`rayon` + `simd`, x86/x86_64): when AVX-512F or AVX2+FMA is detected, `dedner_cleaning_step_par_simd` — Rayon outer loop over `i` reusing the same per-particle SIMD kernels + SIMD final update; otherwise `dedner_cleaning_step_par` (outer `par_iter`, scalar inner `j` loop).<br>Other MHD transport: mixed coverage — see [MHD Dedner cleaning](#mhd-dedner-cleaning-cpu-detail). | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
 | RT chemistry rates/cooling | AVX2/AVX-512 particle photoionization-rate batches and cooling update | No | SIMD-only |
 | RT chemistry stiff solver | AVX2/AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane; chunk/tail parity tests | No | SIMD-only (CUDA pending) |
+| RT IGM temperature profile | AVX-512F 8-wide + AVX2+FMA 4-wide `ChemState`→T + SIMD density gate per lane; mean/variance/sort/percentiles scalar | No | SIMD-only |
 | RT reionization state | AVX2/AVX-512 reductions | No | SIMD-only |
 | RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | No | SIMD-only |
 | Analysis spin/luminosity/SED | AVX2/AVX-512 reductions for spin, luminosity and SED contributions | No | SIMD-only |
@@ -61,9 +62,15 @@ implementations.
   final `ψ`/`B` update is also SIMD-batched. Batches that include self-index `i`,
   non-gas neighbors, or tail lengths fall back to the scalar pair kernel for
   parity with the reference double loop.
-- **`feature = "rayon"`:** `dedner_cleaning_step_par` uses `par_iter` over gas
-  particles (outer parallelism); the inner `j` pair loop remains scalar and does
-  not use the AVX2/AVX-512 path compiled for `not(rayon)` + `simd`.
+- **`feature = "rayon"` + `feature = "simd"` (x86/x86_64):** when AVX-512F or
+  AVX2+FMA is detected at runtime, `dedner_cleaning_step` calls
+  `dedner_cleaning_step_par_simd`: `par_iter_mut` over particles for `div_B` /
+  `∇ψ` accumulation, each task dispatching the same AVX2/AVX-512 per-particle
+  kernels as the serial SIMD path, then a SIMD-batched final `ψ`/`B` update.
+  Otherwise (missing ISA or non-x86), `dedner_cleaning_step_par` applies: outer
+  `par_iter` over gas particles with a scalar inner `j` loop.
+- **`feature = "rayon"` without usable SIMD ISA on the build target:** same as
+  the scalar-inner path above (`dedner_cleaning_step_par`).
 
 ## Validated commands
 
@@ -73,7 +80,9 @@ The SIMD/Rayon side was validated with:
 cargo test -p gadget-ng-sph --features simd
 cargo clippy -p gadget-ng-sph --features simd --all-targets -- -D warnings
 cargo test -p gadget-ng-mhd --features simd
+cargo test -p gadget-ng-mhd --features "rayon,simd"
 cargo clippy -p gadget-ng-mhd --features simd --all-targets -- -D warnings
+cargo clippy -p gadget-ng-mhd --features "rayon,simd" -- -D warnings
 cargo test -p gadget-ng-rt --features simd
 cargo clippy -p gadget-ng-rt --features simd --all-targets -- -D warnings
 cargo test -p gadget-ng-analysis --features simd

@@ -31,14 +31,22 @@ use gadget_ng_core::{Particle, ParticleType, Vec3};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
 #[cfg(target_arch = "x86")]
 use std::arch::x86::*;
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -87,7 +95,11 @@ fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
     }
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+#[cfg(any(
+    not(feature = "rayon"),
+    feature = "bench-all-dedner-paths",
+    all(feature = "rayon", feature = "simd")
+))]
 fn dedner_pair_increment(
     particles: &[Particle],
     rho: &[f64],
@@ -124,7 +136,34 @@ fn dedner_pair_increment(
     (div_inc, gp)
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+#[cfg(all(
+    feature = "rayon",
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64"),
+))]
+fn dedner_sum_for_i_scalar_loop(particles: &[Particle], rho: &[f64], i: usize) -> (f64, Vec3) {
+    if particles[i].ptype != ParticleType::Gas {
+        return (0.0, Vec3::zero());
+    }
+    let b_i = particles[i].b_field;
+    let psi_i = particles[i].psi_div;
+    let mut div_acc = 0.0_f64;
+    let mut gx_acc = 0.0_f64;
+    let mut gy_acc = 0.0_f64;
+    let mut gz_acc = 0.0_f64;
+    for j in 0..particles.len() {
+        let (d, g) = dedner_pair_increment(particles, rho, i, j, b_i, psi_i);
+        div_acc += d;
+        gx_acc += g.x;
+        gy_acc += g.y;
+        gz_acc += g.z;
+    }
+    (div_acc, Vec3::new(gx_acc, gy_acc, gz_acc))
+}
+
+/// Ruta serial por pares (densidad + acumulación i–j) usada sin `rayon`, en benches
+/// `bench-all-dedner-paths`, o en tests (`cfg(test)`).
+#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test))]
 fn dedner_pairwise_accumulate_scalar(
     particles: &[Particle],
     rho: &[f64],
@@ -149,7 +188,7 @@ fn dedner_pairwise_accumulate_scalar(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -229,7 +268,7 @@ fn dedner_pairwise_accumulate_dispatch(
     dedner_pairwise_accumulate_scalar(particles, rho, div_b, grad_psi);
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test))]
 fn dedner_pairwise_accumulate(
     particles: &[Particle],
     rho: &[f64],
@@ -246,21 +285,28 @@ fn dedner_pairwise_accumulate(
     }
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
-fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
+#[cfg(any(
+    not(feature = "rayon"),
+    feature = "bench-all-dedner-paths",
+    all(feature = "rayon", feature = "simd")
+))]
+fn dedner_apply_final_update(
+    particles: &mut [Particle],
+    div_b: &[f64],
+    grad_psi: &[Vec3],
+    c_h: f64,
+    c_r: f64,
+    dt: f64,
+) {
     let n = particles.len();
-
-    let rho = dedner_density(particles);
-
-    let mut div_b = vec![0.0_f64; n];
-    let mut grad_psi = vec![Vec3::zero(); n];
-
-    dedner_pairwise_accumulate(particles, &rho, &mut div_b, &mut grad_psi);
-
     let decay = (-c_r * dt).exp();
 
     #[cfg(all(
-        any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+        any(
+            not(feature = "rayon"),
+            feature = "bench-all-dedner-paths",
+            all(feature = "rayon", feature = "simd")
+        ),
         feature = "simd",
         any(target_arch = "x86", target_arch = "x86_64")
     ))]
@@ -274,8 +320,8 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
                         unsafe {
                             dedner_cleaning_update_avx2(
                                 particles,
-                                &div_b,
-                                &grad_psi,
+                                div_b,
+                                grad_psi,
                                 c_h * c_h * dt,
                                 decay,
                                 dt,
@@ -291,8 +337,8 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
                         unsafe {
                             dedner_cleaning_update_avx512(
                                 particles,
-                                &div_b,
-                                &grad_psi,
+                                div_b,
+                                grad_psi,
                                 c_h * c_h * dt,
                                 decay,
                                 dt,
@@ -305,8 +351,8 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
                         unsafe {
                             dedner_cleaning_update_avx2(
                                 particles,
-                                &div_b,
-                                &grad_psi,
+                                div_b,
+                                grad_psi,
                                 c_h * c_h * dt,
                                 decay,
                                 dt,
@@ -330,12 +376,11 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
             #[cfg(target_arch = "x86_64")]
             if is_x86_feature_detected!("avx512f") {
                 // SAFETY: AVX-512F availability was checked at runtime.
-                // Density, pairwise div-B / ∇ψ accumulation, and final ψ/B update are vectorized.
                 unsafe {
                     dedner_cleaning_update_avx512(
                         particles,
-                        &div_b,
-                        &grad_psi,
+                        div_b,
+                        grad_psi,
                         c_h * c_h * dt,
                         decay,
                         dt,
@@ -348,8 +393,8 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
                 unsafe {
                     dedner_cleaning_update_avx2(
                         particles,
-                        &div_b,
-                        &grad_psi,
+                        div_b,
+                        grad_psi,
                         c_h * c_h * dt,
                         decay,
                         dt,
@@ -370,7 +415,36 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
     }
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test))]
+// Con `rayon`+`simd` en x86 el paso público usa `dedner_cleaning_step_par_simd`; esta
+// función solo sirve para benches `bench-all-dedner-paths` y queda referenciada en tests
+// vía `cfg(test)` aunque ningún test la llame en esa combinación de features.
+#[cfg_attr(
+    all(
+        feature = "rayon",
+        feature = "simd",
+        not(feature = "bench-all-dedner-paths")
+    ),
+    allow(dead_code)
+)]
+fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
+    let n = particles.len();
+
+    let rho = dedner_density(particles);
+
+    let mut div_b = vec![0.0_f64; n];
+    let mut grad_psi = vec![Vec3::zero(); n];
+
+    dedner_pairwise_accumulate(particles, &rho, &mut div_b, &mut grad_psi);
+
+    dedner_apply_final_update(particles, &div_b, &grad_psi, c_h, c_r, dt);
+}
+
+#[cfg(any(
+    not(feature = "rayon"),
+    feature = "bench-all-dedner-paths",
+    all(feature = "rayon", feature = "simd")
+))]
 fn dedner_density(particles: &[Particle]) -> Vec<f64> {
     #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
     {
@@ -422,7 +496,11 @@ fn dedner_density(particles: &[Particle]) -> Vec<f64> {
     dedner_density_scalar(particles)
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+#[cfg(any(
+    not(feature = "rayon"),
+    feature = "bench-all-dedner-paths",
+    all(feature = "rayon", feature = "simd")
+))]
 fn dedner_density_scalar(particles: &[Particle]) -> Vec<f64> {
     particles
         .iter()
@@ -508,6 +586,79 @@ fn dedner_cleaning_step_par(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
     }
 }
 
+#[cfg(all(
+    feature = "rayon",
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn dedner_sum_for_i_dispatch_parallel_cpu(
+    particles: &[Particle],
+    rho: &[f64],
+    i: usize,
+) -> (f64, Vec3) {
+    #[cfg(feature = "bench-all-dedner-paths")]
+    if let Some(tier) = dedner_bench_simd_tier_from_env() {
+        match tier {
+            DednerBenchSimdTier::Scalar => return dedner_sum_for_i_scalar_loop(particles, rho, i),
+            DednerBenchSimdTier::Avx2 => {
+                if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                    // SAFETY: AVX2+FMA forced by bench tier after runtime checks.
+                    return unsafe { dedner_sum_for_i_avx2(particles, rho, i) };
+                }
+                return dedner_sum_for_i_scalar_loop(particles, rho, i);
+            }
+            DednerBenchSimdTier::Avx512 => {
+                #[cfg(target_arch = "x86_64")]
+                if is_x86_feature_detected!("avx512f") {
+                    // SAFETY: AVX-512F forced by bench tier after runtime check.
+                    return unsafe { dedner_sum_for_i_avx512(particles, rho, i) };
+                }
+                if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                    // SAFETY: AVX2+FMA fallback when AVX-512 is unavailable.
+                    return unsafe { dedner_sum_for_i_avx2(particles, rho, i) };
+                }
+                return dedner_sum_for_i_scalar_loop(particles, rho, i);
+            }
+        }
+    }
+    #[cfg(target_arch = "x86_64")]
+    if is_x86_feature_detected!("avx512f") {
+        // SAFETY: `avx512f` was detected immediately above.
+        return unsafe { dedner_sum_for_i_avx512(particles, rho, i) };
+    }
+    if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+        // SAFETY: `avx2` and `fma` were detected immediately above.
+        return unsafe { dedner_sum_for_i_avx2(particles, rho, i) };
+    }
+    dedner_sum_for_i_scalar_loop(particles, rho, i)
+}
+
+#[cfg(all(
+    feature = "rayon",
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn dedner_cleaning_step_par_simd(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
+    use rayon::prelude::*;
+    let rho = dedner_density(particles);
+    let mut div_b = vec![0.0_f64; particles.len()];
+    let mut grad_psi = vec![Vec3::zero(); particles.len()];
+
+    let particles_rf: &[Particle] = particles;
+
+    div_b
+        .par_iter_mut()
+        .zip(grad_psi.par_iter_mut())
+        .enumerate()
+        .for_each(|(i, (db, gp))| {
+            let (d, g) = dedner_sum_for_i_dispatch_parallel_cpu(particles_rf, &rho, i);
+            *db = d;
+            *gp = g;
+        });
+
+    dedner_apply_final_update(particles, &div_b, &grad_psi, c_h, c_r, dt);
+}
+
 /// Aplica un paso del esquema de limpieza de Dedner para div-B (Phase 125).
 ///
 /// # Parámetros
@@ -526,6 +677,15 @@ fn dedner_cleaning_step_par(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
 pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: f64) {
     #[cfg(feature = "rayon")]
     {
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            let use_simd_rayon = is_x86_feature_detected!("avx512f")
+                || (is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"));
+            if use_simd_rayon {
+                dedner_cleaning_step_par_simd(particles, c_h, c_r, dt);
+                return;
+            }
+        }
         dedner_cleaning_step_par(particles, c_h, c_r, dt);
     }
 
@@ -537,8 +697,10 @@ pub fn dedner_cleaning_step(particles: &mut [Particle], c_h: f64, c_r: f64, dt: 
 
 /// Variante de backend solo para benchmarks (`feature = "bench-all-dedner-paths"`).
 ///
-/// Permite comparar en un único binario: CPU serial escalar, Rayon, y SIMD forzado
-/// AVX2 o AVX-512F vía `GADGET_NG_MHD_BENCH_SIMD_TIER` (no usar en producción).
+/// Permite comparar en un único binario **cinco** backends: CPU serial escalar,
+/// Rayon escalar, SIMD+Rayon multihilo (x86 con AVX2+FMA o AVX-512F), y SIMD
+/// forzado AVX2 o AVX-512F sin Rayon vía `GADGET_NG_MHD_BENCH_SIMD_TIER` (no usar
+/// en producción).
 #[cfg(feature = "bench-all-dedner-paths")]
 #[derive(Clone, Copy, Debug)]
 pub enum DednerCleaningBackend {
@@ -546,6 +708,8 @@ pub enum DednerCleaningBackend {
     CpuSinRayonScalar,
     /// Paralelismo exterior por partícula gas (`dedner_cleaning_step_par`).
     CpuRayon,
+    /// Rayon + SIMD en x86/x86_64 cuando hay AVX2+FMA o AVX-512F (`dedner_cleaning_step_par_simd`).
+    SimdConRayon,
     /// SIMD forzado AVX2+FMA en densidad + pares + actualización final.
     SimdSinRayonAvx2,
     /// SIMD forzado AVX-512F cuando está disponible (si no, cae a AVX2 o escalar).
@@ -569,6 +733,24 @@ pub fn dedner_cleaning_step_with_backend(
                 env::remove_var("GADGET_NG_MHD_BENCH_SIMD_TIER");
                 dedner_cleaning_step_par(particles, c_h, c_r, dt);
             }
+            DednerCleaningBackend::SimdConRayon => {
+                env::remove_var("GADGET_NG_MHD_BENCH_SIMD_TIER");
+                #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    let use_simd_rayon = is_x86_feature_detected!("avx512f")
+                        || (is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"));
+                    if use_simd_rayon {
+                        dedner_cleaning_step_par_simd(particles, c_h, c_r, dt);
+                    } else {
+                        dedner_cleaning_step_par(particles, c_h, c_r, dt);
+                    }
+                }
+                #[cfg(not(all(
+                    feature = "simd",
+                    any(target_arch = "x86", target_arch = "x86_64")
+                )))]
+                dedner_cleaning_step_par(particles, c_h, c_r, dt);
+            }
             DednerCleaningBackend::CpuSinRayonScalar => {
                 env::set_var("GADGET_NG_MHD_BENCH_SIMD_TIER", "scalar");
                 dedner_cleaning_step_impl(particles, c_h, c_r, dt);
@@ -586,7 +768,11 @@ pub fn dedner_cleaning_step_with_backend(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -627,7 +813,11 @@ unsafe fn dedner_density_avx2(particles: &[Particle]) -> Vec<f64> {
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -676,7 +866,11 @@ unsafe fn dedner_density_avx512(particles: &[Particle]) -> Vec<f64> {
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -793,7 +987,11 @@ unsafe fn dedner_cleaning_update_avx2(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -947,7 +1145,11 @@ unsafe fn dedner_cleaning_update_avx512(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1039,7 +1241,11 @@ fn dedner_grad_kernel_batch_avx2(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1124,7 +1330,11 @@ fn dedner_div_gradpsi_contrib_batch_avx2(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1180,7 +1390,7 @@ fn dedner_sum_for_i_avx2(particles: &[Particle], rho: &[f64], i: usize) -> (f64,
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1199,7 +1409,11 @@ fn dedner_pairwise_accumulate_avx2(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1303,7 +1517,11 @@ fn dedner_grad_kernel_batch_avx512(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1417,7 +1635,11 @@ fn dedner_div_gradpsi_contrib_batch_avx512(
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1473,7 +1695,7 @@ fn dedner_sum_for_i_avx512(particles: &[Particle], rho: &[f64], i: usize) -> (f6
 }
 
 #[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+    any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test),
     feature = "simd",
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
@@ -1531,7 +1753,11 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+    #[cfg(any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ))]
     fn dedner_density_dispatch_matches_scalar_with_tail_and_dark_matter() {
         reset_bench_simd_tier_env();
         let particles = cleaning_particles();
@@ -1547,7 +1773,11 @@ mod tests {
 
     #[test]
     #[cfg(all(
-        any(not(feature = "rayon"), feature = "bench-all-dedner-paths"),
+        any(
+            not(feature = "rayon"),
+            feature = "bench-all-dedner-paths",
+            all(feature = "rayon", feature = "simd")
+        ),
         feature = "simd",
         any(target_arch = "x86", target_arch = "x86_64")
     ))]
@@ -1571,7 +1801,11 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths"))]
+    #[cfg(any(
+        not(feature = "rayon"),
+        feature = "bench-all-dedner-paths",
+        all(feature = "rayon", feature = "simd")
+    ))]
     fn dedner_cleaning_dispatch_leaves_dark_matter_unchanged() {
         reset_bench_simd_tier_env();
         let mut particles = cleaning_particles();

@@ -22,13 +22,27 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 - Dedner div-B cleaning en ruta `not(rayon)` + `simd`: acumulación por pares de
   `div_B` y `∇ψ` con lotes internos AVX2/AVX-512 (kernel Wendland alineado con
   inducción) y test `dedner_pairwise_dispatch_matches_scalar`.
+- Dedner con **`rayon` + `simd`** en x86/x86_64: si hay AVX-512F o AVX2+FMA,
+  `dedner_cleaning_step` usa `dedner_cleaning_step_par_simd` (Rayon sobre `i`,
+  mismos kernels SIMD por partícula y actualización final SIMD); si no, cae a
+  `dedner_cleaning_step_par` (paralelo por gas, pares escalar).
 - Documentación: README (matriz de aceleradores y notas),
-  `docs/reports/2026-05-accelerator-parity-pending.md` y
-  `docs/reports/2026-05-simd-cuda-coverage.md` alineados con esa cobertura y con
-  la ruta Rayon de Dedner (paralelo por partícula, pares escalar).
+  `docs/reports/2026-05-simd-cuda-coverage.md` y
+  `docs/reports/2026-05-accelerator-parity-pending.md` alineados con Dedner
+  serial SIMD, `par_simd` (`rayon`+`simd` en x86) y bench de cinco backends.
 - Benchmark Criterion `dedner_backend_bench` (`feature = "bench-all-dedner-paths"`)
   y script `scripts/plot_dedner_backend_benchmark.py` para gráfico de barras de
-  los cuatro backends Dedner (CPU sin Rayon, Rayon, SIMD AVX2, SIMD AVX-512).
+  cinco backends Dedner (CPU sin Rayon, Rayon escalar, SIMD+Rayon, SIMD AVX2 sin
+  Rayon, SIMD AVX-512 sin Rayon).
+
+### RT (`gadget-ng-rt`)
+
+- Perfil de temperatura IGM (`compute_igm_temp_profile`): dispatch **AVX-512F
+  8-wide** en **x86_64** cuando hay `avx512f`, si no **AVX2+FMA 4-wide**; cola
+  tras bloques de 8 con AVX2 o escalar; **filtro de densidad SIMD por lane** en
+  los bloques vectoriales. Test `igm_collect_simd_matches_scalar_multiset`.
+- Constante pública `U_CODE_TO_ERG_G` en `chemistry` (factor código → erg/g)
+  reutilizada por el batch SIMD.
 
 ## [0.2.0] - 2026-05-12
 

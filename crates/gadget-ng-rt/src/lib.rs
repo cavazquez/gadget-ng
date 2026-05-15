@@ -45,10 +45,11 @@ pub mod multifrequency;
 pub mod reionization;
 
 pub use chemistry::{
-    ChemParams, ChemState, F_D, F_HE, alpha_heii, alpha_heiii, alpha_hii, apply_chemistry,
-    beta_hei, beta_heii, beta_hi, cooling_rate_approx, cooling_rate_hd, k_d_ionization_exchange,
-    k_d_recombination_exchange, k_h2_collisional_dissociation, k_h2_from_h2p, k_h2_from_hm,
-    k_h2p_formation, k_hd_destruction, k_hd_formation, k_hm_formation, solve_chemistry_implicit,
+    ChemParams, ChemState, F_D, F_HE, U_CODE_TO_ERG_G, alpha_heii, alpha_heiii, alpha_hii,
+    apply_chemistry, beta_hei, beta_heii, beta_hi, cooling_rate_approx, cooling_rate_hd,
+    k_d_ionization_exchange, k_d_recombination_exchange, k_h2_collisional_dissociation,
+    k_h2_from_h2p, k_h2_from_hm, k_h2p_formation, k_hd_destruction, k_hd_formation, k_hm_formation,
+    solve_chemistry_implicit,
 };
 pub use cm21::{
     Cm21Output, Cm21Params, Cm21PkBin, brightness_temperature, compute_cm21_output,

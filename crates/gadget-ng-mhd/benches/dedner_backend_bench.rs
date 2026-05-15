@@ -1,4 +1,4 @@
-//! Compara `dedner_cleaning_step` en cuatro backends CPU (Criterion).
+//! Compara `dedner_cleaning_step` en cinco backends CPU (Criterion).
 //!
 //! Requiere `feature = "bench-all-dedner-paths"` (ver `Cargo.toml`). Tras medir:
 //!
@@ -69,6 +69,24 @@ fn bench_dedner_cleaning_backends(c: &mut Criterion) {
                         c_r,
                         dt,
                         DednerCleaningBackend::CpuRayon,
+                    );
+                    p
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
+
+        group.bench_with_input(BenchmarkId::new("simd_con_rayon", n), &n, |b, &n| {
+            let particles = make_particles(n);
+            b.iter_batched(
+                || particles.clone(),
+                |mut p| {
+                    dedner_cleaning_step_with_backend(
+                        black_box(&mut p),
+                        c_h,
+                        c_r,
+                        dt,
+                        DednerCleaningBackend::SimdConRayon,
                     );
                     p
                 },

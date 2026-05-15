@@ -182,7 +182,7 @@ y la cobertura detallada en
 | Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
 | MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity kernel |
 | MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ paralelo por partícula; pares escalar | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update | ✅ |
+| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ✅ |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface |
 | MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ |
 | MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel |
@@ -195,7 +195,7 @@ y la cobertura detallada en
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
 | RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests | ❌ |
-| RT IGM temperature profile | ✅ | ✅ | ⚠️ scalar-optimal por diseño (ChemState AoS / química; no es un olvido) | ❌ |
+| RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
@@ -205,10 +205,13 @@ y la cobertura detallada en
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
 
-Nota MHD Dedner con Rayon: la columna «CPU con Rayon» indica que el paso paralelo
-(`dedner_cleaning_step_par`) reparte el trabajo por partícula gas; el bucle de
-pares `i`–`j` sigue escalar. Las rutas AVX2/AVX512 de densidad, acumulación por
-lotes y actualización final aplican en **CPU sin Rayon** con `feature = "simd"`.
+Nota MHD Dedner: con **`rayon` + `simd`** en **x86/x86_64**, si en tiempo de
+ejecución hay **AVX-512F** o **AVX2+FMA**, `dedner_cleaning_step` usa
+`dedner_cleaning_step_par_simd` (Rayon sobre `i` y kernels SIMD por partícula,
+misma familia que el camino serial SIMD). Si no hay instrucciones suficientes o
+no está `simd`, se usa `dedner_cleaning_step_par` (paralelo por gas, pares
+`i`–`j` escalar). Con **`simd`** y **sin `rayon`**, la ruta serial sigue siendo
+densidad + pares en lotes AVX2/AVX-512 + actualización final SIMD.
 
 Nota RT chemistry: `rates/cooling` está vectorizado con AVX2/AVX512 en la ruta
 CPU sin Rayon. El paso stiff (`solve_chemistry_implicit`) ya usa dispatch SIMD
@@ -217,6 +220,17 @@ chunk/cola; la complejidad restante es adaptativa por partícula (subciclos,
 ramas moleculares/D/HD, clamps), no la ausencia de SIMD en CPU. Lo que sigue
 abierto en la matriz es sobre todo CUDA y el backlog en
 [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md).
+
+**Nota RT — perfil de temperatura IGM** (`crates/gadget-ng-rt/src/igm_temp.rs`,
+`compute_igm_temp_profile`): con **`feature = "simd"`**, en **x86_64** con
+**AVX-512F** en runtime se usan bloques de **8** partículas (`_mm512_*`) para μ/T;
+si no hay AVX-512 pero sí **AVX2+FMA**, bloques de **4** (`_mm256_*`). El filtro por densidad SPH (ρ = m/h³
+vs umbral; si h≤0 no aplica corte) va **en SIMD por lane** en esos bloques. Luego
+**media,
+varianza, ordenación y percentiles** sobre el subconjunto IGM siguen siendo
+escalar. Con **`rayon`**, los rangos de índices van en paralelo con el mismo
+dispatch por tramo. Se exporta **`U_CODE_TO_ERG_G`** en `chemistry` para compartir
+factor con la química. CUDA sigue ❌ (diagnóstico CPU / JSON in-situ).
 
 ---
 
@@ -1844,7 +1858,7 @@ cargo test -p gadget-ng-physics --test phase149_two_fluid         --release
 # Benchmarks Criterion MHD avanzados
 cargo bench -p gadget-ng-mhd --bench advanced_bench
 
-# Dedner: comparar CPU serial / Rayon / SIMD AVX2 / SIMD AVX-512 y gráfico de barras
+# Dedner: cinco backends (serial, Rayon escalar, SIMD+Rayon, SIMD AVX2 sin Rayon, SIMD AVX-512 sin Rayon) y gráfico
 cargo bench -p gadget-ng-mhd --bench dedner_backend_bench --features bench-all-dedner-paths
 python3 scripts/plot_dedner_backend_benchmark.py --n 1024
 ```

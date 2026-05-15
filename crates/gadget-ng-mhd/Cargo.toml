@@ -9,8 +9,8 @@ description = "Magnetohydrodynamics (MHD) for gadget-ng simulations"
 default = []
 rayon = ["dep:rayon"]
 simd = []
-# Bench-only: compile Dedner serial (`dedner_cleaning_step_impl`) alongside Rayon so
-# `dedner_cleaning_step_with_backend` can compare CPU serial, Rayon, and forced AVX2/AVX-512 tiers.
+# Bench-only: compila todas las rutas Dedner (serial, Rayon, SIMD+Rayon, SIMD forzado AVX2/AVX-512 sin Rayon)
+# para `dedner_cleaning_step_with_backend` y Criterion.
 bench-all-dedner-paths = ["rayon", "simd"]
 
 [dependencies]

@@ -89,7 +89,7 @@ const T_HEI: f64 = 285_335.4;
 /// Energía de ionización de HeII en Kelvin.
 const T_HEII: f64 = 631_515.0;
 /// Factor de conversión de energía interna (código → erg/g).
-const U_CODE_TO_ERG_G: f64 = 1e10;
+pub const U_CODE_TO_ERG_G: f64 = 1e10;
 
 // ── Estado químico ────────────────────────────────────────────────────────────
 
