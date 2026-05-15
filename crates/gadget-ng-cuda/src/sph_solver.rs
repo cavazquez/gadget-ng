@@ -1,50 +1,92 @@
-//! Kernels SPH O(N²) via CUDA.
+//! Kernels SPH O(N²) via CUDA con buffers persistentes.
 //!
-//! Esta primera versión expone wrappers fallibles para densidad, fuerzas SPH
-//! clásicas, limitador de Balsara y fuerzas Gadget-2. Los kernels usan f32 en
-//! device y escriben los resultados de vuelta sobre [`gadget_ng_sph::SphParticle`].
+//! Versión optimizada: `CudaSphSolver` retiene un [`CudaPool`] de buffers
+//! device entre pasos, eliminando `cudaMalloc`/`cudaFree` por invocación.
+//! Los buffers se redimensionan solo cuando el número de partículas crece.
 
+use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::Vec3;
 use gadget_ng_sph::particle::SphParticle;
 
-/// Solver CUDA para kernels SPH locales O(N²).
-#[derive(Debug, Clone, Copy)]
-pub struct CudaSphSolver;
+/// Solver CUDA para kernels SPH locales O(N²) con buffers device persistentes.
+///
+/// Se construye con [`CudaSphSolver::try_new`] y se mantiene vivo durante
+/// toda la simulación. Los buffers device se reutilizan entre pasos de
+/// tiempo; solo se redimensionan cuando el número de partículas excede
+/// la capacidad actual.
+pub struct CudaSphSolver {
+    #[cfg(not(cuda_unavailable))]
+    pool: CudaPool,
+    #[cfg(cuda_unavailable)]
+    _phantom: (),
+}
 
-#[derive(Debug)]
-#[cfg(not(cuda_unavailable))]
-struct SphSoa {
-    x: Vec<f32>,
-    y: Vec<f32>,
-    z: Vec<f32>,
-    vx: Vec<f32>,
-    vy: Vec<f32>,
-    vz: Vec<f32>,
-    mass: Vec<f32>,
-    is_gas: Vec<u8>,
-    u: Vec<f32>,
-    h: Vec<f32>,
-    rho: Vec<f32>,
-    pressure: Vec<f32>,
-    balsara: Vec<f32>,
+impl std::fmt::Debug for CudaSphSolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaSphSolver").finish()
+    }
+}
+
+impl Clone for CudaSphSolver {
+    fn clone(&self) -> Self {
+        Self::try_new_checked().unwrap_or_else(|_| {
+            #[cfg(not(cuda_unavailable))]
+            {
+                panic!("CudaSphSolver clone failed: CUDA not available");
+            }
+            #[cfg(cuda_unavailable)]
+            {
+                Self { _phantom: () }
+            }
+        })
+    }
 }
 
 impl CudaSphSolver {
-    /// Intenta crear el solver SPH CUDA.
+    /// Intenta crear el solver SPH CUDA con buffers persistentes.
     pub fn try_new() -> Option<Self> {
         Self::try_new_checked().ok()
     }
 
     /// Variante fallible de [`Self::try_new`] que conserva el diagnóstico.
     pub fn try_new_checked() -> Result<Self, CudaUnavailable> {
-        if CudaPmSolver::is_available() {
-            Ok(Self)
-        } else {
-            Err(CudaUnavailable {
+        if !CudaPmSolver::is_available() {
+            return Err(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            })
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            return Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            });
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let pool = CudaPool::try_new_with_capacity(0).map_err(|_| CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            })?;
+            Ok(Self { pool })
+        }
+    }
+
+    /// Asegura que los buffers del pool tengan capacidad para `n` partículas.
+    pub fn ensure_capacity(&self, n: usize) -> Result<(), CudaExecutionError> {
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = n;
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            self.pool.ensure_capacity(n)
         }
     }
 
@@ -62,43 +104,65 @@ impl CudaSphSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, periodic_box);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = SphSoa::from_particles(particles);
-            let mut h_out = vec![0.0_f32; n];
-            let mut rho_out = vec![0.0_f32; n];
-            let mut pressure_out = vec![0.0_f32; n];
-            let mut entropy_out = vec![0.0_f32; n];
-            let code = unsafe {
-                crate::ffi::cuda_sph_density(
-                    soa.x.as_ptr(),
-                    soa.y.as_ptr(),
-                    soa.z.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.is_gas.as_ptr(),
-                    soa.u.as_ptr(),
-                    soa.h.as_ptr(),
-                    h_out.as_mut_ptr(),
-                    rho_out.as_mut_ptr(),
-                    pressure_out.as_mut_ptr(),
-                    entropy_out.as_mut_ptr(),
+
+            // SAFETY: pool handle is valid, slots are freshly reset; all slices have length n.
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &soa.x);
+                let d_y = self.pool.upload_f32(1, &soa.y);
+                let d_z = self.pool.upload_f32(2, &soa.z);
+                let d_mass = self.pool.upload_f32(3, &soa.mass);
+                let d_is_gas = self.pool.upload_u8(4, &soa.is_gas);
+                let d_u = self.pool.upload_f32(5, &soa.u);
+                let d_h = self.pool.upload_f32(6, &soa.h);
+                let d_h_out = self.pool.alloc_f32(7, n);
+                let d_rho = self.pool.alloc_f32(8, n);
+                let d_pressure = self.pool.alloc_f32(9, n);
+                let d_entropy = self.pool.alloc_f32(10, n);
+
+                let code = crate::ffi::cuda_sph_density(
+                    d_x,
+                    d_y,
+                    d_z,
+                    d_mass,
+                    d_is_gas,
+                    d_u,
+                    d_h,
+                    d_h_out,
+                    d_rho,
+                    d_pressure,
+                    d_entropy,
                     n as i32,
                     periodic_box_f32(periodic_box),
-                )
-            };
-            check_kernel("cuda_sph_density", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                if let Some(gas) = p.gas.as_mut() {
-                    gas.h_sml = h_out[i] as f64;
-                    gas.rho = rho_out[i] as f64;
-                    gas.pressure = pressure_out[i] as f64;
-                    gas.entropy = entropy_out[i] as f64;
+                );
+                check_kernel("cuda_sph_density", code)?;
+
+                let mut h_out = vec![0.0_f32; n];
+                let mut rho_out = vec![0.0_f32; n];
+                let mut pressure_out = vec![0.0_f32; n];
+                let mut entropy_out = vec![0.0_f32; n];
+                self.pool.download_f32(&mut h_out, d_h_out)?;
+                self.pool.download_f32(&mut rho_out, d_rho)?;
+                self.pool.download_f32(&mut pressure_out, d_pressure)?;
+                self.pool.download_f32(&mut entropy_out, d_entropy)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    if let Some(gas) = p.gas.as_mut() {
+                        gas.h_sml = h_out[i] as f64;
+                        gas.rho = rho_out[i] as f64;
+                        gas.pressure = pressure_out[i] as f64;
+                        gas.entropy = entropy_out[i] as f64;
+                    }
                 }
             }
             Ok(())
@@ -119,38 +183,57 @@ impl CudaSphSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, periodic_box);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = SphSoa::from_particles(particles);
-            let mut balsara_out = vec![1.0_f32; n];
-            let code = unsafe {
-                crate::ffi::cuda_sph_balsara(
-                    soa.x.as_ptr(),
-                    soa.y.as_ptr(),
-                    soa.z.as_ptr(),
-                    soa.vx.as_ptr(),
-                    soa.vy.as_ptr(),
-                    soa.vz.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.is_gas.as_ptr(),
-                    soa.rho.as_ptr(),
-                    soa.pressure.as_ptr(),
-                    soa.h.as_ptr(),
-                    balsara_out.as_mut_ptr(),
+
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &soa.x);
+                let d_y = self.pool.upload_f32(1, &soa.y);
+                let d_z = self.pool.upload_f32(2, &soa.z);
+                let d_vx = self.pool.upload_f32(3, &soa.vx);
+                let d_vy = self.pool.upload_f32(4, &soa.vy);
+                let d_vz = self.pool.upload_f32(5, &soa.vz);
+                let d_mass = self.pool.upload_f32(6, &soa.mass);
+                let d_is_gas = self.pool.upload_u8(7, &soa.is_gas);
+                let d_rho = self.pool.upload_f32(8, &soa.rho);
+                let d_pressure = self.pool.upload_f32(9, &soa.pressure);
+                let d_h = self.pool.upload_f32(10, &soa.h);
+                let d_balsara = self.pool.alloc_f32(11, n);
+
+                let code = crate::ffi::cuda_sph_balsara(
+                    d_x,
+                    d_y,
+                    d_z,
+                    d_vx,
+                    d_vy,
+                    d_vz,
+                    d_mass,
+                    d_is_gas,
+                    d_rho,
+                    d_pressure,
+                    d_h,
+                    d_balsara,
                     n as i32,
                     periodic_box_f32(periodic_box),
-                )
-            };
-            check_kernel("cuda_sph_balsara", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                if let Some(gas) = p.gas.as_mut() {
-                    gas.balsara = balsara_out[i] as f64;
+                );
+                check_kernel("cuda_sph_balsara", code)?;
+
+                let mut balsara_out = vec![1.0_f32; n];
+                self.pool.download_f32(&mut balsara_out, d_balsara)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    if let Some(gas) = p.gas.as_mut() {
+                        gas.balsara = balsara_out[i] as f64;
+                    }
                 }
             }
             Ok(())
@@ -171,45 +254,70 @@ impl CudaSphSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, periodic_box);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = SphSoa::from_particles(particles);
-            let mut ax = vec![0.0_f32; n];
-            let mut ay = vec![0.0_f32; n];
-            let mut az = vec![0.0_f32; n];
-            let mut du_dt = vec![0.0_f32; n];
-            let code = unsafe {
-                crate::ffi::cuda_sph_forces(
-                    soa.x.as_ptr(),
-                    soa.y.as_ptr(),
-                    soa.z.as_ptr(),
-                    soa.vx.as_ptr(),
-                    soa.vy.as_ptr(),
-                    soa.vz.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.is_gas.as_ptr(),
-                    soa.rho.as_ptr(),
-                    soa.pressure.as_ptr(),
-                    soa.h.as_ptr(),
-                    ax.as_mut_ptr(),
-                    ay.as_mut_ptr(),
-                    az.as_mut_ptr(),
-                    du_dt.as_mut_ptr(),
+
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &soa.x);
+                let d_y = self.pool.upload_f32(1, &soa.y);
+                let d_z = self.pool.upload_f32(2, &soa.z);
+                let d_vx = self.pool.upload_f32(3, &soa.vx);
+                let d_vy = self.pool.upload_f32(4, &soa.vy);
+                let d_vz = self.pool.upload_f32(5, &soa.vz);
+                let d_mass = self.pool.upload_f32(6, &soa.mass);
+                let d_is_gas = self.pool.upload_u8(7, &soa.is_gas);
+                let d_rho = self.pool.upload_f32(8, &soa.rho);
+                let d_pressure = self.pool.upload_f32(9, &soa.pressure);
+                let d_h = self.pool.upload_f32(10, &soa.h);
+                let d_ax = self.pool.alloc_f32(11, n);
+                let d_ay = self.pool.alloc_f32(12, n);
+                let d_az = self.pool.alloc_f32(13, n);
+                let d_du_dt = self.pool.alloc_f32(14, n);
+
+                let code = crate::ffi::cuda_sph_forces(
+                    d_x,
+                    d_y,
+                    d_z,
+                    d_vx,
+                    d_vy,
+                    d_vz,
+                    d_mass,
+                    d_is_gas,
+                    d_rho,
+                    d_pressure,
+                    d_h,
+                    d_ax,
+                    d_ay,
+                    d_az,
+                    d_du_dt,
                     n as i32,
                     periodic_box_f32(periodic_box),
-                )
-            };
-            check_kernel("cuda_sph_forces", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                if let Some(gas) = p.gas.as_mut() {
-                    gas.acc_sph = Vec3::new(ax[i] as f64, ay[i] as f64, az[i] as f64);
-                    gas.du_dt = du_dt[i] as f64;
+                );
+                check_kernel("cuda_sph_forces", code)?;
+
+                let mut ax = vec![0.0_f32; n];
+                let mut ay = vec![0.0_f32; n];
+                let mut az = vec![0.0_f32; n];
+                let mut du_dt = vec![0.0_f32; n];
+                self.pool.download_f32(&mut ax, d_ax)?;
+                self.pool.download_f32(&mut ay, d_ay)?;
+                self.pool.download_f32(&mut az, d_az)?;
+                self.pool.download_f32(&mut du_dt, d_du_dt)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    if let Some(gas) = p.gas.as_mut() {
+                        gas.acc_sph = Vec3::new(ax[i] as f64, ay[i] as f64, az[i] as f64);
+                        gas.du_dt = du_dt[i] as f64;
+                    }
                 }
             }
             Ok(())
@@ -230,57 +338,105 @@ impl CudaSphSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, periodic_box);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = SphSoa::from_particles(particles);
-            let mut ax = vec![0.0_f32; n];
-            let mut ay = vec![0.0_f32; n];
-            let mut az = vec![0.0_f32; n];
-            let mut da_dt = vec![0.0_f32; n];
-            let mut du_dt = vec![0.0_f32; n];
-            let mut max_vsig = vec![0.0_f32; n];
-            let code = unsafe {
-                crate::ffi::cuda_sph_gadget2_forces(
-                    soa.x.as_ptr(),
-                    soa.y.as_ptr(),
-                    soa.z.as_ptr(),
-                    soa.vx.as_ptr(),
-                    soa.vy.as_ptr(),
-                    soa.vz.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.is_gas.as_ptr(),
-                    soa.rho.as_ptr(),
-                    soa.pressure.as_ptr(),
-                    soa.h.as_ptr(),
-                    soa.balsara.as_ptr(),
-                    ax.as_mut_ptr(),
-                    ay.as_mut_ptr(),
-                    az.as_mut_ptr(),
-                    da_dt.as_mut_ptr(),
-                    du_dt.as_mut_ptr(),
-                    max_vsig.as_mut_ptr(),
+
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &soa.x);
+                let d_y = self.pool.upload_f32(1, &soa.y);
+                let d_z = self.pool.upload_f32(2, &soa.z);
+                let d_vx = self.pool.upload_f32(3, &soa.vx);
+                let d_vy = self.pool.upload_f32(4, &soa.vy);
+                let d_vz = self.pool.upload_f32(5, &soa.vz);
+                let d_mass = self.pool.upload_f32(6, &soa.mass);
+                let d_is_gas = self.pool.upload_u8(7, &soa.is_gas);
+                let d_rho = self.pool.upload_f32(8, &soa.rho);
+                let d_pressure = self.pool.upload_f32(9, &soa.pressure);
+                let d_h = self.pool.upload_f32(10, &soa.h);
+                let d_balsara = self.pool.upload_f32(11, &soa.balsara);
+
+                let d_ax = self.pool.alloc_f32(12, n);
+                let d_ay = self.pool.alloc_f32(13, n);
+                let d_az = self.pool.alloc_f32(14, n);
+                let d_da_dt = self.pool.alloc_f32(15, n);
+                let d_du_dt = self.pool.alloc_f32(16, n);
+                let d_max_vsig = self.pool.alloc_f32(17, n);
+
+                let code = crate::ffi::cuda_sph_gadget2_forces(
+                    d_x,
+                    d_y,
+                    d_z,
+                    d_vx,
+                    d_vy,
+                    d_vz,
+                    d_mass,
+                    d_is_gas,
+                    d_rho,
+                    d_pressure,
+                    d_h,
+                    d_balsara,
+                    d_ax,
+                    d_ay,
+                    d_az,
+                    d_da_dt,
+                    d_du_dt,
+                    d_max_vsig,
                     n as i32,
                     periodic_box_f32(periodic_box),
-                )
-            };
-            check_kernel("cuda_sph_gadget2_forces", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                if let Some(gas) = p.gas.as_mut() {
-                    gas.acc_sph = Vec3::new(ax[i] as f64, ay[i] as f64, az[i] as f64);
-                    gas.da_dt = da_dt[i] as f64;
-                    gas.du_dt = du_dt[i] as f64;
-                    gas.max_vsig = max_vsig[i] as f64;
+                );
+                check_kernel("cuda_sph_gadget2_forces", code)?;
+
+                let mut ax = vec![0.0_f32; n];
+                let mut ay = vec![0.0_f32; n];
+                let mut az = vec![0.0_f32; n];
+                let mut da_dt = vec![0.0_f32; n];
+                let mut du_dt = vec![0.0_f32; n];
+                let mut max_vsig = vec![0.0_f32; n];
+                self.pool.download_f32(&mut ax, d_ax)?;
+                self.pool.download_f32(&mut ay, d_ay)?;
+                self.pool.download_f32(&mut az, d_az)?;
+                self.pool.download_f32(&mut da_dt, d_da_dt)?;
+                self.pool.download_f32(&mut du_dt, d_du_dt)?;
+                self.pool.download_f32(&mut max_vsig, d_max_vsig)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    if let Some(gas) = p.gas.as_mut() {
+                        gas.acc_sph = Vec3::new(ax[i] as f64, ay[i] as f64, az[i] as f64);
+                        gas.da_dt = da_dt[i] as f64;
+                        gas.du_dt = du_dt[i] as f64;
+                        gas.max_vsig = max_vsig[i] as f64;
+                    }
                 }
             }
             Ok(())
         }
     }
+}
+
+#[cfg(not(cuda_unavailable))]
+struct SphSoa {
+    x: Vec<f32>,
+    y: Vec<f32>,
+    z: Vec<f32>,
+    vx: Vec<f32>,
+    vy: Vec<f32>,
+    vz: Vec<f32>,
+    mass: Vec<f32>,
+    is_gas: Vec<u8>,
+    u: Vec<f32>,
+    h: Vec<f32>,
+    rho: Vec<f32>,
+    pressure: Vec<f32>,
+    balsara: Vec<f32>,
 }
 
 #[cfg(not(cuda_unavailable))]
@@ -357,3 +513,8 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
         Err(CudaExecutionError::KernelFailed { kernel, code })
     }
 }
+
+#[cfg(cuda_unavailable)]
+const _: () = {
+    let _ = std::mem::size_of::<CudaSphSolver>();
+};

@@ -42,7 +42,7 @@ the remaining scalar/stiff solver rows.
 | AP-01 | Split `simd` and `rayon` Cargo features | Closed in Phase 201: Rayon paths now use `feature = "rayon"` and explicit SIMD uses `feature = "simd"`. | `cargo check -p gadget-ng-cli --features simd`, `--features rayon`, and `--features simd,rayon` pass. | Complete |
 | AP-01b | Close remaining CPU Rayon coverage gaps | Closed in Phase 202: PM FFT/Poisson k-space, RT M1 advection, and SIDM density/pair evaluation now dispatch Rayon paths without relying on SIMD. | `cargo test -p gadget-ng-pm --features rayon`, `cargo test -p gadget-ng-rt --features rayon`, and `cargo test -p gadget-ng-tree --features rayon` pass. | Complete |
 | AP-01c | Close prioritized SIMD-without-Rayon gaps | Closed in Phase 203: Barnes-Hut local walk, TreePM short-range, and RT M1 final update now expose `simd` paths without requiring Rayon. | `cargo test -p gadget-ng-tree --features simd`, `cargo test -p gadget-ng-treepm --features simd`, `cargo test -p gadget-ng-rt --features simd`, and `cargo clippy -p gadget-ng-cli --features simd -- -D warnings` pass. | Complete |
-| AP-02 | CUDA persistent device buffers | Current CUDA parity kernels allocate/copy/free per call, good for smoke validation but not production throughput. | Solver objects retain device buffers across steps for SPH/MHD/RT/Tree surfaces and expose resize/reuse semantics. | Pending |
+| AP-02 | CUDA persistent device buffers | Solver objects retain device buffers across steps for SPH/MHD/RT/Tree surfaces and expose resize/reuse semantics. `CudaPool` manages slots with automatic doubling; `CudaDirectGravity` retains CUDA handle across calls. | Complete |
 | AP-03 | Hardware validation for new MHD/Tree CUDA kernels | CI stub path passes with `CUDA_SKIP=1`; real GPU parity has not been rerun after Phase 200 Fase 9. | `CUDA_ARCH=<sm> cargo test -p gadget-ng-cuda -- --ignored --nocapture` passes and tolerances are recorded. | Pending |
 | AP-04 | Runtime wiring for new CUDA MHD/Tree kernels | Wrappers exist, but only mature CUDA paths should replace production CPU paths automatically. | `gadget-ng-cli` routes opt-in MHD/Tree CUDA kernels behind config after AP-03 validates parity. | Pending |
 | AP-05 | Full RT M1 advection CUDA kernel | Existing CUDA covers diagnostics/photoheating, not the full stencil-safe M1 update. | CUDA M1 update matches CPU M1 within f32 tolerances on fixed fields and boundary cases. | Pending |
@@ -82,12 +82,19 @@ vectorized implicit integrator.
 ## Next recommended phase
 
 Phase 203 closed AP-01c; AP-10/11/12 close additional SIMD-without-Rayon gaps.
-The next recommended phase is AP-03: validate the new MHD/Tree CUDA kernels on real
-NVIDIA hardware before wiring them into production runtime paths. For SIMD,
-AP-13 (dynamo), AP-14 (ambipolar diffusion), and AP-15 (two-fluid) close additional
-SIMD-without-Rayon gaps. RT IGM temperature now uses AVX-512F 8-wide batches when
-available, else AVX2+FMA 4-wide (`igm_temp`); median/percentiles remain scalar after collection.
-The SPH MetalTabular logT lookup now has
-AVX2/AVX-512 batch coverage; TODO: continue with MHD CR streaming, reconnection,
-Braginskii, anisotropic transport, and magnetic
+AP-02 is now complete: all CUDA solvers use `CudaPool` for persistent device
+buffers, eliminating `cudaMalloc`/`cudaFree` per kernel call. `CudaDirectGravity`
+now retains its CUDA handle across calls.
+
+The next recommended phase is AP-03: validate the new MHD/Tree CUDA kernels
+(with persistent buffers) on real NVIDIA hardware before wiring them into
+production runtime paths. Then AP-04: route opt-in MHD/Tree CUDA kernels
+behind config flags (`[accelerators]` TOML section) in `gadget-ng-cli`.
+
+For SIMD, AP-13 (dynamo), AP-14 (ambipolar diffusion), and AP-15 (two-fluid)
+close additional SIMD-without-Rayon gaps. RT IGM temperature now uses
+AVX-512F 8-wide batches when available, else AVX2+FMA 4-wide (`igm_temp`);
+median/percentiles remain scalar after collection. The SPH MetalTabular logT
+lookup now has AVX2/AVX-512 batch coverage; TODO: continue with MHD CR
+streaming, reconnection, Braginskii, anisotropic transport, and magnetic
 forces in focused follow-up patches.

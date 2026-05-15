@@ -1,6 +1,4 @@
-//! `CudaDirectGravity` — solver de gravedad directa N² GPU via CUDA (Phase 163 / V1).
-//!
-//! ## Algoritmo
+//! `CudaDirectGravity` — solver de gravedad directa N² GPU via CUDA con buffers persistentes.
 //!
 //! Para cada par (i,j) el kernel CUDA calcula:
 //!
@@ -11,83 +9,86 @@
 //! La implementación usa reducción en tiles (tiling) para maximizar el reuso de datos
 //! en shared memory, con complejidad O(N²/P) por SM.
 //!
-//! ## Estado actual
-//!
-//! El método `try_new` devuelve `Some(Self)` sólo si hay hardware CUDA
-//! disponible. El método `compute` llama al kernel real via FFI cuando
-//! CUDA está disponible, y entra en `panic!` con un mensaje informativo en caso
-//! contrario (no debería ocurrir porque `try_new` devuelve `None` sin hardware).
-//!
-//! ## Uso
-//!
-//! ```rust,no_run
-//! # use gadget_ng_cuda::CudaDirectGravity;
-//! let eps = 0.01_f32;
-//! let positions: Vec<[f32; 3]> = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]];
-//! let masses: Vec<f32> = vec![1.0, 1.0];
-//! if let Some(gpu) = CudaDirectGravity::try_new(eps) {
-//!     let accels = gpu.compute(&positions, &masses);
-//!     // accels[i] = [ax, ay, az] para la partícula i
-//!     let _ = accels;
-//! }
-//! ```
+//! El handle CUDA y los buffers device se retienen entre llamadas, eliminando
+//! `cuda_direct_create`/`cuda_direct_destroy` y `cudaMalloc`/`cudaFree` por paso.
 
+use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 
-/// Solver de gravedad directa N² via CUDA.
+/// Solver de gravedad directa N² via CUDA con handle y buffers persistentes.
 ///
-/// Calcula aceleraciones gravitacionales para todas las partículas usando
-/// un kernel CUDA de fuerza bruta O(N²) con tiling en shared memory.
-///
-/// Construir con [`CudaDirectGravity::try_new`]; devuelve `None` si CUDA
-/// no está disponible en el host.
+/// El handle CUDA se crea una vez en [`CudaDirectGravity::try_new`] y se libera
+/// en `Drop`. Los buffers device se reutilizan entre pasos vía [`CudaPool`].
+#[non_exhaustive]
 pub struct CudaDirectGravity {
     /// Softening gravitacional ε (en unidades internas). Se pasa al kernel.
     pub eps: f32,
     /// Número de hilos por bloque CUDA (potencia de 2, típico: 256).
     pub block_size: usize,
+    #[cfg(not(cuda_unavailable))]
+    handle: *mut std::ffi::c_void,
+    #[cfg(not(cuda_unavailable))]
+    pool: CudaPool,
+    #[cfg(cuda_unavailable)]
+    _phantom: (),
+}
+
+// SAFETY: el handle CUDA es propiedad exclusiva de este struct; no se comparte.
+unsafe impl Send for CudaDirectGravity {}
+unsafe impl Sync for CudaDirectGravity {}
+
+impl std::fmt::Debug for CudaDirectGravity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaDirectGravity")
+            .field("eps", &self.eps)
+            .field("block_size", &self.block_size)
+            .finish()
+    }
 }
 
 impl CudaDirectGravity {
-    /// Intenta construir el solver de gravedad directa CUDA.
-    ///
-    /// Devuelve `None` si no hay hardware CUDA disponible o si el crate fue
-    /// compilado sin soporte CUDA (`cuda_unavailable`).
-    ///
-    /// # Parámetros
-    /// - `eps` — softening gravitacional en unidades internas
+    /// Intenta construir el solver de gravedad directa CUDA con handle persistente.
     pub fn try_new(eps: f32) -> Option<Self> {
         Self::try_new_checked(eps).ok()
     }
 
     /// Variante fallible de [`Self::try_new`] que conserva el motivo de indisponibilidad.
     pub fn try_new_checked(eps: f32) -> Result<Self, CudaUnavailable> {
-        if CudaPmSolver::is_available() {
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = eps;
+            return Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            });
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            use crate::ffi;
+
+            let handle = unsafe { ffi::cuda_direct_create(eps * eps, 256) };
+            if handle.is_null() {
+                return Err(CudaUnavailable {
+                    availability: CudaPmSolver::availability(),
+                });
+            }
+            let pool = CudaPool::try_new_with_capacity(0).map_err(|_| CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            })?;
             Ok(Self {
                 eps,
                 block_size: 256,
-            })
-        } else {
-            Err(CudaUnavailable {
-                availability: CudaPmSolver::availability(),
+                handle,
+                pool,
             })
         }
     }
 
     /// Calcula aceleraciones gravitacionales directas O(N²) para N partículas.
     ///
-    /// # Parámetros
-    /// - `pos`  — posiciones `[[x, y, z]; N]` en unidades internas (f32)
-    /// - `mass` — masas `[m_0, ..., m_{N-1}]` en unidades internas (f32)
-    ///
-    /// # Retorna
-    ///
-    /// Vector de aceleraciones `[[ax, ay, az]; N]` en unidades internas.
-    ///
     /// # Panics
     ///
     /// Panics si CUDA no está disponible en tiempo de compilación (`cuda_unavailable`).
-    /// Esto no debería ocurrir normalmente porque `try_new` devuelve `None` sin hardware.
     pub fn compute(&self, pos: &[[f32; 3]], mass: &[f32]) -> Vec<[f32; 3]> {
         match self.try_compute(pos, mass) {
             Ok(accels) => accels,
@@ -107,31 +108,18 @@ impl CudaDirectGravity {
         #[cfg(cuda_unavailable)]
         {
             let _ = (pos, mass);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
             use crate::ffi;
-            use std::ffi::c_void;
 
-            let eps2 = self.eps * self.eps;
-            let g = 1.0_f32; // G en unidades internas (ajustar si se necesita otro valor)
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
 
-            // Crear handle CUDA
-            // SAFETY: cuda_direct_create compilada con las mismas convenciones ABI.
-            // eps2 y block_size son valores escalares válidos. El handle se verifica
-            // no-NULL con assert inmediato.
-            let handle: *mut c_void =
-                unsafe { ffi::cuda_direct_create(eps2, self.block_size as i32) };
-            if handle.is_null() {
-                return Err(CudaExecutionError::CreateFailed("CudaDirectGravity"));
-            }
-
-            // Extraer componentes de posición en arrays contiguos
             let mut x: Vec<f32> = Vec::with_capacity(n);
             let mut y: Vec<f32> = Vec::with_capacity(n);
             let mut z: Vec<f32> = Vec::with_capacity(n);
@@ -141,51 +129,60 @@ impl CudaDirectGravity {
                 z.push(p[2]);
             }
 
-            let mut ax = vec![0.0_f32; n];
-            let mut ay = vec![0.0_f32; n];
-            let mut az = vec![0.0_f32; n];
+            // SAFETY: handle is non-NULL (verified in try_new). Pool slots are freshly reset.
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &x);
+                let d_y = self.pool.upload_f32(1, &y);
+                let d_z = self.pool.upload_f32(2, &z);
+                let d_mass = self.pool.upload_f32(3, mass);
+                let d_ax = self.pool.alloc_f32(4, n);
+                let d_ay = self.pool.alloc_f32(5, n);
+                let d_az = self.pool.alloc_f32(6, n);
 
-            // SAFETY: handle es no-NULL. Punteros de Vec<f32> válidos con longitud n.
-            // Los buffers de salida (ax, ay, az) tienen capacidad n.
-            let ret = unsafe {
-                ffi::cuda_direct_solve(
-                    handle,
-                    x.as_ptr(),
-                    y.as_ptr(),
-                    z.as_ptr(),
-                    mass.as_ptr(),
-                    ax.as_mut_ptr(),
-                    ay.as_mut_ptr(),
-                    az.as_mut_ptr(),
+                let g = 1.0_f32;
+                let ret = ffi::cuda_direct_solve(
+                    self.handle,
+                    d_x,
+                    d_y,
+                    d_z,
+                    d_mass,
+                    d_ax,
+                    d_ay,
+                    d_az,
                     n as i32,
                     g,
-                )
-            };
+                );
+                if ret != 0 {
+                    return Err(CudaExecutionError::KernelFailed {
+                        kernel: "cuda_direct_solve",
+                        code: ret,
+                    });
+                }
 
-            // Liberar handle antes de comprobar el error
-            // SAFETY: handle es válido y no se usará después de destroy.
-            // cuda_direct_destroy libera todos los recursos GPU asociados.
-            unsafe { ffi::cuda_direct_destroy(handle) };
+                let mut ax = vec![0.0_f32; n];
+                let mut ay = vec![0.0_f32; n];
+                let mut az = vec![0.0_f32; n];
+                self.pool.download_f32(&mut ax, d_ax)?;
+                self.pool.download_f32(&mut ay, d_ay)?;
+                self.pool.download_f32(&mut az, d_az)?;
 
-            if ret != 0 {
-                return Err(CudaExecutionError::KernelFailed {
-                    kernel: "cuda_direct_solve",
-                    code: ret,
-                });
+                Ok((0..n).map(|i| [ax[i], ay[i], az[i]]).collect())
             }
-
-            // Combinar en [[ax, ay, az]; N]
-            Ok((0..n).map(|i| [ax[i], ay[i], az[i]]).collect())
         }
     }
 
     /// Número de partículas máximo recomendado para este solver en el hardware disponible.
-    ///
-    /// Heurística: 1 SM = 2048 hilos activos; con tiling de 256, máximo ~16k partículas
-    /// antes de que el rendimiento se sature. Para N > 1M usar PM-GPU.
     pub fn recommended_max_n(&self) -> usize {
-        // Stub: retorna un valor conservador.
         65536
+    }
+}
+
+impl Drop for CudaDirectGravity {
+    fn drop(&mut self) {
+        #[cfg(not(cuda_unavailable))]
+        unsafe {
+            crate::ffi::cuda_direct_destroy(self.handle);
+        }
     }
 }
 
@@ -218,18 +215,12 @@ impl gadget_ng_core::gravity::GravitySolver for CudaDirectGravity {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Tests unitarios (sin hardware CUDA requerido)
-// ─────────────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn try_new_returns_none_without_cuda() {
-        // En CI sin hardware CUDA, try_new debe devolver None.
-        // Con hardware, devuelve Some. El test pasa en ambos casos.
         let result = CudaDirectGravity::try_new(0.01);
         match result {
             None => {
@@ -241,17 +232,25 @@ mod tests {
                 assert!(solver.block_size > 0);
             }
         }
-        // No falla si CUDA no está disponible.
     }
 
     #[test]
     fn recommended_max_n_is_positive() {
-        // El límite recomendado debe ser un número positivo razonable.
-        // No requiere hardware.
         let solver = CudaDirectGravity {
             eps: 0.01,
             block_size: 256,
+            #[cfg(not(cuda_unavailable))]
+            handle: std::ptr::null_mut(),
+            #[cfg(not(cuda_unavailable))]
+            pool: unsafe { std::mem::zeroed() },
+            #[cfg(cuda_unavailable)]
+            _phantom: (),
         };
         assert!(solver.recommended_max_n() > 0);
     }
 }
+
+#[cfg(cuda_unavailable)]
+const _: () = {
+    let _ = std::mem::size_of::<CudaDirectGravity>();
+};

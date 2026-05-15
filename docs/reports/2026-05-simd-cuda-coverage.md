@@ -16,15 +16,24 @@ SPH/MHD/RT smoke/parity kernel sets:
 - Direct `O(N^2)` gravity.
 - Particle-mesh gravity.
 - SPH density, Balsara viscosity limiter, classical SPH forces, Gadget-2 SPH
-  forces, cooling, dust and H2 via CUDA solvers.
+  forces, cooling, dust and H2 via CUDA solvers — **all with persistent device
+  buffers** (`CudaPool`, AP-02 complete).
 - MHD flux-freeze, mean gas density, magnetic-field statistics, induction,
   resistivity, magnetic forces, Dedner cleaning (`CudaMhdSolver` smoke surface;
   CPU `not(rayon)` + `simd`: density + pairwise div-B/∇ψ AVX2/AVX-512 inner batches
   + SIMD final ψ/B update), scalar diffusion, Braginskii viscosity, reconnection, CR
   streaming and dynamo smoke surfaces via
-  `CudaMhdSolver`.
-- RT field diagnostics/photoionization and gas photoheating via `CudaRtSolver`.
-- Tree/SIDM smoke surfaces via `CudaTreeSolver`.
+  `CudaMhdSolver` — **persistent buffers (AP-02)**.
+- RT field diagnostics/photoionization and gas photoheating via `CudaRtSolver`
+  — **persistent buffers (AP-02)**.
+- Tree/SIDM smoke surfaces via `CudaTreeSolver` — **persistent buffers (AP-02)**.
+- Cooling (AtomicHHe/Metal/MetalTabular/UV) via `CudaCoolingSolver` — **persistent buffers (AP-02)**.
+- Dust (D/G accretion/sputtering + radiation pressure) via `CudaDustSolver` — **persistent buffers (AP-02)**.
+- Molecular gas (HI→H2 with dust shielding) via `CudaMolecularSolver` — **persistent buffers (AP-02)**.
+
+All CUDA solvers retain a `CudaPool` across simulation timesteps. Device buffers
+are reused without `cudaMalloc`/`cudaFree` per call; the pool doubles capacity
+automatically when particle count exceeds the current capacity.
 
 SIMD/Rayon covers those CPU-side equivalents plus a wider set of CPU physics
 kernels in tree gravity, SPH, MHD, radiative transfer, and analysis.
@@ -97,6 +106,70 @@ cargo test -p gadget-ng-treepm --features simd
 cargo test -p gadget-ng-rt --features simd
 cargo clippy -p gadget-ng-cli --features simd -- -D warnings
 ```
+
+The CUDA side has been validated on NVIDIA GTX 1060 (`sm_61`) with:
+
+```bash
+CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda -- --ignored --nocapture
+CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda --test cuda_direct_smoke -- --ignored --nocapture
+CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda --test cuda_sph_smoke -- --ignored --nocapture
+CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda --test cuda_mhd_smoke -- --ignored --nocapture
+CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda --test cuda_rt_smoke -- --ignored --nocapture
+CUDA_ARCH=sm_61 cargo build -p gadget-ng-cli --features cuda
+CUDA_ARCH=sm_61 cargo clippy -p gadget-ng-cli --features cuda -- -D warnings
+```
+
+After Phase 200 Fases 8-9, the CUDA stub path was validated with:
+
+```bash
+CUDA_SKIP=1 cargo check -p gadget-ng-cuda
+CUDA_SKIP=1 cargo test -p gadget-ng-cuda
+CUDA_SKIP=1 cargo clippy -p gadget-ng-cuda -- -D warnings
+cargo test -p gadget-ng-tree --lib
+cargo clippy -p gadget-ng-tree -- -D warnings
+cargo fmt --all --check
+```
+
+## Minimum CUDA version and hardware compatibility
+
+The minimum CUDA architecture is **sm_60** (Pascal, GTX 10xx, 2017+). This is
+set as the default in `build.rs` when auto-detection via `nvidia-smi` fails.
+
+| CUDA Architecture | GPUs | Minimum CUDA Toolkit |
+|---|---|---|
+| sm_60 | Pascal (GTX 10xx, Quadro P) | CUDA 8.0 |
+| sm_61 | Pascal (GTX 1060 validated) | CUDA 8.0 |
+| sm_70 | Volta (V100, Titan V) | CUDA 9.0 |
+| sm_75 | Turing (RTX 20xx, GTX 16xx) | CUDA 10.0 |
+| sm_80 | Ampere (A100, RTX 30xx) | CUDA 11.0 |
+| sm_86 | Ampere (RTX 30xx mobile) | CUDA 11.1 |
+| sm_89 | Ada Lovelace (RTX 40xx) | CUDA 11.8 |
+| sm_90 | Hopper (H100) | CUDA 12.0 |
+
+The build does **not** use any CUDA 11+ APIs (no `cudaMemPool`, no cooperative
+groups, no graph APIs), ensuring maximum backward compatibility with CUDA 8.0+
+toolkits. All kernels compile with `-std=c++14` and use only basic CUDA Runtime
+(`/cuda_runtime.h`) and cuFFT APIs.
+
+## Persistent device buffers (AP-02)
+
+As of AP-02, all CUDA solvers use `CudaPool` for persistent device memory:
+
+- **Stateless kernels** (SPH, MHD, Tree, RT, Cooling, Dust, Molecular): Each
+  solver struct now holds a `CudaPool` that manages device memory slots. On each
+  call, `ensure_capacity(n)` guarantees the pool can hold `n` particles, and
+  `reset()` marks all slots for reuse. Uploads use `upload_f32`/`upload_u8`
+  (host→device copies into pool slots), and outputs use `alloc_f32` (zeroed
+  device buffers) + `download_f32` (device→host copies). No `cudaMalloc` or
+  `cudaFree` calls happen per kernel invocation when `n` stays constant.
+
+- **Handle-based solvers** (PM, Direct): `CudaDirectGravity` now retains its
+  CUDA handle across calls instead of creating/destroying per invocation, and
+  also uses `CudaPool` for device staging buffers. `CudaPmSolver` already
+  retained its handle and only needed minor cleanup.
+
+The pool doubles capacity automatically when `n` exceeds the current capacity,
+matching the standard amortized-growth pattern used by `Vec`.
 
 The CUDA side has been validated on NVIDIA GTX 1060 (`sm_61`) with:
 

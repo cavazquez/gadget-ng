@@ -1,5 +1,22 @@
 //! `gadget-ng-cuda` — solver PM GPU via CUDA (nvcc + cuFFT).
 //!
+//! # Buffers persistentes (AP-02)
+//!
+//! Todos los solvers CUDA (SPH, MHD, Tree, RT, Cooling, Dust, Molecular, Direct)
+//! retienen un [`CudaPool`] de buffers device entre pasos de simulación. Esto elimina
+//! `cudaMalloc`/`cudaFree` por invocación, reduciendo latencia en ~50-100 µs por
+//! alloc. Los buffers se redimensionan solo cuando el número de partículas excede
+//! la capacidad actual (doblamiento automático).
+//!
+//! Versión mínima de CUDA Toolkit: 8.0 (`sm_60` Pascal / GTX 10xx).
+
+#![allow(unused_imports)]
+#![allow(
+    clippy::needless_return,
+    clippy::unnecessary_lazy_evaluations,
+    clippy::manual_non_exhaustive
+)]
+//!
 //! # Cadena de compilación
 //!
 //! Este crate implementa una segunda cadena de compilación completa:
@@ -41,6 +58,7 @@ pub mod ffi;
 pub mod mhd_solver;
 pub mod molecular_solver;
 pub mod pm_solver;
+pub mod pool;
 pub mod rt_solver;
 pub mod sph_solver;
 pub mod tree_solver;
@@ -52,6 +70,7 @@ pub use dust_solver::CudaDustSolver;
 pub use mhd_solver::CudaMhdSolver;
 pub use molecular_solver::CudaMolecularSolver;
 pub use pm_solver::CudaPmSolver;
+pub use pool::CudaPool;
 pub use rt_solver::CudaRtSolver;
 pub use sph_solver::CudaSphSolver;
 pub use tree_solver::CudaTreeSolver;

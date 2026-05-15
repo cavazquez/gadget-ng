@@ -29,6 +29,8 @@ fn main() {
     println!("cargo:rerun-if-changed=cuda/cooling_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/dust_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/molecular_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/cuda_pool.h");
+    println!("cargo:rerun-if-changed=cuda/cuda_pool.cu");
     println!("cargo:rerun-if-env-changed=CUDA_SKIP");
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_ARCH");
@@ -78,8 +80,9 @@ fn main() {
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
 
-    // Fuentes a compilar
+    // Fuentes a compilar (pool primero para que el linker encuentre los símbolos)
     let kernel_sources = [
+        ("cuda_pool", "cuda/cuda_pool.cu"),
         ("pm_gravity", "cuda/pm_gravity.cu"),
         ("direct_gravity", "cuda/direct_gravity.cu"),
         ("sph_kernels", "cuda/sph_kernels.cu"),

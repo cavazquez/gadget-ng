@@ -1,11 +1,58 @@
-//! Bindings FFI a las funciones C expuestas por `cuda/pm_gravity.cu` y
-//! `cuda/direct_gravity.cu`.
+//! Bindings FFI a las funciones C expuestas por los kernels CUDA.
 //!
 //! Solo se compilan cuando CUDA está disponible (es decir, cuando NO se emite
 //! el cfg `cuda_unavailable` desde build.rs).
 
 #[cfg(not(cuda_unavailable))]
 unsafe extern "C" {
+    // ── Device buffer pool (buffers persistentes entre pasos) ─────────────────
+
+    /// Crea un pool vacío con capacidad inicial `initial_n` (0 = sin pre-asignar).
+    pub fn cuda_pool_create(initial_n: i32) -> *mut std::ffi::c_void;
+
+    /// Libera todos los buffers device y el pool.
+    pub fn cuda_pool_destroy(pool: *mut std::ffi::c_void);
+
+    /// Asegura capacidad para `n` partículas en todos los slots del pool.
+    /// Redimensiona con doble capacidad si es necesario. Devuelve 0 si OK.
+    pub fn cuda_pool_ensure(pool: *mut std::ffi::c_void, n: i32) -> i32;
+
+    /// Resetea el pool: marca todos los slots como reutilizables (no libera memoria).
+    pub fn cuda_pool_reset(pool: *mut std::ffi::c_void);
+
+    /// Sube datos f32 al device en el slot `slot_index`. Devuelve puntero device.
+    pub fn cuda_pool_upload_f32(
+        pool: *mut std::ffi::c_void,
+        slot_index: i32,
+        host_data: *const f32,
+        n: i32,
+    ) -> *mut f32;
+
+    /// Sube datos u8 al device en el slot `slot_index`. Devuelve puntero device.
+    pub fn cuda_pool_upload_u8(
+        pool: *mut std::ffi::c_void,
+        slot_index: i32,
+        host_data: *const u8,
+        n: i32,
+    ) -> *mut u8;
+
+    /// Aloca un buffer f32 de salida en el pool (cero-inicializado).
+    pub fn cuda_pool_alloc_f32(pool: *mut std::ffi::c_void, slot_index: i32, n: i32) -> *mut f32;
+
+    /// Descarga datos f32 del device al host. `n` = número de elementos.
+    pub fn cuda_pool_download_f32(
+        pool: *mut std::ffi::c_void,
+        host_data: *mut f32,
+        device_data: *const f32,
+        n: i32,
+    ) -> i32;
+
+    /// Devuelve la capacidad actual del pool (en partículas).
+    pub fn cuda_pool_capacity(pool: *mut std::ffi::c_void) -> i32;
+
+    /// Devuelve el número de slots alojados en el pool.
+    pub fn cuda_pool_num_slots(pool: *mut std::ffi::c_void) -> i32;
+
     // ── Solver PM (CIC + FFT + Poisson) ──────────────────────────────────────
 
     /// Crea un handle PM CUDA con grilla `grid_size³` y caja periódica `box_size`.

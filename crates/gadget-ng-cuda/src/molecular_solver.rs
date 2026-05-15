@@ -1,15 +1,45 @@
-//! Kernel de gas molecular HI→H₂ via CUDA.
+//! Kernel de gas molecular HI→H₂ via CUDA con buffers persistentes.
+//!
+//! Versión optimizada: `CudaMolecularSolver` retiene un [`CudaPool`] de buffers
+//! device entre pasos, eliminando `cudaMalloc`/`cudaFree` por invocación.
+//! Los buffers se redimensionan solo cuando el número de partículas crece.
 //!
 //! Replica la física de `gadget_ng_sph::molecular_gas::update_h2_fraction_with_dust`.
 
+use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::ParticleType;
 use gadget_ng_core::{DustSection, MolecularSection, Particle};
 
-/// Solver CUDA para evolución de fracción H₂.
-#[derive(Debug, Clone, Copy)]
-pub struct CudaMolecularSolver;
+/// Solver CUDA para evolución de fracción H₂ con buffers device persistentes.
+pub struct CudaMolecularSolver {
+    #[cfg(not(cuda_unavailable))]
+    pool: CudaPool,
+    #[cfg(cuda_unavailable)]
+    _phantom: (),
+}
+
+impl std::fmt::Debug for CudaMolecularSolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaMolecularSolver").finish()
+    }
+}
+
+impl Clone for CudaMolecularSolver {
+    fn clone(&self) -> Self {
+        Self::try_new_checked().unwrap_or_else(|_| {
+            #[cfg(not(cuda_unavailable))]
+            {
+                panic!("CudaMolecularSolver clone failed: CUDA not available");
+            }
+            #[cfg(cuda_unavailable)]
+            {
+                Self { _phantom: () }
+            }
+        })
+    }
+}
 
 #[derive(Debug)]
 #[cfg(not(cuda_unavailable))]
@@ -27,12 +57,25 @@ impl CudaMolecularSolver {
     }
 
     pub fn try_new_checked() -> Result<Self, CudaUnavailable> {
-        if CudaPmSolver::is_available() {
-            Ok(Self)
-        } else {
-            Err(CudaUnavailable {
+        if !CudaPmSolver::is_available() {
+            return Err(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            })
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            return Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            });
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let pool = CudaPool::try_new_with_capacity(0).map_err(|_| CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            })?;
+            Ok(Self { pool })
         }
     }
 
@@ -52,14 +95,16 @@ impl CudaMolecularSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, mol_cfg, dust_cfg, dt);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = MolSoa::from_particles(particles);
             let t_dissoc = 10.0_f32;
             let dust_enabled = dust_cfg.map_or(0, |d| if d.enabled { 1 } else { 0 });
@@ -79,13 +124,21 @@ impl CudaMolecularSolver {
             } else {
                 (0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32, 1.0_f32, 0.0_f32, 0)
             };
-            let code = unsafe {
-                crate::ffi::cuda_h2_update(
-                    soa.ptype.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.smoothing_length.as_ptr(),
-                    soa.h2_fraction.as_ptr() as *mut f32,
-                    soa.dust_to_gas.as_ptr(),
+
+            // SAFETY: pool handle is valid, slots are freshly reset; all slices have length n.
+            unsafe {
+                let d_ptype = self.pool.upload_u8(0, &soa.ptype);
+                let d_mass = self.pool.upload_f32(1, &soa.mass);
+                let d_smoothing_length = self.pool.upload_f32(2, &soa.smoothing_length);
+                let d_h2_fraction = self.pool.upload_f32(3, &soa.h2_fraction);
+                let d_dust_to_gas = self.pool.upload_f32(4, &soa.dust_to_gas);
+
+                let code = crate::ffi::cuda_h2_update(
+                    d_ptype,
+                    d_mass,
+                    d_smoothing_length,
+                    d_h2_fraction,
+                    d_dust_to_gas,
                     n as i32,
                     dt as f32,
                     mol_cfg.rho_h2_threshold as f32,
@@ -98,11 +151,15 @@ impl CudaMolecularSolver {
                     sil_f,
                     gra_f,
                     model,
-                )
-            };
-            check_kernel("cuda_h2_update", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                p.h2_fraction = soa.h2_fraction[i] as f64;
+                );
+                check_kernel("cuda_h2_update", code)?;
+
+                let mut h2_out = vec![0.0_f32; n];
+                self.pool.download_f32(&mut h2_out, d_h2_fraction)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    p.h2_fraction = h2_out[i] as f64;
+                }
             }
             Ok(())
         }
@@ -149,3 +206,8 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
         Err(CudaExecutionError::KernelFailed { kernel, code })
     }
 }
+
+#[cfg(cuda_unavailable)]
+const _: () = {
+    let _ = std::mem::size_of::<CudaMolecularSolver>();
+};

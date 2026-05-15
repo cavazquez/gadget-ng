@@ -52,7 +52,7 @@
 | 🦀 **Core** | Rust 1.85+ (edición 2024), workspace multi-crate, `serde`, `toml`, `clap`, `rayon` |
 | 🔌 **Cómputo paralelo** | MPI (`OpenMPI` / `MPICH` vía `mpi` crate), SFC Hilbert 3D, LET, alltoall/allreduce/scatter-gather |
 | ⚡ **GPU (wgpu)** | `wgpu` con shaders WGSL (Vulkan / Metal / DX12 / WebGPU) |
-| 🟢 **GPU CUDA** | Solver PM NVIDIA CUDA + cuFFT; kernels CIC + Poisson + FFT 3D; degradación elegante sin toolchain |
+| 🟢 **GPU CUDA** | Solver PM NVIDIA CUDA + cuFFT; kernels SPH/MHD/RT/Tree/Cooling/Dust/H₂; **buffers persistentes** `CudaPool` (AP-02); mín. sm_60 (Pascal, CUDA 8.0+) |
 | 🔴 **GPU HIP/ROCm** | Solver PM AMD HIP + rocFFT; misma arquitectura que CUDA; `CUDA_SKIP` / `HIP_SKIP` para CI |
 | 🧲 **MHD** | MHD ideal SPH, SRMHD, Braginskii, reconexión Sweet-Parker, turbulencia Ornstein-Uhlenbeck, flux-freeze ICM |
 | ⚛️ **Plasma 2 fluidos** | `T_e ≠ T_i`, acoplamiento Coulomb implícito, jets AGN relativistas, espectro P_B(k) |
@@ -166,44 +166,48 @@ Estado resumido de implementación por backend. Para el backlog vivo ver
 y la cobertura detallada en
 [`docs/reports/2026-05-simd-cuda-coverage.md`](docs/reports/2026-05-simd-cuda-coverage.md).
 
+**CUDA mín. sm_60 (Pascal / GTX 10xx, CUDA 8.0+)** — sin APIs CUDA 11+, máxima compatibilidad.
+Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02), eliminando `cudaMalloc`/`cudaFree` por invocación.
+
 | Área / módulo | CPU sin Rayon | CPU con Rayon | SIMD sin Rayon AVX2/AVX512 | CUDA |
 |---|---:|---:|---:|---:|
-| Gravedad directa `O(N²)` | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
-| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 + AVX512 local walk | ⚠️ kernel monopole parity |
+| Gravedad directa `O(N²)` | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ persistent handle |
+| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 + AVX512 local walk | ⚠️ kernel monopole parity ⚡ |
 | Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ❌ full LET traversal |
 | TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial |
-| PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ |
-| PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ |
-| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
-| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
-| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ |
-| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ✅ |
-| Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ |
-| Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ |
-| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity kernel |
-| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity kernel |
-| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ✅ |
-| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface |
-| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ |
-| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel |
-| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ combined kernel |
-| MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ |
-| MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ |
-| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ |
-| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ✅ |
-| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ |
-| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ |
-| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ |
-| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests | ❌ |
+| PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ |
+| PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ ⚡ |
+| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ ⚡ |
+| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ ⚡ |
+| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ ⚡ |
+| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ✅ ⚡ |
+| Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ ⚡ |
+| Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ ⚡ |
+| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ smoke/parity ⚡ |
+| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ smoke/parity ⚡ |
+| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ✅ smoke/parity ⚡ |
+| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ scalar diffusion surface ⚡ |
+| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ✅ ⚡ |
+| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ✅ combined kernel ⚡ |
+| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ combined kernel ⚡ |
+| MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ ⚡ |
+| MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ ⚡ |
+| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ ⚡ |
+| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ✅ ⚡ |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ ⚡ |
+| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ AP-05 |
+| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ AP-09 |
+| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests | ❌ AP-09 |
 | RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
-| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
-| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ smoke/parity kernel |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ AP-06 |
+| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ smoke/parity ⚡ |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
-| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial |
+| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM/SPH/cooling/dust/H₂/RT/MHD parcial (AP-04) |
 
-Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía.
+Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ no implementado todavía (ID de backlog AP-*).
+⚡ = buffers persistentes `CudaPool` (AP-02): sin `cudaMalloc`/`cudaFree` por paso; redimensionamiento automático por duplicación.
 
 Nota MHD Dedner: con **`rayon` + `simd`** en **x86/x86_64**, si en tiempo de
 ejecución hay **AVX-512F** o **AVX2+FMA**, `dedner_cleaning_step` usa
@@ -474,7 +478,7 @@ gadget-ng/
 │   │                           # f(R) PM homogéneo + screening chameleon no lineal en malla
 │   ├── gadget-ng-treepm        # TreePM: BH short-range + PM long-range (serial + dist)
 │   ├── gadget-ng-gpu           # Compute shaders WGSL vía wgpu (Vulkan/Metal/DX12)
-│   ├── gadget-ng-cuda          # 🟢 Solver PM NVIDIA CUDA + cuFFT (Phase 57); CIC+Poisson+FFT 3D
+│   ├── gadget-ng-cuda          # 🟢 Solvers CUDA con buffers persistentes (PM, Direct, SPH, MHD, RT, Tree, Cooling, Dust, H₂); mín. sm_60
 │   ├── gadget-ng-hip           # 🔴 Solver PM AMD HIP + rocFFT (Phase 57); misma API que CUDA
 │   ├── gadget-ng-analysis      # FoF halos + P(k) + pk_correction (Phase 34–36);
 │   │                           # NFW + c(M) Duffy/Bhattacharya/Ludlow+2016 (Phase 53/58);
@@ -889,13 +893,13 @@ hierarchical_timesteps = true
 n_levels               = 4     # 2^4 = 16 subniveles de dt
 ```
 
-### 🟢🔴 GPU PM CUDA/HIP (Phase 57)
+### 🟢🔴 GPU PM CUDA/HIP (Phase 57 + AP-02)
 
 Solver PM opcional que usa la GPU para CIC + FFT Poisson 3D. Compilado en crates separados (`gadget-ng-cuda`, `gadget-ng-hip`) para no contaminar el árbol de compilación principal:
 
 ```bash
-# NVIDIA (requiere CUDA toolkit + nvcc):
-cargo build --release -p gadget-ng-cuda
+# NVIDIA (requiere CUDA Toolkit 8.0+ con sm_60 mínimo, Pascal/GTX 10xx):
+CUDA_ARCH=sm_61 cargo build --release -p gadget-ng-cuda
 
 # AMD (requiere ROCm + hipcc):
 cargo build --release -p gadget-ng-hip
@@ -904,6 +908,10 @@ cargo build --release -p gadget-ng-hip
 CUDA_SKIP=1 cargo test -p gadget-ng-cuda
 HIP_SKIP=1  cargo test -p gadget-ng-hip
 ```
+
+**Versión mínima CUDA:** sm_60 (Pascal, GTX 10xx, 2017+). Se detecta automáticamente via `nvidia-smi`; se puede forzar con `CUDA_ARCH=sm_XX`. No se usan APIs de CUDA 11+ (sin `cudaMemPool`), garantizando compatibilidad con toolkits antiguos.
+
+**Buffers persistentes (AP-02):** Todos los solvers CUDA (SPH, MHD, Tree, RT, Cooling, Dust, Molecular, Direct) retienen un `CudaPool` de buffers device entre pasos de simulación. Los buffers se reutilizan sin `cudaMalloc`/`cudaFree` por invocación, redimensionándose solo cuando el número de partículas excede la capacidad actual (doblamiento automático).
 
 ### 📐 c(M) y ξ(r) desde N-body (Phase 58)
 
@@ -1223,8 +1231,10 @@ cargo test -p gadget-ng-physics --test phase59_checkpoint_continuity --release
 # Phase 60 — Rebalanceo adaptativo (should_rebalance + imbalance_threshold)
 cargo test -p gadget-ng-physics --test phase60_adaptive_rebalance --release
 
-# GPU PM CUDA/HIP (requieren toolchain; SKIP=1 para CI sin GPU)
+# GPU CUDA/HIP (requieren toolchain; SKIP=1 para CI sin GPU)
+# Validado en GTX 1060 (sm_61); mín. CUDA 8.0 / sm_60 (Pascal)
 CUDA_SKIP=1 cargo test -p gadget-ng-cuda --release
+CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda -- --ignored --nocapture  # requiere GPU NVIDIA
 HIP_SKIP=1  cargo test -p gadget-ng-hip  --release
 
 # Analysis: ξ(r) FFT + pares, c(M) Ludlow+2016
@@ -1271,8 +1281,9 @@ Tests de validación cubiertos:
 - **⏱️ Block timesteps + LET distribuido** (Phase 56): integrador jerárquico acoplado
   a árbol LET; fuerzas evaluadas solo para `active_local` partículas; validado
   contra integrador de paso único en corrida cosmológica de referencia.
-- **🟢 GPU CUDA PM** (Phase 57): `gadget-ng-cuda` compila kernels CIC + FFT 3D en NVIDIA GPU;
-  `CUDA_SKIP=1` permite CI sin toolchain; interfaz idéntica al solver CPU.
+- **🟢 GPU CUDA** (Phase 57 / AP-02): `gadget-ng-cuda` compila kernels CIC + FFT 3D + SPH + MHD + RT + Tree + Cooling + Dust + H₂ en NVIDIA GPU;
+  `CUDA_SKIP=1` permite CI sin toolchain; interfaz idéntica al solver CPU; **buffers persistentes** `CudaPool` eliminan `cudaMalloc`/`cudaFree` por paso (AP-02);
+  mín. CUDA 8.0 / sm_60 (Pascal).
 - **🔴 GPU HIP PM** (Phase 57): `gadget-ng-hip` replica la cadena CUDA para AMD ROCm;
   `HIP_SKIP=1` para CI; mismos tests que CUDA para paridad.
 - **📐 c(M) + ξ(r) desde N-body** (Phase 58): PM 64³ → FoF → fit NFW → concentración
@@ -1430,7 +1441,7 @@ metodología, resultados y limitaciones.
 |---------|-------------|
 | `mpi` | Enlaza a MPI para `MpiRuntime` con descomposición SFC Hilbert |
 | `gpu` | Aceleración GPU vía `wgpu` (Vulkan/Metal/DX12/WebGPU) |
-| `🟢 cuda` | Solver PM NVIDIA CUDA + cuFFT (`gadget-ng-cuda`; requiere CUDA toolkit) |
+| `🟢 cuda` | Todos los solvers CUDA (PM, Direct, SPH, MHD, RT, Tree, Cooling, Dust, H₂) + cuFFT; **buffers persistentes** `CudaPool`; mín. CUDA 8.0 / sm_60 |
 | `🔴 hip` | Solver PM AMD HIP + rocFFT (`gadget-ng-hip`; requiere ROCm) |
 | `rayon` | Paralelismo intra-rango con Rayon |
 | `simd` | Kernels SIMD explícitos / `#[target_feature]` sin activar Rayon |

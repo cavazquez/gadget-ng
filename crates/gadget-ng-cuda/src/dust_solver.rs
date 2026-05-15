@@ -1,15 +1,45 @@
-//! Kernels de evolución de polvo via CUDA.
+//! Kernels de evolución de polvo via CUDA con buffers persistentes.
+//!
+//! Versión optimizada: `CudaDustSolver` retiene un [`CudaPool`] de buffers
+//! device entre pasos, eliminando `cudaMalloc`/`cudaFree` por invocación.
+//! Los buffers se redimensionan solo cuando el número de partículas crece.
 //!
 //! Replica la física de `gadget_ng_sph::dust::update_dust` y `apply_dust_radiation_pressure_kick`.
 
+use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 use gadget_ng_core::{DustSection, Particle};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::{ParticleType, Vec3};
 
-/// Solver CUDA para evolución de polvo D/G.
-#[derive(Debug, Clone, Copy)]
-pub struct CudaDustSolver;
+/// Solver CUDA para evolución de polvo D/G con buffers device persistentes.
+pub struct CudaDustSolver {
+    #[cfg(not(cuda_unavailable))]
+    pool: CudaPool,
+    #[cfg(cuda_unavailable)]
+    _phantom: (),
+}
+
+impl std::fmt::Debug for CudaDustSolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaDustSolver").finish()
+    }
+}
+
+impl Clone for CudaDustSolver {
+    fn clone(&self) -> Self {
+        Self::try_new_checked().unwrap_or_else(|_| {
+            #[cfg(not(cuda_unavailable))]
+            {
+                panic!("CudaDustSolver clone failed: CUDA not available");
+            }
+            #[cfg(cuda_unavailable)]
+            {
+                Self { _phantom: () }
+            }
+        })
+    }
+}
 
 #[derive(Debug)]
 #[cfg(not(cuda_unavailable))]
@@ -28,12 +58,25 @@ impl CudaDustSolver {
     }
 
     pub fn try_new_checked() -> Result<Self, CudaUnavailable> {
-        if CudaPmSolver::is_available() {
-            Ok(Self)
-        } else {
-            Err(CudaUnavailable {
+        if !CudaPmSolver::is_available() {
+            return Err(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            })
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            return Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            });
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let pool = CudaPool::try_new_with_capacity(0).map_err(|_| CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            })?;
+            Ok(Self { pool })
         }
     }
 
@@ -53,34 +96,50 @@ impl CudaDustSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, cfg, gamma, dt);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = DustSoa::from_particles(particles);
-            let code = unsafe {
-                crate::ffi::cuda_dust_update(
-                    soa.ptype.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.smoothing_length.as_ptr(),
-                    soa.internal_energy.as_ptr(),
-                    soa.dust_to_gas.as_ptr() as *mut f32,
-                    soa.metallicity.as_ptr(),
+
+            // SAFETY: pool handle is valid, slots are freshly reset; all slices have length n.
+            unsafe {
+                let d_ptype = self.pool.upload_u8(0, &soa.ptype);
+                let d_mass = self.pool.upload_f32(1, &soa.mass);
+                let d_smoothing_length = self.pool.upload_f32(2, &soa.smoothing_length);
+                let d_internal_energy = self.pool.upload_f32(3, &soa.internal_energy);
+                let d_dust_to_gas = self.pool.upload_f32(4, &soa.dust_to_gas);
+                let d_metallicity = self.pool.upload_f32(5, &soa.metallicity);
+
+                let code = crate::ffi::cuda_dust_update(
+                    d_ptype,
+                    d_mass,
+                    d_smoothing_length,
+                    d_internal_energy,
+                    d_dust_to_gas,
+                    d_metallicity,
                     n as i32,
                     gamma as f32,
                     dt as f32,
                     cfg.d_to_g_max as f32,
                     cfg.tau_grow as f32,
                     cfg.t_destroy_k as f32,
-                )
-            };
-            check_kernel("cuda_dust_update", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                p.dust_to_gas = soa.dust_to_gas[i] as f64;
+                );
+                check_kernel("cuda_dust_update", code)?;
+
+                let mut dust_to_gas_out = vec![0.0_f32; n];
+                self.pool
+                    .download_f32(&mut dust_to_gas_out, d_dust_to_gas)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    p.dust_to_gas = dust_to_gas_out[i] as f64;
+                }
             }
             Ok(())
         }
@@ -103,14 +162,16 @@ impl CudaDustSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, cfg, z_reference, dt, box_size);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let ptype: Vec<u8> = particles
                 .iter()
                 .map(|p| match p.ptype {
@@ -125,32 +186,50 @@ impl CudaDustSolver {
                 .map(|p| p.smoothing_length as f32)
                 .collect();
             let dust_to_gas: Vec<f32> = particles.iter().map(|p| p.dust_to_gas as f32).collect();
-            let mut vx: Vec<f32> = particles.iter().map(|p| p.velocity.x as f32).collect();
-            let mut vy: Vec<f32> = particles.iter().map(|p| p.velocity.y as f32).collect();
-            let mut vz: Vec<f32> = particles.iter().map(|p| p.velocity.z as f32).collect();
-            let mut pos_z: Vec<f32> = particles.iter().map(|p| p.position.z as f32).collect();
+            let vx: Vec<f32> = particles.iter().map(|p| p.velocity.x as f32).collect();
+            let vy: Vec<f32> = particles.iter().map(|p| p.velocity.y as f32).collect();
+            let vz: Vec<f32> = particles.iter().map(|p| p.velocity.z as f32).collect();
+            let pos_z: Vec<f32> = particles.iter().map(|p| p.position.z as f32).collect();
 
-            let code = unsafe {
-                crate::ffi::cuda_dust_radiation_pressure(
-                    ptype.as_ptr(),
-                    mass.as_ptr(),
-                    h.as_ptr(),
-                    dust_to_gas.as_ptr(),
-                    vx.as_mut_ptr(),
-                    vy.as_mut_ptr(),
-                    vz.as_mut_ptr(),
-                    pos_z.as_mut_ptr(),
+            // SAFETY: pool handle is valid, slots are freshly reset; all slices have length n.
+            unsafe {
+                let d_ptype = self.pool.upload_u8(0, &ptype);
+                let d_mass = self.pool.upload_f32(1, &mass);
+                let d_h = self.pool.upload_f32(2, &h);
+                let d_dust_to_gas = self.pool.upload_f32(3, &dust_to_gas);
+                let d_vx = self.pool.upload_f32(4, &vx);
+                let d_vy = self.pool.upload_f32(5, &vy);
+                let d_vz = self.pool.upload_f32(6, &vz);
+                let d_pos_z = self.pool.upload_f32(7, &pos_z);
+
+                let code = crate::ffi::cuda_dust_radiation_pressure(
+                    d_ptype,
+                    d_mass,
+                    d_h,
+                    d_dust_to_gas,
+                    d_vx,
+                    d_vy,
+                    d_vz,
+                    d_pos_z,
                     n as i32,
                     dt as f32,
                     z_reference as f32,
                     cfg.radiation_pressure_kappa as f32,
                     cfg.radiation_pressure_j_uv as f32,
                     box_size as f32,
-                )
-            };
-            check_kernel("cuda_dust_radiation_pressure", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                p.velocity = Vec3::new(vx[i] as f64, vy[i] as f64, vz[i] as f64);
+                );
+                check_kernel("cuda_dust_radiation_pressure", code)?;
+
+                let mut vx_out = vec![0.0_f32; n];
+                let mut vy_out = vec![0.0_f32; n];
+                let mut vz_out = vec![0.0_f32; n];
+                self.pool.download_f32(&mut vx_out, d_vx)?;
+                self.pool.download_f32(&mut vy_out, d_vy)?;
+                self.pool.download_f32(&mut vz_out, d_vz)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    p.velocity = Vec3::new(vx_out[i] as f64, vy_out[i] as f64, vz_out[i] as f64);
+                }
             }
             Ok(())
         }
@@ -200,3 +279,8 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
         Err(CudaExecutionError::KernelFailed { kernel, code })
     }
 }
+
+#[cfg(cuda_unavailable)]
+const _: () = {
+    let _ = std::mem::size_of::<CudaDustSolver>();
+};

@@ -1,16 +1,46 @@
-//! Kernels de enfriamiento radiativo via CUDA.
+//! Kernels de enfriamiento radiativo via CUDA con buffers persistentes.
+//!
+//! Versión optimizada: `CudaCoolingSolver` retiene un [`CudaPool`] de buffers
+//! device entre pasos, eliminando `cudaMalloc`/`cudaFree` por invocación.
+//! Los buffers se redimensionan solo cuando el número de partículas crece.
 //!
 //! Replica la física de `gadget_ng_sph::cooling`:
 //! AtomicHHe, MetalCooling, MetalTabular, UvBackground + supresión MHD.
 
+use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 use gadget_ng_core::{CoolingKind, Particle, SphSection};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::{ParticleType, UvBackgroundModel};
 
-/// Solver CUDA para cooling radiativo.
-#[derive(Debug, Clone, Copy)]
-pub struct CudaCoolingSolver;
+/// Solver CUDA para cooling radiativo con buffers device persistentes.
+pub struct CudaCoolingSolver {
+    #[cfg(not(cuda_unavailable))]
+    pool: CudaPool,
+    #[cfg(cuda_unavailable)]
+    _phantom: (),
+}
+
+impl std::fmt::Debug for CudaCoolingSolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CudaCoolingSolver").finish()
+    }
+}
+
+impl Clone for CudaCoolingSolver {
+    fn clone(&self) -> Self {
+        Self::try_new_checked().unwrap_or_else(|_| {
+            #[cfg(not(cuda_unavailable))]
+            {
+                panic!("CudaCoolingSolver clone failed: CUDA not available");
+            }
+            #[cfg(cuda_unavailable)]
+            {
+                Self { _phantom: () }
+            }
+        })
+    }
+}
 
 #[derive(Debug)]
 #[cfg(not(cuda_unavailable))]
@@ -31,12 +61,25 @@ impl CudaCoolingSolver {
     }
 
     pub fn try_new_checked() -> Result<Self, CudaUnavailable> {
-        if CudaPmSolver::is_available() {
-            Ok(Self)
-        } else {
-            Err(CudaUnavailable {
+        if !CudaPmSolver::is_available() {
+            return Err(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            })
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            return Err(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            });
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let pool = CudaPool::try_new_with_capacity(0).map_err(|_| CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            })?;
+            Ok(Self { pool })
         }
     }
 
@@ -57,14 +100,16 @@ impl CudaCoolingSolver {
         #[cfg(cuda_unavailable)]
         {
             let _ = (particles, cfg, dt, redshift, f_mag);
-            Err(CudaUnavailable {
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
-            }
-            .into())
+            }));
         }
 
         #[cfg(not(cuda_unavailable))]
         {
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
             let soa = CoolSoa::from_particles(particles);
             let cooling_kind: i32 = match cfg.cooling {
                 CoolingKind::None => return Ok(()),
@@ -77,16 +122,27 @@ impl CudaCoolingSolver {
                 UvBackgroundModel::None => 0,
                 UvBackgroundModel::Hm2012 => 1,
             };
-            let code = unsafe {
-                crate::ffi::cuda_cooling_apply(
-                    soa.ptype.as_ptr(),
-                    soa.mass.as_ptr(),
-                    soa.smoothing_length.as_ptr(),
-                    soa.internal_energy.as_ptr() as *mut f32,
-                    soa.metallicity.as_ptr(),
-                    soa.bx.as_ptr(),
-                    soa.by.as_ptr(),
-                    soa.bz.as_ptr(),
+
+            // SAFETY: pool handle is valid, slots are freshly reset; all slices have length n.
+            unsafe {
+                let d_ptype = self.pool.upload_u8(0, &soa.ptype);
+                let d_mass = self.pool.upload_f32(1, &soa.mass);
+                let d_smoothing_length = self.pool.upload_f32(2, &soa.smoothing_length);
+                let d_internal_energy = self.pool.upload_f32(3, &soa.internal_energy);
+                let d_metallicity = self.pool.upload_f32(4, &soa.metallicity);
+                let d_bx = self.pool.upload_f32(5, &soa.bx);
+                let d_by = self.pool.upload_f32(6, &soa.by);
+                let d_bz = self.pool.upload_f32(7, &soa.bz);
+
+                let code = crate::ffi::cuda_cooling_apply(
+                    d_ptype,
+                    d_mass,
+                    d_smoothing_length,
+                    d_internal_energy,
+                    d_metallicity,
+                    d_bx,
+                    d_by,
+                    d_bz,
                     n as i32,
                     dt as f32,
                     cfg.gamma as f32,
@@ -97,11 +153,16 @@ impl CudaCoolingSolver {
                     cfg.reionization_redshift as f32,
                     uv_model,
                     cfg.self_shielding_nh_cm3 as f32,
-                )
-            };
-            check_kernel("cuda_cooling_apply", code)?;
-            for (i, p) in particles.iter_mut().enumerate() {
-                p.internal_energy = soa.internal_energy[i] as f64;
+                );
+                check_kernel("cuda_cooling_apply", code)?;
+
+                let mut internal_energy_out = vec![0.0_f32; n];
+                self.pool
+                    .download_f32(&mut internal_energy_out, d_internal_energy)?;
+
+                for (i, p) in particles.iter_mut().enumerate() {
+                    p.internal_energy = internal_energy_out[i] as f64;
+                }
             }
             Ok(())
         }
@@ -157,3 +218,8 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
         Err(CudaExecutionError::KernelFailed { kernel, code })
     }
 }
+
+#[cfg(cuda_unavailable)]
+const _: () = {
+    let _ = std::mem::size_of::<CudaCoolingSolver>();
+};
