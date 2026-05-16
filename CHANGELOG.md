@@ -8,6 +8,44 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CLI (`gadget-ng-cli`) — AP-16
+
+- **Wiring RT 21cm CUDA** en `step_reionization`: bajo `[accelerators] cuda_rt_chem = true`,
+  intenta `CudaRtSolver::try_cm21_field` por paso de reionización (resultado en log;
+  integración futura con `InsituResult`).
+- **Wiring conducción anisótropa / CR diffusion CUDA** en `step_sph`: bajo `cuda_mhd = true`,
+  intenta `CudaMhdSolver::try_scalar_diffusion` (aproximación campo-medio) para
+  `apply_anisotropic_conduction` y `diffuse_cr_anisotropic`.
+- **Wiring difusión ambipolar CUDA** en `step_mhd`: bajo `cuda_mhd = true`, intenta
+  `CudaMhdSolver::try_ambipolar_diffusion` antes de `apply_ambipolar_diffusion` CPU.
+- **Wiring two-fluid CUDA** en `step_sph`: bajo `cuda_mhd = true`, intenta
+  `CudaMhdSolver::try_electron_ion_coupling` antes de `apply_electron_ion_coupling` CPU.
+- **Wiring análisis CUDA** en `analyze_cmd.rs`: con `params.cuda_analysis = true`, intenta
+  `CudaRtSolver::try_igm_temp_profile` para `--igm-temp` y
+  `CudaAnalysisSolver::try_galaxy_luminosity` para `--luminosity`.
+- `AnalyzeParams`: nuevo campo `cuda_analysis: bool` (default `false`).
+
+### Core (`gadget-ng-core`) — AP-16
+
+- `AcceleratorsSection`: nuevo campo `cuda_analysis: bool` (default `false`) para kernels
+  de análisis in-situ (IGM temperatura, luminosidad galáctica, X-ray).
+
+### CUDA (`gadget-ng-cuda`) — AP-16
+
+- **RT IGM temperatura CUDA:** `rt_igm_temp_kernel` — reducción GPU con filtro densidad
+  IGM; calcula t_mean + t_sigma usando los mismos campos `ChemState` que la CPU
+  (mediana = aprox = t_mean); `CudaRtSolver::try_igm_temp_profile` en Rust;
+  test `cuda_rt_igm_temp_match_cpu` (tol 2% t_mean, 10% t_sigma).
+- **MHD difusión ambipolar CUDA:** `mhd_ambipolar_kernel` — damping B + ionization proxy +
+  calentamiento disipativo por partícula; `CudaMhdSolver::try_ambipolar_diffusion` en Rust;
+  test `cuda_mhd_ambipolar_match_cpu` (tol 1% b_field).
+- **MHD two-fluid e-i CUDA:** `mhd_two_fluid_kernel` — acoplamiento Coulomb `T_e → T_i`
+  por partícula; `CudaMhdSolver::try_electron_ion_coupling` en Rust;
+  test `cuda_mhd_two_fluid_match_cpu` (tol 2% t_electron).
+- FFI: declaraciones `cuda_rt_igm_temp`, `cuda_mhd_ambipolar`, `cuda_mhd_two_fluid` en `ffi.rs`.
+- Reporte de cierre: `docs/reports/2026-05-cuda-ap16-closure.md`.
+- Matrices de paridad actualizadas: `README.md`, `simd-cuda-coverage.md`, `accelerator-parity-pending.md`.
+
 ### CLI (`gadget-ng-cli`)
 
 - **Wiring RT chemistry CUDA** en `step_reionization`: bajo `[accelerators] cuda_rt_chem = true`,

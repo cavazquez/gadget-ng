@@ -40,14 +40,38 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
     }
 
     if cfg.mhd.ambipolar_diffusion_enabled {
-        gadget_ng_mhd::apply_ambipolar_diffusion(
-            local,
-            cfg.mhd.ambipolar_eta,
-            cfg.mhd.ambipolar_ion_floor,
-            cfg.mhd.ambipolar_dust_coupling,
-            cfg.sph.gamma,
-            dt_mhd,
-        );
+        #[cfg(feature = "cuda")]
+        let ambipolar_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_ambipolar_diffusion(
+                        local,
+                        cfg.mhd.ambipolar_eta,
+                        cfg.mhd.ambipolar_ion_floor,
+                        cfg.mhd.ambipolar_dust_coupling,
+                        cfg.sph.gamma,
+                        dt_mhd,
+                    )
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let ambipolar_cuda_ok = false;
+
+        if !ambipolar_cuda_ok {
+            gadget_ng_mhd::apply_ambipolar_diffusion(
+                local,
+                cfg.mhd.ambipolar_eta,
+                cfg.mhd.ambipolar_ion_floor,
+                cfg.mhd.ambipolar_dust_coupling,
+                cfg.sph.gamma,
+                dt_mhd,
+            );
+        }
     }
 
     // Magnetic forces: CUDA si `cuda_mhd` opt-in, else CPU.
@@ -228,9 +252,7 @@ pub(crate) fn step_rt(
         #[cfg(feature = "cuda")]
         let m1_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_rt {
             if let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked() {
-                solver
-                    .try_m1_advection(rf, cfg.simulation.dt, &m1p)
-                    .is_ok()
+                solver.try_m1_advection(rf, cfg.simulation.dt, &m1p).is_ok()
             } else {
                 false
             }
@@ -302,12 +324,7 @@ pub(crate) fn step_sidm(
                 .fold(0.0_f64, f64::max)
                 .max(1e-10);
             solver
-                .try_sidm_scatter(
-                    local,
-                    cfg.simulation.dt,
-                    cfg.sidm.sigma_m,
-                    h,
-                )
+                .try_sidm_scatter(local, cfg.simulation.dt, cfg.sidm.sigma_m, h)
                 .is_ok()
         } else {
             false
@@ -653,13 +670,46 @@ pub(crate) fn step_sph(
 
     if cfg.sph.conduction.enabled {
         if cfg.sph.conduction.anisotropic {
-            gadget_ng_mhd::apply_anisotropic_conduction(
-                local,
-                cfg.sph.conduction.kappa_par,
-                cfg.sph.conduction.kappa_perp,
-                cfg.sph.gamma,
-                cfg.simulation.dt,
-            );
+            // CUDA: try_scalar_diffusion como aproximación campo-medio de conducción anisótropa.
+            // Nota: el kernel CUDA usa difusión media (no pares SPH); ver reporte AP-16.
+            #[cfg(feature = "cuda")]
+            let cond_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+                if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                    let u_f32: Vec<f32> = local.iter().map(|p| p.internal_energy as f32).collect();
+                    if let Ok(u_out) = solver.try_scalar_diffusion(
+                        local,
+                        &u_f32,
+                        cfg.simulation.dt,
+                        cfg.sph.conduction.kappa_par,
+                        cfg.sph.conduction.kappa_perp,
+                    ) {
+                        for (p, &u) in local.iter_mut().zip(&u_out) {
+                            if p.ptype == gadget_ng_core::ParticleType::Gas {
+                                p.internal_energy = u as f64;
+                            }
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            #[cfg(not(feature = "cuda"))]
+            let cond_cuda_ok = false;
+
+            if !cond_cuda_ok {
+                gadget_ng_mhd::apply_anisotropic_conduction(
+                    local,
+                    cfg.sph.conduction.kappa_par,
+                    cfg.sph.conduction.kappa_perp,
+                    cfg.sph.gamma,
+                    cfg.simulation.dt,
+                );
+            }
         } else {
             gadget_ng_sph::apply_thermal_conduction_periodic(
                 local,
@@ -703,7 +753,24 @@ pub(crate) fn step_sph(
         gadget_ng_mhd::apply_turbulent_forcing(local, &cfg.turbulence, cfg.simulation.dt, sph_step);
     }
     if cfg.two_fluid.enabled {
-        gadget_ng_mhd::apply_electron_ion_coupling(local, &cfg.two_fluid, cfg.simulation.dt);
+        #[cfg(feature = "cuda")]
+        let two_fluid_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_electron_ion_coupling(local, cfg.two_fluid.nu_ei_coeff, cfg.simulation.dt)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let two_fluid_cuda_ok = false;
+
+        if !two_fluid_cuda_ok {
+            gadget_ng_mhd::apply_electron_ion_coupling(local, &cfg.two_fluid, cfg.simulation.dt);
+        }
     }
 
     if cfg.sph.ism.enabled {
@@ -765,12 +832,45 @@ pub(crate) fn step_sph(
                 cfg.simulation.dt,
             );
             if cfg.sph.cr.anisotropic_diffusion && cfg.mhd.enabled {
-                gadget_ng_mhd::diffuse_cr_anisotropic(
-                    local,
-                    cfg.sph.cr.kappa_cr,
-                    cfg.sph.cr.b_cr_suppress,
-                    cfg.simulation.dt,
-                );
+                // CUDA: try_scalar_diffusion como aproximación de difusión CR anisótropa.
+                // Nota: campo medio (no pares SPH); ver reporte AP-16.
+                #[cfg(feature = "cuda")]
+                let cr_diff_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+                    if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                        let cr_f32: Vec<f32> = local.iter().map(|p| p.cr_energy as f32).collect();
+                        if let Ok(cr_out) = solver.try_scalar_diffusion(
+                            local,
+                            &cr_f32,
+                            cfg.simulation.dt,
+                            cfg.sph.cr.kappa_cr,
+                            0.0,
+                        ) {
+                            for (p, &cr) in local.iter_mut().zip(&cr_out) {
+                                if p.ptype == gadget_ng_core::ParticleType::Gas {
+                                    p.cr_energy = (cr as f64).max(0.0);
+                                }
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                #[cfg(not(feature = "cuda"))]
+                let cr_diff_cuda_ok = false;
+
+                if !cr_diff_cuda_ok {
+                    gadget_ng_mhd::diffuse_cr_anisotropic(
+                        local,
+                        cfg.sph.cr.kappa_cr,
+                        cfg.sph.cr.b_cr_suppress,
+                        cfg.simulation.dt,
+                    );
+                }
             } else {
                 gadget_ng_sph::diffuse_cr_periodic(
                     local,
@@ -928,8 +1028,7 @@ pub(crate) fn step_reionization(
                 let temperatures: Vec<f64> = local
                     .iter()
                     .map(|p| {
-                        ((5.0 / 3.0 - 1.0) * p.internal_energy * 1.0e10 / 1.38065e-16_f64)
-                            .max(1.0)
+                        ((5.0 / 3.0 - 1.0) * p.internal_energy * 1.0e10 / 1.38065e-16_f64).max(1.0)
                     })
                     .collect();
                 let ptypes: Vec<gadget_ng_core::ParticleType> =
@@ -984,6 +1083,27 @@ pub(crate) fn step_reionization(
         if !reion_cuda_ok {
             let _reion_state =
                 gadget_ng_rt::compute_reionization_state(sph_chem_states, z_eor, n_src);
+        }
+
+        // ── RT 21cm CUDA path ─────────────────────────────────────────────────
+        // try_cm21_field bajo cuda_rt_chem; resultado actualmente se descarta
+        // (guardado en log; integración futura con InsituResult).
+        #[cfg(feature = "cuda")]
+        if cfg.performance.use_gpu_cuda
+            && cfg.accelerators.cuda_rt_chem
+            && let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked()
+        {
+            let overdensity: Vec<f64> = local
+                .iter()
+                .map(|p| {
+                    if p.smoothing_length > 0.0 {
+                        p.mass / (p.smoothing_length * p.smoothing_length * p.smoothing_length)
+                    } else {
+                        1.0
+                    }
+                })
+                .collect();
+            let _ = solver.try_cm21_field(sph_chem_states, &overdensity, z_eor);
         }
 
         // ── reionization_step: deposit UV sources + M1 update ────────────────

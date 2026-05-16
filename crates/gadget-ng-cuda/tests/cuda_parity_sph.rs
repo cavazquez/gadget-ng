@@ -212,9 +212,11 @@ fn cuda_parity_sph_full_pipeline() {
         // do not appear in f32, so a relative comparison is not meaningful here.
         assert!(
             ggas.acc_sph.x.is_finite() && ggas.acc_sph.y.is_finite() && ggas.acc_sph.z.is_finite(),
-            "sph_acc[{i}] GPU is not finite: {:?}", ggas.acc_sph
+            "sph_acc[{i}] GPU is not finite: {:?}",
+            ggas.acc_sph
         );
-        let mag_gpu = (ggas.acc_sph.x.powi(2) + ggas.acc_sph.y.powi(2) + ggas.acc_sph.z.powi(2)).sqrt();
+        let mag_gpu =
+            (ggas.acc_sph.x.powi(2) + ggas.acc_sph.y.powi(2) + ggas.acc_sph.z.powi(2)).sqrt();
         // Sanity: force magnitude should be < 1.0 for this glass configuration (units).
         assert!(
             mag_gpu < 1.0,

@@ -106,5 +106,17 @@ GTX 1060 sm_61 with CUDA 12.4. Two bugs were fixed during validation
 `k_h2p_f` overflow guard). Full record in
 `docs/reports/2026-05-cuda-cr-hw-validation.md`.
 
-TODO: continue with MHD CR reconnection, Braginskii, anisotropic transport,
-and magnetic forces in focused follow-up patches.
+**AP-16 — Cierre CUDA completo (2026-05-16):** 6 módulos nuevos/cableados:
+
+| Item | Kernel(s) | Status |
+|------|-----------|--------|
+| RT IGM temperature reduction | `rt_igm_temp_kernel` | HW validated sm_61; mediana = aprox |
+| MHD ambipolar diffusion | `mhd_ambipolar_kernel` | HW validated sm_61 |
+| MHD two-fluid e-i coupling | `mhd_two_fluid_kernel` | HW validated sm_61 |
+| RT 21cm wired in engine | `rt_cm21_field_kernel` | wired `step_reionization` (`cuda_rt_chem`) |
+| MHD anisotropic/CR diffusion wired | `mhd_scalar_diffusion_kernel` | wired `step_sph` (`cuda_mhd`); campo-medio aprox |
+| Analysis CUDA wired | `CudaAnalysisSolver` + `try_igm_temp_profile` | wired `analyze_cmd.rs` (`cuda_analysis` flag) |
+
+Remaining gaps: MHD reconnection/Braginskii SIMD-without-Rayon, anisotropic
+transport pairwise SPH CUDA (actualmente campo-medio), exactitud mediana/percentiles
+IGM temp en GPU (requeriría sort GPU o histograma adaptativo).

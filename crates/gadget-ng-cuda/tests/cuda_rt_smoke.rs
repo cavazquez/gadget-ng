@@ -2,7 +2,7 @@ use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_cuda::CudaRtSolver;
 use gadget_ng_rt::{
     coupling::{apply_photoheating, photoionization_rate},
-    m1::{m1_update, M1Params, RadiationField},
+    m1::{M1Params, RadiationField, m1_update},
 };
 
 fn rt_field() -> RadiationField {
@@ -198,12 +198,7 @@ fn cuda_rt_chemistry_rates_match_cpu() {
         let iz = ((p.position.z / box_size * nx as f64) as usize).min(nx - 1);
         let e = rad.energy_density[rad.idx(ix, iy, iz)].max(0.0);
         let gamma_cpu = sigma_hi * c_red_cgs * e / h_nu_0;
-        assert_close_rel(
-            &format!("gamma_hi[{i}]"),
-            gamma_gpu[i],
-            gamma_cpu,
-            1.0e-4,
-        );
+        assert_close_rel(&format!("gamma_hi[{i}]"), gamma_gpu[i], gamma_cpu, 1.0e-4);
     }
 }
 
@@ -230,11 +225,7 @@ fn cuda_rt_chemistry_stiff_match_cpu() {
             Particle::new_gas(
                 i,
                 1.0,
-                Vec3::new(
-                    (i % 4) as f64 * 0.25,
-                    ((i / 4) % 4) as f64 * 0.25,
-                    0.1,
-                ),
+                Vec3::new((i % 4) as f64 * 0.25, ((i / 4) % 4) as f64 * 0.25, 0.1),
                 Vec3::zero(),
                 1.0,
                 0.2,
@@ -320,7 +311,12 @@ fn cuda_rt_reionization_stats_match_cpu() {
     let rs_cpu = compute_reionization_state(&states, z, n_sources);
 
     assert_close_rel("x_hii_mean", rs_gpu.x_hii_mean, rs_cpu.x_hii_mean, 1.0e-4);
-    assert_close_rel("x_hii_sigma", rs_gpu.x_hii_sigma, rs_cpu.x_hii_sigma, 1.0e-3);
+    assert_close_rel(
+        "x_hii_sigma",
+        rs_gpu.x_hii_sigma,
+        rs_cpu.x_hii_sigma,
+        1.0e-3,
+    );
     assert_close_rel(
         "ionized_volume_fraction",
         rs_gpu.ionized_volume_fraction,
@@ -364,4 +360,64 @@ fn cuda_rt_cm21_field_match_cpu() {
     for i in 0..n {
         assert_close_rel(&format!("delta_tb[{i}]"), dtb_gpu[i], dtb_cpu[i], 1.0e-4);
     }
+}
+
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_rt_igm_temp_match_cpu() {
+    let Some(cuda) = cuda_solver_or_skip() else {
+        return;
+    };
+
+    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_rt::chemistry::ChemState;
+    use gadget_ng_rt::{IgmTempParams, compute_igm_temp_profile};
+
+    let n = 512_usize;
+    let particles: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                (i + 1) as f64 * 0.001,
+                Vec3::new(i as f64 * 0.01, 0.0, 0.0),
+                Vec3::zero(),
+                0.05,
+                0.1,
+            );
+            p.internal_energy = 0.5 + 0.01 * (i % 50) as f64;
+            p
+        })
+        .collect();
+    let chem: Vec<ChemState> = (0..n)
+        .map(|i| ChemState {
+            x_hii: 0.5 + 0.001 * (i % 100) as f64,
+            x_hi: 0.5 - 0.001 * (i % 100) as f64,
+            ..ChemState::neutral()
+        })
+        .collect();
+    // delta_max = 0.0 deshabilita el filtro IGM para este test de paridad.
+    let igm_params = IgmTempParams {
+        delta_max: 0.0,
+        gamma: 5.0 / 3.0,
+    };
+    let mean_density = 0.0_f64;
+    let z = 7.5_f64;
+
+    let gpu_bin = cuda
+        .try_igm_temp_profile(&particles, &chem, mean_density, z, &igm_params)
+        .unwrap();
+    let cpu_bin = compute_igm_temp_profile(&particles, &chem, mean_density, z, &igm_params);
+
+    assert_eq!(gpu_bin.z, z);
+    assert!(cpu_bin.n_particles > 0, "CPU no encontró partículas IGM");
+    // n_particles deben coincidir exactamente (sin filtro, todos incluidos)
+    assert_eq!(
+        gpu_bin.n_particles, cpu_bin.n_particles,
+        "n_igm discrepante: gpu={} cpu={}",
+        gpu_bin.n_particles, cpu_bin.n_particles
+    );
+    // t_mean: tolerancia 2% (f32 vs f64)
+    assert_close_rel("t_mean", gpu_bin.t_mean, cpu_bin.t_mean, 0.02);
+    // t_sigma: tolerancia mayor por acumulación f32
+    assert_close_rel("t_sigma", gpu_bin.t_sigma, cpu_bin.t_sigma, 0.10);
 }

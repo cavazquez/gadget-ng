@@ -1,6 +1,10 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use gadget_ng_core::{DirectGravity, GravitySolver, Particle, ParticleType, SimdDirectGravity, Vec3};
-use gadget_ng_cuda::{CudaDirectGravity, CudaMhdSolver, CudaRtSolver, CudaSphSolver, CudaTreeSolver};
+use gadget_ng_core::{
+    DirectGravity, GravitySolver, Particle, ParticleType, SimdDirectGravity, Vec3,
+};
+use gadget_ng_cuda::{
+    CudaDirectGravity, CudaMhdSolver, CudaRtSolver, CudaSphSolver, CudaTreeSolver,
+};
 use gadget_ng_mhd::apply_flux_freeze;
 use gadget_ng_pm::PmSolver;
 use gadget_ng_rt::{M1Params, RadiationField, m1_update};
@@ -223,7 +227,12 @@ fn bench_mhd_cuda_vs_cpu(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("cpu_mhd_flux_freeze", n), &n, |b, _| {
             b.iter(|| {
                 let mut local = template.clone();
-                black_box(apply_flux_freeze(black_box(&mut local), 5.0 / 3.0, 1.0e-6, 1.0));
+                black_box(apply_flux_freeze(
+                    black_box(&mut local),
+                    5.0 / 3.0,
+                    1.0e-6,
+                    1.0,
+                ));
             });
         });
 

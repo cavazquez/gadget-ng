@@ -64,6 +64,12 @@ pub struct AcceleratorsSection {
     /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
     #[serde(default)]
     pub cuda_cr: bool,
+
+    /// Activar kernels CUDA para análisis in-situ (spin de halo, luminosidad galáctica,
+    /// luminosidad X-ray, temperatura IGM).
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_analysis: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

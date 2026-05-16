@@ -50,6 +50,7 @@
 //! 4. **FFT inverse 3×** — cuFFT 3D complex-to-real para cada componente de fuerza
 //! 5. **CIC interp** — interpolar fuerza en posiciones de partículas (trilineal)
 
+pub mod analysis_solver;
 pub mod availability;
 pub mod cooling_solver;
 pub mod direct_solver;
@@ -62,8 +63,8 @@ pub mod pool;
 pub mod rt_solver;
 pub mod sph_solver;
 pub mod tree_solver;
-pub mod analysis_solver;
 
+pub use analysis_solver::CudaAnalysisSolver;
 pub use availability::{CudaAvailability, CudaExecutionError, CudaUnavailable};
 pub use cooling_solver::CudaCoolingSolver;
 pub use direct_solver::CudaDirectGravity;
@@ -75,4 +76,3 @@ pub use pool::CudaPool;
 pub use rt_solver::CudaRtSolver;
 pub use sph_solver::CudaSphSolver;
 pub use tree_solver::CudaTreeSolver;
-pub use analysis_solver::CudaAnalysisSolver;

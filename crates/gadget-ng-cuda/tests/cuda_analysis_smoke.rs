@@ -3,7 +3,7 @@
 //! Verifica spin de halo, luminosidad galáctica y emisión X contra CPU.
 
 use gadget_ng_analysis::{
-    halo_spin::{halo_spin, SpinParams},
+    halo_spin::{SpinParams, halo_spin},
     luminosity::galaxy_luminosity,
     xray::total_xray_luminosity,
 };
@@ -64,10 +64,7 @@ fn cuda_analysis_halo_spin_matches_cpu() {
     // f32 precision: tolerance 1e-3 on |L|.
     assert_close_rel("l_mag", l_mag_gpu, cpu.l_mag, 1e-3);
     // L should point in +Z direction for CCW ring.
-    assert!(
-        lz_gpu > 0.0,
-        "Lz GPU debe ser positivo: Lz={lz_gpu:.3e}"
-    );
+    assert!(lz_gpu > 0.0, "Lz GPU debe ser positivo: Lz={lz_gpu:.3e}");
     let _ = mass_total;
 }
 
@@ -81,12 +78,7 @@ fn cuda_analysis_solver_available_without_hardware() {
 fn stellar_particles(n: usize) -> Vec<Particle> {
     (0..n)
         .map(|i| {
-            let mut p = Particle::new(
-                i,
-                1e8,
-                Vec3::new(i as f64 * 0.1, 0.0, 0.0),
-                Vec3::zero(),
-            );
+            let mut p = Particle::new(i, 1e8, Vec3::new(i as f64 * 0.1, 0.0, 0.0), Vec3::zero());
             p.ptype = ParticleType::Star;
             p.stellar_age = 1.0 + (i % 5) as f64 * 0.5;
             p.metallicity = 0.01 + (i % 3) as f64 * 0.005;
@@ -103,8 +95,7 @@ fn cuda_analysis_luminosity_matches_cpu() {
     };
     let particles = stellar_particles(256);
     let cpu = galaxy_luminosity(&particles);
-    let (l_gpu, _bv_gpu, _gr_gpu, n_stars_gpu) =
-        cuda.try_galaxy_luminosity(&particles).unwrap();
+    let (l_gpu, _bv_gpu, _gr_gpu, n_stars_gpu) = cuda.try_galaxy_luminosity(&particles).unwrap();
 
     assert_eq!(n_stars_gpu, cpu.n_stars, "n_stars debe coincidir");
     // f32 arithmetic: tolerance 1e-3.

@@ -61,6 +61,9 @@ pub struct AnalyzeParams<'a> {
     pub eor_state: bool,
     /// Calcular función de luminosidad y colores (B-V, g-r) → `analyze/luminosity.json` (Phase 118).
     pub luminosity: bool,
+    /// Intentar kernels CUDA para IGM temp y luminosidad (requiere `--features cuda`).
+    #[allow(dead_code)]
+    pub cuda_analysis: bool,
 }
 
 impl<'a> Default for AnalyzeParams<'a> {
@@ -83,6 +86,7 @@ impl<'a> Default for AnalyzeParams<'a> {
             agn_stats: false,
             eor_state: false,
             luminosity: false,
+            cuda_analysis: false,
         }
     }
 }
@@ -354,7 +358,37 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         } else {
             let chem = vec![gadget_ng_rt::ChemState::neutral(); gas.len()];
             let igm_params = gadget_ng_rt::IgmTempParams::default();
-            let profile = gadget_ng_rt::compute_igm_temp_profile(&gas, &chem, 0.0, z, &igm_params);
+
+            // Path CUDA: try_igm_temp_profile (reducción GPU; mediana no calculada).
+            let profile;
+            #[cfg(feature = "cuda")]
+            {
+                let cuda_result: Option<gadget_ng_rt::IgmTempBin> = if params.cuda_analysis {
+                    gadget_ng_cuda::CudaRtSolver::try_new_checked()
+                        .ok()
+                        .and_then(|solver| {
+                            let mean_rho = if box_size > 0.0 {
+                                gas.iter().map(|p| p.mass).sum::<f64>()
+                                    / (box_size * box_size * box_size)
+                            } else {
+                                1.0
+                            };
+                            solver
+                                .try_igm_temp_profile(&gas, &chem, mean_rho, z, &igm_params)
+                                .ok()
+                        })
+                } else {
+                    None
+                };
+                profile = cuda_result.unwrap_or_else(|| {
+                    gadget_ng_rt::compute_igm_temp_profile(&gas, &chem, 0.0, z, &igm_params)
+                });
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                profile = gadget_ng_rt::compute_igm_temp_profile(&gas, &chem, 0.0, z, &igm_params);
+            }
+
             if let Ok(json) = serde_json::to_string_pretty(&profile) {
                 fs::create_dir_all(&analyze_dir).ok();
                 let p = analyze_dir.join("igm_temp.json");
@@ -437,12 +471,30 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
 
     // --luminosity: función de luminosidad y colores galácticos (Phase 118)
     if params.luminosity {
-        let lum = galaxy_luminosity(&data.particles);
+        // Path CUDA: try_galaxy_luminosity.
+        #[cfg(feature = "cuda")]
+        let lum_cuda: Option<(f64, f64, f64, usize)> = if params.cuda_analysis {
+            gadget_ng_cuda::CudaAnalysisSolver::try_new_checked()
+                .ok()
+                .and_then(|solver| solver.try_galaxy_luminosity(&data.particles).ok())
+        } else {
+            None
+        };
+        #[cfg(not(feature = "cuda"))]
+        let lum_cuda: Option<(f64, f64, f64, usize)> = None;
+
+        let (l_total, bv, gr, n_stars) = if let Some(tup) = lum_cuda {
+            tup
+        } else {
+            let lum = galaxy_luminosity(&data.particles);
+            (lum.l_total, lum.bv, lum.gr, lum.n_stars)
+        };
+
         let lum_out = serde_json::json!({
-            "l_total_lsun": lum.l_total,
-            "bv": lum.bv,
-            "gr": lum.gr,
-            "n_stars": lum.n_stars,
+            "l_total_lsun": l_total,
+            "bv": bv,
+            "gr": gr,
+            "n_stars": n_stars,
             "note": "SSP analítica BC03 simplificada; L ∝ M × age^{-0.8} × f_Z",
         });
         if let Ok(json) = serde_json::to_string_pretty(&lum_out) {
@@ -451,7 +503,7 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             let _ = fs::write(&p, &json);
             eprintln!(
                 "[analyze --luminosity] L={:.2e} L_sun, B-V={:.3}, g-r={:.3}, N_stars={}, escrito en {:?}",
-                lum.l_total, lum.bv, lum.gr, lum.n_stars, p
+                l_total, bv, gr, n_stars, p
             );
         }
     }

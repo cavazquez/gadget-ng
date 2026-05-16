@@ -487,6 +487,123 @@ __device__ static inline float cr_density_approx(float mass, float h) {
     return h3 > 0.0f ? mass / (PI3 * h3) : 1.0e-30f;
 }
 
+// ── Difusión ambipolar (AP-16) ────────────────────────────────────────────────
+
+__global__ void mhd_ambipolar_kernel(
+    const unsigned char* ptype,
+    const float* bx_in, const float* by_in, const float* bz_in,
+    const float* u_in, const float* mass, const float* dust_to_gas,
+    float* bx_out, float* by_out, float* bz_out, float* u_out,
+    int n, float eta_ad, float ion_floor, float dust_coupling, float heat_eff, float dt
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float bx = bx_in[i], by = by_in[i], bz = bz_in[i], u = u_in[i];
+    if (ptype[i] != PTYPE_GAS) {
+        bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz; u_out[i] = u; return;
+    }
+    float b2b = bx*bx + by*by + bz*bz;
+    if (b2b <= 0.0f) {
+        bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz; u_out[i] = u; return;
+    }
+    float th  = fmaxf(u, 0.0f);
+    float col = th / (th + 1.0f);
+    float ds  = 1.0f / (1.0f + fmaxf(dust_coupling, 0.0f)
+                                * fmaxf(dust_to_gas[i], 0.0f) * 100.0f);
+    float xi  = fmaxf(fminf(col * ds, 1.0f), ion_floor);
+    float rate   = fmaxf(eta_ad, 0.0f) * fmaxf(1.0f / xi - 1.0f, 0.0f);
+    float damp   = fminf(expf(-rate * dt), 1.0f);
+    bx *= damp; by *= damp; bz *= damp;
+    float b2a   = bx*bx + by*by + bz*bz;
+    float diss  = 0.5f * fmaxf(b2b - b2a, 0.0f);
+    float m     = fmaxf(mass[i], 1.0e-30f);
+    bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz;
+    u_out[i]  = fmaxf(u + heat_eff * diss / m, 0.0f);
+}
+
+extern "C" int cuda_mhd_ambipolar(
+    const unsigned char* ptype,
+    const float* bx_in, const float* by_in, const float* bz_in,
+    const float* u_in, const float* mass, const float* dust_to_gas,
+    float* bx_out, float* by_out, float* bz_out, float* u_out,
+    int n, float eta_ad, float ion_floor, float dust_coupling, float heat_eff, float dt
+) {
+    if (n <= 0) return 0;
+    unsigned char* dp;
+    float *dbxi, *dbyi, *dbzi, *dui, *dm, *ddtg;
+    float *dbxo, *dbyo, *dbzo, *duo;
+    if (alloc_copy(&dp,   ptype,       n)) return -1;
+    if (alloc_copy(&dbxi, bx_in,       n)) return -1;
+    if (alloc_copy(&dbyi, by_in,       n)) return -1;
+    if (alloc_copy(&dbzi, bz_in,       n)) return -1;
+    if (alloc_copy(&dui,  u_in,        n)) return -1;
+    if (alloc_copy(&dm,   mass,        n)) return -1;
+    if (alloc_copy(&ddtg, dust_to_gas, n)) return -1;
+    if (alloc_zero(&dbxo, n)) return -1;
+    if (alloc_zero(&dbyo, n)) return -1;
+    if (alloc_zero(&dbzo, n)) return -1;
+    if (alloc_zero(&duo,  n)) return -1;
+    int blocks = (n + MHD_BLOCK_SIZE - 1) / MHD_BLOCK_SIZE;
+    mhd_ambipolar_kernel<<<blocks, MHD_BLOCK_SIZE>>>(
+        dp, dbxi, dbyi, dbzi, dui, dm, ddtg,
+        dbxo, dbyo, dbzo, duo,
+        n, eta_ad, ion_floor, dust_coupling, heat_eff, dt);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(bx_out, dbxo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(by_out, dbyo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(bz_out, dbzo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(u_out,  duo,  (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(dp); cudaFree(dbxi); cudaFree(dbyi); cudaFree(dbzi);
+    cudaFree(dui); cudaFree(dm); cudaFree(ddtg);
+    cudaFree(dbxo); cudaFree(dbyo); cudaFree(dbzo); cudaFree(duo);
+    return 0;
+}
+
+// ── Two-fluid: acoplamiento electrón-ión Coulomb (AP-16) ─────────────────────
+
+__global__ void mhd_two_fluid_kernel(
+    const unsigned char* ptype,
+    const float* u_in, const float* h_sml, const float* mass, const float* te_in,
+    float* te_out, int n, float nu_ei_coeff, float dt
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float te = te_in[i];
+    if (ptype[i] != PTYPE_GAS) { te_out[i] = te; return; }
+    const float GAMMA_TF = 5.0f / 3.0f;
+    float t_i  = (GAMMA_TF - 1.0f) * fmaxf(u_in[i], 0.0f);
+    if (te <= 0.0f) { te_out[i] = t_i; return; }
+    float h    = fmaxf(h_sml[i], 1.0e-10f);
+    float rho  = fmaxf(mass[i] / (h*h*h), 1.0e-30f);
+    float te2  = fmaxf(fabsf(te), 1.0e-30f);
+    float nu   = nu_ei_coeff * rho / (te2 * sqrtf(te2));
+    float fac  = 1.0f - expf(-nu * dt);
+    te_out[i]  = fmaxf(te + (t_i - te) * fac, 0.0f);
+}
+
+extern "C" int cuda_mhd_two_fluid(
+    const unsigned char* ptype,
+    const float* u_in, const float* h_sml, const float* mass, const float* te_in,
+    float* te_out, int n, float nu_ei_coeff, float dt
+) {
+    if (n <= 0) return 0;
+    unsigned char* dp;
+    float *dui, *dh, *dm, *dtei, *dteo;
+    if (alloc_copy(&dp,   ptype, n)) return -1;
+    if (alloc_copy(&dui,  u_in,  n)) return -1;
+    if (alloc_copy(&dh,   h_sml, n)) return -1;
+    if (alloc_copy(&dm,   mass,  n)) return -1;
+    if (alloc_copy(&dtei, te_in, n)) return -1;
+    if (alloc_zero(&dteo, n))        return -1;
+    int blocks = (n + MHD_BLOCK_SIZE - 1) / MHD_BLOCK_SIZE;
+    mhd_two_fluid_kernel<<<blocks, MHD_BLOCK_SIZE>>>(
+        dp, dui, dh, dm, dtei, dteo, n, nu_ei_coeff, dt);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(te_out, dteo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(dp); cudaFree(dui); cudaFree(dh); cudaFree(dm); cudaFree(dtei); cudaFree(dteo);
+    return 0;
+}
+
 __global__ void mhd_cr_streaming_kernel(
     const unsigned char* __restrict__ ptype,
     const float* __restrict__ mass,

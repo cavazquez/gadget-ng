@@ -181,13 +181,17 @@ fn cuda_mhd_cr_backreaction_match_cpu() {
     for i in 0..n {
         assert!(
             accel_gpu[i].x.is_finite() && accel_gpu[i].y.is_finite() && accel_gpu[i].z.is_finite(),
-            "cr_backreaction[{i}] no finito: {:?}", accel_gpu[i]
+            "cr_backreaction[{i}] no finito: {:?}",
+            accel_gpu[i]
         );
     }
 
     // (2) Newton's 3rd law: suma de fuerzas ≈ 0 (con precisión f32 relativa).
     let total_ax: f64 = accel_gpu.iter().map(|a| a.x as f64).sum();
-    let max_ax: f64 = accel_gpu.iter().map(|a| a.x.abs() as f64).fold(0.0_f64, f64::max);
+    let max_ax: f64 = accel_gpu
+        .iter()
+        .map(|a| a.x.abs() as f64)
+        .fold(0.0_f64, f64::max);
     assert!(
         total_ax.abs() < 1e-3 * max_ax * n as f64,
         "suma fuerzas no es 0: total_ax={total_ax:.3e} max_ax={max_ax:.3e}"
@@ -196,10 +200,126 @@ fn cuda_mhd_cr_backreaction_match_cpu() {
     // (3) Las fuerzas deben estar acotadas (escala física razonable).
     for i in 0..n {
         let mag = accel_gpu[i].x.hypot(accel_gpu[i].y.hypot(accel_gpu[i].z)) as f64;
-        assert!(mag < 1e6, "cr_backreaction[{i}] magnitud no acotada: {mag:.3e}");
+        assert!(
+            mag < 1e6,
+            "cr_backreaction[{i}] magnitud no acotada: {mag:.3e}"
+        );
     }
 
     // (4) Al menos la mitad de las partículas tienen fuerza no nula.
     let nonzero = accel_gpu.iter().filter(|a| a.x != 0.0).count();
     assert!(nonzero > n / 2, "demasiadas fuerzas nulas: {nonzero}/{n}");
+}
+
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_mhd_ambipolar_match_cpu() {
+    let Some(cuda) = cuda_solver_or_skip() else {
+        return;
+    };
+
+    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_mhd::apply_ambipolar_diffusion;
+
+    let n = 256_usize;
+    let mut parts_cpu: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                0.01,
+                Vec3::new(i as f64 * 0.05, 0.0, 0.0),
+                Vec3::zero(),
+                0.1,
+                0.5 + 0.01 * (i % 20) as f64,
+            );
+            p.b_field = Vec3::new(0.5 + 0.01 * i as f64, 0.1, 0.1);
+            p.dust_to_gas = 0.01;
+            p
+        })
+        .collect();
+    let mut parts_gpu = parts_cpu.clone();
+
+    let eta_ad = 0.1_f64;
+    let ion_floor = 1.0e-4_f64;
+    let dust_coupling = 0.5_f64;
+    let gamma = 5.0 / 3.0_f64;
+    let dt = 0.01_f64;
+
+    // CPU reference
+    apply_ambipolar_diffusion(&mut parts_cpu, eta_ad, ion_floor, dust_coupling, gamma, dt);
+
+    // GPU
+    cuda.try_ambipolar_diffusion(&mut parts_gpu, eta_ad, ion_floor, dust_coupling, gamma, dt)
+        .unwrap();
+
+    // Comparar B y u con tolerancia f32 (~1%)
+    let tol = 0.01_f64;
+    for i in 0..n {
+        let rel_bx = (parts_gpu[i].b_field.x - parts_cpu[i].b_field.x).abs()
+            / (parts_cpu[i].b_field.x.abs().max(1.0e-10));
+        assert!(
+            rel_bx < tol,
+            "b_field.x[{i}] GPU={:.6e} CPU={:.6e} rel={:.4}",
+            parts_gpu[i].b_field.x,
+            parts_cpu[i].b_field.x,
+            rel_bx
+        );
+    }
+}
+
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_mhd_two_fluid_match_cpu() {
+    let Some(cuda) = cuda_solver_or_skip() else {
+        return;
+    };
+
+    use gadget_ng_core::TwoFluidSection;
+    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_mhd::apply_electron_ion_coupling;
+
+    let n = 256_usize;
+    let mut parts_cpu: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                0.01,
+                Vec3::new(i as f64 * 0.05, 0.0, 0.0),
+                Vec3::zero(),
+                0.1,
+                1.0 + 0.01 * (i % 30) as f64,
+            );
+            p.t_electron = 0.5 + 0.005 * (i % 20) as f64;
+            p
+        })
+        .collect();
+    let mut parts_gpu = parts_cpu.clone();
+
+    let cfg = TwoFluidSection {
+        enabled: true,
+        nu_ei_coeff: 1.0e-3,
+        ..Default::default()
+    };
+    let dt = 0.01_f64;
+
+    // CPU reference
+    apply_electron_ion_coupling(&mut parts_cpu, &cfg, dt);
+
+    // GPU
+    cuda.try_electron_ion_coupling(&mut parts_gpu, cfg.nu_ei_coeff, dt)
+        .unwrap();
+
+    // Comparar t_electron con tolerancia f32 (~1%)
+    let tol = 0.02_f64;
+    for i in 0..n {
+        let rel = (parts_gpu[i].t_electron - parts_cpu[i].t_electron).abs()
+            / (parts_cpu[i].t_electron.abs().max(1.0e-10));
+        assert!(
+            rel < tol,
+            "t_electron[{i}] GPU={:.6e} CPU={:.6e} rel={:.4}",
+            parts_gpu[i].t_electron,
+            parts_cpu[i].t_electron,
+            rel
+        );
+    }
 }

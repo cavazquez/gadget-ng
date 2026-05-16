@@ -676,11 +676,18 @@ impl CudaMhdSolver {
             let code = unsafe {
                 crate::ffi::cuda_mhd_cr_streaming(
                     ptype.as_ptr(),
-                    px.as_ptr(), py.as_ptr(), pz.as_ptr(),
-                    vx.as_ptr(), vy.as_ptr(), vz.as_ptr(),
-                    mass.as_ptr(), h_sml.as_ptr(),
+                    px.as_ptr(),
+                    py.as_ptr(),
+                    pz.as_ptr(),
+                    vx.as_ptr(),
+                    vy.as_ptr(),
+                    vz.as_ptr(),
+                    mass.as_ptr(),
+                    h_sml.as_ptr(),
                     cr_in.as_ptr(),
-                    bx.as_ptr(), by.as_ptr(), bz.as_ptr(),
+                    bx.as_ptr(),
+                    by.as_ptr(),
+                    bz.as_ptr(),
                     cr_out.as_mut_ptr(),
                     n as i32,
                     dt as f32,
@@ -746,10 +753,15 @@ impl CudaMhdSolver {
             let code = unsafe {
                 crate::ffi::cuda_mhd_cr_backreaction(
                     ptype.as_ptr(),
-                    px.as_ptr(), py.as_ptr(), pz.as_ptr(),
-                    mass.as_ptr(), h_sml.as_ptr(),
+                    px.as_ptr(),
+                    py.as_ptr(),
+                    pz.as_ptr(),
+                    mass.as_ptr(),
+                    h_sml.as_ptr(),
                     cr.as_ptr(),
-                    ax.as_mut_ptr(), ay.as_mut_ptr(), az.as_mut_ptr(),
+                    ax.as_mut_ptr(),
+                    ay.as_mut_ptr(),
+                    az.as_mut_ptr(),
                     n as i32,
                     pbox,
                 )
@@ -846,6 +858,152 @@ impl CudaMhdSolver {
                     p.internal_energy = u[i] as f64;
                     p.b_field = Vec3::new(bx[i] as f64, by[i] as f64, bz[i] as f64);
                 }
+            }
+            Ok(())
+        }
+    }
+
+    /// Aplica difusión ambipolar dependiente de ionización en GPU.
+    ///
+    /// Replica `gadget_ng_mhd::apply_ambipolar_diffusion` por partícula:
+    /// amortigua B con `exp(-η·(1/x_i − 1)·dt)` y añade calentamiento disipativo.
+    pub fn try_ambipolar_diffusion(
+        &self,
+        particles: &mut [Particle],
+        eta_ad: f64,
+        ion_floor: f64,
+        dust_coupling: f64,
+        gamma: f64,
+        dt: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, eta_ad, ion_floor, dust_coupling, gamma, dt);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let bx_in: Vec<f32> = particles.iter().map(|p| p.b_field.x as f32).collect();
+            let by_in: Vec<f32> = particles.iter().map(|p| p.b_field.y as f32).collect();
+            let bz_in: Vec<f32> = particles.iter().map(|p| p.b_field.z as f32).collect();
+            let u_in: Vec<f32> = particles.iter().map(|p| p.internal_energy as f32).collect();
+            let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
+            let dust_to_gas: Vec<f32> = particles.iter().map(|p| p.dust_to_gas as f32).collect();
+            let soa_ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let mut bx_out = vec![0.0_f32; n];
+            let mut by_out = vec![0.0_f32; n];
+            let mut bz_out = vec![0.0_f32; n];
+            let mut u_out = vec![0.0_f32; n];
+            let heat_eff = (gamma - 1.0).max(0.0) as f32;
+
+            // SAFETY: todos los slices son válidos y tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_ambipolar(
+                    soa_ptype.as_ptr(),
+                    bx_in.as_ptr(),
+                    by_in.as_ptr(),
+                    bz_in.as_ptr(),
+                    u_in.as_ptr(),
+                    mass.as_ptr(),
+                    dust_to_gas.as_ptr(),
+                    bx_out.as_mut_ptr(),
+                    by_out.as_mut_ptr(),
+                    bz_out.as_mut_ptr(),
+                    u_out.as_mut_ptr(),
+                    n as i32,
+                    eta_ad as f32,
+                    ion_floor as f32,
+                    dust_coupling as f32,
+                    heat_eff,
+                    dt as f32,
+                )
+            };
+            check_kernel("cuda_mhd_ambipolar", code)?;
+
+            for (i, p) in particles.iter_mut().enumerate() {
+                p.b_field.x = bx_out[i] as f64;
+                p.b_field.y = by_out[i] as f64;
+                p.b_field.z = bz_out[i] as f64;
+                p.internal_energy = u_out[i] as f64;
+            }
+            Ok(())
+        }
+    }
+
+    /// Actualiza temperatura electrónica `t_electron` vía acoplamiento Coulomb e-i en GPU.
+    ///
+    /// Replica `gadget_ng_mhd::apply_electron_ion_coupling` por partícula.
+    pub fn try_electron_ion_coupling(
+        &self,
+        particles: &mut [Particle],
+        nu_ei_coeff: f64,
+        dt: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, nu_ei_coeff, dt);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa_ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let u_in: Vec<f32> = particles.iter().map(|p| p.internal_energy as f32).collect();
+            let h_sml: Vec<f32> = particles
+                .iter()
+                .map(|p| p.smoothing_length as f32)
+                .collect();
+            let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
+            let te_in: Vec<f32> = particles.iter().map(|p| p.t_electron as f32).collect();
+            let mut te_out = vec![0.0_f32; n];
+
+            // SAFETY: todos los slices son válidos y tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_two_fluid(
+                    soa_ptype.as_ptr(),
+                    u_in.as_ptr(),
+                    h_sml.as_ptr(),
+                    mass.as_ptr(),
+                    te_in.as_ptr(),
+                    te_out.as_mut_ptr(),
+                    n as i32,
+                    nu_ei_coeff as f32,
+                    dt as f32,
+                )
+            };
+            check_kernel("cuda_mhd_two_fluid", code)?;
+
+            for (p, &te) in particles.iter_mut().zip(&te_out) {
+                p.t_electron = te as f64;
             }
             Ok(())
         }

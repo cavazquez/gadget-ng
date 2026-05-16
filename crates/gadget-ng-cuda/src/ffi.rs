@@ -668,6 +668,68 @@ unsafe extern "C" {
         n: i32,
     ) -> i32;
 
+    // ── Kernel RT IGM temperature (AP-16) ────────────────────────────────────
+
+    /// Reducción: suma_T, suma_T², count para partículas gas IGM.
+    /// Usa los campos almacenados en ChemState (misma fórmula que CPU).
+    /// Salida: t_mean_out, t_sigma_out, n_igm_out.
+    pub fn cuda_rt_igm_temp(
+        ptype: *const u8,
+        u: *const f32,
+        h_sml: *const f32,
+        mass: *const f32,
+        x_hi: *const f32,
+        x_hii: *const f32,
+        x_e: *const f32,
+        x_d: *const f32,
+        x_hei: *const f32,
+        x_heii: *const f32,
+        x_heiii: *const f32,
+        n: i32,
+        gamma: f32,
+        delta_max: f32,
+        mean_density: f32,
+        t_mean_out: *mut f64,
+        t_sigma_out: *mut f64,
+        n_igm_out: *mut i32,
+    ) -> i32;
+
+    // ── Kernels MHD ambipolar + two-fluid (AP-16) ─────────────────────────────
+
+    /// Difusión ambipolar: amortigua B con rate eta_ad / x_ion; calienta u.
+    pub fn cuda_mhd_ambipolar(
+        ptype: *const u8,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        u_in: *const f32,
+        mass: *const f32,
+        dust_to_gas: *const f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        u_out: *mut f32,
+        n: i32,
+        eta_ad: f32,
+        ion_floor: f32,
+        dust_coupling: f32,
+        heat_eff: f32,
+        dt: f32,
+    ) -> i32;
+
+    /// Acoplamiento Coulomb e-i: actualiza t_electron hacia T_ion.
+    pub fn cuda_mhd_two_fluid(
+        ptype: *const u8,
+        u_in: *const f32,
+        h_sml: *const f32,
+        mass: *const f32,
+        te_in: *const f32,
+        te_out: *mut f32,
+        n: i32,
+        nu_ei_coeff: f32,
+        dt: f32,
+    ) -> i32;
+
     // ── Kernels MHD CR streaming / backreaction ───────────────────────────────
 
     /// CR streaming O(N²): actualiza cr_energy con pérdidas compresional + streaming.

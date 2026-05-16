@@ -1051,6 +1051,7 @@ fn main() -> Result<(), CliError> {
                 agn_stats,
                 eor_state,
                 luminosity,
+                cuda_analysis: false,
             };
             analyze_cmd::run_analyze(&params)?;
         }

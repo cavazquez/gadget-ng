@@ -86,12 +86,23 @@ impl CudaAnalysisSolver {
             // SAFETY: arrays are valid f32 slices; output pointers are on the stack.
             let code = unsafe {
                 crate::ffi::cuda_analysis_halo_spin(
-                    x.as_ptr(), y.as_ptr(), z.as_ptr(),
-                    vx.as_ptr(), vy.as_ptr(), vz.as_ptr(),
-                    m.as_ptr(), n as i32,
-                    pos_com[0] as f32, pos_com[1] as f32, pos_com[2] as f32,
-                    vel_com[0] as f32, vel_com[1] as f32, vel_com[2] as f32,
-                    &mut lx, &mut ly, &mut lz,
+                    x.as_ptr(),
+                    y.as_ptr(),
+                    z.as_ptr(),
+                    vx.as_ptr(),
+                    vy.as_ptr(),
+                    vz.as_ptr(),
+                    m.as_ptr(),
+                    n as i32,
+                    pos_com[0] as f32,
+                    pos_com[1] as f32,
+                    pos_com[2] as f32,
+                    vel_com[0] as f32,
+                    vel_com[1] as f32,
+                    vel_com[2] as f32,
+                    &mut lx,
+                    &mut ly,
+                    &mut lz,
                 )
             };
             check_kernel("cuda_analysis_halo_spin", code)?;
@@ -144,8 +155,15 @@ impl CudaAnalysisSolver {
             // SAFETY: arrays are valid f32 slices; output pointers are on the stack.
             let code = unsafe {
                 crate::ffi::cuda_analysis_luminosity(
-                    ptype.as_ptr(), mass.as_ptr(), age.as_ptr(), z.as_ptr(), n as i32,
-                    &mut l_total, &mut bv_w, &mut gr_w, &mut n_stars,
+                    ptype.as_ptr(),
+                    mass.as_ptr(),
+                    age.as_ptr(),
+                    z.as_ptr(),
+                    n as i32,
+                    &mut l_total,
+                    &mut bv_w,
+                    &mut gr_w,
+                    &mut n_stars,
                 )
             };
             check_kernel("cuda_analysis_luminosity", code)?;
@@ -191,7 +209,10 @@ impl CudaAnalysisSolver {
                 })
                 .collect();
             let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
-            let h: Vec<f32> = particles.iter().map(|p| p.smoothing_length as f32).collect();
+            let h: Vec<f32> = particles
+                .iter()
+                .map(|p| p.smoothing_length as f32)
+                .collect();
             let u: Vec<f32> = particles.iter().map(|p| p.internal_energy as f32).collect();
 
             let mut lx = 0.0_f64;
@@ -199,8 +220,13 @@ impl CudaAnalysisSolver {
             // SAFETY: arrays are valid f32 slices; output pointer is on the stack.
             let code = unsafe {
                 crate::ffi::cuda_analysis_xray(
-                    ptype.as_ptr(), mass.as_ptr(), h.as_ptr(), u.as_ptr(), n as i32,
-                    gamma as f32, &mut lx,
+                    ptype.as_ptr(),
+                    mass.as_ptr(),
+                    h.as_ptr(),
+                    u.as_ptr(),
+                    n as i32,
+                    gamma as f32,
+                    &mut lx,
                 )
             };
             check_kernel("cuda_analysis_xray", code)?;

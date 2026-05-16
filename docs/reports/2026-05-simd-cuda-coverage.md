@@ -60,10 +60,13 @@ implementations.
 | RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | Yes, `CudaRtSolver::try_m1_advection` | Experimental parity |
 | RT chemistry rates/cooling | AVX2/AVX-512 particle photoionization-rate batches and cooling update | Yes, `CudaRtSolver::try_chemistry_rates` + `try_apply_cooling` | Experimental parity (HW validated 2026-05-16) |
 | RT chemistry stiff solver | AVX2/AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane; chunk/tail parity tests | Yes, `CudaRtSolver::try_apply_chemistry` — `rt_chemistry_stiff_kernel` f32 subcyclic implicit integrator | Experimental parity (HW validated 2026-05-16) |
-| RT IGM temperature profile | AVX-512F 8-wide + AVX2+FMA 4-wide `ChemState`→T + SIMD density gate per lane; mean/variance/sort/percentiles scalar | No | SIMD-only |
+| RT IGM temperature profile | AVX-512F 8-wide + AVX2+FMA 4-wide `ChemState`→T + SIMD density gate per lane; mean/variance/sort/percentiles scalar | Yes, `CudaRtSolver::try_igm_temp_profile` — `rt_igm_temp_kernel` (t_mean + t_sigma; t_median = approx) | Experimental parity (HW validated 2026-05-16; AP-16) |
 | RT reionization state | AVX2/AVX-512 reductions | Yes, `CudaRtSolver::try_reionization_stats` | Experimental parity (HW validated 2026-05-16) |
-| RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | Yes, `CudaRtSolver::try_cm21_field` | Experimental parity (HW validated 2026-05-16) |
-| Analysis spin/luminosity/SED | AVX2/AVX-512 reductions for spin, luminosity and SED contributions | No | SIMD-only |
+| RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | Yes, `CudaRtSolver::try_cm21_field` — wired in `step_reionization` | Experimental parity (HW validated 2026-05-16; wired AP-16) |
+| MHD ambipolar diffusion | AVX2/AVX-512 B-field damping + ionization proxy + heating | Yes, `CudaMhdSolver::try_ambipolar_diffusion` — `mhd_ambipolar_kernel`; wired in `step_mhd` | Experimental parity (HW validated 2026-05-16; AP-16) |
+| MHD two-fluid (e-i coupling) | AVX2/AVX-512 Coulomb coupling + T_e/T_i reduction | Yes, `CudaMhdSolver::try_electron_ion_coupling` — `mhd_two_fluid_kernel`; wired in `step_sph` | Experimental parity (HW validated 2026-05-16; AP-16) |
+| MHD anisotropic conduction / CR diffusion | AVX2/AVX-512 pair accumulation | Yes, `CudaMhdSolver::try_scalar_diffusion` — mean-field approximation; wired in `step_sph` | Experimental parity (approx; AP-16) |
+| Analysis spin/luminosity/SED | AVX2/AVX-512 reductions for spin, luminosity and SED contributions | Yes, `CudaAnalysisSolver::try_galaxy_luminosity` + `CudaRtSolver::try_igm_temp_profile`; wired in `analyze_cmd.rs` via `cuda_analysis` flag | Experimental parity (AP-16) |
 
 ### MHD Dedner cleaning (CPU detail)
 

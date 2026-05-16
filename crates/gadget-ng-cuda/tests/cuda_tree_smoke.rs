@@ -92,7 +92,13 @@ fn cuda_tree_let_accel_matches_cpu() {
         assert!(
             rel < 1.0e-3,
             "let_acc[{i}]: cpu=({:.4e},{:.4e},{:.4e}) gpu=({:.4e},{:.4e},{:.4e}) rel={:.3e}",
-            c.x, c.y, c.z, g.x, g.y, g.z, rel
+            c.x,
+            c.y,
+            c.z,
+            g.x,
+            g.y,
+            g.z,
+            rel
         );
     }
     eprintln!("cuda_tree_let_accel_matches_cpu: max_rel={max_rel:.3e} (tol=1e-3)");

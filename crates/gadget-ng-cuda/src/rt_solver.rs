@@ -172,9 +172,7 @@ impl CudaRtSolver {
         {
             let c_red = C_KMS / params.c_red_factor;
             let dt_cfl = rad.dx / c_red * 0.5;
-            let n_sub = ((dt / dt_cfl).ceil() as usize)
-                .max(1)
-                .max(params.substeps);
+            let n_sub = ((dt / dt_cfl).ceil() as usize).max(1).max(params.substeps);
             let dt_sub = dt / n_sub as f64;
             let kappa = (params.kappa_abs + params.kappa_scat) as f32;
 
@@ -308,10 +306,7 @@ impl CudaRtSolver {
                     ParticleType::Star => 2,
                 })
                 .collect();
-            let mut u: Vec<f32> = particles
-                .iter()
-                .map(|p| p.internal_energy as f32)
-                .collect();
+            let mut u: Vec<f32> = particles.iter().map(|p| p.internal_energy as f32).collect();
             let xe_f32: Vec<f32> = x_e.iter().map(|&v| v as f32).collect();
 
             // SAFETY: slices válidos; u es modificado in-place en el kernel.
@@ -351,7 +346,14 @@ impl CudaRtSolver {
 
         #[cfg(cuda_unavailable)]
         {
-            let _ = (chem_states, gamma_hi, temperature, particle_types, dt, n_h_ref);
+            let _ = (
+                chem_states,
+                gamma_hi,
+                temperature,
+                particle_types,
+                dt,
+                n_h_ref,
+            );
             return Err(CudaExecutionError::Unavailable(CudaUnavailable {
                 availability: CudaPmSolver::availability(),
             }));
@@ -376,18 +378,18 @@ impl CudaRtSolver {
                         .collect::<Vec<f32>>()
                 };
             }
-            let mut x_hi    = field_f32!(x_hi);
-            let mut x_hii   = field_f32!(x_hii);
-            let mut x_hei   = field_f32!(x_hei);
-            let mut x_heii  = field_f32!(x_heii);
+            let mut x_hi = field_f32!(x_hi);
+            let mut x_hii = field_f32!(x_hii);
+            let mut x_hei = field_f32!(x_hei);
+            let mut x_heii = field_f32!(x_heii);
             let mut x_heiii = field_f32!(x_heiii);
-            let mut x_e     = field_f32!(x_e);
-            let mut x_hm    = field_f32!(x_hm);
-            let mut x_h2    = field_f32!(x_h2);
-            let mut x_h2p   = field_f32!(x_h2p);
-            let mut x_d     = field_f32!(x_d);
-            let mut x_dp    = field_f32!(x_dp);
-            let mut x_hd    = field_f32!(x_hd);
+            let mut x_e = field_f32!(x_e);
+            let mut x_hm = field_f32!(x_hm);
+            let mut x_h2 = field_f32!(x_h2);
+            let mut x_h2p = field_f32!(x_h2p);
+            let mut x_d = field_f32!(x_d);
+            let mut x_dp = field_f32!(x_dp);
+            let mut x_hd = field_f32!(x_hd);
             let ghi_f32: Vec<f32> = gamma_hi.iter().map(|&v| v as f32).collect();
             let temp_f32: Vec<f32> = temperature.iter().map(|&v| v as f32).collect();
 
@@ -418,18 +420,18 @@ impl CudaRtSolver {
 
             // Copiar de vuelta al slice de ChemState
             for (i, s) in chem_states.iter_mut().enumerate() {
-                s.x_hi    = x_hi[i] as f64;
-                s.x_hii   = x_hii[i] as f64;
-                s.x_hei   = x_hei[i] as f64;
-                s.x_heii  = x_heii[i] as f64;
+                s.x_hi = x_hi[i] as f64;
+                s.x_hii = x_hii[i] as f64;
+                s.x_hei = x_hei[i] as f64;
+                s.x_heii = x_heii[i] as f64;
                 s.x_heiii = x_heiii[i] as f64;
-                s.x_e     = x_e[i] as f64;
-                s.x_hm    = x_hm[i] as f64;
-                s.x_h2    = x_h2[i] as f64;
-                s.x_h2p   = x_h2p[i] as f64;
-                s.x_d     = x_d[i] as f64;
-                s.x_dp    = x_dp[i] as f64;
-                s.x_hd    = x_hd[i] as f64;
+                s.x_e = x_e[i] as f64;
+                s.x_hm = x_hm[i] as f64;
+                s.x_h2 = x_h2[i] as f64;
+                s.x_h2p = x_h2p[i] as f64;
+                s.x_d = x_d[i] as f64;
+                s.x_dp = x_dp[i] as f64;
+                s.x_hd = x_hd[i] as f64;
             }
             Ok(())
         }
@@ -615,6 +617,101 @@ impl CudaRtSolver {
                 }
             }
             Ok(())
+        }
+    }
+
+    /// Calcula estadísticas de temperatura del IGM (media y sigma) vía reducción GPU.
+    ///
+    /// Filtra partículas IGM con densidad `rho_sph < delta_max × mean_density`.
+    /// La mediana se aproxima como la media (el kernel no ordena).
+    pub fn try_igm_temp_profile(
+        &self,
+        particles: &[Particle],
+        chem_states: &[gadget_ng_rt::chemistry::ChemState],
+        mean_density: f64,
+        z: f64,
+        params: &gadget_ng_rt::IgmTempParams,
+    ) -> Result<gadget_ng_rt::IgmTempBin, CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(gadget_ng_rt::IgmTempBin {
+                z,
+                ..Default::default()
+            });
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, chem_states, mean_density, z, params);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let u: Vec<f32> = particles.iter().map(|p| p.internal_energy as f32).collect();
+            let h: Vec<f32> = particles
+                .iter()
+                .map(|p| p.smoothing_length as f32)
+                .collect();
+            let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
+            // Campos ChemState — misma fórmula que CPU (free_h = x_hi + x_hii + x_e).
+            let x_hi: Vec<f32> = chem_states.iter().map(|s| s.x_hi as f32).collect();
+            let x_hii: Vec<f32> = chem_states.iter().map(|s| s.x_hii as f32).collect();
+            let x_e: Vec<f32> = chem_states.iter().map(|s| s.x_e as f32).collect();
+            let x_d: Vec<f32> = chem_states.iter().map(|s| s.x_d as f32).collect();
+            let x_hei: Vec<f32> = chem_states.iter().map(|s| s.x_hei as f32).collect();
+            let x_heii: Vec<f32> = chem_states.iter().map(|s| s.x_heii as f32).collect();
+            let x_heiii: Vec<f32> = chem_states.iter().map(|s| s.x_heiii as f32).collect();
+
+            let mut t_mean = 0.0_f64;
+            let mut t_sigma = 0.0_f64;
+            let mut n_igm = 0_i32;
+
+            // SAFETY: todos los slices son válidos y tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_rt_igm_temp(
+                    ptype.as_ptr(),
+                    u.as_ptr(),
+                    h.as_ptr(),
+                    mass.as_ptr(),
+                    x_hi.as_ptr(),
+                    x_hii.as_ptr(),
+                    x_e.as_ptr(),
+                    x_d.as_ptr(),
+                    x_hei.as_ptr(),
+                    x_heii.as_ptr(),
+                    x_heiii.as_ptr(),
+                    n as i32,
+                    params.gamma as f32,
+                    params.delta_max as f32,
+                    mean_density as f32,
+                    &mut t_mean,
+                    &mut t_sigma,
+                    &mut n_igm,
+                )
+            };
+            check_kernel("cuda_rt_igm_temp", code)?;
+
+            Ok(gadget_ng_rt::IgmTempBin {
+                z,
+                t_mean,
+                // La mediana se aproxima como la media (el kernel no ordena los valores).
+                t_median: t_mean,
+                t_sigma,
+                t_p16: 0.0,
+                t_p84: 0.0,
+                n_particles: n_igm as usize,
+            })
         }
     }
 }
