@@ -595,20 +595,80 @@ pub(crate) fn step_sph(
     let n_neigh = cfg.sph.n_neigh as f64;
     let periodic_box = cfg.cosmology.periodic.then_some(cfg.simulation.box_size);
 
-    gadget_ng_sph::sph_cosmo_kdk_step(
-        local,
-        cf_sph,
-        gamma,
-        alpha,
-        n_neigh,
-        periodic_box,
-        |_parts| {},
-    );
-    // Note: `[accelerators] cuda_sph = true` is reserved for CUDA SPH density + forces.
-    // Full wiring requires converting gadget_ng_core::Particle ↔ gadget_ng_sph::SphParticle
-    // and a refactor of sph_cosmo_kdk_step to accept an external density/forces callback.
-    // That adapter is tracked in the AP-04 backlog; currently, CUDA cooling/dust/H2 are
-    // already opt-in via their own [accelerators] flags below.
+    // CUDA SPH path: densidad + Balsara + fuerzas en GPU, integración KDK en CPU.
+    // Activo si `[accelerators] cuda_sph = true` y `use_gpu_cuda = true`.
+    #[cfg(feature = "cuda")]
+    let cuda_sph_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_sph {
+        if let Ok(solver) = gadget_ng_cuda::CudaSphSolver::try_new_checked() {
+            let pbox = periodic_box;
+            let mut sph_ok = true;
+
+            // Paso 1: fuerzas al inicio del paso (para Kick1)
+            match solver.try_sph_density_and_forces_core(local, pbox) {
+                Ok((_, acc1, du_dt1)) => {
+                    // Kick 1
+                    for (i, p) in local.iter_mut().enumerate() {
+                        p.velocity += p.acceleration * cf_sph.kick_half;
+                        if p.ptype == gadget_ng_core::ParticleType::Gas {
+                            p.velocity += acc1[i] * cf_sph.kick_half;
+                            p.internal_energy =
+                                (p.internal_energy + du_dt1[i] * cf_sph.kick_half).max(0.0);
+                        }
+                    }
+                    // Drift
+                    for p in local.iter_mut() {
+                        p.position += p.velocity * cf_sph.drift;
+                    }
+                    if let Some(l) = pbox
+                        && l > 0.0
+                    {
+                        for p in local.iter_mut() {
+                            p.position =
+                                gadget_ng_core::cosmology::wrap_position(p.position, l);
+                        }
+                    }
+
+                    // Paso 2: fuerzas al nuevo tiempo (para Kick2)
+                    match solver.try_sph_density_and_forces_core(local, pbox) {
+                        Ok((_, acc2, du_dt2)) => {
+                            // Kick 2
+                            for (i, p) in local.iter_mut().enumerate() {
+                                p.velocity += p.acceleration * cf_sph.kick_half2;
+                                if p.ptype == gadget_ng_core::ParticleType::Gas {
+                                    p.velocity += acc2[i] * cf_sph.kick_half2;
+                                    p.internal_energy =
+                                        (p.internal_energy + du_dt2[i] * cf_sph.kick_half2)
+                                            .max(0.0);
+                                }
+                            }
+                        }
+                        Err(_) => sph_ok = false,
+                    }
+                }
+                Err(_) => sph_ok = false,
+            }
+            sph_ok
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    #[cfg(not(feature = "cuda"))]
+    let cuda_sph_ok = false;
+
+    if !cuda_sph_ok {
+        gadget_ng_sph::sph_cosmo_kdk_step(
+            local,
+            cf_sph,
+            gamma,
+            alpha,
+            n_neigh,
+            periodic_box,
+            |_parts| {},
+        );
+    }
 
     if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
         let redshift = if a_current > 0.0 {

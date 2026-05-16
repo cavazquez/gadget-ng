@@ -6,6 +6,7 @@
 
 use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
+use gadget_ng_core::{Particle, ParticleType};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::Vec3;
 use gadget_ng_sph::particle::SphParticle;
@@ -418,6 +419,189 @@ impl CudaSphSolver {
                 }
             }
             Ok(())
+        }
+    }
+
+    /// Pipeline completo densidad+fuerzas SPH sobre `gadget_ng_core::Particle`.
+    ///
+    /// Permite cablear el solver CUDA directamente en el integrador KDK sin necesidad de
+    /// convertir a `SphParticle`. Los pasos son:
+    /// 1. CUDA density → `rho`, `h_sml` por partícula
+    /// 2. CUDA Balsara → factor de limitación viscosa
+    /// 3. CUDA forces (clásico) → `acc_sph`, `du_dt` por partícula
+    ///
+    /// Devuelve `(rho[i], acc_sph[i], du_dt[i])` para cada partícula (cero para DM).
+    /// También escribe `smoothing_length` actualizado de vuelta en cada partícula gas.
+    ///
+    /// Nota: el kernel CUDA usa `γ = 5/3` fijo; coincide con el default del motor.
+    /// Tipo de retorno para densidad + aceleración SPH + du/dt calculados en GPU.
+    #[allow(clippy::type_complexity)]
+    pub fn try_sph_density_and_forces_core(
+        &self,
+        particles: &mut [Particle],
+        periodic_box: Option<f64>,
+    ) -> Result<(Vec<f64>, Vec<Vec3>, Vec<f64>), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok((vec![], vec![], vec![]));
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, periodic_box);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let pbox_f32 = periodic_box_f32(periodic_box);
+
+            // ── SoA inicial desde Particle core ───────────────────────────────
+            let mut x = Vec::with_capacity(n);
+            let mut y = Vec::with_capacity(n);
+            let mut z = Vec::with_capacity(n);
+            let mut vx = Vec::with_capacity(n);
+            let mut vy = Vec::with_capacity(n);
+            let mut vz = Vec::with_capacity(n);
+            let mut mass = Vec::with_capacity(n);
+            let mut is_gas = Vec::with_capacity(n);
+            let mut u_arr = Vec::with_capacity(n);
+            let mut h_arr = Vec::with_capacity(n);
+
+            for p in particles.iter() {
+                x.push(p.position.x as f32);
+                y.push(p.position.y as f32);
+                z.push(p.position.z as f32);
+                vx.push(p.velocity.x as f32);
+                vy.push(p.velocity.y as f32);
+                vz.push(p.velocity.z as f32);
+                mass.push(p.mass as f32);
+                let gas = p.ptype == ParticleType::Gas;
+                is_gas.push(if gas { 1u8 } else { 0u8 });
+                u_arr.push(if gas { p.internal_energy as f32 } else { 0.0 });
+                h_arr.push(if gas && p.smoothing_length > 0.0 {
+                    p.smoothing_length as f32
+                } else {
+                    1.0
+                });
+            }
+
+            // ── Paso 1: densidad GPU ──────────────────────────────────────────
+            self.pool.ensure_capacity(n)?;
+            self.pool.reset();
+
+            let mut h_out = vec![0.0_f32; n];
+            let mut rho_out = vec![0.0_f32; n];
+            let mut pressure_out = vec![0.0_f32; n];
+            let mut entropy_out = vec![0.0_f32; n];
+
+            // SAFETY: pool handle válido, slots frescos, longitudes correctas.
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &x);
+                let d_y = self.pool.upload_f32(1, &y);
+                let d_z = self.pool.upload_f32(2, &z);
+                let d_mass = self.pool.upload_f32(3, &mass);
+                let d_is_gas = self.pool.upload_u8(4, &is_gas);
+                let d_u = self.pool.upload_f32(5, &u_arr);
+                let d_h = self.pool.upload_f32(6, &h_arr);
+                let d_h_out = self.pool.alloc_f32(7, n);
+                let d_rho = self.pool.alloc_f32(8, n);
+                let d_pressure = self.pool.alloc_f32(9, n);
+                let d_entropy = self.pool.alloc_f32(10, n);
+
+                let code = crate::ffi::cuda_sph_density(
+                    d_x, d_y, d_z, d_mass, d_is_gas, d_u, d_h, d_h_out, d_rho, d_pressure,
+                    d_entropy, n as i32, pbox_f32,
+                );
+                check_kernel("cuda_sph_density", code)?;
+
+                self.pool.download_f32(&mut h_out, d_h_out)?;
+                self.pool.download_f32(&mut rho_out, d_rho)?;
+                self.pool.download_f32(&mut pressure_out, d_pressure)?;
+                self.pool.download_f32(&mut entropy_out, d_entropy)?;
+            }
+
+            // Escribir h_sml actualizado de vuelta a partículas
+            for (i, p) in particles.iter_mut().enumerate() {
+                if p.ptype == ParticleType::Gas {
+                    p.smoothing_length = h_out[i] as f64;
+                }
+            }
+
+            // ── Paso 2: Balsara GPU ───────────────────────────────────────────
+            self.pool.reset();
+            let mut balsara_out = vec![1.0_f32; n];
+
+            // SAFETY: mismas garantías que arriba.
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &x);
+                let d_y = self.pool.upload_f32(1, &y);
+                let d_z = self.pool.upload_f32(2, &z);
+                let d_vx = self.pool.upload_f32(3, &vx);
+                let d_vy = self.pool.upload_f32(4, &vy);
+                let d_vz = self.pool.upload_f32(5, &vz);
+                let d_mass = self.pool.upload_f32(6, &mass);
+                let d_is_gas = self.pool.upload_u8(7, &is_gas);
+                let d_rho = self.pool.upload_f32(8, &rho_out);
+                let d_pressure = self.pool.upload_f32(9, &pressure_out);
+                let d_h = self.pool.upload_f32(10, &h_out);
+                let d_balsara = self.pool.alloc_f32(11, n);
+
+                let code = crate::ffi::cuda_sph_balsara(
+                    d_x, d_y, d_z, d_vx, d_vy, d_vz, d_mass, d_is_gas, d_rho, d_pressure, d_h,
+                    d_balsara, n as i32, pbox_f32,
+                );
+                check_kernel("cuda_sph_balsara", code)?;
+                self.pool.download_f32(&mut balsara_out, d_balsara)?;
+            }
+
+            // ── Paso 3: fuerzas SPH GPU ───────────────────────────────────────
+            self.pool.reset();
+            let mut ax_out = vec![0.0_f32; n];
+            let mut ay_out = vec![0.0_f32; n];
+            let mut az_out = vec![0.0_f32; n];
+            let mut du_dt_out = vec![0.0_f32; n];
+
+            // SAFETY: mismas garantías que arriba.
+            unsafe {
+                let d_x = self.pool.upload_f32(0, &x);
+                let d_y = self.pool.upload_f32(1, &y);
+                let d_z = self.pool.upload_f32(2, &z);
+                let d_vx = self.pool.upload_f32(3, &vx);
+                let d_vy = self.pool.upload_f32(4, &vy);
+                let d_vz = self.pool.upload_f32(5, &vz);
+                let d_mass = self.pool.upload_f32(6, &mass);
+                let d_is_gas = self.pool.upload_u8(7, &is_gas);
+                let d_rho = self.pool.upload_f32(8, &rho_out);
+                let d_pressure = self.pool.upload_f32(9, &pressure_out);
+                let d_h = self.pool.upload_f32(10, &h_out);
+                let d_ax = self.pool.alloc_f32(11, n);
+                let d_ay = self.pool.alloc_f32(12, n);
+                let d_az = self.pool.alloc_f32(13, n);
+                let d_du_dt = self.pool.alloc_f32(14, n);
+
+                let code = crate::ffi::cuda_sph_forces(
+                    d_x, d_y, d_z, d_vx, d_vy, d_vz, d_mass, d_is_gas, d_rho, d_pressure, d_h,
+                    d_ax, d_ay, d_az, d_du_dt, n as i32, pbox_f32,
+                );
+                check_kernel("cuda_sph_forces", code)?;
+
+                self.pool.download_f32(&mut ax_out, d_ax)?;
+                self.pool.download_f32(&mut ay_out, d_ay)?;
+                self.pool.download_f32(&mut az_out, d_az)?;
+                self.pool.download_f32(&mut du_dt_out, d_du_dt)?;
+            }
+
+            // ── Ensamblar resultado ────────────────────────────────────────────
+            let rho_f64: Vec<f64> = rho_out.iter().map(|&v| v as f64).collect();
+            let acc_sph: Vec<Vec3> = (0..n)
+                .map(|i| Vec3::new(ax_out[i] as f64, ay_out[i] as f64, az_out[i] as f64))
+                .collect();
+            let du_dt_f64: Vec<f64> = du_dt_out.iter().map(|&v| v as f64).collect();
+
+            Ok((rho_f64, acc_sph, du_dt_f64))
         }
     }
 }

@@ -1936,36 +1936,70 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                             hpc.apply_leaf_tile_i_count += tile_i;
                             this_grav += ltw_ns;
                         } else {
-                            // Path flat LET: con feature "simd" usa RmnSoa para kernel fusionado.
-                            #[cfg(all(feature = "rayon", feature = "simd"))]
-                            {
-                                let t_pack = Instant::now();
-                                let soa = gadget_ng_tree::RmnSoa::from_slice(&remote_nodes);
-                                hpc.rmn_soa_pack_ns += t_pack.elapsed().as_nanos() as u64;
+                            // Path flat LET — CUDA opt-in primero, luego Rayon+SIMD, luego serial.
 
-                                let t_soa = Instant::now();
-                                use rayon::prelude::*;
-                                acc.par_iter_mut().enumerate().for_each(|(li, a_out)| {
-                                    *a_out = local_accels[li]
-                                        + gadget_ng_tree::accel_from_let_soa(
+                            // CUDA path: usa try_tree_walk_let bajo [accelerators] cuda_tree.
+                            // Construye RmnSoa (necesaria para CUDA y Rayon+SIMD) antes del branch.
+                            #[cfg(any(feature = "cuda", all(feature = "rayon", feature = "simd")))]
+                            let (soa, rmn_soa_ns) = {
+                                let t_pack = Instant::now();
+                                let s = gadget_ng_tree::RmnSoa::from_slice(&remote_nodes);
+                                (s, t_pack.elapsed().as_nanos() as u64)
+                            };
+                            #[cfg(any(feature = "cuda", all(feature = "rayon", feature = "simd")))]
+                            {
+                                hpc.rmn_soa_pack_ns += rmn_soa_ns;
+                            }
+
+                            #[cfg(feature = "cuda")]
+                            let cuda_let_ok = if cfg.performance.use_gpu_cuda
+                                && cfg.accelerators.cuda_tree
+                            {
+                                gadget_ng_cuda::CudaTreeSolver::try_new_checked()
+                                    .ok()
+                                    .and_then(|s| s.try_tree_walk_let(parts, &soa, g, eps2).ok())
+                                    .map(|cuda_accels| {
+                                        for (li, a_out) in acc.iter_mut().enumerate() {
+                                            *a_out = local_accels[li] + cuda_accels[li];
+                                        }
+                                    })
+                                    .is_some()
+                            } else {
+                                false
+                            };
+
+                            #[cfg(not(feature = "cuda"))]
+                            let cuda_let_ok = false;
+
+                            if !cuda_let_ok {
+                                // CPU fallback: con feature "simd" usa RmnSoa para kernel fusionado.
+                                #[cfg(all(feature = "rayon", feature = "simd"))]
+                                {
+                                    let t_soa = Instant::now();
+                                    use rayon::prelude::*;
+                                    acc.par_iter_mut().enumerate().for_each(|(li, a_out)| {
+                                        *a_out = local_accels[li]
+                                            + gadget_ng_tree::accel_from_let_soa(
+                                                parts[li].position,
+                                                &soa,
+                                                g,
+                                                eps2,
+                                            );
+                                    });
+                                    hpc.accel_from_let_soa_ns +=
+                                        t_soa.elapsed().as_nanos() as u64;
+                                }
+                                #[cfg(not(all(feature = "rayon", feature = "simd")))]
+                                {
+                                    for (li, a_out) in acc.iter_mut().enumerate() {
+                                        let a_remote = gadget_ng_tree::accel_from_let(
                                             parts[li].position,
-                                            &soa,
+                                            &remote_nodes,
                                             g,
                                             eps2,
                                         );
-                                });
-                                hpc.accel_from_let_soa_ns += t_soa.elapsed().as_nanos() as u64;
-                            }
-                            #[cfg(not(all(feature = "rayon", feature = "simd")))]
-                            {
-                                for (li, a_out) in acc.iter_mut().enumerate() {
-                                    let a_remote = gadget_ng_tree::accel_from_let(
-                                        parts[li].position,
-                                        &remote_nodes,
-                                        g,
-                                        eps2,
-                                    );
-                                    *a_out = local_accels[li] + a_remote;
+                                        *a_out = local_accels[li] + a_remote;
+                                    }
                                 }
                             }
                         }

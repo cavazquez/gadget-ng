@@ -172,44 +172,44 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | Área / módulo | CPU sin Rayon | CPU con Rayon | SIMD sin Rayon AVX2/AVX512 | CUDA |
 |---|---:|---:|---:|---:|
 | Gravedad directa `O(N²)` | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ persistent handle |
-| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 + AVX512 local walk | ⚠️ kernel monopole parity ⚡ |
-| Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ⚠️ smoke/parity ⚡ (LET mono+quad+oct, AP-07) |
-| TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial |
+| Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 + AVX512 local walk | ⚠️ `try_walk_monopole` O(N²) existe; walk BH real en GPU requiere árbol en device |
+| Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ opt-in `cuda_tree` — `try_tree_walk_let` (mono+quad+oct); wired en flat LET path (AP-07) |
+| TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial; sin wiring completo |
 | PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ |
 | PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ ⚡ |
-| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ⚠️ smoke/parity ⚡ |
-| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ⚠️ smoke/parity ⚡ |
-| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ⚠️ smoke/parity ⚡ |
-| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ⚠️ smoke/parity ⚡ |
-| Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ⚠️ smoke/parity ⚡ |
-| Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ⚠️ smoke/parity ⚡ |
-| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ⚠️ smoke/parity ⚡ |
-| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ⚠️ smoke/parity ⚡ |
-| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ⚠️ smoke/parity ⚡ |
+| SPH density | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ opt-in `cuda_sph` — `cuda_sph_density`; wired en `step_sph` KDK |
+| SPH forces clásico | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ opt-in `cuda_sph` — `cuda_sph_forces`; wired en `step_sph` KDK |
+| SPH Gadget-2/Balsara | ✅ | ✅ | ✅ Wendland AVX2 + AVX512 batch | ✅ opt-in `cuda_sph` — `cuda_sph_balsara` + viscosidad clásica; wired en `step_sph` KDK |
+| Cooling H/He/metales/UVB | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch; MetalTabular logT lookup batched | ✅ opt-in `cuda_cooling` — `cuda_cooling_apply`; wired en `step_sph` |
+| Dust update / radiation pressure | ✅ | ✅ | ✅ AVX2 + AVX512 growth/sputtering/radiation kick | ✅ opt-in `cuda_dust` — `cuda_dust_update` + `cuda_dust_radiation_pressure`; wired en `step_sph` |
+| Molecular H₂ / shielding | ✅ | ✅ | ✅ AVX2 + AVX512 H₂ + dust shielding | ✅ opt-in `cuda_h2` — `cuda_h2_update`; wired en `step_sph` |
+| MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ✅ opt-in `cuda_mhd` — `mhd_induction_resistivity_kernel`; wired en `step_mhd` |
+| MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ✅ opt-in `cuda_mhd` — `mhd_magnetic_forces_kernel`; wired en `step_mhd` |
+| MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ✅ opt-in `cuda_mhd` — híbrido CPU div-B + GPU `mhd_dedner_cleaning_kernel` (AP-17); wired en `step_mhd` |
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_anisotropic_pair_kernel` O(N²) Wendland-C6 (AP-17); wired en `step_sph` |
-| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation (SIMD-without-Rayon) | ⚠️ smoke/parity ⚡ |
-| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update (SIMD-without-Rayon) | ⚠️ combined kernel ⚡ |
+| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation (SIMD-without-Rayon) | ✅ opt-in `cuda_mhd` — `mhd_braginskii_viscosity_kernel`; wired en `step_sph` |
+| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update (SIMD-without-Rayon) | ✅ opt-in `cuda_mhd` — `mhd_reconnection_streaming_dynamo_kernel`; wired en `step_sph` |
 | MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ opt-in `[accelerators] cuda_cr = true` — `mhd_cr_streaming_o2_kernel` + `mhd_cr_backreaction_kernel`; wired en `step_sph` |
 | MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_ambipolar_kernel`; wired en `step_mhd` |
 | MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_two_fluid_kernel`; wired en `step_sph` |
-| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ⚠️ smoke/parity ⚡ |
-| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ⚠️ smoke/parity ⚡ |
-| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ⚠️ smoke/parity ⚡ |
-| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ⚠️ smoke/parity ⚡ (HLL Godunov M1, AP-05) |
+| SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ opt-in `cuda_cooling` — `cuda_cooling_apply`; wired en `step_sph` |
+| MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ✅ opt-in `cuda_mhd` — `cuda_mhd_flux_freeze` + `cuda_mhd_b_stats_contrib`; wired en `step_mhd` |
+| RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ✅ opt-in `cuda_rt` — `rt_energy_xi_photoion` + `rt_photoheating_kernel`; wired en `step_rt` |
+| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ✅ opt-in `cuda_rt` — `m1_substep_kernel` (HLL Godunov, AP-05); wired en `step_rt` |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_chemistry_rates_kernel`; wired en `step_reionization` |
 | RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests (AP-09 CPU cerrado) | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_chemistry_stiff_kernel`; wired en `step_reionization` |
 | RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ✅ opt-in `cuda_rt_chem` — `cuda_rt_igm_temp_full`: mean+sigma+percentiles reales (AP-17); wired en `analyze_cmd.rs` |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_reionization_stats_kernel`; wired en `step_reionization` |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_cm21_field_kernel`; wired en `step_reionization` |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ✅ opt-in `cuda_analysis = true` — `try_galaxy_luminosity`, `try_igm_temp_profile`, `try_halo_spin` (spin real AP-17), `try_xray_luminosity` (AP-17, `--xray` flag); wired en `analyze_cmd.rs` |
-| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ⚠️ smoke/parity ⚡ |
-| f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
+| SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ✅ opt-in `cuda_tree` — `cuda_tree_sidm_scatter`; wired en `step_sidm` |
+| f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA funciona; kernel SR screening chameleon no implementado en GPU |
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ✅ gravedad/PM/SIDM/RT M1/análisis con `use_gpu_cuda`; flags **`[accelerators]`** (`cuda_*`; ver `RunConfig` / CHANGELOG) — validado en hardware NVIDIA GTX 1060 sm_61 (AP-04) |
 
-Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ sin ruta CUDA de producción o paridad GPU aún por cerrar (ver informe de backlog).
+Leyenda: ✅ implementado y wired opt-in; ⚠️ kernel existe pero sin wiring completo en producción (gaps remanentes: BH local GPU tree, TreePM SR, f(R) screening); ❌ sin kernel CUDA.
 ⚡ = buffers persistentes `CudaPool` (AP-02): sin `cudaMalloc`/`cudaFree` por paso; redimensionamiento automático por duplicación.
 
-**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA GTX 1060 (sm_61, CUDA 12.4); todos los tests `--ignored` pasan con tolerancias documentadas. **AP-04** — cableado opt-in SIDM/RT M1/análisis en CLI con flags `[accelerators]`. **AP-05** — kernel CUDA HLL Godunov M1 completo para RT. **AP-06** — kernels CUDA de análisis (halo spin, luminosidad galáctica, L_X bremsstrahlung). **AP-07** — recorrido LET GPU mono+quad+oct (max\_rel=9.3e-7, 14–378× speedup). **AP-08** — benchmarks Criterion Direct/PM/SPH/MHD/RT/Tree con resultados documentados. **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver. **AP-12–AP-14** — química RT (tasas, stiff, reionización/21cm) y MHD CR: kernels CUDA completos + wiring CLI. **AP-16** — cierre de brechas CUDA restantes (Dedner, spin de halos, X-ray, 21cm insitu). **AP-17** — IGM percentiles reales (`cuda_rt_igm_temp_full`), kernel anisótropo O(N²) y correcciones de documentación. Todos **AP-03 a AP-17 cerrados**; sin brechas CUDA documentadas. Ver [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md) y [`docs/reports/2026-05-cuda-ap17-closure.md`](docs/reports/2026-05-cuda-ap17-closure.md).
+**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA GTX 1060 (sm_61, CUDA 12.4); todos los tests `--ignored` pasan con tolerancias documentadas. **AP-04** — cableado opt-in SIDM/RT M1/análisis en CLI con flags `[accelerators]`. **AP-05** — kernel CUDA HLL Godunov M1 completo para RT. **AP-06** — kernels CUDA de análisis (halo spin, luminosidad galáctica, L_X bremsstrahlung). **AP-07** — recorrido LET GPU mono+quad+oct (max\_rel=9.3e-7, 14–378× speedup); wired en flat LET path. **AP-08** — benchmarks Criterion Direct/PM/SPH/MHD/RT/Tree con resultados documentados. **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver. **AP-12–AP-14** — química RT (tasas, stiff, reionización/21cm) y MHD CR: kernels CUDA completos + wiring CLI. **AP-16** — cierre de brechas CUDA restantes (Dedner, spin de halos, X-ray, 21cm insitu). **AP-17** — IGM percentiles reales (`cuda_rt_igm_temp_full`), kernel anisótropo O(N²). **AP-18** — paridad CUDA completa: wiring SPH density+Balsara+forces (`cuda_sph`, KDK sobre core Particle), Tree LET (`cuda_tree`); README actualizado a ✅ para todos los módulos con kernel GPU. Gaps remanentes documentados: BH local GPU tree (requiere árbol en device), TreePM SR híbrido, f(R) screening chameleon. Ver [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md) y [`docs/reports/2026-05-cuda-ap17-closure.md`](docs/reports/2026-05-cuda-ap17-closure.md).
 
 Nota MHD Dedner: con **`rayon` + `simd`** en **x86/x86_64**, si en tiempo de
 ejecución hay **AVX-512F** o **AVX2+FMA**, `dedner_cleaning_step` usa
