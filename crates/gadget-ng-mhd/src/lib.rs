@@ -34,16 +34,16 @@ pub mod two_fluid;
 
 pub use anisotropic::{apply_anisotropic_conduction, beta_plasma, diffuse_cr_anisotropic};
 pub use braginskii::apply_braginskii_viscosity;
-pub use cleaning::{compute_dedner_div_b, dedner_cleaning_step};
 #[cfg(feature = "bench-all-dedner-paths")]
 pub use cleaning::{DednerCleaningBackend, dedner_cleaning_step_with_backend};
+pub use cleaning::{compute_dedner_div_b, dedner_cleaning_step};
 pub use dynamo::{
     alpha_coefficient, apply_turbulent_dynamo, dynamo_growth_rate, magnetic_energy_ratio,
     maxwell_stress_tensor,
 };
 pub use flux_freeze::{apply_flux_freeze, flux_freeze_error, mean_gas_density};
 pub use induction::{advance_induction, alfven_dt, apply_artificial_resistivity, init_b_field};
-pub use nonideal::{apply_ambipolar_diffusion, ionization_fraction_proxy};
+pub use nonideal::{apply_ambipolar_diffusion, apply_hall_drift, ionization_fraction_proxy};
 pub use pressure::{apply_magnetic_forces, magnetic_pressure, maxwell_stress};
 pub use reconnection::{apply_magnetic_reconnection, sweet_parker_rate};
 pub use relativistic::{

@@ -99,6 +99,17 @@ pub struct MhdSection {
     /// Factor de acoplamiento con polvo: más polvo reduce ionización efectiva (default: `1.0`).
     #[serde(default = "default_ambipolar_dust_coupling")]
     pub ambipolar_dust_coupling: f64,
+    /// Activa el término Hall no-ideal (Phase 186). Default: `false`.
+    ///
+    /// El drift Hall rota `B` sin disipar energía; complementa la difusión ambipolar.
+    #[serde(default)]
+    pub hall_enabled: bool,
+    /// Coeficiente Hall η_H [unidades internas] (Phase 186). Default: `0.0` (desactivado).
+    ///
+    /// Ángulo de rotación por paso: `θ = η_H × |B| / ρ × dt`.
+    /// Valores típicos en unidades code: `0.01`–`1.0`.
+    #[serde(default)]
+    pub hall_eta: f64,
 }
 
 fn default_mhd_c_h() -> f64 {
@@ -164,6 +175,8 @@ impl Default for MhdSection {
             ambipolar_eta: 0.0,
             ambipolar_ion_floor: default_ambipolar_ion_floor(),
             ambipolar_dust_coupling: default_ambipolar_dust_coupling(),
+            hall_enabled: false,
+            hall_eta: 0.0,
         }
     }
 }

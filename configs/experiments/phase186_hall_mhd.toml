@@ -1,0 +1,50 @@
+# Phase 186 — MHD Hall term demo
+#
+# Simula un cubo de gas magnetizado con campo uniforme B₀ = (1e-9, 0, 0)
+# y Hall habilitado. El drift Hall rota B sin disipar energía.
+#
+# Ejecutar:
+#   cargo build --release -p gadget-ng-cli
+#   ./target/release/gadget-ng stepping --config configs/experiments/phase186_hall_mhd.toml \
+#       --out runs/phase186 --snapshot
+
+[simulation]
+n_particles = 1024
+box_size    = 1.0
+n_steps     = 200
+dt          = 0.001
+seed        = 42
+
+[cosmology]
+omega_m     = 0.3
+omega_lambda = 0.7
+h0          = 0.7
+a_start     = 1.0
+a_end       = 1.0
+
+[sph]
+enabled     = true
+gamma       = 1.666667
+
+[mhd]
+enabled                    = true
+b0_kind                    = "uniform"
+b0_uniform                 = [1.0e-9, 0.0, 0.0]
+c_h                        = 1.0
+c_r                        = 0.5
+alpha_b                    = 0.5
+# Hall term (Phase 186)
+hall_enabled               = true
+hall_eta                   = 0.1
+# Ambipolar (Phase 194, desactivado en este demo)
+ambipolar_diffusion_enabled = false
+ambipolar_eta              = 0.0
+
+[gravity]
+solver = "bh"
+theta  = 0.5
+eps    = 0.01
+
+[output]
+snapshot_format = "jsonl"
+snapshot_interval = 50

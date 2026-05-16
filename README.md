@@ -131,6 +131,7 @@
 | **Cosmología ΛCDM** | Friedmann ΛCDM, factor de escala `a(t)` por RK4, momentum canónico, diagnósticos `a/z/v_rms/δ_rms`; fallback EdS |
 | **ICs cosmológicas** | Retícula cúbica + ZA (**1LPT**) y **2LPT**; transfer **Eisenstein–Hu no-wiggle**, **tabulada** (CLASS/CAMB) o ley de potencia; normalización σ₈ con `NormalizationMode { Legacy, Z0Sigma8 }` (Phase 40) |
 | **WDM/FDM en ICs** | `[dark_matter]` aplica cutoff warm/fuzzy sobre amplitudes ZA/2LPT; half-mode y proxy de presión cuántica FDM (Phase 184) |
+| **MHD Hall term** | `apply_hall_drift` — rotación de Rodrigues de **B** alrededor de `v×B`; conserva `|B|`; dispatch AVX2/AVX512/Rayon; opt-in `[mhd] hall_enabled = true, hall_eta = ...` (Phase 186) |
 | **P(k) + corrección** | Estimador CIC + deconvolución; módulo [`pk_correction`](crates/gadget-ng-analysis/src/pk_correction.rs) con `A_grid = 2·V²/N⁹` (Phase 34) + `R(N)` (Phase 35) para amplitud absoluta, validado vs 🔭 CLASS (Phase 38) y en alta resolución hasta `N=128³` (Phase 41) |
 | **MPI** | `ParallelRuntime` con SFC (**Hilbert 3D**), Locally Essential Trees (LET), overlap compute/comm |
 | **SPH Gadget-2** | Kernel Wendland C2, densidad adaptativa; **entropía A=P/ρ^γ** (Springel & Hernquist 2002); **viscosidad de señal** + **limitador de Balsara** (∇·v, ∇×v); integrador KDK-entropía + `courant_dt`; validado en tubo de Sod + **colapso de Evrard** (Phase 166) |
@@ -190,6 +191,7 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation (SIMD-without-Rayon) | ✅ opt-in `cuda_mhd` — `mhd_braginskii_viscosity_kernel`; wired en `step_sph` |
 | MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update (SIMD-without-Rayon) | ✅ opt-in `cuda_mhd` — `mhd_reconnection_streaming_dynamo_kernel`; wired en `step_sph` |
 | MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ opt-in `[accelerators] cuda_cr = true` — `mhd_cr_streaming_o2_kernel` + `mhd_cr_backreaction_kernel`; wired en `step_sph` |
+| MHD Hall term (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 Rodrigues rotation, conserva \|B\|, sin heating | ⚠️ CPU only — CUDA stub pendiente (AP-20) |
 | MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_ambipolar_kernel`; wired en `step_mhd` |
 | MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_two_fluid_kernel`; wired en `step_sph` |
 | SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ✅ opt-in `cuda_cooling` — `cuda_cooling_apply`; wired en `step_sph` |

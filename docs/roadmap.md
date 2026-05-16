@@ -1,7 +1,9 @@
 # Roadmap
 
-> **Estado al 16 de mayo de 2026:** Phases 1–185 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
-> AP-16/AP-17 CUDA: cierre completo de brechas CUDA (wirings de química RT, reionización, MHD CR, IGM percentiles reales, kernel anisótropo O(N²)); todos los tests `--ignored` pasan en sm_61. Sin brechas CUDA documentadas.
+> **Estado al 16 de mayo de 2026:** Phases 1–186 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
+> AP-16/AP-17/AP-18 CUDA: cierre completo de brechas CUDA; todos los tests `--ignored` pasan en sm_61.
+> AP-19: pipeline SPH CUDA persistente — reduce PCIe en 65%, fix físico Balsara en fuerzas.
+> Phase 186: MHD Hall term — rotación de B sin disipación (`apply_hall_drift`, Rodrigues, AVX2/AVX512, 7 tests physics).
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
 > Phase 170: CR Transport (streaming lungo B + backreaction).
@@ -213,6 +215,7 @@ Posibles extensiones:
 - (183) **AGN spin + mergers**: `BlackHole::spin`, eficiencia Kerr, crecimiento por acreción, fusiones BH con recoil y tests `phase183_agn_spin_mergers.rs`.
 - (184) **Warm / fuzzy dark matter**: `[dark_matter]`, transfer WDM/FDM, half-mode, proxy de presión cuántica y cutoff en ICs ZA/2LPT con tests `phase184_wdm_fdm.rs`.
 - (185) **f(R) no lineal en malla**: `[modified_gravity].nonlinear_mesh`, screening chameleon por celda PM, quinta fuerza `ρ×S(x)/3` y tests `phase185_fr_nonlinear_mesh.rs`.
+- (186) **MHD Hall term**: `apply_hall_drift` en `gadget-ng-mhd/src/nonideal.rs` — rotación de Rodrigues conservando `|B|`, dispatch Rayon/AVX2/AVX-512F; `hall_enabled`/`hall_eta` en `MhdSection`; wired en `step_mhd`; 7 tests en `phase186_mhd_hall.rs`; `Vec3::cross` añadido a `gadget-ng-core`. Completa la trilogía NIMHD: resistividad óhmica (Phase 135) + Hall (Phase 186) + ambipolar (Phase 194).
 - (190) **PBH seeding para JWST**: `[sph.agn] pbh_seeding_enabled`, selección determinista de hosts DM por hash de `global_id`, semillas ligeras `pbh_m_seed` que crecen con el modelo AGN existente.
 - (191) **Runtime UX + experimentos**: overrides CLI para física 100–190, validación de combinaciones, presets bajo `configs/experiments/`, matriz `experiments/phase191_runtime_matrix.toml` y runner `scripts/run_phase191_experiments.sh`.
 - (192) **Polvo activo COLIBRE-like**: especies `single`/`silicate_graphite`, opacidad UV efectiva por mezcla y shielding dinámico de H₂ vía `update_h2_fraction_with_dust`.

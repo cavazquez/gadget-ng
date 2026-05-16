@@ -74,6 +74,11 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
         }
     }
 
+    // Hall drift (Phase 186): rota B sin disipar energía magnética.
+    if cfg.mhd.hall_enabled && cfg.mhd.hall_eta > 0.0 {
+        gadget_ng_mhd::apply_hall_drift(local, cfg.mhd.hall_eta, dt_mhd);
+    }
+
     // Magnetic forces: CUDA si `cuda_mhd` opt-in, else CPU.
     // El kernel CUDA retorna aceleraciones puras (sin dt), mismas unidades que CPU.
     #[cfg(feature = "cuda")]
@@ -623,8 +628,7 @@ pub(crate) fn step_sph(
                         && l > 0.0
                     {
                         for p in local.iter_mut() {
-                            p.position =
-                                gadget_ng_core::cosmology::wrap_position(p.position, l);
+                            p.position = gadget_ng_core::cosmology::wrap_position(p.position, l);
                         }
                     }
 
@@ -636,9 +640,9 @@ pub(crate) fn step_sph(
                                 p.velocity += p.acceleration * cf_sph.kick_half2;
                                 if p.ptype == gadget_ng_core::ParticleType::Gas {
                                     p.velocity += acc2[i] * cf_sph.kick_half2;
-                                    p.internal_energy =
-                                        (p.internal_energy + du_dt2[i] * cf_sph.kick_half2)
-                                            .max(0.0);
+                                    p.internal_energy = (p.internal_energy
+                                        + du_dt2[i] * cf_sph.kick_half2)
+                                        .max(0.0);
                                 }
                             }
                         }

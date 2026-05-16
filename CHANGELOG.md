@@ -8,6 +8,39 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CUDA (`gadget-ng-cuda`) — AP-19
+
+- **Pipeline SPH persistente:** `try_sph_density_and_forces_core` reescrito con mapa de 21 slots
+  unificado. El SoA se sube al device una sola vez; `rho`, `pressure`, `h_out`, `balsara` permanecen
+  en device entre kernels (sin `pool.reset()` intermedio). Transferencias H→D: −65%
+  (116 → 41 bytes/partícula). Break-even teórico: N≈300 → N≈120–150.
+- **Fix físico Balsara:** el tercer kernel se cambia de `cuda_sph_forces` (clásico, ignoraba Balsara)
+  a `cuda_sph_gadget2_forces`, aplicando el limitador de viscosidad correctamente.
+- **`Vec3::cross`** añadido en `gadget-ng-core::Vec3`.
+
+### MHD (`gadget-ng-mhd`) — Phase 186
+
+- **Hall drift:** `apply_hall_drift(particles, eta_hall, dt)` en `nonideal.rs`. Rota `B` alrededor
+  del eje `v × B` con fórmula de Rodrigues, conservando `|B|` exactamente sin disipar energía
+  interna. Dispatch Rayon / AVX2+FMA / AVX-512F.
+- **`apply_hall_drift` exportada** desde `lib.rs`.
+
+### Core (`gadget-ng-core`) — Phase 186
+
+- **`Vec3::cross`**: producto vectorial `self × other` añadido al tipo `Vec3`.
+
+### CLI (`gadget-ng-cli`) — Phase 186
+
+- **Wiring Hall drift** en `step_mhd` (context.rs): bloque `if cfg.mhd.hall_enabled && cfg.mhd.hall_eta > 0.0`.
+- **Nuevos campos TOML** en `MhdSection`: `hall_enabled` (bool, default `false`),
+  `hall_eta` (f64, default `0.0`).
+- **Ejemplo de configuración** `configs/experiments/phase186_hall_mhd.toml`.
+
+### Tests (`gadget-ng-physics`) — Phase 186
+
+- `phase186_mhd_hall.rs`: 7 tests físicos (conservación `|B|`, rotación direccional,
+  no-efecto en DM, η=0, v∥B, 100 pasos, energía interna constante). Todos pasan.
+
 ### CLI (`gadget-ng-cli`) — AP-17
 
 - **Wiring Dedner CUDA** en `step_mhd`: `compute_dedner_div_b` CPU + `try_dedner_cleaning`

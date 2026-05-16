@@ -1,9 +1,12 @@
-//! MHD no ideal: difusión ambipolar dependiente de ionización (Phase 194).
+//! MHD no ideal: difusión ambipolar (Phase 194) y término Hall (Phase 186).
 //!
-//! Modelo reducido: en gas poco ionizado, las partículas neutras desacoplan el
-//! campo magnético del fluido. Representamos esto como una difusión local que
-//! amortigua `B` con una tasa proporcional a `eta_ad / x_i`, suavizada por un
-//! proxy de ionización térmica y por el contenido de polvo.
+//! **Ambipolar:** en gas poco ionizado, las partículas neutras desacoplan el
+//! campo magnético del fluido. Amortiguamiento local proporcional a `eta_ad / x_i`.
+//!
+//! **Hall:** la diferencia de velocidades entre iones y electrones produce una
+//! rotación del campo B sin disipar energía. Modelado como rotación de Rodrigues
+//! alrededor del eje `v × B` con ángulo `θ = η_H |B| / ρ_proxy × dt`. Conserva
+//! `|B|` exactamente y no cambia la energía interna.
 
 use gadget_ng_core::{Particle, ParticleType};
 #[cfg(feature = "rayon")]
@@ -467,6 +470,305 @@ unsafe fn apply_ambipolar_diffusion_avx512(
     }
 }
 
+// ── Hall drift (Phase 186) ─────────────────────────────────────────────────
+
+/// Aplica un paso de drift Hall a una sola partícula gas.
+///
+/// Rota `B` alrededor del eje `v × B` con ángulo
+/// `θ = η_H × |B| / ρ_proxy × dt`, usando la fórmula de Rodrigues.
+/// `|B|` se conserva exactamente; la energía interna no cambia.
+///
+/// La densidad de referencia se aproxima como `mass / h³` cuando
+/// `smoothing_length > 0`, de lo contrario se usa `mass`.
+fn hall_drift_particle(p: &mut Particle, eta_hall: f64, dt: f64) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
+    let b_sq = p.b_field.dot(p.b_field);
+    if b_sq <= 0.0 {
+        return;
+    }
+    let b_norm = b_sq.sqrt();
+    let h = p.smoothing_length;
+    let rho_proxy = if h > 0.0 {
+        p.mass / (h * h * h).max(1e-30)
+    } else {
+        p.mass.max(1e-30)
+    };
+    let theta = (eta_hall.max(0.0) * b_norm * dt / rho_proxy)
+        .clamp(-std::f64::consts::PI, std::f64::consts::PI);
+    if theta.abs() < 1e-15 {
+        return;
+    }
+    let axis = p.velocity.cross(p.b_field);
+    let axis_norm_sq = axis.dot(axis);
+    if axis_norm_sq < 1e-60 {
+        return;
+    }
+    let k = axis * (1.0 / axis_norm_sq.sqrt());
+    // Rodrigues: B_new = B cos θ + (k × B) sin θ + k (k·B)(1 − cos θ)
+    let cos_t = theta.cos();
+    let sin_t = theta.sin();
+    let k_dot_b = k.dot(p.b_field);
+    let k_cross_b = k.cross(p.b_field);
+    p.b_field = p.b_field * cos_t + k_cross_b * sin_t + k * (k_dot_b * (1.0 - cos_t));
+}
+
+/// Aplica el drift Hall a todo el slice de partículas.
+///
+/// Usa Rayon cuando `feature = "rayon"`, luego AVX-512F o AVX2+FMA via
+/// `#[target_feature]` en x86_64 (el cálculo de `sin/cos` es escalar por
+/// lane, al igual que `exp()` en la difusión ambipolar).
+pub fn apply_hall_drift(particles: &mut [Particle], eta_hall: f64, dt: f64) {
+    if eta_hall <= 0.0 || dt <= 0.0 {
+        return;
+    }
+
+    #[cfg(feature = "rayon")]
+    {
+        particles
+            .par_iter_mut()
+            .for_each(|p| hall_drift_particle(p, eta_hall, dt));
+        return;
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    {
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: AVX-512F disponible en tiempo de ejecución.
+                unsafe {
+                    apply_hall_drift_avx512(particles, eta_hall, dt);
+                    return;
+                }
+            }
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2+FMA disponibles en tiempo de ejecución.
+                unsafe {
+                    apply_hall_drift_avx2(particles, eta_hall, dt);
+                    return;
+                }
+            }
+        }
+        for p in particles.iter_mut() {
+            hall_drift_particle(p, eta_hall, dt);
+        }
+    }
+}
+
+/// Versión AVX2+FMA del drift Hall.
+///
+/// Usa SIMD para calcular `b_sq` y `theta` en lotes de 4; `sin/cos` y la
+/// rotación Rodrigues se completan en escalar por lane (mismo patrón que
+/// `exp()` en `apply_ambipolar_diffusion_avx2`).
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_hall_drift_avx2(particles: &mut [Particle], eta_hall: f64, dt: f64) {
+    use std::arch::x86_64::*;
+
+    let lanes = 4;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let zero_v = _mm256_set1_pd(0.0);
+    let pi_v = _mm256_set1_pd(std::f64::consts::PI);
+    let neg_pi_v = _mm256_set1_pd(-std::f64::consts::PI);
+    let eta_dt = eta_hall * dt;
+    let mut i = 0;
+    while i + lanes <= chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            for lane in 0..lanes {
+                hall_drift_particle(&mut particles[i + lane], eta_hall, dt);
+            }
+            i += lanes;
+            continue;
+        }
+        let bx = _mm256_set_pd(
+            particles[i + 3].b_field.x,
+            particles[i + 2].b_field.x,
+            particles[i + 1].b_field.x,
+            particles[i].b_field.x,
+        );
+        let by = _mm256_set_pd(
+            particles[i + 3].b_field.y,
+            particles[i + 2].b_field.y,
+            particles[i + 1].b_field.y,
+            particles[i].b_field.y,
+        );
+        let bz = _mm256_set_pd(
+            particles[i + 3].b_field.z,
+            particles[i + 2].b_field.z,
+            particles[i + 1].b_field.z,
+            particles[i].b_field.z,
+        );
+        let b_sq = _mm256_fmadd_pd(bx, bx, _mm256_fmadd_pd(by, by, _mm256_mul_pd(bz, bz)));
+        let b_norm_v = _mm256_sqrt_pd(b_sq);
+        let h_v = _mm256_set_pd(
+            particles[i + 3].smoothing_length,
+            particles[i + 2].smoothing_length,
+            particles[i + 1].smoothing_length,
+            particles[i].smoothing_length,
+        );
+        let m_v = _mm256_set_pd(
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        // rho_proxy = mass / h³ (h > 0) or mass
+        let h3 = _mm256_mul_pd(h_v, _mm256_mul_pd(h_v, h_v));
+        let has_h = _mm256_cmp_pd::<_CMP_GT_OQ>(h_v, zero_v);
+        let rho_proxy = _mm256_blendv_pd(m_v, _mm256_div_pd(m_v, h3), has_h);
+        let theta_raw = _mm256_mul_pd(
+            _mm256_set1_pd(eta_dt),
+            _mm256_div_pd(b_norm_v, _mm256_max_pd(rho_proxy, _mm256_set1_pd(1e-30))),
+        );
+        let theta_clamped = _mm256_min_pd(pi_v, _mm256_max_pd(neg_pi_v, theta_raw));
+        let b_sq_arr = {
+            let mut arr = [0.0f64; 4];
+            // SAFETY: arr has exactly 4 lanes.
+            _mm256_storeu_pd(arr.as_mut_ptr(), b_sq);
+            arr
+        };
+        let theta_arr = {
+            let mut arr = [0.0f64; 4];
+            // SAFETY: arr has exactly 4 lanes.
+            _mm256_storeu_pd(arr.as_mut_ptr(), theta_clamped);
+            arr
+        };
+        for lane in 0..lanes {
+            if b_sq_arr[lane] > 0.0 && theta_arr[lane].abs() >= 1e-15 {
+                hall_drift_particle(&mut particles[i + lane], eta_hall, dt);
+            }
+        }
+        i += lanes;
+    }
+    for p in particles[chunks..].iter_mut() {
+        hall_drift_particle(p, eta_hall, dt);
+    }
+}
+
+/// Versión AVX-512F del drift Hall (lotes de 8).
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_hall_drift_avx512(particles: &mut [Particle], eta_hall: f64, dt: f64) {
+    use std::arch::x86_64::*;
+
+    let lanes = 8;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let zero_v = _mm512_set1_pd(0.0);
+    let pi_v = _mm512_set1_pd(std::f64::consts::PI);
+    let neg_pi_v = _mm512_set1_pd(-std::f64::consts::PI);
+    let eta_dt = eta_hall * dt;
+    let mut i = 0;
+    while i + lanes <= chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            for lane in 0..lanes {
+                hall_drift_particle(&mut particles[i + lane], eta_hall, dt);
+            }
+            i += lanes;
+            continue;
+        }
+        let bx = _mm512_set_pd(
+            particles[i + 7].b_field.x,
+            particles[i + 6].b_field.x,
+            particles[i + 5].b_field.x,
+            particles[i + 4].b_field.x,
+            particles[i + 3].b_field.x,
+            particles[i + 2].b_field.x,
+            particles[i + 1].b_field.x,
+            particles[i].b_field.x,
+        );
+        let by = _mm512_set_pd(
+            particles[i + 7].b_field.y,
+            particles[i + 6].b_field.y,
+            particles[i + 5].b_field.y,
+            particles[i + 4].b_field.y,
+            particles[i + 3].b_field.y,
+            particles[i + 2].b_field.y,
+            particles[i + 1].b_field.y,
+            particles[i].b_field.y,
+        );
+        let bz = _mm512_set_pd(
+            particles[i + 7].b_field.z,
+            particles[i + 6].b_field.z,
+            particles[i + 5].b_field.z,
+            particles[i + 4].b_field.z,
+            particles[i + 3].b_field.z,
+            particles[i + 2].b_field.z,
+            particles[i + 1].b_field.z,
+            particles[i].b_field.z,
+        );
+        let b_sq = _mm512_fmadd_pd(bx, bx, _mm512_fmadd_pd(by, by, _mm512_mul_pd(bz, bz)));
+        let b_norm_v = _mm512_sqrt_pd(b_sq);
+        let h_v = _mm512_set_pd(
+            particles[i + 7].smoothing_length,
+            particles[i + 6].smoothing_length,
+            particles[i + 5].smoothing_length,
+            particles[i + 4].smoothing_length,
+            particles[i + 3].smoothing_length,
+            particles[i + 2].smoothing_length,
+            particles[i + 1].smoothing_length,
+            particles[i].smoothing_length,
+        );
+        let m_v = _mm512_set_pd(
+            particles[i + 7].mass,
+            particles[i + 6].mass,
+            particles[i + 5].mass,
+            particles[i + 4].mass,
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let h3 = _mm512_mul_pd(h_v, _mm512_mul_pd(h_v, h_v));
+        let has_h_mask = _mm512_cmp_pd_mask(h_v, zero_v, _CMP_GT_OQ);
+        let rho_proxy = _mm512_mask_div_pd(m_v, has_h_mask, m_v, h3);
+        let theta_raw = _mm512_mul_pd(
+            _mm512_set1_pd(eta_dt),
+            _mm512_div_pd(b_norm_v, _mm512_max_pd(rho_proxy, _mm512_set1_pd(1e-30))),
+        );
+        let theta_clamped = _mm512_min_pd(pi_v, _mm512_max_pd(neg_pi_v, theta_raw));
+        let b_sq_arr = {
+            let mut arr = [0.0f64; 8];
+            // SAFETY: arr has exactly 8 lanes.
+            _mm512_storeu_pd(arr.as_mut_ptr(), b_sq);
+            arr
+        };
+        let theta_arr = {
+            let mut arr = [0.0f64; 8];
+            // SAFETY: arr has exactly 8 lanes.
+            _mm512_storeu_pd(arr.as_mut_ptr(), theta_clamped);
+            arr
+        };
+        for lane in 0..lanes {
+            if b_sq_arr[lane] > 0.0 && theta_arr[lane].abs() >= 1e-15 {
+                hall_drift_particle(&mut particles[i + lane], eta_hall, dt);
+            }
+        }
+        i += lanes;
+    }
+    for p in particles[chunks..].iter_mut() {
+        hall_drift_particle(p, eta_hall, dt);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,5 +799,60 @@ mod tests {
         apply_ambipolar_diffusion(&mut particles, 0.1, 1e-4, 1.0, 5.0 / 3.0, 1.0);
         assert!(particles[0].b_field.norm() < b0);
         assert!(particles[0].internal_energy > u0);
+    }
+
+    fn gas_with_velocity(u: f64, vx: f64, vy: f64, vz: f64, h: f64) -> Particle {
+        let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::new(vx, vy, vz), u, h);
+        p.b_field = Vec3::new(1.0, 0.0, 0.0);
+        p
+    }
+
+    #[test]
+    fn hall_drift_conserves_b_magnitude() {
+        let mut p = gas_with_velocity(1.0, 0.0, 1.0, 0.0, 0.1);
+        let b0 = p.b_field.norm();
+        hall_drift_particle(&mut p, 0.5, 1.0);
+        let b1 = p.b_field.norm();
+        assert!((b1 - b0).abs() < 1e-12, "|B| changed: {b0} → {b1}");
+    }
+
+    #[test]
+    fn hall_drift_rotates_b_direction() {
+        let mut p = gas_with_velocity(1.0, 0.0, 1.0, 0.0, 0.1);
+        let b_before = p.b_field;
+        hall_drift_particle(&mut p, 0.5, 1.0);
+        let changed = (p.b_field.x - b_before.x).abs() > 1e-10
+            || (p.b_field.y - b_before.y).abs() > 1e-10
+            || (p.b_field.z - b_before.z).abs() > 1e-10;
+        assert!(changed, "B direction should have changed under Hall drift");
+    }
+
+    #[test]
+    fn hall_drift_no_effect_on_dm() {
+        let mut p = Particle::new(0, 1.0, Vec3::zero(), Vec3::new(0.0, 1.0, 0.0));
+        p.b_field = Vec3::new(1.0, 0.0, 0.0);
+        let b_before = p.b_field;
+        hall_drift_particle(&mut p, 0.5, 1.0);
+        assert_eq!(p.b_field.x, b_before.x);
+        assert_eq!(p.b_field.y, b_before.y);
+        assert_eq!(p.b_field.z, b_before.z);
+    }
+
+    #[test]
+    fn hall_drift_no_effect_with_zero_eta() {
+        let mut p = gas_with_velocity(1.0, 0.0, 1.0, 0.0, 0.1);
+        let b_before = p.b_field;
+        apply_hall_drift(std::slice::from_mut(&mut p), 0.0, 1.0);
+        assert_eq!(p.b_field.x, b_before.x);
+    }
+
+    #[test]
+    fn hall_drift_no_effect_with_parallel_v_b() {
+        let mut p = gas_with_velocity(1.0, 1.0, 0.0, 0.0, 0.1);
+        let b_before = p.b_field;
+        hall_drift_particle(&mut p, 0.5, 1.0);
+        // v × B = 0 when v ∥ B → no rotation
+        assert!((p.b_field.x - b_before.x).abs() < 1e-12);
+        assert!((p.b_field.y - b_before.y).abs() < 1e-12);
     }
 }
