@@ -1,6 +1,7 @@
 # Roadmap
 
-> **Estado al 12 de mayo de 2026:** Phases 1–185 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
+> **Estado al 16 de mayo de 2026:** Phases 1–185 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
+> AP-16/AP-17 CUDA: cierre completo de brechas CUDA (wirings de química RT, reionización, MHD CR, IGM percentiles reales, kernel anisótropo O(N²)); todos los tests `--ignored` pasan en sm_61. Sin brechas CUDA documentadas.
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
 > Phase 170: CR Transport (streaming lungo B + backreaction).

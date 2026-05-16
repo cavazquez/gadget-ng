@@ -447,6 +447,8 @@ fn phase52_fof_vs_hmf_qualitative() {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deberían fallar");

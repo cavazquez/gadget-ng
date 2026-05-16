@@ -131,3 +131,15 @@ GTX 1060 sm_61 with CUDA 12.4. Two bugs were fixed during validation
 | Anisotropic O(N²) CUDA | `mhd_anisotropic_pair_kernel` implementado; `try_anisotropic_conduction` + `try_cr_diffusion_anisotropic` reemplazan campo-medio |
 
 Remaining gaps: ninguno conocido tras AP-17.
+
+---
+
+## Cierre formal — 2026-05-16
+
+**AP-03 a AP-17 completados.** Todos los kernels CUDA tienen:
+
+- Tests `#[ignore]` que pasan en NVIDIA GTX 1060 (sm_61, CUDA 12.4).
+- Wiring opt-in en `gadget-ng-cli` bajo `[accelerators]` del TOML de configuración.
+- Cobertura de parity documentada en `docs/reports/2026-05-simd-cuda-coverage.md`.
+
+`cargo test --workspace` pasa con 0 regresiones en la revisión de consolidación post AP-17 (2026-05-16).

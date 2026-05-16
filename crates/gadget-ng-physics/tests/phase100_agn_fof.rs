@@ -310,6 +310,8 @@ fn agn_feedback_applies_near_bh() {
         pos: Vec3::new(5.0, 5.0, 5.0),
         mass: 1e7,
         accretion_rate: 0.1,
+        spin: 0.0,
+        velocity: Vec3::zero(),
     }];
 
     let u_before: Vec<f64> = particles.iter().map(|p| p.internal_energy).collect();

@@ -77,6 +77,8 @@ fn make_config_uniform_sphere() -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
@@ -112,6 +114,8 @@ fn make_config_plummer() -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
@@ -1033,6 +1037,8 @@ fn make_config_plummer_a(a: f64, seed: u64) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

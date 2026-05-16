@@ -72,6 +72,8 @@ fn distributed_tree_serial_kinetic_bounded() {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
 
     let rt = SerialRuntime;
@@ -169,6 +171,8 @@ fn halo_exchange_serial_returns_empty() {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let rt = SerialRuntime;

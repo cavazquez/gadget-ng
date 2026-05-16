@@ -76,6 +76,8 @@ fn build_initial_particles() -> Vec<Particle> {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
     build_particles(&cfg).expect("ICs no deben fallar")
 }

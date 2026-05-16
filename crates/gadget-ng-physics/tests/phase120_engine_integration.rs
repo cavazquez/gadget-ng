@@ -84,6 +84,8 @@ fn agn_bimodal_low_edd_radio_mode() {
         pos: Vec3::new(1.0, 0.0, 0.0),
         mass: 1e8,
         accretion_rate: 1e-12,
+        spin: 0.0,
+        velocity: Vec3::zero(),
     };
     let mut particles = vec![gas(0, 0.5)];
     particles[0].position = Vec3::new(1.5, 0.0, 0.0);

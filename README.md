@@ -198,10 +198,10 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ⚠️ smoke/parity ⚡ (HLL Godunov M1, AP-05) |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_chemistry_rates_kernel`; wired en `step_reionization` |
 | RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests (AP-09 CPU cerrado) | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_chemistry_stiff_kernel`; wired en `step_reionization` |
-| RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ⚠️ smoke/parity ⚡ (`rt_igm_temp_kernel`; reduce GPU → t_mean + t_sigma; mediana = aprox; wired en `analyze_cmd.rs`) |
+| RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ✅ opt-in `cuda_rt_chem` — `cuda_rt_igm_temp_full`: mean+sigma+percentiles reales (AP-17); wired en `analyze_cmd.rs` |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_reionization_stats_kernel`; wired en `step_reionization` |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_cm21_field_kernel`; wired en `step_reionization` |
-| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ✅ opt-in `[accelerators] cuda_analysis = true` — luminosidad `try_galaxy_luminosity`; igm_temp `try_igm_temp_profile`; wired en `analyze_cmd.rs` |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ✅ opt-in `cuda_analysis = true` — `try_galaxy_luminosity`, `try_igm_temp_profile`, `try_halo_spin` (spin real AP-17), `try_xray_luminosity` (AP-17, `--xray` flag); wired en `analyze_cmd.rs` |
 | SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ⚠️ smoke/parity ⚡ |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
 | Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ✅ gravedad/PM/SIDM/RT M1/análisis con `use_gpu_cuda`; flags **`[accelerators]`** (`cuda_*`; ver `RunConfig` / CHANGELOG) — validado en hardware NVIDIA GTX 1060 sm_61 (AP-04) |
@@ -209,7 +209,7 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ sin ruta CUDA de producción o paridad GPU aún por cerrar (ver informe de backlog).
 ⚡ = buffers persistentes `CudaPool` (AP-02): sin `cudaMalloc`/`cudaFree` por paso; redimensionamiento automático por duplicación.
 
-**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA GTX 1060 (sm_61, CUDA 12.4); todos los tests `--ignored` pasan con tolerancias documentadas. **AP-04** — cableado opt-in SIDM/RT M1/análisis en CLI con flags `[accelerators]`. **AP-05** — kernel CUDA HLL Godunov M1 completo para RT. **AP-06** — kernels CUDA de análisis (halo spin, luminosidad galáctica, L_X bremsstrahlung). **AP-07** — recorrido LET GPU mono+quad+oct (max\_rel=9.3e-7, 14–378× speedup). **AP-08** — benchmarks Criterion Direct/PM/SPH/MHD/RT/Tree con resultados documentados. Todos **AP-03 a AP-08 cerrados**; ver [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md) y [`docs/reports/2026-05-ap08-cuda-benchmarks.md`](docs/reports/2026-05-ap08-cuda-benchmarks.md). **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver, no una tarea CUDA.
+**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA GTX 1060 (sm_61, CUDA 12.4); todos los tests `--ignored` pasan con tolerancias documentadas. **AP-04** — cableado opt-in SIDM/RT M1/análisis en CLI con flags `[accelerators]`. **AP-05** — kernel CUDA HLL Godunov M1 completo para RT. **AP-06** — kernels CUDA de análisis (halo spin, luminosidad galáctica, L_X bremsstrahlung). **AP-07** — recorrido LET GPU mono+quad+oct (max\_rel=9.3e-7, 14–378× speedup). **AP-08** — benchmarks Criterion Direct/PM/SPH/MHD/RT/Tree con resultados documentados. **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver. **AP-12–AP-14** — química RT (tasas, stiff, reionización/21cm) y MHD CR: kernels CUDA completos + wiring CLI. **AP-16** — cierre de brechas CUDA restantes (Dedner, spin de halos, X-ray, 21cm insitu). **AP-17** — IGM percentiles reales (`cuda_rt_igm_temp_full`), kernel anisótropo O(N²) y correcciones de documentación. Todos **AP-03 a AP-17 cerrados**; sin brechas CUDA documentadas. Ver [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md) y [`docs/reports/2026-05-cuda-ap17-closure.md`](docs/reports/2026-05-cuda-ap17-closure.md).
 
 Nota MHD Dedner: con **`rayon` + `simd`** en **x86/x86_64**, si en tiempo de
 ejecución hay **AVX-512F** o **AVX2+FMA**, `dedner_cleaning_step` usa
@@ -223,8 +223,9 @@ Nota RT chemistry: `rates/cooling` está vectorizado con AVX2/AVX512 en la ruta
 CPU sin Rayon. El paso stiff (`solve_chemistry_implicit`) ya usa dispatch SIMD
 enmascarado por lote y actualización stiff escalar por lane, con tests de paridad
 chunk/cola (**AP-09** en CPU). La complejidad restante es adaptativa por partícula
-(subciclos, ramas moleculares/D/HD, clamps). En **CUDA** siguen abiertas las rutas
-de química RT (tasas, cooling y stiff) y el resto del backlog en
+(subciclos, ramas moleculares/D/HD, clamps). En **CUDA** las rutas de química RT
+(tasas, cooling y stiff) están cerradas desde AP-12/AP-14; reionización/21cm desde
+AP-14/AP-16. Sin brechas CUDA documentadas; ver
 [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md).
 
 **Nota RT — perfil de temperatura IGM** (`crates/gadget-ng-rt/src/igm_temp.rs`,
@@ -236,7 +237,7 @@ vs umbral; si h≤0 no aplica corte) va **en SIMD por lane** en esos bloques. Lu
 varianza, ordenación y percentiles** sobre el subconjunto IGM siguen siendo
 escalar. Con **`rayon`**, los rangos de índices van en paralelo con el mismo
 dispatch por tramo. Se exporta **`U_CODE_TO_ERG_G`** en `chemistry` para compartir
-factor con la química. CUDA sigue ❌ (diagnóstico CPU / JSON in-situ).
+factor con la química. CUDA ✅ opt-in `cuda_rt_chem` — `cuda_rt_igm_temp_full`, percentiles reales (AP-17).
 
 ---
 

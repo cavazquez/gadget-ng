@@ -154,6 +154,8 @@ fn make_config(seed: u64, grid: usize, nm: usize, use_2lpt: bool, use_treepm: bo
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

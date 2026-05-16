@@ -134,6 +134,8 @@ fn build_run_config(n: usize, seed: u64, use_2lpt: bool) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

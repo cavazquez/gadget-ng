@@ -139,6 +139,8 @@ fn base_config(seed: u64, sigma8: f64, use_2lpt: bool) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

@@ -391,6 +391,8 @@ fn phase53_density_profile_from_fof_halo() {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
 
     let particles = build_particles(&cfg).expect("ICs no deben fallar");

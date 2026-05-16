@@ -88,6 +88,8 @@ fn eds_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCon
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
@@ -136,6 +138,8 @@ fn lcdm_config(n: usize, num_steps: u64, dt: f64, a_init: f64, h0: f64) -> RunCo
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

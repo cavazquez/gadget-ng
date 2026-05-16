@@ -108,6 +108,8 @@ fn zel_config(seed: u64, spectral_index: f64, amplitude: f64) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
@@ -369,6 +371,8 @@ fn zel_pk_follows_power_law() {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
 
     let parts = build_particles(&cfg).expect("IC build N16");

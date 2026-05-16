@@ -166,6 +166,8 @@ fn config_2lpt_with_resolution(
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
@@ -236,6 +238,8 @@ fn config_sigma_test(seed: u64, use_2lpt: bool) -> RunConfig {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

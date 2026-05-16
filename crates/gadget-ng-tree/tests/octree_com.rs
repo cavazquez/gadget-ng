@@ -38,6 +38,7 @@ fn root_mass_and_com_match_particles() {
         sidm: Default::default(),
         modified_gravity: Default::default(),
         dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
     let parts = build_particles(&cfg).expect("ic");
     let pos: Vec<Vec3> = parts.iter().map(|p| p.position).collect();

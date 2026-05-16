@@ -156,6 +156,8 @@ fn run_simulation() -> Phase58Result {
         two_fluid: Default::default(),
         sidm: Default::default(),
         modified_gravity: Default::default(),
+        dark_matter: Default::default(),
+        accelerators: Default::default(),
     };
 
     let mut parts = build_particles(&cfg).expect("[phase58] ICs no deben fallar");

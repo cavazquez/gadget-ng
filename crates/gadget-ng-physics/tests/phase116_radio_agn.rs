@@ -11,6 +11,8 @@ fn bh_with_rate(rate: f64) -> BlackHole {
         pos: Vec3::zero(),
         mass: 1e8,
         accretion_rate: rate,
+        spin: 0.0,
+        velocity: Vec3::zero(),
     }
 }
 
@@ -78,6 +80,8 @@ fn quasar_mode_increases_internal_energy() {
         pos: Vec3::zero(),
         mass: 1e8,
         accretion_rate: 1e-3,
+        spin: 0.0,
+        velocity: Vec3::zero(),
     };
     let mut particles = vec![gas_at(0.5)];
     let u_before = particles[0].internal_energy;
@@ -106,6 +110,8 @@ fn radio_mode_changes_velocity_not_energy() {
         pos: Vec3::zero(),
         mass: 1e8,
         accretion_rate: 1e-12,
+        spin: 0.0,
+        velocity: Vec3::zero(),
     };
     let mut particles = vec![gas_at(1.0)];
     let u_before = particles[0].internal_energy;
