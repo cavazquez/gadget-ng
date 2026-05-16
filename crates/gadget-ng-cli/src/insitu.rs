@@ -437,17 +437,57 @@ pub fn maybe_run_insitu(
                     } else {
                         vec![gadget_ng_rt::ChemState::neutral(); gas_particles.len()]
                     };
-                let cm21_params = gadget_ng_rt::Cm21Params::default();
-                let n_mesh = cfg.pk_mesh.max(4);
-                Some(gadget_ng_rt::compute_cm21_output(
-                    &gas_particles,
-                    &chem_for_21cm,
-                    box_size,
-                    z,
-                    n_mesh,
-                    8,
-                    &cm21_params,
-                ))
+
+                // Path CUDA: try_cm21_field devuelve Vec<f64> de delta_tb por partícula.
+                // Se construye un Cm21Output básico (mean/sigma) sin pk_21cm.
+                #[cfg(feature = "cuda")]
+                let cuda_cm21: Option<gadget_ng_rt::Cm21Output> = {
+                    let overdensity: Vec<f64> = gas_particles
+                        .iter()
+                        .map(|p| {
+                            if p.smoothing_length > 0.0 {
+                                p.mass / p.smoothing_length.powi(3)
+                            } else {
+                                0.0
+                            }
+                        })
+                        .collect();
+                    gadget_ng_cuda::CudaRtSolver::try_new_checked()
+                        .ok()
+                        .and_then(|s| {
+                            s.try_cm21_field(&chem_for_21cm, &overdensity, z).ok()
+                        })
+                        .filter(|v| !v.is_empty())
+                        .map(|dtb| {
+                            let n = dtb.len() as f64;
+                            let mean = dtb.iter().sum::<f64>() / n;
+                            let var = dtb.iter().map(|&v| (v - mean) * (v - mean)).sum::<f64>() / n;
+                            gadget_ng_rt::Cm21Output {
+                                z,
+                                delta_tb_mean: mean,
+                                delta_tb_sigma: var.sqrt(),
+                                pk_21cm: Vec::new(),
+                            }
+                        })
+                };
+                #[cfg(not(feature = "cuda"))]
+                let cuda_cm21: Option<gadget_ng_rt::Cm21Output> = None;
+
+                if let Some(cm21) = cuda_cm21 {
+                    Some(cm21)
+                } else {
+                    let cm21_params = gadget_ng_rt::Cm21Params::default();
+                    let n_mesh = cfg.pk_mesh.max(4);
+                    Some(gadget_ng_rt::compute_cm21_output(
+                        &gas_particles,
+                        &chem_for_21cm,
+                        box_size,
+                        z,
+                        n_mesh,
+                        8,
+                        &cm21_params,
+                    ))
+                }
             }
         } else {
             None

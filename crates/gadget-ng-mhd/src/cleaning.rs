@@ -1713,6 +1713,23 @@ fn dedner_pairwise_accumulate_avx512(
     }
 }
 
+/// Calcula solo la divergencia SPH de B para cada partícula gas.
+///
+/// Útil para el path híbrido CPU+GPU donde la divergencia se computa en CPU
+/// y el paso de actualización ψ/B se delega al kernel CUDA `cuda_mhd_dedner_cleaning`.
+/// El array devuelto está en `f32` para coincidir con la firma del wrapper CUDA.
+pub fn compute_dedner_div_b(particles: &[Particle]) -> Vec<f32> {
+    let n = particles.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let rho = dedner_density(particles);
+    let mut div_b_f64 = vec![0.0_f64; n];
+    let mut grad_psi = vec![gadget_ng_core::Vec3::zero(); n];
+    dedner_pairwise_accumulate(particles, &rho, &mut div_b_f64, &mut grad_psi);
+    div_b_f64.iter().map(|&v| v as f32).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

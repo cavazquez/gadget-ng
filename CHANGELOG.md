@@ -8,6 +8,48 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CLI (`gadget-ng-cli`) — AP-17
+
+- **Wiring Dedner CUDA** en `step_mhd`: `compute_dedner_div_b` CPU + `try_dedner_cleaning`
+  GPU bajo `cuda_mhd = true`; fallback a CPU si CUDA no disponible.
+- **Halo spin real** en `analyze --hdf5-catalog`: usa `find_halos_with_membership` +
+  `halo_spin` CPU; path CUDA via `try_halo_spin` + cálculo λ_Peebles desde L/M/R/V.
+  Elimina el placeholder `spin_peebles: 0.0`.
+- **Flag `--xray`**: nueva opción `analyze --xray` → `analyze/xray.json` con luminosidad
+  X bremsstrahlung; path CUDA via `try_xray_luminosity`, fallback CPU `total_xray_luminosity`.
+- **21cm insitu persistido**: `insitu.rs::maybe_run_insitu` intenta `CudaRtSolver::try_cm21_field`
+  para el campo 21cm; construye `Cm21Output` (mean/sigma) que se guarda en `InsituResult.cm21`.
+- **Wiring conducción anisótropa pairwise O(N²)** en `step_sph`: reemplaza `try_scalar_diffusion`
+  (campo-medio AP-16) por `try_anisotropic_conduction` bajo `cuda_mhd = true`.
+- **Wiring CR diffusion anisótropa pairwise O(N²)** en `step_sph`: reemplaza `try_scalar_diffusion`
+  por `try_cr_diffusion_anisotropic` bajo `cuda_mhd = true`.
+
+### CUDA (`gadget-ng-cuda`) — AP-17
+
+- **IGM percentiles reales:** nuevo `rt_igm_compact_kernel` + `cuda_rt_igm_temp_full` que
+  descarga array compacto de temperaturas IGM; sort + `t_median/t_p16/t_p84` en Rust host.
+  `try_igm_temp_profile` actualizado; test `cuda_rt_igm_temp_percentiles_match_cpu` (tol 5%).
+- **`mhd_anisotropic_pair_kernel` O(N²):** kernel Wendland-C6 con
+  `κ_eff = κ_⊥ + (κ_∥ − κ_⊥)cos²θ`; un único kernel sirve para conducción térmica
+  (gamma_m1 > 0) y CR diffusion (gamma_m1 = 0).
+  - `cuda_mhd_anisotropic_conduction` + `try_anisotropic_conduction` — conducción térmica.
+  - `cuda_mhd_cr_diffusion_anisotropic` + `try_cr_diffusion_anisotropic` — difusión CR.
+  - Test `cuda_mhd_anisotropic_conduction_match_cpu` (L2 rel < 5%).
+- **Test `cuda_mhd_dedner_match_cpu`:** valida wiring híbrido Dedner (psi_div dentro del 5%).
+
+### MHD (`gadget-ng-mhd`) — AP-17
+
+- **`compute_dedner_div_b`:** nueva función pública que calcula el array `div_b: Vec<f32>`
+  (density SPH + pairwise accumulate) para uso en el path híbrido Dedner CUDA.
+
+### Documentación — AP-17
+
+- `2026-05-cuda-ap17-closure.md`: reporte de cierre con resultados HW (sm_61).
+- `2026-05-accelerator-parity-pending.md`: tabla AP-17; Braginskii/reconnección marcados
+  como **implementados** (SIMD-without-Rayon ya existía en código).
+- `2026-05-simd-cuda-coverage.md`: filas actualizadas para IGM percentiles, anisotropic O(N²),
+  Braginskii/reconnección.
+
 ### CLI (`gadget-ng-cli`) — AP-16
 
 - **Wiring RT 21cm CUDA** en `step_reionization`: bajo `[accelerators] cuda_rt_chem = true`,

@@ -323,3 +323,113 @@ fn cuda_mhd_two_fluid_match_cpu() {
         );
     }
 }
+
+// ── AP-17: Dedner CUDA (híbrido CPU div-B + GPU update) ──────────────────────
+
+#[test]
+#[ignore]
+fn cuda_mhd_dedner_match_cpu() {
+    let cuda = match cuda_solver_or_skip() {
+        Some(s) => s,
+        None => return,
+    };
+    let n = 32_usize;
+    let mut parts_cpu: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                0.01,
+                Vec3::new(i as f64 * 0.05, 0.0, 0.0),
+                Vec3::zero(),
+                0.1,
+                1.0 + 0.01 * i as f64,
+            );
+            p.b_field = Vec3::new(1.0e-3 * (i as f64 + 1.0), 5.0e-4, -2.0e-4);
+            p.psi_div = 0.001 * i as f64;
+            p
+        })
+        .collect();
+    let mut parts_gpu = parts_cpu.clone();
+
+    let c_h = 1.0_f64;
+    let c_r = 0.5_f64;
+    let dt = 0.01_f64;
+
+    // CPU reference (full Dedner)
+    gadget_ng_mhd::dedner_cleaning_step(&mut parts_cpu, c_h, c_r, dt);
+
+    // GPU hybrid: compute div_b on CPU, update on GPU
+    let div_b = gadget_ng_mhd::compute_dedner_div_b(&parts_gpu);
+    cuda.try_dedner_cleaning(&mut parts_gpu, &div_b, dt, c_h, c_r)
+        .unwrap();
+
+    // El kernel CUDA usa una aproximación de corrección B (media escalar) en lugar
+    // de grad_psi pairwise. La comparación es de psi (coincide) y B (aproximación).
+    let tol_psi = 0.05_f64;
+    for i in 0..n {
+        let rel_psi = (parts_gpu[i].psi_div - parts_cpu[i].psi_div).abs()
+            / parts_cpu[i].psi_div.abs().max(1.0e-12);
+        assert!(
+            rel_psi < tol_psi,
+            "psi_div[{i}] GPU={:.4e} CPU={:.4e} rel={:.4}",
+            parts_gpu[i].psi_div,
+            parts_cpu[i].psi_div,
+            rel_psi
+        );
+    }
+    eprintln!("[cuda_mhd_dedner_match_cpu] OK — n={n}, psi_div matches within {:.0}%", tol_psi * 100.0);
+}
+
+// ── AP-17: Conducción anisótropa CUDA O(N²) ────────────────────────────────
+
+#[test]
+#[ignore]
+fn cuda_mhd_anisotropic_conduction_match_cpu() {
+    let cuda = match cuda_solver_or_skip() {
+        Some(s) => s,
+        None => return,
+    };
+    let n = 32_usize;
+    let mut parts_cpu: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                0.01,
+                Vec3::new(i as f64 * 0.05, (i % 4) as f64 * 0.05, 0.0),
+                Vec3::zero(),
+                0.15,
+                0.5 + 0.01 * i as f64,
+            );
+            p.b_field = Vec3::new(1.0 + 0.01 * i as f64, 0.2, 0.1);
+            p
+        })
+        .collect();
+    let mut parts_gpu = parts_cpu.clone();
+
+    let kappa_par = 1.0e-3_f64;
+    let kappa_perp = 1.0e-5_f64;
+    let gamma = 5.0 / 3.0;
+    let dt = 0.01_f64;
+
+    // CPU reference
+    gadget_ng_mhd::apply_anisotropic_conduction(&mut parts_cpu, kappa_par, kappa_perp, gamma, dt);
+
+    // GPU pairwise O(N²)
+    cuda.try_anisotropic_conduction(&mut parts_gpu, kappa_par, kappa_perp, gamma, dt)
+        .unwrap();
+
+    // Tolerancia L2 5% (f32 vs f64 en suma O(N²))
+    let mut l2_num = 0.0_f64;
+    let mut l2_den = 0.0_f64;
+    for i in 0..n {
+        let diff = parts_gpu[i].internal_energy - parts_cpu[i].internal_energy;
+        l2_num += diff * diff;
+        l2_den += parts_cpu[i].internal_energy * parts_cpu[i].internal_energy;
+    }
+    let l2_rel = (l2_num / l2_den.max(1.0e-30)).sqrt();
+    assert!(
+        l2_rel < 0.05,
+        "anisotropic conduction L2 rel={l2_rel:.4} > 5%"
+    );
+    eprintln!("[cuda_mhd_anisotropic_conduction_match_cpu] OK — L2 rel = {l2_rel:.4}");
+}

@@ -346,6 +346,9 @@ enum Commands {
         /// Calcular luminosidad y colores (B-V, g-r) → analyze/luminosity.json [Phase 118]
         #[arg(long, default_value_t = false)]
         luminosity: bool,
+        /// Calcular luminosidad X bremsstrahlung → analyze/xray.json [AP-17]
+        #[arg(long, default_value_t = false)]
+        xray: bool,
     },
     /// Construye el merger tree conectando catálogos FoF de snapshots consecutivos.
     ///
@@ -1032,6 +1035,7 @@ fn main() -> Result<(), CliError> {
             agn_stats,
             eor_state,
             luminosity,
+            xray,
         } => {
             let params = analyze_cmd::AnalyzeParams {
                 snapshot_dir: &snapshot,
@@ -1051,6 +1055,7 @@ fn main() -> Result<(), CliError> {
                 agn_stats,
                 eor_state,
                 luminosity,
+                xray,
                 cuda_analysis: false,
             };
             analyze_cmd::run_analyze(&params)?;

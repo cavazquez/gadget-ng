@@ -13,9 +13,10 @@
 
 use crate::error::CliError;
 use gadget_ng_analysis::{
-    AnalysisParams, RHO_CRIT_H2, SubfindParams, analyse, concentration_duffy2008,
-    concentration_ludlow2016, find_subhalos, fit_nfw_concentration, galaxy_luminosity,
-    measure_density_profile, r200_from_m200, rho_crit_z, two_point_correlation_fft,
+    AnalysisParams, RHO_CRIT_H2, SpinParams, SubfindParams, analyse, concentration_duffy2008,
+    concentration_ludlow2016, find_halos_with_membership, find_subhalos, fit_nfw_concentration,
+    galaxy_luminosity, halo_spin, measure_density_profile, r200_from_m200, rho_crit_z,
+    total_xray_luminosity, two_point_correlation_fft,
 };
 use gadget_ng_core::{SnapshotFormat, Vec3};
 #[cfg(feature = "hdf5")]
@@ -61,6 +62,8 @@ pub struct AnalyzeParams<'a> {
     pub eor_state: bool,
     /// Calcular función de luminosidad y colores (B-V, g-r) → `analyze/luminosity.json` (Phase 118).
     pub luminosity: bool,
+    /// Calcular luminosidad X bremsstrahlung → `analyze/xray.json` (AP-17).
+    pub xray: bool,
     /// Intentar kernels CUDA para IGM temp y luminosidad (requiere `--features cuda`).
     #[allow(dead_code)]
     pub cuda_analysis: bool,
@@ -86,6 +89,7 @@ impl<'a> Default for AnalyzeParams<'a> {
             agn_stats: false,
             eor_state: false,
             luminosity: false,
+            xray: false,
             cuda_analysis: false,
         }
     }
@@ -556,20 +560,96 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
         let box_mpc_h_cat = params.box_size_mpc_h.unwrap_or(box_size);
         let m_part_cat = omega_m_cat * rho_crit_h2_cat * box_mpc_h_cat.powi(3) / n as f64;
 
-        let halo_entries: Vec<HaloCatalogEntry> = result
-            .halos
+        // Ejecutar FoF con membresía para calcular spin de Peebles por halo.
+        let positions: Vec<Vec3> = data.particles.iter().map(|p| p.position).collect();
+        let velocities: Vec<Vec3> = data.particles.iter().map(|p| p.velocity).collect();
+        let masses: Vec<f64> = data.particles.iter().map(|p| p.mass).collect();
+        let (halos_cat, membership) = find_halos_with_membership(
+            &positions,
+            &velocities,
+            &masses,
+            box_size,
+            params.fof_b,
+            params.min_particles,
+            0.0,
+        );
+
+        // Agrupar índices de partículas por halo para calcular spin.
+        let mut halo_member_ids: Vec<Vec<usize>> = vec![Vec::new(); halos_cat.len()];
+        for (part_idx, halo_opt) in membership.iter().enumerate() {
+            if let Some(h_idx) = *halo_opt
+                && h_idx < halo_member_ids.len()
+            {
+                halo_member_ids[h_idx].push(part_idx);
+            }
+        }
+
+        let spin_params = SpinParams::default();
+        let halo_entries: Vec<HaloCatalogEntry> = halos_cat
             .iter()
-            .map(|h| HaloCatalogEntry {
-                mass: h.n_particles as f64 * m_part_cat,
-                pos: [
-                    h.x_com * box_mpc_h_cat,
-                    h.y_com * box_mpc_h_cat,
-                    h.z_com * box_mpc_h_cat,
-                ],
-                vel: [0.0, 0.0, 0.0],
-                r200: h.r_vir * box_mpc_h_cat,
-                spin_peebles: 0.0,
-                npart: h.n_particles as i64,
+            .enumerate()
+            .map(|(h_idx, h)| {
+                let lambda = if h_idx < halo_member_ids.len()
+                    && !halo_member_ids[h_idx].is_empty()
+                {
+                    let ids = &halo_member_ids[h_idx];
+
+                    #[cfg(feature = "cuda")]
+                    let cuda_spin: Option<f64> = if params.cuda_analysis {
+                        let pos_h: Vec<Vec3> = ids.iter().map(|&i| positions[i]).collect();
+                        let vel_h: Vec<Vec3> = ids.iter().map(|&i| velocities[i]).collect();
+                        let mass_h: Vec<f64> = ids.iter().map(|&i| masses[i]).collect();
+                        let pos_com = [h.x_com, h.y_com, h.z_com];
+                        let vel_com = [h.vx_com, h.vy_com, h.vz_com];
+                        gadget_ng_cuda::CudaAnalysisSolver::try_new_checked()
+                            .ok()
+                            .and_then(|s| {
+                                s.try_halo_spin(&pos_h, &vel_h, &mass_h, pos_com, vel_com).ok()
+                            })
+                            .map(|l_vec| {
+                                let l_mag =
+                                    (l_vec[0] * l_vec[0] + l_vec[1] * l_vec[1] + l_vec[2] * l_vec[2])
+                                        .sqrt();
+                                let r200 = h.r_vir;
+                                let v_vir = if r200 > 0.0 {
+                                    (spin_params.g_newton * h.mass / r200).sqrt()
+                                } else {
+                                    1.0
+                                };
+                                let denom = h.mass * v_vir * r200 * std::f64::consts::SQRT_2;
+                                if denom > 0.0 { l_mag / denom } else { 0.0 }
+                            })
+                    } else {
+                        None
+                    };
+                    #[cfg(not(feature = "cuda"))]
+                    let cuda_spin: Option<f64> = None;
+
+                    if let Some(lam) = cuda_spin {
+                        lam
+                    } else {
+                        let pos_h: Vec<Vec3> = ids.iter().map(|&i| positions[i]).collect();
+                        let vel_h: Vec<Vec3> = ids.iter().map(|&i| velocities[i]).collect();
+                        let mass_h: Vec<f64> = ids.iter().map(|&i| masses[i]).collect();
+                        halo_spin(&pos_h, &vel_h, &mass_h, &spin_params)
+                            .map(|s| s.lambda_peebles)
+                            .unwrap_or(0.0)
+                    }
+                } else {
+                    0.0
+                };
+                HaloCatalogEntry {
+                    mass: h.n_particles as f64 * m_part_cat,
+                    pos: [
+                        h.x_com * box_mpc_h_cat,
+                        h.y_com * box_mpc_h_cat,
+                        h.z_com * box_mpc_h_cat,
+                    ],
+                    vel: [0.0, 0.0, 0.0],
+                    r200: h.r_vir * box_mpc_h_cat,
+                    spin_peebles: lambda,
+                    npart: h.n_particles as i64,
+                }
             })
             .collect();
 
@@ -603,6 +683,36 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
                 Ok(_) => eprintln!("[analyze] Catálogo JSONL escrito en {:?}", jsonl_path),
                 Err(e) => eprintln!("[analyze] Error escribiendo catálogo JSONL: {e}"),
             }
+        }
+    }
+
+    // ── X-ray bremsstrahlung luminosity (AP-17) ───────────────────────────────
+    if params.xray {
+        let gamma_xray = 5.0 / 3.0;
+
+        #[cfg(feature = "cuda")]
+        let l_xray: f64 = if params.cuda_analysis {
+            gadget_ng_cuda::CudaAnalysisSolver::try_new_checked()
+                .ok()
+                .and_then(|s| s.try_xray_luminosity(&data.particles, gamma_xray).ok())
+                .unwrap_or_else(|| total_xray_luminosity(&data.particles, gamma_xray))
+        } else {
+            total_xray_luminosity(&data.particles, gamma_xray)
+        };
+        #[cfg(not(feature = "cuda"))]
+        let l_xray: f64 = total_xray_luminosity(&data.particles, gamma_xray);
+
+        let xray_out = serde_json::json!({ "l_xray_total": l_xray, "gamma": gamma_xray });
+        if let Ok(json) = serde_json::to_string_pretty(&xray_out) {
+            let analyze_dir = params
+                .out_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("analyze");
+            fs::create_dir_all(&analyze_dir).ok();
+            let p = analyze_dir.join("xray.json");
+            let _ = fs::write(&p, &json);
+            eprintln!("[analyze --xray] L_X={:.3e}, escrito en {:?}", l_xray, p);
         }
     }
 

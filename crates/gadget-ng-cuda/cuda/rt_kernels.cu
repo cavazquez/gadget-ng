@@ -744,6 +744,50 @@ __global__ void rt_igm_temp_kernel(
     atomicAdd(g_count,  1);
 }
 
+// ── IGM temp compaction kernel: escribe las temperaturas filtradas en temps_out ──
+__global__ void rt_igm_compact_kernel(
+    const unsigned char* __restrict__ ptype,
+    const float* __restrict__ u,
+    const float* __restrict__ h_sml,
+    const float* __restrict__ mass,
+    const float* __restrict__ x_hi_in,
+    const float* __restrict__ x_hii,
+    const float* __restrict__ x_e_in,
+    const float* __restrict__ x_d,
+    const float* __restrict__ x_hei,
+    const float* __restrict__ x_heii,
+    const float* __restrict__ x_heiii,
+    int n,
+    float gamma,
+    float delta_max,
+    float mean_density,
+    float* __restrict__ temps_out,
+    int*  __restrict__  g_compact_idx
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n || ptype[i] != PTYPE_GAS) return;
+
+    float ui = u[i];
+    if (ui <= 0.0f) return;
+
+    if (delta_max > 0.0f && mean_density > 0.0f && h_sml[i] > 0.0f) {
+        float h = h_sml[i];
+        float rho_sph = mass[i] / (h * h * h);
+        if (rho_sph > delta_max * mean_density) return;
+    }
+
+    float free_h = x_hi_in[i] + x_hii[i] + x_e_in[i];
+    float deut   = x_d[i];
+    float he_p   = x_hei[i] + x_heii[i] + x_heiii[i];
+    float denom  = fmaxf(free_h + deut + he_p, 1.0e-30f);
+    float mu     = (1.0f + 4.0f * F_HE_F + 2.0f * F_D_F) / denom;
+    float T = ui * 1.0e10f * (gamma - 1.0f) * mu * 1.672623e-24f / 1.380649e-16f;
+    if (T <= 0.0f || !isfinite(T)) return;
+
+    int idx = atomicAdd(g_compact_idx, 1);
+    temps_out[idx] = T;
+}
+
 extern "C" int cuda_rt_igm_temp(
     const unsigned char* ptype,
     const float* u,
@@ -807,6 +851,95 @@ extern "C" int cuda_rt_igm_temp(
     cudaFree(dxhi); cudaFree(dxhii); cudaFree(dxe); cudaFree(dxd);
     cudaFree(dxhei); cudaFree(dxheii); cudaFree(dxheiii);
     cudaFree(dsum); cudaFree(dsumsq); cudaFree(dcnt);
+
+    if (n_igm > 0) {
+        *t_mean_out  = sum_T / n_igm;
+        double var   = sum_T2 / n_igm - (*t_mean_out) * (*t_mean_out);
+        *t_sigma_out = sqrt(fmax(var, 0.0));
+    }
+    *n_igm_out = n_igm;
+    return 0;
+}
+
+// ── Variante full: también devuelve array compacto de temperaturas para percentiles ──
+// temps_out debe apuntar a un buffer de tamaño n (host), n_igm_out indica cuántos
+// valores válidos se escribieron en los primeros *n_igm_out slots.
+extern "C" int cuda_rt_igm_temp_full(
+    const unsigned char* ptype,
+    const float* u,
+    const float* h_sml,
+    const float* mass,
+    const float* x_hi,
+    const float* x_hii,
+    const float* x_e,
+    const float* x_d,
+    const float* x_hei,
+    const float* x_heii,
+    const float* x_heiii,
+    int n,
+    float gamma,
+    float delta_max,
+    float mean_density,
+    double* t_mean_out,
+    double* t_sigma_out,
+    int*    n_igm_out,
+    float*  temps_out
+) {
+    *t_mean_out = 0.0; *t_sigma_out = 0.0; *n_igm_out = 0;
+    if (n <= 0) return 0;
+
+    unsigned char* dp;
+    float *du, *dh, *dm, *dxhi, *dxhii, *dxe, *dxd, *dxhei, *dxheii, *dxheiii;
+    double *dsum, *dsumsq;
+    int *dcnt, *dcompact_idx;
+    float *dtemps;
+    if (alloc_copy(&dp,      ptype,   n)) return -1;
+    if (alloc_copy(&du,      u,       n)) return -1;
+    if (alloc_copy(&dh,      h_sml,   n)) return -1;
+    if (alloc_copy(&dm,      mass,    n)) return -1;
+    if (alloc_copy(&dxhi,    x_hi,    n)) return -1;
+    if (alloc_copy(&dxhii,   x_hii,   n)) return -1;
+    if (alloc_copy(&dxe,     x_e,     n)) return -1;
+    if (alloc_copy(&dxd,     x_d,     n)) return -1;
+    if (alloc_copy(&dxhei,   x_hei,   n)) return -1;
+    if (alloc_copy(&dxheii,  x_heii,  n)) return -1;
+    if (alloc_copy(&dxheiii, x_heiii, n)) return -1;
+    CUDA_CHECK(cudaMalloc(&dsum,   sizeof(double)));
+    CUDA_CHECK(cudaMemset(dsum,   0, sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&dsumsq, sizeof(double)));
+    CUDA_CHECK(cudaMemset(dsumsq, 0, sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&dcnt,   sizeof(int)));
+    CUDA_CHECK(cudaMemset(dcnt,   0, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&dcompact_idx, sizeof(int)));
+    CUDA_CHECK(cudaMemset(dcompact_idx, 0, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&dtemps, (size_t)n * sizeof(float)));
+
+    int blocks = (n + RT_BLOCK_SIZE - 1) / RT_BLOCK_SIZE;
+    rt_igm_temp_kernel<<<blocks, RT_BLOCK_SIZE>>>(
+        dp, du, dh, dm, dxhi, dxhii, dxe, dxd, dxhei, dxheii, dxheiii,
+        n, gamma, delta_max, mean_density,
+        dsum, dsumsq, dcnt);
+    rt_igm_compact_kernel<<<blocks, RT_BLOCK_SIZE>>>(
+        dp, du, dh, dm, dxhi, dxhii, dxe, dxd, dxhei, dxheii, dxheiii,
+        n, gamma, delta_max, mean_density,
+        dtemps, dcompact_idx);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    double sum_T = 0.0, sum_T2 = 0.0;
+    int n_igm = 0;
+    CUDA_CHECK(cudaMemcpy(&sum_T,  dsum,   sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&sum_T2, dsumsq, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&n_igm,  dcnt,   sizeof(int),    cudaMemcpyDeviceToHost));
+    if (n_igm > 0) {
+        CUDA_CHECK(cudaMemcpy(temps_out, dtemps, (size_t)n_igm * sizeof(float), cudaMemcpyDeviceToHost));
+    }
+
+    cudaFree(dp); cudaFree(du); cudaFree(dh); cudaFree(dm);
+    cudaFree(dxhi); cudaFree(dxhii); cudaFree(dxe); cudaFree(dxd);
+    cudaFree(dxhei); cudaFree(dxheii); cudaFree(dxheiii);
+    cudaFree(dsum); cudaFree(dsumsq); cudaFree(dcnt);
+    cudaFree(dcompact_idx); cudaFree(dtemps);
 
     if (n_igm > 0) {
         *t_mean_out  = sum_T / n_igm;

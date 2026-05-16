@@ -676,10 +676,12 @@ impl CudaRtSolver {
             let mut t_mean = 0.0_f64;
             let mut t_sigma = 0.0_f64;
             let mut n_igm = 0_i32;
+            // Buffer para temperaturas filtradas (máximo n elementos).
+            let mut temps_buf = vec![0.0_f32; n];
 
             // SAFETY: todos los slices son válidos y tienen longitud n.
             let code = unsafe {
-                crate::ffi::cuda_rt_igm_temp(
+                crate::ffi::cuda_rt_igm_temp_full(
                     ptype.as_ptr(),
                     u.as_ptr(),
                     h.as_ptr(),
@@ -698,18 +700,32 @@ impl CudaRtSolver {
                     &mut t_mean,
                     &mut t_sigma,
                     &mut n_igm,
+                    temps_buf.as_mut_ptr(),
                 )
             };
-            check_kernel("cuda_rt_igm_temp", code)?;
+            check_kernel("cuda_rt_igm_temp_full", code)?;
+
+            // Calcular percentiles ordenando el array compacto en host.
+            let (t_median, t_p16, t_p84) = if n_igm > 0 {
+                let mut sorted: Vec<f32> = temps_buf[..n_igm as usize].to_vec();
+                sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let m = sorted.len();
+                let percentile = |p: f64| -> f64 {
+                    let idx = ((p / 100.0) * (m - 1) as f64).round() as usize;
+                    sorted[idx.min(m - 1)] as f64
+                };
+                (percentile(50.0), percentile(16.0), percentile(84.0))
+            } else {
+                (t_mean, 0.0, 0.0)
+            };
 
             Ok(gadget_ng_rt::IgmTempBin {
                 z,
                 t_mean,
-                // La mediana se aproxima como la media (el kernel no ordena los valores).
-                t_median: t_mean,
+                t_median,
                 t_sigma,
-                t_p16: 0.0,
-                t_p84: 0.0,
+                t_p16,
+                t_p84,
                 n_particles: n_igm as usize,
             })
         }

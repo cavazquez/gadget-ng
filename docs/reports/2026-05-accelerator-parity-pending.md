@@ -117,6 +117,17 @@ GTX 1060 sm_61 with CUDA 12.4. Two bugs were fixed during validation
 | MHD anisotropic/CR diffusion wired | `mhd_scalar_diffusion_kernel` | wired `step_sph` (`cuda_mhd`); campo-medio aprox |
 | Analysis CUDA wired | `CudaAnalysisSolver` + `try_igm_temp_profile` | wired `analyze_cmd.rs` (`cuda_analysis` flag) |
 
-Remaining gaps: MHD reconnection/Braginskii SIMD-without-Rayon, anisotropic
-transport pairwise SPH CUDA (actualmente campo-medio), exactitud mediana/percentiles
-IGM temp en GPU (requeriría sort GPU o histograma adaptativo).
+## AP-17 additions (May 2026)
+
+| Item | Estado |
+|------|--------|
+| Dedner CUDA wired | `try_dedner_cleaning` (hybrid: CPU div-B + CUDA update) wired en `step_mhd` bajo `cuda_mhd` |
+| Halo spin real | `halo_spin` CPU + `try_halo_spin` CUDA en `analyze_cmd.rs`; `spin_peebles` ya no es 0 |
+| X-ray flag | `--xray` flag + `try_xray_luminosity` CUDA + fallback CPU en `analyze_cmd.rs` |
+| 21cm insitu | `try_cm21_field` CUDA path añadido en `insitu.rs::maybe_run_insitu` (persiste a `InsituResult.cm21`) |
+| IGM percentiles | `cuda_rt_igm_temp_full` devuelve array compacto; sort+percentiles en Rust host |
+| Braginskii SIMD-without-Rayon | **Implementado** — `apply_braginskii_viscosity` tiene ramas AVX2+FMA / AVX-512F sin Rayon en `crates/gadget-ng-mhd/src/braginskii.rs` |
+| Reconnección SIMD-without-Rayon | **Implementado** — `apply_magnetic_reconnection` tiene ramas AVX2+FMA / AVX-512F sin Rayon en `crates/gadget-ng-mhd/src/reconnection.rs` |
+| Anisotropic O(N²) CUDA | `mhd_anisotropic_pair_kernel` implementado; `try_anisotropic_conduction` + `try_cr_diffusion_anisotropic` reemplazan campo-medio |
+
+Remaining gaps: ninguno conocido tras AP-17.

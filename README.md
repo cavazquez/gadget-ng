@@ -186,9 +186,9 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | MHD induction/resistivity | ✅ | ✅ | ✅ AVX2 + AVX512 induction and resistivity pair accumulation | ⚠️ smoke/parity ⚡ |
 | MHD magnetic forces | ✅ | ✅ | ✅ AVX2 + AVX512 pair accumulation | ⚠️ smoke/parity ⚡ |
 | MHD Dedner cleaning | ✅ | ✅ `rayon`: paralelo por gas; sin `simd`, pares `i–j` escalar; con `simd` en x86 (AVX2+FMA o AVX-512F), `dedner_cleaning_step_par_simd` (mismos kernels SIMD por `i` + actualización final SIMD) | ✅ AVX2 + AVX512 density + pairwise inner batch (Wendland kernel) + final-update (`not(rayon)` + `simd`) | ⚠️ smoke/parity ⚡ |
-| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_scalar_diffusion_kernel` (aprox. campo-medio); wired en `step_sph` |
-| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ⚠️ smoke/parity ⚡ |
-| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ⚠️ combined kernel ⚡ |
+| MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_anisotropic_pair_kernel` O(N²) Wendland-C6 (AP-17); wired en `step_sph` |
+| MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation (SIMD-without-Rayon) | ⚠️ smoke/parity ⚡ |
+| MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update (SIMD-without-Rayon) | ⚠️ combined kernel ⚡ |
 | MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ opt-in `[accelerators] cuda_cr = true` — `mhd_cr_streaming_o2_kernel` + `mhd_cr_backreaction_kernel`; wired en `step_sph` |
 | MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_ambipolar_kernel`; wired en `step_mhd` |
 | MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ✅ opt-in `[accelerators] cuda_mhd = true` — `mhd_two_fluid_kernel`; wired en `step_sph` |

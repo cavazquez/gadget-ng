@@ -1008,6 +1008,122 @@ impl CudaMhdSolver {
             Ok(())
         }
     }
+
+    /// Conducción térmica anisótropa O(N²): Wendland-C6, κ_∥/κ_⊥ alineados con B.
+    pub fn try_anisotropic_conduction(
+        &self,
+        particles: &mut [Particle],
+        kappa_par: f64,
+        kappa_perp: f64,
+        gamma: f64,
+        dt: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, kappa_par, kappa_perp, gamma, dt);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut u_out = vec![0.0_f32; n];
+
+            // SAFETY: todos los slices son válidos y tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_anisotropic_conduction(
+                    soa.ptype.as_ptr(),
+                    soa.x.as_ptr(),
+                    soa.y.as_ptr(),
+                    soa.z.as_ptr(),
+                    soa.mass.as_ptr(),
+                    soa.h.as_ptr(),
+                    soa.internal_energy.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    u_out.as_mut_ptr(),
+                    n as i32,
+                    kappa_par as f32,
+                    kappa_perp as f32,
+                    gamma as f32,
+                    dt as f32,
+                    0.0_f32,
+                )
+            };
+            check_kernel("cuda_mhd_anisotropic_conduction", code)?;
+
+            for (p, &u) in particles.iter_mut().zip(&u_out) {
+                if p.is_gas() {
+                    p.internal_energy = u as f64;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// CR diffusion anisótropa O(N²): Wendland-C6, κ_CR alineado con B.
+    pub fn try_cr_diffusion_anisotropic(
+        &self,
+        particles: &mut [Particle],
+        kappa_cr: f64,
+        dt: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, kappa_cr, dt);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let soa = MhdSoa::from_particles(particles);
+            let mut cr_out = vec![0.0_f32; n];
+
+            // SAFETY: todos los slices son válidos y tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_cr_diffusion_anisotropic(
+                    soa.ptype.as_ptr(),
+                    soa.x.as_ptr(),
+                    soa.y.as_ptr(),
+                    soa.z.as_ptr(),
+                    soa.mass.as_ptr(),
+                    soa.h.as_ptr(),
+                    soa.cr.as_ptr(),
+                    soa.bx.as_ptr(),
+                    soa.by.as_ptr(),
+                    soa.bz.as_ptr(),
+                    cr_out.as_mut_ptr(),
+                    n as i32,
+                    kappa_cr as f32,
+                    dt as f32,
+                    0.0_f32,
+                )
+            };
+            check_kernel("cuda_mhd_cr_diffusion_anisotropic", code)?;
+
+            for (p, &cr) in particles.iter_mut().zip(&cr_out) {
+                if p.is_gas() {
+                    p.cr_energy = cr as f64;
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug)]

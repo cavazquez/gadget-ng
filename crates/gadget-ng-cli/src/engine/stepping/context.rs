@@ -104,7 +104,25 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
         gadget_ng_mhd::apply_magnetic_forces(local, dt_mhd);
     }
 
-    gadget_ng_mhd::dedner_cleaning_step(local, cfg.mhd.c_h, cfg.mhd.c_r, dt_mhd);
+    #[cfg(feature = "cuda")]
+    let dedner_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+        let div_b = gadget_ng_mhd::compute_dedner_div_b(local);
+        gadget_ng_cuda::CudaMhdSolver::try_new_checked()
+            .ok()
+            .and_then(|s| {
+                s.try_dedner_cleaning(local, &div_b, dt_mhd, cfg.mhd.c_h, cfg.mhd.c_r)
+                    .ok()
+            })
+            .is_some()
+    } else {
+        false
+    };
+    #[cfg(not(feature = "cuda"))]
+    let dedner_cuda_ok = false;
+
+    if !dedner_cuda_ok {
+        gadget_ng_mhd::dedner_cleaning_step(local, cfg.mhd.c_h, cfg.mhd.c_r, dt_mhd);
+    }
 
     if cfg.mhd.relativistic_mhd {
         gadget_ng_mhd::advance_srmhd(
@@ -670,31 +688,22 @@ pub(crate) fn step_sph(
 
     if cfg.sph.conduction.enabled {
         if cfg.sph.conduction.anisotropic {
-            // CUDA: try_scalar_diffusion como aproximación campo-medio de conducción anisótropa.
-            // Nota: el kernel CUDA usa difusión media (no pares SPH); ver reporte AP-16.
+            // CUDA: try_anisotropic_conduction — kernel pairwise O(N²), Wendland-C6 (AP-17).
             #[cfg(feature = "cuda")]
             let cond_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
-                if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
-                    let u_f32: Vec<f32> = local.iter().map(|p| p.internal_energy as f32).collect();
-                    if let Ok(u_out) = solver.try_scalar_diffusion(
-                        local,
-                        &u_f32,
-                        cfg.simulation.dt,
-                        cfg.sph.conduction.kappa_par,
-                        cfg.sph.conduction.kappa_perp,
-                    ) {
-                        for (p, &u) in local.iter_mut().zip(&u_out) {
-                            if p.ptype == gadget_ng_core::ParticleType::Gas {
-                                p.internal_energy = u as f64;
-                            }
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                gadget_ng_cuda::CudaMhdSolver::try_new_checked()
+                    .ok()
+                    .and_then(|s| {
+                        s.try_anisotropic_conduction(
+                            local,
+                            cfg.sph.conduction.kappa_par,
+                            cfg.sph.conduction.kappa_perp,
+                            cfg.sph.gamma,
+                            cfg.simulation.dt,
+                        )
+                        .ok()
+                    })
+                    .is_some()
             } else {
                 false
             };
@@ -832,31 +841,20 @@ pub(crate) fn step_sph(
                 cfg.simulation.dt,
             );
             if cfg.sph.cr.anisotropic_diffusion && cfg.mhd.enabled {
-                // CUDA: try_scalar_diffusion como aproximación de difusión CR anisótropa.
-                // Nota: campo medio (no pares SPH); ver reporte AP-16.
+                // CUDA: try_cr_diffusion_anisotropic — kernel pairwise O(N²), Wendland-C6 (AP-17).
                 #[cfg(feature = "cuda")]
                 let cr_diff_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
-                    if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
-                        let cr_f32: Vec<f32> = local.iter().map(|p| p.cr_energy as f32).collect();
-                        if let Ok(cr_out) = solver.try_scalar_diffusion(
-                            local,
-                            &cr_f32,
-                            cfg.simulation.dt,
-                            cfg.sph.cr.kappa_cr,
-                            0.0,
-                        ) {
-                            for (p, &cr) in local.iter_mut().zip(&cr_out) {
-                                if p.ptype == gadget_ng_core::ParticleType::Gas {
-                                    p.cr_energy = (cr as f64).max(0.0);
-                                }
-                            }
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
+                    gadget_ng_cuda::CudaMhdSolver::try_new_checked()
+                        .ok()
+                        .and_then(|s| {
+                            s.try_cr_diffusion_anisotropic(
+                                local,
+                                cfg.sph.cr.kappa_cr,
+                                cfg.simulation.dt,
+                            )
+                            .ok()
+                        })
+                        .is_some()
                 } else {
                     false
                 };

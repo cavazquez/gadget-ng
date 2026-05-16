@@ -814,3 +814,143 @@ extern "C" int cuda_mhd_cr_backreaction(
     cudaFree(dax); cudaFree(day); cudaFree(daz);
     return 0;
 }
+
+// ── Conducción anisótropa / CR diffusion O(N²) (AP-17) ───────────────────────────
+//
+// Kernel Wendland-C6 simétrico: h_eff = h_i + h_j (banda completa),
+// kappa_eff = kappa_perp + (kappa_par - kappa_perp) * cos²θ,
+// cos θ  = B̂_i · r̂_ij.
+// delta_scalar_i += kappa_eff * (scalar_j - scalar_i) * W(r, h_eff) * dt
+// Para conducción térmica: scalar = T = (gamma-1)*u.
+// Para CR diffusion:       scalar = cr_energy.
+__device__ inline float wendland_c6_3d(float r, float h) {
+    if (h <= 0.0f) return 0.0f;
+    float q = r / h;
+    if (q >= 2.0f) return 0.0f;
+    float t = 1.0f - 0.5f * q;
+    return (21.0f / (2.0f * 3.14159265f * h * h * h)) * t * t * t * t * (1.0f + 2.0f * q);
+}
+
+__global__ void mhd_anisotropic_pair_kernel(
+    const unsigned char* __restrict__ ptype,
+    const float* __restrict__ px, const float* __restrict__ py, const float* __restrict__ pz,
+    const float* __restrict__ mass,
+    const float* __restrict__ h_sml,
+    const float* __restrict__ scalar_in,  // u para térmica, cr_energy para CR
+    const float* __restrict__ bx, const float* __restrict__ by, const float* __restrict__ bz,
+    float* __restrict__ scalar_out,
+    int n, float kappa_par, float kappa_perp, float gamma_m1, float dt, float periodic_box
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n || ptype[i] != PTYPE_GAS) {
+        if (i < n) scalar_out[i] = scalar_in[i];
+        return;
+    }
+    float si = scalar_in[i];
+    float h_i = fmaxf(h_sml[i], 1.0e-10f);
+    float bx_i = bx[i], by_i = by[i], bz_i = bz[i];
+    float b_mag = sqrtf(bx_i*bx_i + by_i*by_i + bz_i*bz_i);
+    float inv_b = (b_mag > 1.0e-30f) ? 1.0f / b_mag : 0.0f;
+    // T_i or e_cr_i depending on mode (gamma_m1 != 0 → thermal; == 0 → CR)
+    float field_i = (gamma_m1 > 0.0f) ? (gamma_m1 * si) : si;
+
+    float delta = 0.0f;
+    for (int j = 0; j < n; ++j) {
+        if (j == i || ptype[j] != PTYPE_GAS) continue;
+        float dx = px[j] - px[i];
+        float dy = py[j] - py[i];
+        float dz = pz[j] - pz[i];
+        if (periodic_box > 0.0f) {
+            dx -= periodic_box * rintf(dx / periodic_box);
+            dy -= periodic_box * rintf(dy / periodic_box);
+            dz -= periodic_box * rintf(dz / periodic_box);
+        }
+        float r = sqrtf(dx*dx + dy*dy + dz*dz);
+        if (r < 1.0e-14f) continue;
+        float h_j = fmaxf(h_sml[j], 1.0e-10f);
+        float h_eff = h_i + h_j;  // banda completa (= 2*h_avg)
+        float w = wendland_c6_3d(r, h_eff);
+        if (w <= 0.0f) continue;
+
+        // cos²θ = (B̂_i · r̂_ij)²
+        float inv_r = 1.0f / r;
+        float rhat_x = dx * inv_r, rhat_y = dy * inv_r, rhat_z = dz * inv_r;
+        float cos_th = (bx_i*rhat_x + by_i*rhat_y + bz_i*rhat_z) * inv_b;
+        float cos2 = cos_th * cos_th;
+        float kappa_eff = kappa_perp + (kappa_par - kappa_perp) * cos2;
+
+        float sj = scalar_in[j];
+        float field_j = (gamma_m1 > 0.0f) ? (gamma_m1 * sj) : sj;
+        delta += kappa_eff * (field_j - field_i) * w * dt;
+    }
+
+    // Traducir delta de "temperatura" o "e_cr" de vuelta al campo scalar
+    float new_scalar;
+    if (gamma_m1 > 0.0f) {
+        // thermal: delta es ΔT = (γ-1) Δu  →  Δu = delta / (γ-1)
+        new_scalar = fmaxf(si + delta / gamma_m1, 0.0f);
+    } else {
+        new_scalar = fmaxf(si + delta, 0.0f);
+    }
+    scalar_out[i] = new_scalar;
+}
+
+extern "C" int cuda_mhd_anisotropic_conduction(
+    const unsigned char* ptype,
+    const float* px, const float* py, const float* pz,
+    const float* mass, const float* h_sml, const float* u_in,
+    const float* bx, const float* by, const float* bz,
+    float* u_out, int n,
+    float kappa_par, float kappa_perp, float gamma, float dt, float periodic_box
+) {
+    if (n <= 0) return 0;
+    unsigned char* aniso_dptype; if (alloc_copy(&aniso_dptype, ptype, n)) return -1;
+    float *aniso_px, *aniso_py, *aniso_pz, *aniso_m, *aniso_h, *aniso_u;
+    float *aniso_bx, *aniso_by, *aniso_bz, *aniso_out;
+    if (alloc_copy(&aniso_px, px, n) || alloc_copy(&aniso_py, py, n) || alloc_copy(&aniso_pz, pz, n) ||
+        alloc_copy(&aniso_m, mass, n) || alloc_copy(&aniso_h, h_sml, n) || alloc_copy(&aniso_u, u_in, n) ||
+        alloc_copy(&aniso_bx, bx, n) || alloc_copy(&aniso_by, by, n) || alloc_copy(&aniso_bz, bz, n) ||
+        alloc_zero(&aniso_out, n)) return -1;
+    int aniso_blocks = (n + MHD_BLOCK_SIZE - 1) / MHD_BLOCK_SIZE;
+    float gamma_m1 = gamma - 1.0f;
+    mhd_anisotropic_pair_kernel<<<aniso_blocks, MHD_BLOCK_SIZE>>>(
+        aniso_dptype, aniso_px, aniso_py, aniso_pz, aniso_m, aniso_h, aniso_u,
+        aniso_bx, aniso_by, aniso_bz,
+        aniso_out, n, kappa_par, kappa_perp, gamma_m1, dt, periodic_box);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(u_out, aniso_out, (size_t)n * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(aniso_dptype); cudaFree(aniso_px); cudaFree(aniso_py); cudaFree(aniso_pz);
+    cudaFree(aniso_m); cudaFree(aniso_h); cudaFree(aniso_u);
+    cudaFree(aniso_bx); cudaFree(aniso_by); cudaFree(aniso_bz); cudaFree(aniso_out);
+    return 0;
+}
+
+extern "C" int cuda_mhd_cr_diffusion_anisotropic(
+    const unsigned char* ptype,
+    const float* px, const float* py, const float* pz,
+    const float* mass, const float* h_sml, const float* cr_energy_in,
+    const float* bx, const float* by, const float* bz,
+    float* cr_energy_out, int n,
+    float kappa_cr, float dt, float periodic_box
+) {
+    if (n <= 0) return 0;
+    unsigned char* crdiff_ptype; if (alloc_copy(&crdiff_ptype, ptype, n)) return -1;
+    float *crdiff_px, *crdiff_py, *crdiff_pz, *crdiff_m, *crdiff_h, *crdiff_cr;
+    float *crdiff_bx, *crdiff_by, *crdiff_bz, *crdiff_out;
+    if (alloc_copy(&crdiff_px, px, n) || alloc_copy(&crdiff_py, py, n) || alloc_copy(&crdiff_pz, pz, n) ||
+        alloc_copy(&crdiff_m, mass, n) || alloc_copy(&crdiff_h, h_sml, n) || alloc_copy(&crdiff_cr, cr_energy_in, n) ||
+        alloc_copy(&crdiff_bx, bx, n) || alloc_copy(&crdiff_by, by, n) || alloc_copy(&crdiff_bz, bz, n) ||
+        alloc_zero(&crdiff_out, n)) return -1;
+    int crdiff_blocks = (n + MHD_BLOCK_SIZE - 1) / MHD_BLOCK_SIZE;
+    // CR diffusion: gamma_m1 = 0.0 → scalar field es cr_energy directamente
+    mhd_anisotropic_pair_kernel<<<crdiff_blocks, MHD_BLOCK_SIZE>>>(
+        crdiff_ptype, crdiff_px, crdiff_py, crdiff_pz, crdiff_m, crdiff_h, crdiff_cr,
+        crdiff_bx, crdiff_by, crdiff_bz,
+        crdiff_out, n, kappa_cr, 0.0f, 0.0f, dt, periodic_box);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(cr_energy_out, crdiff_out, (size_t)n * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(crdiff_ptype); cudaFree(crdiff_px); cudaFree(crdiff_py); cudaFree(crdiff_pz);
+    cudaFree(crdiff_m); cudaFree(crdiff_h); cudaFree(crdiff_cr);
+    cudaFree(crdiff_bx); cudaFree(crdiff_by); cudaFree(crdiff_bz); cudaFree(crdiff_out);
+    return 0;
+}

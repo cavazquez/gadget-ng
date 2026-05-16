@@ -694,6 +694,30 @@ unsafe extern "C" {
         n_igm_out: *mut i32,
     ) -> i32;
 
+    /// Variante full: además devuelve array compacto de temperaturas IGM para percentiles.
+    /// `temps_out` debe apuntar a un buffer de tamaño `n` floats (host).
+    pub fn cuda_rt_igm_temp_full(
+        ptype: *const u8,
+        u: *const f32,
+        h_sml: *const f32,
+        mass: *const f32,
+        x_hi: *const f32,
+        x_hii: *const f32,
+        x_e: *const f32,
+        x_d: *const f32,
+        x_hei: *const f32,
+        x_heii: *const f32,
+        x_heiii: *const f32,
+        n: i32,
+        gamma: f32,
+        delta_max: f32,
+        mean_density: f32,
+        t_mean_out: *mut f64,
+        t_sigma_out: *mut f64,
+        n_igm_out: *mut i32,
+        temps_out: *mut f32,
+    ) -> i32;
+
     // ── Kernels MHD ambipolar + two-fluid (AP-16) ─────────────────────────────
 
     /// Difusión ambipolar: amortigua B con rate eta_ad / x_ion; calienta u.
@@ -767,6 +791,48 @@ unsafe extern "C" {
         ay_out: *mut f32,
         az_out: *mut f32,
         n: i32,
+        periodic_box: f32,
+    ) -> i32;
+
+    // ── Conducción anisótropa / CR diffusion O(N²) (AP-17) ───────────────────
+
+    /// Conducción térmica anisótropa pairwise (Wendland-C6, kappa_par/kappa_perp).
+    pub fn cuda_mhd_anisotropic_conduction(
+        ptype: *const u8,
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        mass: *const f32,
+        h_sml: *const f32,
+        u_in: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        u_out: *mut f32,
+        n: i32,
+        kappa_par: f32,
+        kappa_perp: f32,
+        gamma: f32,
+        dt: f32,
+        periodic_box: f32,
+    ) -> i32;
+
+    /// CR diffusion anisótropa pairwise (Wendland-C6, kappa_cr).
+    pub fn cuda_mhd_cr_diffusion_anisotropic(
+        ptype: *const u8,
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        mass: *const f32,
+        h_sml: *const f32,
+        cr_energy_in: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        cr_energy_out: *mut f32,
+        n: i32,
+        kappa_cr: f32,
+        dt: f32,
         periodic_box: f32,
     ) -> i32;
 }
