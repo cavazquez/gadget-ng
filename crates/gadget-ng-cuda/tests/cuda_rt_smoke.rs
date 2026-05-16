@@ -245,12 +245,17 @@ fn cuda_rt_chemistry_stiff_match_cpu() {
     // CPU
     apply_chemistry(&mut particles_cpu, &mut states_cpu, &rad, &chem_params, dt);
 
-    // GPU
-    let gamma_hi: Vec<f64> = vec![1.0e-10; n];
+    // GPU: primero computar gamma_hi usando try_chemistry_rates (consistente con rad)
+    use gadget_ng_rt::m1::M1Params;
+    let m1_params = M1Params::default();
+    let gamma_hi = cuda
+        .try_chemistry_rates(&particles_cpu, &rad, &m1_params, 1.0)
+        .unwrap();
     let temperature: Vec<f64> = particles_cpu
         .iter()
         .map(|p| {
-            ((chem_params.gamma - 1.0) * p.internal_energy * 1.0e10 / 1.38065e-16_f64).max(1.0)
+            ChemState::neutral()
+                .temperature_from_internal_energy(p.internal_energy, chem_params.gamma)
         })
         .collect();
     let ptypes: Vec<ParticleType> = particles_cpu.iter().map(|p| p.ptype).collect();

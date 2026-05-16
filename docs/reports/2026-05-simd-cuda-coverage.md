@@ -23,7 +23,9 @@ SPH/MHD/RT smoke/parity kernel sets:
   CPU `not(rayon)` + `simd`: density + pairwise div-B/∇ψ AVX2/AVX-512 inner batches
   + SIMD final ψ/B update), scalar diffusion, Braginskii viscosity, reconnection, CR
   streaming and dynamo smoke surfaces via
-  `CudaMhdSolver` — **persistent buffers (AP-02)**.
+  `CudaMhdSolver` — **persistent buffers (AP-02)**; CR streaming
+  (`mhd_cr_streaming_o2_kernel`) and CR backreaction
+  (`mhd_cr_backreaction_kernel`) hardware-validated 2026-05-16.
 - RT field diagnostics/photoionization and gas photoheating via `CudaRtSolver`
   — **persistent buffers (AP-02)**.
 - Tree/SIDM smoke surfaces via `CudaTreeSolver` — **persistent buffers (AP-02)**.
@@ -55,12 +57,12 @@ implementations.
 | MHD flux-freezing/statistics | Flux-freeze scaling + mean density AVX2/AVX-512; statistics AVX2/AVX-512 with real AVX-512 8-lane path | Yes, `CudaMhdSolver` | Experimental parity |
 | MHD induction/forces/cleaning/transport | Induction / resistivity / magnetic forces: AVX2/AVX-512 pair batches.<br>Dedner (`not(rayon)` + `simd`): density + div-B/∇ψ pairwise AVX2/AVX-512 inner batches + SIMD final ψ/B update.<br>Dedner (`rayon` + `simd`, x86/x86_64): when AVX-512F or AVX2+FMA is detected, `dedner_cleaning_step_par_simd` — Rayon outer loop over `i` reusing the same per-particle SIMD kernels + SIMD final update; otherwise `dedner_cleaning_step_par` (outer `par_iter`, scalar inner `j` loop).<br>Other MHD transport: mixed coverage — see [MHD Dedner cleaning](#mhd-dedner-cleaning-cpu-detail). | Yes, smoke surfaces | Experimental parity |
 | RT M1 reductions/photoheating | Yes, AVX2/AVX-512 diagnostics and photoheating arithmetic | Yes, `CudaRtSolver` | Experimental parity |
-| RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | No | CPU-only |
-| RT chemistry rates/cooling | AVX2/AVX-512 particle photoionization-rate batches and cooling update | No | SIMD-only |
-| RT chemistry stiff solver | AVX2/AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane; chunk/tail parity tests | No | SIMD-only (CUDA pending) |
+| RT M1 full advection substep | Yes, CPU Rayon advection/update + SIMD final update | Yes, `CudaRtSolver::try_m1_advection` | Experimental parity |
+| RT chemistry rates/cooling | AVX2/AVX-512 particle photoionization-rate batches and cooling update | Yes, `CudaRtSolver::try_chemistry_rates` + `try_apply_cooling` | Experimental parity (HW validated 2026-05-16) |
+| RT chemistry stiff solver | AVX2/AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane; chunk/tail parity tests | Yes, `CudaRtSolver::try_apply_chemistry` — `rt_chemistry_stiff_kernel` f32 subcyclic implicit integrator | Experimental parity (HW validated 2026-05-16) |
 | RT IGM temperature profile | AVX-512F 8-wide + AVX2+FMA 4-wide `ChemState`→T + SIMD density gate per lane; mean/variance/sort/percentiles scalar | No | SIMD-only |
-| RT reionization state | AVX2/AVX-512 reductions | No | SIMD-only |
-| RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | No | SIMD-only |
+| RT reionization state | AVX2/AVX-512 reductions | Yes, `CudaRtSolver::try_reionization_stats` | Experimental parity (HW validated 2026-05-16) |
+| RT 21cm | AVX2/AVX-512 mass/volume reductions and brightness field | Yes, `CudaRtSolver::try_cm21_field` | Experimental parity (HW validated 2026-05-16) |
 | Analysis spin/luminosity/SED | AVX2/AVX-512 reductions for spin, luminosity and SED contributions | No | SIMD-only |
 
 ### MHD Dedner cleaning (CPU detail)
@@ -118,6 +120,20 @@ CUDA_ARCH=sm_61 cargo test -p gadget-ng-cuda --test cuda_rt_smoke -- --ignored -
 CUDA_ARCH=sm_61 cargo build -p gadget-ng-cli --features cuda
 CUDA_ARCH=sm_61 cargo clippy -p gadget-ng-cli --features cuda -- -D warnings
 ```
+
+RT chemistry, reionization, and MHD CR kernels were hardware-validated on
+2026-05-16 (37 tests, 0 failures). Full record:
+`docs/reports/2026-05-cuda-cr-hw-validation.md`.
+
+**Known issue — `grad_w_approx` discontinuity at q = 1.0** (MHD CR backreaction):
+`grad_w_approx` in `crates/gadget-ng-mhd/src/streaming.rs` has inconsistent
+factors of `h` at the `q = 1.0` branch boundary, creating a discontinuity.
+CPU (f64) and GPU (f32) take different branches when `q` is very close to 1.0,
+producing relative errors up to ~70% per particle even with correct physics.
+The CUDA smoke test therefore validates physical invariants (Newton's 3rd Law,
+finiteness, boundedness) rather than direct numerical comparison. Fixing
+`grad_w_approx` itself requires coordinated regression tests and is tracked
+as a future clean-up item.
 
 After Phase 200 Fases 8-9, the CUDA stub path was validated with:
 

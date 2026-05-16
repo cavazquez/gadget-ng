@@ -95,6 +95,16 @@ For SIMD, AP-13 (dynamo), AP-14 (ambipolar diffusion), and AP-15 (two-fluid)
 close additional SIMD-without-Rayon gaps. RT IGM temperature now uses
 AVX-512F 8-wide batches when available, else AVX2+FMA 4-wide (`igm_temp`);
 median/percentiles remain scalar after collection. The SPH MetalTabular logT
-lookup now has AVX2/AVX-512 batch coverage; TODO: continue with MHD CR
-streaming, reconnection, Braginskii, anisotropic transport, and magnetic
-forces in focused follow-up patches.
+lookup now has AVX2/AVX-512 batch coverage.
+
+**RT chemistry, reionization, MHD CR CUDA validated (2026-05-16):** all 6 new
+kernels (`rt_chemistry_rates_kernel`, `rt_cooling_apply_kernel`,
+`rt_chemistry_stiff_kernel`, `rt_cm21_field_kernel`,
+`mhd_cr_streaming_o2_kernel`, `mhd_cr_backreaction_kernel`) pass on
+GTX 1060 sm_61 with CUDA 12.4. Two bugs were fixed during validation
+(MHD CR div_v sign + formula; RT stiff solver temperature formula + f32
+`k_h2p_f` overflow guard). Full record in
+`docs/reports/2026-05-cuda-cr-hw-validation.md`.
+
+TODO: continue with MHD CR reconnection, Braginskii, anisotropic transport,
+and magnetic forces in focused follow-up patches.

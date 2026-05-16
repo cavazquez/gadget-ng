@@ -478,7 +478,7 @@ __global__ void rt_chemistry_stiff_kernel(
     float k_drec  = chem_k_d_recex(t);
     float k_hd_d  = chem_k_hd_dest(t);
     float k_h2_hm = 1.3e-9f;
-    float k_h2p_f = 1.85e-23f * powf(t, 1.8f);
+    float k_h2p_f = 1.85e-23f * powf(fminf(t, 3.16e7f), 1.8f);
     float k_h2_h2p= 6.4e-10f;
     float k_hd_f  = 1.0e-9f;
 

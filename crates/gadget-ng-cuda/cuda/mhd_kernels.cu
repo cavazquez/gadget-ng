@@ -564,15 +564,17 @@ __global__ void mhd_cr_streaming_o2_kernel(
             dwdr = -(21.0f / (2.0f * 3.14159265f)) / (h_i*h_i*h_i) * 4.0f * t*t*t * (-1.5f - 2.0f * q) / h_i;
         }
         float h_j = fmaxf(h_sml[j], 1.0e-10f);
+        // vol_j = mass / rho_j = 4/3π h_j³  (matches CPU: mass/vol_j_cpu = 4/3π h_j³)
         float vol_j = mass[j] / fmaxf(cr_density_approx(mass[j], h_j), 1.0e-30f);
         float vdotdr = ((vx[i]-vx[j])*(dx/r) + (vy[i]-vy[j])*(dy/r) + (vz[i]-vz[j])*(dz/r));
-        div_v += (mass[j] / fmaxf(vol_j, 1.0e-30f)) * vdotdr * dwdr / h_i;
+        div_v += vol_j * vdotdr * dwdr / h_i;
     }
     float compressional = -(1.0f / 3.0f) * ecr * div_v;
+    // streaming_loss has same sign as CPU: total = compressional + stream_loss
     float stream_loss   = (streaming_coeff > 0.0f && v_a > 1.0e-30f)
                           ? streaming_coeff * v_a * ecr / h_i
                           : 0.0f;
-    cr_energy_out[i] = fmaxf(ecr + (compressional - stream_loss) * dt, 0.0f);
+    cr_energy_out[i] = fmaxf(ecr + (compressional + stream_loss) * dt, 0.0f);
 }
 
 // Backreaction: acelera gas usando gradiente de presión CR (O(N²) pares)
@@ -592,7 +594,8 @@ __global__ void mhd_cr_backreaction_kernel(
 
     float h_i   = fmaxf(h_sml[i], 1.0e-10f);
     float rho_i = cr_density_approx(mass[i], h_i);
-    float p_cri = (4.0f / 3.0f - 1.0f) * cr_energy[i] / fmaxf(rho_i, 1.0e-30f);
+    // P_CR = (γ_CR - 1) * rho * ε_CR  (matches CPU: p_cr = (GAMMA_CR-1) * rho * cr_energy)
+    float p_cri = (4.0f / 3.0f - 1.0f) * rho_i * fmaxf(cr_energy[i], 0.0f);
 
     float ax = 0.0f, ay = 0.0f, az = 0.0f;
     for (int j = 0; j < n; ++j) {
@@ -618,8 +621,10 @@ __global__ void mhd_cr_backreaction_kernel(
         }
         float h_j   = fmaxf(h_sml[j], 1.0e-10f);
         float rho_j = cr_density_approx(mass[j], h_j);
-        float p_crj = (4.0f / 3.0f - 1.0f) * cr_energy[j] / fmaxf(rho_j, 1.0e-30f);
-        float coeff = -mass[j] * (p_cri / fmaxf(rho_i*rho_i, 1.0e-60f) + p_crj / fmaxf(rho_j*rho_j, 1.0e-60f)) * dwdr;
+        float p_crj = (4.0f / 3.0f - 1.0f) * rho_j * fmaxf(cr_energy[j], 0.0f);
+        // p_avg = (p_cr_i + p_cr_j) / 2  (matches CPU)
+        float p_avg = 0.5f * (p_cri + p_crj);
+        float coeff = mass[j] * p_avg * dwdr;
         ax += coeff * dx / r;
         ay += coeff * dy / r;
         az += coeff * dz / r;
