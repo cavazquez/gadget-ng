@@ -173,7 +173,7 @@ fn bench_pm_cuda_vs_cpu(c: &mut Criterion) {
     group.finish();
 }
 
-// ── Benchmark: SPH density ──────────────────────────────────────────────────
+// ── Benchmark: SPH density (SphParticle path) ────────────────────────────────
 
 fn bench_sph_cuda_vs_cpu(c: &mut Criterion) {
     let cuda_sph = CudaSphSolver::try_new_checked().ok();
@@ -195,7 +195,7 @@ fn bench_sph_cuda_vs_cpu(c: &mut Criterion) {
             });
         });
 
-        // CUDA SPH density
+        // CUDA SPH density (SphParticle path)
         if let Some(ref cuda) = cuda_sph {
             group.bench_with_input(BenchmarkId::new("cuda_sph_density", n), &n, |b, _| {
                 b.iter(|| {
@@ -208,6 +208,69 @@ fn bench_sph_cuda_vs_cpu(c: &mut Criterion) {
 
     group.finish();
 }
+
+// ── Benchmark: SPH pipeline completo via core::Particle (AP-18) ──────────────
+//
+// Mide el pipeline densidad+Balsara+fuerzas clásicas sobre `gadget_ng_core::Particle`
+// (método `try_sph_density_and_forces_core`) vs la secuencia equivalente CPU sobre
+// `SphParticle`. El break-even N indica a partir de qué tamaño CUDA compensa.
+
+fn bench_sph_core_cuda_vs_cpu(c: &mut Criterion) {
+    use gadget_ng_core::ParticleType;
+    use gadget_ng_sph::{
+        compute_balsara_factors_with_periodic, compute_density_with_periodic,
+        compute_sph_forces_with_periodic,
+    };
+
+    let cuda_sph = CudaSphSolver::try_new_checked().ok();
+    if cuda_sph.is_none() {
+        eprintln!("bench_sph_core: CUDA SPH no disponible; solo serie cpu");
+    }
+
+    let mut group = c.benchmark_group("cuda_vs_cpu_sph_core_pipeline");
+    group.sample_size(10);
+
+    for n in [64usize, 256, 1024, 4096] {
+        // SphParticle template para CPU y como origen de conversión
+        let sph_template = make_sph_particles(n);
+
+        // core::Particle template para CUDA path (todos gas)
+        let core_template: Vec<Particle> = sph_template
+            .iter()
+            .map(|sp| {
+                let mut p = Particle::new(sp.global_id, sp.mass, sp.position, sp.velocity);
+                p.ptype = ParticleType::Gas;
+                p.internal_energy = sp.gas.as_ref().map_or(0.5, |g| g.u);
+                p.smoothing_length = sp.gas.as_ref().map_or(0.1, |g| g.h_sml);
+                p
+            })
+            .collect();
+
+        // CPU: densidad + Balsara + fuerzas clásicas sobre SphParticle
+        group.bench_with_input(BenchmarkId::new("cpu_sph_full", n), &n, |b, _| {
+            b.iter(|| {
+                let mut local = sph_template.clone();
+                compute_density_with_periodic(black_box(&mut local), None);
+                compute_balsara_factors_with_periodic(black_box(&mut local), None);
+                compute_sph_forces_with_periodic(black_box(&mut local), None);
+                black_box(&local);
+            });
+        });
+
+        // CUDA: try_sph_density_and_forces_core sobre core::Particle
+        if let Some(ref cuda) = cuda_sph {
+            group.bench_with_input(BenchmarkId::new("cuda_sph_full", n), &n, |b, _| {
+                b.iter(|| {
+                    let mut local = core_template.clone();
+                    let _ = black_box(
+                        cuda.try_sph_density_and_forces_core(black_box(&mut local), None),
+                    );
+                });
+            });
+        }
+    }
+
+    group.finish();}
 
 // ── Benchmark: MHD flux_freeze ───────────────────────────────────────────────
 
@@ -315,7 +378,8 @@ fn bench_tree_cuda_vs_cpu(c: &mut Criterion) {
     let mut group = c.benchmark_group("cuda_vs_simd_tree");
     group.sample_size(10);
 
-    for n_nodes in [256usize, 1024, 4096] {
+    // N ampliado para capturar break-even: 128→512→2048→8192 nodos.
+    for n_nodes in [128usize, 256, 512, 1024, 2048, 4096, 8192] {
         let n_particles = n_nodes / 4;
         let particles: Vec<Particle> = (0..n_particles)
             .map(|i| {
@@ -378,6 +442,7 @@ criterion_group!(
     bench_direct_cuda_vs_simd,
     bench_pm_cuda_vs_cpu,
     bench_sph_cuda_vs_cpu,
+    bench_sph_core_cuda_vs_cpu,
     bench_mhd_cuda_vs_cpu,
     bench_rt_cuda_vs_cpu,
     bench_tree_cuda_vs_cpu,

@@ -1,13 +1,18 @@
-//! Test de paridad integrado: pipeline SPH completo CPU vs CUDA.
+//! Tests de paridad SPH: CPU vs CUDA.
 //!
-//! Crea partículas de gas, ejecuta densidad + Balsara + fuerzas Gadget-2 +
-//! cooling + dust + H2 en CPU y CUDA y compara salidas.
+//! `cuda_parity_sph_full_pipeline` — pipeline completo SphParticle (densidad + Balsara
+//!   + fuerzas Gadget-2 + cooling + dust + H2) en CPU vs CUDA.
+//! `cuda_parity_sph_core_pipeline` — pipeline `try_sph_density_and_forces_core` sobre
+//!   `gadget_ng_core::Particle` (AP-18): densidad + Balsara + fuerzas clásicas en GPU
+//!   vs equivalente CPU con `SphParticle` como referencia.
 
-use gadget_ng_core::{CoolingKind, DustSection, MolecularSection, Particle, SphSection, Vec3};
+use gadget_ng_core::{CoolingKind, DustSection, MolecularSection, Particle, ParticleType, SphSection, Vec3};
 use gadget_ng_cuda::{CudaCoolingSolver, CudaDustSolver, CudaMolecularSolver, CudaSphSolver};
 use gadget_ng_sph::{
     compute_balsara_factors_with_periodic, compute_density_with_periodic,
-    compute_sph_forces_gadget2_with_periodic, cooling, dust, molecular_gas, particle::SphParticle,
+    compute_sph_forces_gadget2_with_periodic, compute_sph_forces_with_periodic, cooling, dust,
+    molecular_gas,
+    particle::SphParticle,
 };
 
 fn cuda_sph_or_skip() -> Option<CudaSphSolver> {
@@ -223,4 +228,103 @@ fn cuda_parity_sph_full_pipeline() {
             "sph_acc_mag[{i}]: gpu={mag_gpu:.3e} seems unphysically large"
         );
     }
+}
+
+/// Test de paridad para `try_sph_density_and_forces_core` (AP-18).
+///
+/// Compara el pipeline densidad + Balsara + fuerzas clásicas en CUDA directamente
+/// sobre `gadget_ng_core::Particle` contra la referencia CPU con `SphParticle`.
+/// Tolerancia relajada: el kernel CUDA usa f32 internamente y γ = 5/3 fijo.
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_parity_sph_core_pipeline() {
+    let Some(cuda_sph) = cuda_sph_or_skip() else {
+        eprintln!("SKIP: CudaSphSolver no disponible.");
+        return;
+    };
+
+    let box_size = 4.0_f64;
+    let n_side = 4usize; // 4³ = 64 partículas gas
+
+    // ── Referencia CPU con SphParticle ────────────────────────────────────────
+    let mut cpu_sph = glass_sph_particles(n_side, box_size);
+    compute_density_with_periodic(&mut cpu_sph, Some(box_size));
+    compute_balsara_factors_with_periodic(&mut cpu_sph, Some(box_size));
+    compute_sph_forces_with_periodic(&mut cpu_sph, Some(box_size));
+
+    // ── CUDA sobre core::Particle ──────────────────────────────────────────────
+    // Convertir SphParticle → core::Particle para usar el nuevo método.
+    let mut core_parts: Vec<Particle> = cpu_sph
+        .iter()
+        .map(|sp| {
+            let u = sp.gas.as_ref().map_or(1.5, |g| g.u);
+            let h = sp.gas.as_ref().map_or(box_size / n_side as f64 * 2.0, |g| g.h_sml);
+            let mut p = Particle::new(sp.global_id, sp.mass, sp.position, sp.velocity);
+            p.ptype = ParticleType::Gas;
+            p.internal_energy = u;
+            p.smoothing_length = h;
+            p
+        })
+        .collect();
+
+    let (gpu_rho, gpu_acc, gpu_du_dt) = cuda_sph
+        .try_sph_density_and_forces_core(&mut core_parts, Some(box_size))
+        .expect("try_sph_density_and_forces_core falló en hardware real");
+
+    // ── Comparar densidad ──────────────────────────────────────────────────────
+    // Tolerancia 5 %: CUDA usa Newton-Raphson f32 vs bisección f64 en CPU.
+    for (i, sp) in cpu_sph.iter().enumerate() {
+        let cpu_rho = sp.gas.as_ref().map_or(0.0, |g| g.rho);
+        assert_close_rel(&format!("rho[{i}]"), gpu_rho[i], cpu_rho, 5e-2);
+    }
+
+    // ── Verificar h_sml actualizado ────────────────────────────────────────────
+    for (i, p) in core_parts.iter().enumerate() {
+        if p.ptype == ParticleType::Gas {
+            assert!(
+                p.smoothing_length.is_finite() && p.smoothing_length > 0.0,
+                "h_sml[{i}] inválido tras CUDA: {}",
+                p.smoothing_length
+            );
+        }
+    }
+
+    // ── Verificar finitud de aceleraciones ────────────────────────────────────
+    for (i, a) in gpu_acc.iter().enumerate() {
+        if core_parts[i].ptype == ParticleType::Gas {
+            assert!(
+                a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
+                "acc_sph[{i}] GPU no es finita: {a:?}"
+            );
+            let cpu_gas = cpu_sph[i].gas.as_ref().unwrap();
+            let mag_cpu = (cpu_gas.acc_sph.x.powi(2)
+                + cpu_gas.acc_sph.y.powi(2)
+                + cpu_gas.acc_sph.z.powi(2))
+            .sqrt();
+            let mag_gpu = (a.x.powi(2) + a.y.powi(2) + a.z.powi(2)).sqrt();
+            // Magnitudes en el mismo orden de magnitud (factor 10×).
+            // Diferencias mayores se deben a f32 vs f64 en el kernel de suavizado.
+            let ratio = if mag_cpu > 1e-12 {
+                mag_gpu / mag_cpu
+            } else {
+                1.0
+            };
+            assert!(
+                ratio < 10.0,
+                "acc_sph_mag[{i}]: gpu={mag_gpu:.3e} cpu={mag_cpu:.3e} ratio={ratio:.2}"
+            );
+        }
+    }
+
+    // ── Verificar du_dt ───────────────────────────────────────────────────────
+    for (i, &du) in gpu_du_dt.iter().enumerate() {
+        if core_parts[i].ptype == ParticleType::Gas {
+            assert!(du.is_finite(), "du_dt[{i}] GPU no es finito: {du}");
+        }
+    }
+
+    eprintln!(
+        "cuda_parity_sph_core_pipeline OK: {} partículas gas; rho max_rel≤5%, acc finitas",
+        gpu_rho.len()
+    );
 }

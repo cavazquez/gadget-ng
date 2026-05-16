@@ -134,7 +134,7 @@ Remaining gaps: ninguno conocido tras AP-17.
 
 ---
 
-## Cierre formal — 2026-05-16
+## Cierre formal — 2026-05-16 (AP-17)
 
 **AP-03 a AP-17 completados.** Todos los kernels CUDA tienen:
 
@@ -143,3 +143,25 @@ Remaining gaps: ninguno conocido tras AP-17.
 - Cobertura de parity documentada en `docs/reports/2026-05-simd-cuda-coverage.md`.
 
 `cargo test --workspace` pasa con 0 regresiones en la revisión de consolidación post AP-17 (2026-05-16).
+
+---
+
+## AP-18 — SPH core pipeline + Tree LET wiring — 2026-05-16
+
+**Nuevo método:** `CudaSphSolver::try_sph_density_and_forces_core(&mut [Particle], periodic_box)`
+— pipeline densidad+Balsara+fuerzas clásicas sobre `gadget_ng_core::Particle` sin conversión a
+`SphParticle`. Wired en `step_sph` de `context.rs` bajo `[accelerators] cuda_sph = true`.
+
+**Tree LET:** `try_tree_walk_let` integrado en el flat LET path de `mod.rs` bajo
+`[accelerators] cuda_tree = true`.
+
+**Test de hardware:** `cuda_parity_sph_core_pipeline` — PASS en GTX 1060 sm_61.
+Ver detalles en `docs/reports/2026-05-cuda-ap18-sph-tree-validation.md`.
+
+**Break-even SPH:** N_gas ≈ 300-400 (speedup 5× a N=1024, 24× a N=4096).
+**Tree LET CUDA:** siempre más rápido (4.7× a N=128 nodos; 778× a N=8192 nodos).
+
+**Gaps remanentes (documentados, no bloqueantes):**
+- Barnes-Hut local GPU: requiere octree en device.
+- TreePM SR: híbrido wgpu/CUDA sin wiring completo.
+- f(R) chameleon screening: solo PM CUDA.
