@@ -29,6 +29,8 @@ fn main() {
     println!("cargo:rerun-if-changed=cuda/cooling_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/dust_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/molecular_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/analysis_kernels.cu");
+    println!("cargo:rerun-if-changed=cuda/tree_kernels.cu");
     println!("cargo:rerun-if-changed=cuda/cuda_pool.h");
     println!("cargo:rerun-if-changed=cuda/cuda_pool.cu");
     println!("cargo:rerun-if-env-changed=CUDA_SKIP");
@@ -92,6 +94,7 @@ fn main() {
         ("cooling_kernels", "cuda/cooling_kernels.cu"),
         ("dust_kernels", "cuda/dust_kernels.cu"),
         ("molecular_kernels", "cuda/molecular_kernels.cu"),
+        ("analysis_kernels", "cuda/analysis_kernels.cu"),
     ];
 
     let mut obj_paths: Vec<PathBuf> = Vec::new();

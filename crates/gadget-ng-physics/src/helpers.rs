@@ -76,6 +76,7 @@ pub fn lcdm_config() -> RunConfig {
         sidm: Default::default(),
         modified_gravity: Default::default(),
         dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
@@ -128,6 +129,7 @@ pub fn eds_config() -> RunConfig {
         sidm: Default::default(),
         modified_gravity: Default::default(),
         dark_matter: Default::default(),
+        accelerators: Default::default(),
     }
 }
 

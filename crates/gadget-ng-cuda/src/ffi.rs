@@ -378,6 +378,48 @@ unsafe extern "C" {
         h: f32,
     ) -> i32;
 
+    /// Aceleración gravitacional de N partículas a partir de N_nodes LET
+    /// pre-seleccionados (monopolo + cuadrupolo + octupolo; hexadecapolo excluido).
+    ///
+    /// # Parámetros
+    /// - `px/py/pz`        — posiciones de las partículas (longitud `n_particles`)
+    /// - `cx/cy/cz`        — centros de masa de los nodos LET (longitud `n_nodes`)
+    /// - `node_mass`       — masas de los nodos (longitud `n_nodes`)
+    /// - `q0..q5`          — componentes cuadrupolares qxx,qxy,qxz,qyy,qyz,qzz
+    /// - `o0..o6`          — componentes octopolares o_xxx..o_yzz (7 términos STF)
+    /// - `ax/ay/az_out`    — aceleraciones de salida (longitud `n_particles`)
+    /// - `g`               — constante gravitatoria
+    /// - `eps2`            — suavizado Plummer al cuadrado
+    pub fn cuda_tree_let_accel(
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        n_particles: i32,
+        cx: *const f32,
+        cy: *const f32,
+        cz: *const f32,
+        node_mass: *const f32,
+        q0: *const f32,
+        q1: *const f32,
+        q2: *const f32,
+        q3: *const f32,
+        q4: *const f32,
+        q5: *const f32,
+        o0: *const f32,
+        o1: *const f32,
+        o2: *const f32,
+        o3: *const f32,
+        o4: *const f32,
+        o5: *const f32,
+        o6: *const f32,
+        n_nodes: i32,
+        g: f32,
+        eps2: f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+    ) -> i32;
+
     // ── Kernels RT ──────────────────────────────────────────────────────────
 
     pub fn cuda_rt_energy_xi_photoion(
@@ -408,6 +450,22 @@ unsafe extern "C" {
         nz: i32,
         box_size: f32,
         dt: f32,
+    ) -> i32;
+
+    /// Un sub-paso del solver M1 HLL completo.
+    /// Los arrays host son modificados in-place (entrada y salida).
+    pub fn cuda_rt_m1_substep(
+        e_host: *mut f32,
+        fx_host: *mut f32,
+        fy_host: *mut f32,
+        fz_host: *mut f32,
+        nx: i32,
+        ny: i32,
+        nz: i32,
+        dx: f32,
+        dt_sub: f32,
+        c_red: f32,
+        kappa: f32,
     ) -> i32;
 
     // ── Kernels Cooling ─────────────────────────────────────────────────────
@@ -487,5 +545,52 @@ unsafe extern "C" {
         silicate_fraction: f32,
         graphite_fraction: f32,
         species_model: i32,
+    ) -> i32;
+
+    // ── Kernels Analysis ───────────────────────────────────────────────────
+
+    /// Calcula el momento angular L = Σ m_i (r_i - r_com) × (v_i - v_com).
+    pub fn cuda_analysis_halo_spin(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        n: i32,
+        cx: f32,
+        cy: f32,
+        cz: f32,
+        vcx: f32,
+        vcy: f32,
+        vcz: f32,
+        lx_out: *mut f64,
+        ly_out: *mut f64,
+        lz_out: *mut f64,
+    ) -> i32;
+
+    /// Calcula luminosidad estelar total + colores (B-V, g-r) vía SSP BC03-lite.
+    pub fn cuda_analysis_luminosity(
+        ptype: *const u8,
+        mass: *const f32,
+        age_gyr: *const f32,
+        metallicity: *const f32,
+        n: i32,
+        l_total_out: *mut f64,
+        bv_weighted_out: *mut f64,
+        gr_weighted_out: *mut f64,
+        n_stars_out: *mut i32,
+    ) -> i32;
+
+    /// Calcula la luminosidad de rayos X (bremsstrahlung) total.
+    pub fn cuda_analysis_xray(
+        ptype: *const u8,
+        mass: *const f32,
+        h_sml: *const f32,
+        internal_energy: *const f32,
+        n: i32,
+        gamma: f32,
+        lx_out: *mut f64,
     ) -> i32;
 }

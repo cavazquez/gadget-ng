@@ -144,6 +144,77 @@ impl CudaRtSolver {
         }
     }
 
+    /// Ejecuta `n_substeps` pasos del solver M1 HLL completo en GPU.
+    ///
+    /// Cada sub-paso replica exactamente el algoritmo de [`gadget_ng_rt::m1::m1_update`]
+    /// con aritmética f32. El número de sub-pasos debe ser pre-calculado por el caller
+    /// (igual que en la versión CPU).
+    pub fn try_m1_advection(
+        &self,
+        rad: &mut RadiationField,
+        dt: f64,
+        params: &M1Params,
+    ) -> Result<(), CudaExecutionError> {
+        let n = rad.n_cells();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (rad, dt, params);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let c_red = C_KMS / params.c_red_factor;
+            let dt_cfl = rad.dx / c_red * 0.5;
+            let n_sub = ((dt / dt_cfl).ceil() as usize)
+                .max(1)
+                .max(params.substeps);
+            let dt_sub = dt / n_sub as f64;
+            let kappa = (params.kappa_abs + params.kappa_scat) as f32;
+
+            // Convertir a f32 para la GPU.
+            let mut e: Vec<f32> = rad.energy_density.iter().map(|&v| v as f32).collect();
+            let mut fx: Vec<f32> = rad.flux_x.iter().map(|&v| v as f32).collect();
+            let mut fy: Vec<f32> = rad.flux_y.iter().map(|&v| v as f32).collect();
+            let mut fz: Vec<f32> = rad.flux_z.iter().map(|&v| v as f32).collect();
+
+            for _ in 0..n_sub {
+                // SAFETY: los arrays f32 son válidos; el kernel escribe en buffers temporales
+                // device y copia de vuelta a los mismos punteros host.
+                let code = unsafe {
+                    crate::ffi::cuda_rt_m1_substep(
+                        e.as_mut_ptr(),
+                        fx.as_mut_ptr(),
+                        fy.as_mut_ptr(),
+                        fz.as_mut_ptr(),
+                        rad.nx as i32,
+                        rad.ny as i32,
+                        rad.nz as i32,
+                        rad.dx as f32,
+                        dt_sub as f32,
+                        c_red as f32,
+                        kappa,
+                    )
+                };
+                check_kernel("cuda_rt_m1_substep", code)?;
+            }
+
+            for i in 0..n {
+                rad.energy_density[i] = e[i] as f64;
+                rad.flux_x[i] = fx[i] as f64;
+                rad.flux_y[i] = fy[i] as f64;
+                rad.flux_z[i] = fz[i] as f64;
+            }
+            Ok(())
+        }
+    }
+
     /// Aplica fotoheating gas-partícula usando tasas `gamma_hi` por celda.
     pub fn try_apply_photoheating(
         &self,

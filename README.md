@@ -173,7 +173,7 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 |---|---:|---:|---:|---:|
 | Gravedad directa `O(N²)` | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ persistent handle |
 | Barnes-Hut / Tree local | ✅ | ✅ | ✅ AVX2 + AVX512 local walk | ⚠️ kernel monopole parity ⚡ |
-| Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ❌ full LET traversal |
+| Tree LET / RMN SoA | ✅ | ✅ | ✅ AVX2 + AVX512 | ⚠️ smoke/parity ⚡ (LET mono+quad+oct, AP-07) |
 | TreePM corto alcance | ✅ | ✅ | ✅ AVX2 + AVX512 SR kernel | ⚠️ wgpu/CUDA híbrido parcial |
 | PM CIC assign/interp | ✅ | ✅ | ✅ AVX2 + AVX512 | ✅ ⚡ |
 | PM FFT/Poisson | ✅ | ✅ k-space + PM path | ✅ AVX2 + AVX512 spectral kernel | ✅ ⚡ |
@@ -195,21 +195,21 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ⚠️ smoke/parity ⚡ |
 | MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ⚠️ smoke/parity ⚡ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ⚠️ smoke/parity ⚡ |
-| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ❌ AP-05 |
+| RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ⚠️ smoke/parity ⚡ (HLL Godunov M1, AP-05) |
 | RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ❌ CUDA pendiente |
 | RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests (AP-09 CPU cerrado) | ❌ CUDA pendiente |
 | RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ❌ |
 | RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ |
 | RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ❌ |
-| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ❌ AP-06 |
+| Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ⚠️ smoke/parity ⚡ (halo spin, luminosidad galáctica, L_X, AP-06) |
 | SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ⚠️ smoke/parity ⚡ |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |
-| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ⚠️ gravedad/PM con `use_gpu_cuda`; smoke/parity por flags **`[accelerators]`** (`cuda_*`; ver `RunConfig` / CHANGELOG) — AP-03 validación hardware |
+| Runtime CLI wiring | ✅ | ✅ | ✅ `simd` separado de `rayon` y propagado a SPH/MHD | ✅ gravedad/PM/SIDM/RT M1/análisis con `use_gpu_cuda`; flags **`[accelerators]`** (`cuda_*`; ver `RunConfig` / CHANGELOG) — validado en hardware NVIDIA GTX 1060 sm_61 (AP-04) |
 
 Leyenda: ✅ implementado y validable localmente; ⚠️ parcial, smoke/parity surface o eje mezclado; ❌ sin ruta CUDA de producción o paridad GPU aún por cerrar (ver informe de backlog).
 ⚡ = buffers persistentes `CudaPool` (AP-02): sin `cudaMalloc`/`cudaFree` por paso; redimensionamiento automático por duplicación.
 
-**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA de kernels MHD/árbol (tests `--ignored`, tolerancias documentadas). **AP-04** — cableado opt-in en CLI/config para rutas CUDA ya existentes más allá de gravedad/PM. **AP-05** — kernel CUDA de advección M1 RT completa. **AP-06** — kernels CUDA de análisis (spin, luminosidad, SED) donde compense. **AP-07** — recorrido LET/árbol completo en GPU (hoy monopolo/smoke). **AP-08** — benchmarks comparables CUDA vs CPU/SIMD fuera de N². **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver, no una tarea CUDA.
+**Backlog CUDA / paridad GPU** (resumen; criterios en el informe): **AP-03** — validación en hardware NVIDIA GTX 1060 (sm_61, CUDA 12.4); todos los tests `--ignored` pasan con tolerancias documentadas. **AP-04** — cableado opt-in SIDM/RT M1/análisis en CLI con flags `[accelerators]`. **AP-05** — kernel CUDA HLL Godunov M1 completo para RT. **AP-06** — kernels CUDA de análisis (halo spin, luminosidad galáctica, L_X bremsstrahlung). **AP-07** — recorrido LET GPU mono+quad+oct (max\_rel=9.3e-7, 14–378× speedup). **AP-08** — benchmarks Criterion Direct/PM/SPH/MHD/RT/Tree con resultados documentados. Todos **AP-03 a AP-08 cerrados**; ver [`docs/reports/2026-05-accelerator-parity-pending.md`](docs/reports/2026-05-accelerator-parity-pending.md) y [`docs/reports/2026-05-ap08-cuda-benchmarks.md`](docs/reports/2026-05-ap08-cuda-benchmarks.md). **AP-09** en el informe es el cierre SIMD **CPU** del stiff solver, no una tarea CUDA.
 
 Nota MHD Dedner: con **`rayon` + `simd`** en **x86/x86_64**, si en tiempo de
 ejecución hay **AVX-512F** o **AVX2+FMA**, `dedner_cleaning_step` usa

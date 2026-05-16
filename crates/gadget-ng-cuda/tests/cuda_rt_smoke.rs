@@ -2,7 +2,7 @@ use gadget_ng_core::{Particle, Vec3};
 use gadget_ng_cuda::CudaRtSolver;
 use gadget_ng_rt::{
     coupling::{apply_photoheating, photoionization_rate},
-    m1::{M1Params, RadiationField},
+    m1::{m1_update, M1Params, RadiationField},
 };
 
 fn rt_field() -> RadiationField {
@@ -93,5 +93,60 @@ fn cuda_rt_photoheating_matches_cpu() {
             c.internal_energy,
             1.0e-6,
         );
+    }
+}
+
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_rt_m1_advection_matches_cpu() {
+    let Some(cuda) = cuda_solver_or_skip() else {
+        return;
+    };
+
+    // Campo con perturbación sinusoidal de energía + flujo no nulo.
+    let nx = 8;
+    let ny = 8;
+    let nz = 8;
+    let dx = 1.0_f64;
+    let mut cpu = RadiationField::uniform(nx, ny, nz, dx, 1.0);
+    for ix in 0..nx {
+        for iy in 0..ny {
+            for iz in 0..nz {
+                let i = cpu.idx(ix, iy, iz);
+                let theta = 2.0 * std::f64::consts::PI * ix as f64 / nx as f64;
+                cpu.energy_density[i] = 1.0 + 0.05 * theta.sin();
+                cpu.flux_x[i] = 0.01 * theta.cos();
+                cpu.flux_y[i] = 0.005 * theta.sin();
+                cpu.flux_z[i] = 0.002;
+            }
+        }
+    }
+    let mut gpu = cpu.clone();
+
+    let params = M1Params {
+        c_red_factor: 10.0,
+        kappa_abs: 0.0,
+        kappa_scat: 0.0,
+        substeps: 5,
+        ..Default::default()
+    };
+    let dt = 0.05;
+
+    m1_update(&mut cpu, dt, &params);
+    cuda.try_m1_advection(&mut gpu, dt, &params).unwrap();
+
+    // f32 vs f64: tolerancia 1e-4 en energía total y 1e-3 en celdas individuales.
+    let e_cpu = cpu.total_energy(1.0);
+    let e_gpu = gpu.total_energy(1.0);
+    assert_close_rel("m1_total_energy", e_gpu, e_cpu, 1.0e-4);
+
+    for i in 0..cpu.n_cells() {
+        assert_close_rel(
+            &format!("m1_e[{i}]"),
+            gpu.energy_density[i],
+            cpu.energy_density[i],
+            1.0e-3,
+        );
+        assert!(gpu.energy_density[i] >= 0.0, "m1_e[{i}] debe ser >= 0");
     }
 }

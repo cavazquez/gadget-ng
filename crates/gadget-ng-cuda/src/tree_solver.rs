@@ -9,6 +9,7 @@ use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::ParticleType;
 use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_tree::RmnSoa;
 
 /// Solver CUDA para kernels tree/SIDM con buffers device persistentes.
 pub struct CudaTreeSolver {
@@ -131,6 +132,79 @@ impl CudaTreeSolver {
                     .map(|i| Vec3::new(ax[i] as f64, ay[i] as f64, az[i] as f64))
                     .collect())
             }
+        }
+    }
+
+    /// Aceleración gravitacional monopolo+cuadrupolo+octupolo a partir de nodos LET
+    /// pre-seleccionados (ya con MAC aplicado en CPU).  Hexadecapolo excluido.
+    ///
+    /// # Parámetros
+    /// - `particles` — partículas de las que se calcula la aceleración
+    /// - `nodes`     — nodos LET en formato SoA (`RmnSoa`)
+    /// - `g`         — constante gravitatoria
+    /// - `eps2`      — suavizado Plummer al cuadrado
+    pub fn try_tree_walk_let(
+        &self,
+        particles: &[Particle],
+        nodes: &RmnSoa,
+        g: f64,
+        eps2: f64,
+    ) -> Result<Vec<Vec3>, CudaExecutionError> {
+        let np = particles.len();
+        let nn = nodes.len;
+        if np == 0 || nn == 0 {
+            return Ok(vec![Vec3::zero(); np]);
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, nodes, g, eps2);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            // Downcast partículas a f32
+            let px: Vec<f32> = particles.iter().map(|p| p.position.x as f32).collect();
+            let py: Vec<f32> = particles.iter().map(|p| p.position.y as f32).collect();
+            let pz: Vec<f32> = particles.iter().map(|p| p.position.z as f32).collect();
+
+            // Downcast nodos LET a f32
+            let cx: Vec<f32> = nodes.cx.iter().map(|&v| v as f32).collect();
+            let cy: Vec<f32> = nodes.cy.iter().map(|&v| v as f32).collect();
+            let cz: Vec<f32> = nodes.cz.iter().map(|&v| v as f32).collect();
+            let nm: Vec<f32> = nodes.mass.iter().map(|&v| v as f32).collect();
+            let q: [Vec<f32>; 6] =
+                std::array::from_fn(|k| nodes.quad[k].iter().map(|&v| v as f32).collect());
+            let o: [Vec<f32>; 7] =
+                std::array::from_fn(|k| nodes.oct[k].iter().map(|&v| v as f32).collect());
+
+            let mut ax_out = vec![0.0_f32; np];
+            let mut ay_out = vec![0.0_f32; np];
+            let mut az_out = vec![0.0_f32; np];
+
+            // SAFETY: los slices tienen longitud correcta (np / nn) verificada arriba.
+            let code = unsafe {
+                crate::ffi::cuda_tree_let_accel(
+                    px.as_ptr(), py.as_ptr(), pz.as_ptr(), np as i32,
+                    cx.as_ptr(), cy.as_ptr(), cz.as_ptr(), nm.as_ptr(),
+                    q[0].as_ptr(), q[1].as_ptr(), q[2].as_ptr(),
+                    q[3].as_ptr(), q[4].as_ptr(), q[5].as_ptr(),
+                    o[0].as_ptr(), o[1].as_ptr(), o[2].as_ptr(),
+                    o[3].as_ptr(), o[4].as_ptr(), o[5].as_ptr(), o[6].as_ptr(),
+                    nn as i32,
+                    g as f32,
+                    eps2 as f32,
+                    ax_out.as_mut_ptr(), ay_out.as_mut_ptr(), az_out.as_mut_ptr(),
+                )
+            };
+            check_kernel("cuda_tree_let_accel", code)?;
+
+            Ok((0..np)
+                .map(|i| Vec3::new(ax_out[i] as f64, ay_out[i] as f64, az_out[i] as f64))
+                .collect())
         }
     }
 

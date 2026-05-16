@@ -20,10 +20,12 @@ gadget-ng-core = { path = "../gadget-ng-core" }
 gadget-ng-mhd = { path = "../gadget-ng-mhd" }
 gadget-ng-rt = { path = "../gadget-ng-rt" }
 gadget-ng-sph = { path = "../gadget-ng-sph" }
+gadget-ng-tree = { path = "../gadget-ng-tree" }
 
 [dev-dependencies]
 criterion.workspace = true
 gadget-ng-pm = { path = "../gadget-ng-pm" }
+gadget-ng-analysis = { path = "../gadget-ng-analysis" }
 
 [[bench]]
 name = "cuda_vs_simd"

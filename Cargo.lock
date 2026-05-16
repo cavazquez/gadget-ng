@@ -769,11 +769,13 @@ name = "gadget-ng-cuda"
 version = "0.2.0"
 dependencies = [
  "criterion",
+ "gadget-ng-analysis",
  "gadget-ng-core",
  "gadget-ng-mhd",
  "gadget-ng-pm",
  "gadget-ng-rt",
  "gadget-ng-sph",
+ "gadget-ng-tree",
 ]
 
 [[package]]

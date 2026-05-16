@@ -223,7 +223,26 @@ pub(crate) fn step_rt(
             substeps: cfg.rt.substeps,
             sigma_dust: 0.1,
         };
-        gadget_ng_rt::m1_update(rf, cfg.simulation.dt, &m1p);
+
+        // M1 advección: CUDA path opt-in si cuda_rt = true.
+        #[cfg(feature = "cuda")]
+        let m1_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_rt {
+            if let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked() {
+                solver
+                    .try_m1_advection(rf, cfg.simulation.dt, &m1p)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let m1_cuda_ok = false;
+
+        if !m1_cuda_ok {
+            gadget_ng_rt::m1_update(rf, cfg.simulation.dt, &m1p);
+        }
 
         // RT→gas coupling: CUDA path para photoheating si disponible.
         #[cfg(feature = "cuda")]
@@ -272,12 +291,41 @@ pub(crate) fn step_sidm(
         sigma_m: cfg.sidm.sigma_m,
         v_max: cfg.sidm.v_max,
     };
-    gadget_ng_tree::apply_sidm_scattering(
-        local,
-        &sidm_params,
-        cfg.simulation.dt,
-        cfg.simulation.seed + step,
-    );
+
+    // CUDA path: opt-in con cuda_tree + use_gpu_cuda (smoke/parity kernel).
+    #[cfg(feature = "cuda")]
+    let cuda_sidm_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_tree {
+        if let Ok(solver) = gadget_ng_cuda::CudaTreeSolver::try_new_checked() {
+            let h = local
+                .iter()
+                .map(|p| p.smoothing_length)
+                .fold(0.0_f64, f64::max)
+                .max(1e-10);
+            solver
+                .try_sidm_scatter(
+                    local,
+                    cfg.simulation.dt,
+                    cfg.sidm.sigma_m,
+                    h,
+                )
+                .is_ok()
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    #[cfg(not(feature = "cuda"))]
+    let cuda_sidm_ok = false;
+
+    if !cuda_sidm_ok {
+        gadget_ng_tree::apply_sidm_scattering(
+            local,
+            &sidm_params,
+            cfg.simulation.dt,
+            cfg.simulation.seed + step,
+        );
+    }
 }
 
 pub(crate) fn step_fr(
@@ -521,6 +569,11 @@ pub(crate) fn step_sph(
         periodic_box,
         |_parts| {},
     );
+    // Note: `[accelerators] cuda_sph = true` is reserved for CUDA SPH density + forces.
+    // Full wiring requires converting gadget_ng_core::Particle ↔ gadget_ng_sph::SphParticle
+    // and a refactor of sph_cosmo_kdk_step to accept an external density/forces callback.
+    // That adapter is tracked in the AP-04 backlog; currently, CUDA cooling/dust/H2 are
+    // already opt-in via their own [accelerators] flags below.
 
     if cfg.sph.cooling != gadget_ng_core::CoolingKind::None {
         let redshift = if a_current > 0.0 {

@@ -62,6 +62,7 @@ pub mod pool;
 pub mod rt_solver;
 pub mod sph_solver;
 pub mod tree_solver;
+pub mod analysis_solver;
 
 pub use availability::{CudaAvailability, CudaExecutionError, CudaUnavailable};
 pub use cooling_solver::CudaCoolingSolver;
@@ -74,3 +75,4 @@ pub use pool::CudaPool;
 pub use rt_solver::CudaRtSolver;
 pub use sph_solver::CudaSphSolver;
 pub use tree_solver::CudaTreeSolver;
+pub use analysis_solver::CudaAnalysisSolver;
