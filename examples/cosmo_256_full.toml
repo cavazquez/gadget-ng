@@ -99,3 +99,16 @@ wl_n_pixels       = 256
 wl_fov_rad        = 0.08
 wl_z_edges        = [0.0, 0.5, 1.0, 1.5, 2.0]
 output_dir        = "runs/cosmo256/insitu"
+# ── Aceleradores GPU (opt-in por módulo) ──────────────────────────────────────
+# Activar individualmente junto con [performance] use_gpu_cuda = true.
+[accelerators]
+cuda_sph      = false
+cuda_mhd      = false
+cuda_cooling  = false
+cuda_dust     = false
+cuda_h2       = false
+cuda_rt       = false
+cuda_tree     = false
+cuda_rt_chem  = false  # RT chemistry: Γ_HI por partícula, stiff solver 12 especies,
+                       # estadísticos de reionización, campo 21cm
+cuda_cr       = false  # MHD CR streaming + backreaction O(N²)

@@ -189,18 +189,18 @@ Todos los solvers CUDA retienen `CudaPool` de buffers device entre pasos (AP-02)
 | MHD anisotropic conduction / CR diffusion | ✅ | ✅ | ✅ AVX2 + AVX512 conduction + CR diffusion pair accumulation | ⚠️ scalar diffusion surface ⚡ |
 | MHD Braginskii | ✅ | ✅ | ✅ AVX2 + AVX512 anisotropic pair accumulation | ⚠️ smoke/parity ⚡ |
 | MHD reconnection | ✅ | ✅ | ✅ AVX2 + AVX512 pair prefilter/update | ⚠️ combined kernel ⚡ |
-| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ⚠️ smoke/parity ⚡ (`mhd_cr_streaming_o2_kernel` + `mhd_cr_backreaction_kernel`, `try_cr_streaming`/`try_cr_backreaction`) |
+| MHD CR streaming / dynamo | ✅ | ✅ | ✅ AVX2 + AVX512 streaming local update + dynamo B-field update + energy ratio | ✅ opt-in `[accelerators] cuda_cr = true` — `mhd_cr_streaming_o2_kernel` + `mhd_cr_backreaction_kernel`; wired en `step_sph` |
 | MHD ambipolar diffusion (nonideal) | ✅ | ✅ | ✅ AVX2 + AVX512 B-field damping + ionization proxy + heating | ⚠️ smoke/parity ⚡ |
 | MHD two-fluid (e-i coupling) | ✅ | ✅ | ✅ AVX2 + AVX512 Coulomb coupling + T_e/T_i reduction | ⚠️ smoke/parity ⚡ |
 | SPH cooling (atomic/metal/UVB) | ✅ | ✅ | ✅ AVX2 + AVX512 per-particle batch | ⚠️ smoke/parity ⚡ |
 | MHD flux-freeze / stats | ✅ | ✅ | ✅ AVX2 + AVX512 (flux-freeze scaling + mean density); b-field stats real AVX512 8-lane | ⚠️ smoke/parity ⚡ |
 | RT M1 diagnostics/photoheating | ✅ | ✅ | ✅ AVX2 + AVX512 diagnostics/photoheating | ⚠️ smoke/parity ⚡ |
 | RT full M1 advection | ✅ | ✅ advección + update | ✅ final update AVX2 + AVX512 | ⚠️ smoke/parity ⚡ (HLL Godunov M1, AP-05) |
-| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ⚠️ smoke/parity ⚡ (`rt_chemistry_rates_kernel` + `rt_cooling_apply_kernel`; `try_chemistry_rates` + `try_apply_cooling`) |
-| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests (AP-09 CPU cerrado) | ⚠️ smoke/parity ⚡ (`rt_chemistry_stiff_kernel`; `try_apply_chemistry`) |
+| RT chemistry rates/cooling | ✅ | ✅ | ✅ AVX2 + AVX512 photoionization rates + cooling | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_chemistry_rates_kernel`; wired en `step_reionization` |
+| RT chemistry stiff solver | ✅ | ✅ | ✅ AVX2 + AVX512 masked-lane dispatch; stiff update scalar-per-lane with chunk/tail parity tests (AP-09 CPU cerrado) | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_chemistry_stiff_kernel`; wired en `step_reionization` |
 | RT IGM temperature profile | ✅ | ✅ | ✅ AVX-512F 8-wide + AVX2+FMA 4-wide (`μ`/`T` + filtro densidad SIMD por lane); estadísticos/sort escalar | ❌ |
-| RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ⚠️ smoke/parity ⚡ (`rt_reionization_stats_kernel`; `try_reionization_stats`) |
-| RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ⚠️ smoke/parity ⚡ (`rt_cm21_field_kernel`; `try_cm21_field`) |
+| RT reionization state | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ✅ opt-in `[accelerators] cuda_rt_chem = true` — `rt_reionization_stats_kernel`; wired en `step_reionization` |
+| RT 21cm | ✅ | ✅ | ✅ AVX2 + AVX512 field reductions | ⚠️ smoke/parity ⚡ (`rt_cm21_field_kernel`; `try_cm21_field` — no wired en engine) |
 | Analysis spin/luminosity/SED | ✅ | ✅ | ✅ AVX2 + AVX512 reductions | ⚠️ smoke/parity ⚡ (halo spin, luminosidad galáctica, L_X, AP-06) |
 | SIDM | ✅ | ✅ density + pair evaluation | ✅ AVX2 + AVX512 density/pair prefilter | ⚠️ smoke/parity ⚡ |
 | f(R) / modified gravity PM | ✅ | ✅ via PM path | ✅ PM spectral path | ⚠️ PM CUDA only |

@@ -216,3 +216,20 @@ Posibles extensiones:
 - (191) **Runtime UX + experimentos**: overrides CLI para física 100–190, validación de combinaciones, presets bajo `configs/experiments/`, matriz `experiments/phase191_runtime_matrix.toml` y runner `scripts/run_phase191_experiments.sh`.
 - (192) **Polvo activo COLIBRE-like**: especies `single`/`silicate_graphite`, opacidad UV efectiva por mezcla y shielding dinámico de H₂ vía `update_h2_fraction_with_dust`.
 - (194) **MHD no ideal**: difusión ambipolar local dependiente de ionización/polvo, calentamiento por disipación magnética y flags `--ambipolar-*`.
+
+## Backlog de performance: `rayon + simd` combinados
+
+Los módulos que actualmente despachan `rayon` O `simd` (mutuamente excluyentes) podrían usar ambos simultáneamente: Rayon reparte chunks entre hilos y cada hilo vectoriza con AVX2/AVX-512. Requiere refactorizar el work item de 1 partícula a N partículas (chunk) para poder aplicar `#[target_feature]` en una función separada.
+
+Candidatos por impacto estimado:
+
+| Módulo | Crate | Función | Ganancia estimada |
+|---|---|---|---|
+| Chemistry stiff solver | `gadget-ng-rt` | `apply_chemistry` / `solve_chemistry_implicit` | Alta — bucle más costoso de RT |
+| SPH density | `gadget-ng-sph` | `compute_density` | Alta — O(N²) por partícula |
+| CR streaming | `gadget-ng-mhd` | `streaming_crk` | Media — O(N²) pero dominado por memoria |
+| Photoionization rates | `gadget-ng-rt` | `apply_chemistry_impl` (inner loop) | Media |
+| SPH forces Gadget-2 | `gadget-ng-sph` | `sph_forces_gadget2` | Media |
+
+Referencia: Dedner cleaning ya tiene un path `rayon + simd` funcionando en `gadget-ng-mhd/src/cleaning.rs` (`dedner_cleaning_step_par_simd`) que puede usarse como plantilla.
+

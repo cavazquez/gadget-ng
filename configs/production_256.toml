@@ -93,3 +93,17 @@ fof_b        = 0.2
 fof_min_part = 20
 xi_bins      = 30
 output_dir   = "runs/production_256/insitu"
+
+# ── Aceleradores GPU (opt-in por módulo) ──────────────────────────────────────
+# Todos los flags requieren [performance] use_gpu_cuda = true y --features cuda.
+# Si el dispositivo CUDA no está disponible, se cae silenciosamente a CPU.
+[accelerators]
+cuda_sph      = false  # Kernels CUDA SPH (densidad, Balsara, fuerzas Gadget-2)
+cuda_mhd      = false  # Kernels CUDA MHD (inducción, fuerzas, flux-freeze, ...)
+cuda_cooling  = false  # Kernel CUDA cooling (H/He, metales, UVB)
+cuda_dust     = false  # Kernel CUDA dust (crecimiento/sputtering)
+cuda_h2       = false  # Kernel CUDA H₂ molecular
+cuda_rt       = false  # Kernels CUDA RT M1 advección + foto-calentamiento
+cuda_tree     = false  # Kernels CUDA árbol local y SIDM
+cuda_rt_chem  = false  # Kernels CUDA RT chemistry (Γ_HI, stiff solver, reion, 21cm)
+cuda_cr       = false  # Kernels CUDA MHD CR streaming + backreaction

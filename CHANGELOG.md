@@ -8,6 +8,29 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CLI (`gadget-ng-cli`)
+
+- **Wiring RT chemistry CUDA** en `step_reionization`: bajo `[accelerators] cuda_rt_chem = true`,
+  el engine intenta `CudaRtSolver::try_chemistry_rates` + `try_apply_chemistry` antes de
+  `apply_chemistry` CPU; fallback silencioso si CUDA falla.
+- **Wiring reionization stats CUDA** en `step_reionization`: bajo `cuda_rt_chem`, intenta
+  `CudaRtSolver::try_reionization_stats` antes de `compute_reionization_state` CPU.
+- **Wiring MHD CR CUDA** en `step_sph`: bajo `[accelerators] cuda_cr = true`, intenta
+  `CudaMhdSolver::try_cr_streaming` + `try_cr_backreaction` antes de `streaming_crk` +
+  `cr_pressure_backreaction` CPU. La backreaction CUDA devuelve `Vec<Vec3>` que se
+  suma a `p.acceleration` in-place para mantener el mismo estado final.
+- `step_reionization` ahora toma `local: &mut [Particle]` (antes `&[Particle]`) para
+  soportar el fallback `apply_chemistry` CPU que modifica partículas.
+
+### Core (`gadget-ng-core`)
+
+- `AcceleratorsSection`: nuevos campos `cuda_rt_chem` y `cuda_cr` (ambos `false` por defecto).
+
+### Configs
+
+- `configs/production_256.toml` y `examples/cosmo_256_full.toml`: añadida sección
+  `[accelerators]` comentada con todos los flags incluidos `cuda_rt_chem` y `cuda_cr`.
+
 ### CUDA (`gadget-ng-cuda`)
 
 - **RT chemistry rates/cooling CUDA:** `rt_chemistry_rates_kernel` (NGP lookup Γ_HI por partícula)

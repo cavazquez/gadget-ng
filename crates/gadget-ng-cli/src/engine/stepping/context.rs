@@ -788,13 +788,52 @@ pub(crate) fn step_sph(
                 );
             }
             if cfg.sph.cr.streaming_coefficient > 0.0 && cfg.mhd.enabled {
-                gadget_ng_mhd::streaming_crk(
-                    local,
-                    cfg.simulation.dt,
-                    cfg.sph.cr.streaming_coefficient,
-                    periodic_box,
-                );
-                gadget_ng_mhd::cr_pressure_backreaction(local, periodic_box);
+                // CUDA path: CR streaming + backreaction bajo cuda_cr.
+                // El fallback CPU aplica streaming_crk + cr_pressure_backreaction.
+                #[cfg(feature = "cuda")]
+                let cr_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_cr {
+                    if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                        let stream_ok = solver
+                            .try_cr_streaming(
+                                local,
+                                cfg.simulation.dt,
+                                cfg.sph.cr.streaming_coefficient,
+                                periodic_box,
+                            )
+                            .is_ok();
+                        let back_ok = if stream_ok {
+                            solver
+                                .try_cr_backreaction(local, periodic_box)
+                                .map(|accels| {
+                                    for (p, a) in local.iter_mut().zip(accels.iter()) {
+                                        p.acceleration.x += a.x;
+                                        p.acceleration.y += a.y;
+                                        p.acceleration.z += a.z;
+                                    }
+                                })
+                                .is_ok()
+                        } else {
+                            false
+                        };
+                        stream_ok && back_ok
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                #[cfg(not(feature = "cuda"))]
+                let cr_cuda_ok = false;
+
+                if !cr_cuda_ok {
+                    gadget_ng_mhd::streaming_crk(
+                        local,
+                        cfg.simulation.dt,
+                        cfg.sph.cr.streaming_coefficient,
+                        periodic_box,
+                    );
+                    gadget_ng_mhd::cr_pressure_backreaction(local, periodic_box);
+                }
             }
         }
 
@@ -830,7 +869,7 @@ pub(crate) fn step_sph(
 }
 
 pub(crate) fn step_reionization(
-    local: &[gadget_ng_core::Particle],
+    local: &mut [gadget_ng_core::Particle],
     rt_field_opt: &mut Option<gadget_ng_rt::RadiationField>,
     sph_chem_states: &mut Vec<gadget_ng_rt::ChemState>,
     cfg: &gadget_ng_core::RunConfig,
@@ -876,7 +915,80 @@ pub(crate) fn step_reionization(
                 }
             })
             .collect();
-        let _reion_state = gadget_ng_rt::reionization_step(
+
+        // ── RT chemistry CUDA path ────────────────────────────────────────────
+        // try_chemistry_rates + try_apply_chemistry bajo cuda_rt_chem.
+        // El fallback CPU es apply_chemistry (tasas + stiff solver en un paso).
+        #[cfg(feature = "cuda")]
+        let chem_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_rt_chem {
+            if let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked() {
+                let gamma_hi = solver
+                    .try_chemistry_rates(local, rf, &m1p, bsz)
+                    .unwrap_or_default();
+                let temperatures: Vec<f64> = local
+                    .iter()
+                    .map(|p| {
+                        ((5.0 / 3.0 - 1.0) * p.internal_energy * 1.0e10 / 1.38065e-16_f64)
+                            .max(1.0)
+                    })
+                    .collect();
+                let ptypes: Vec<gadget_ng_core::ParticleType> =
+                    local.iter().map(|p| p.ptype).collect();
+                solver
+                    .try_apply_chemistry(
+                        sph_chem_states,
+                        &gamma_hi,
+                        &temperatures,
+                        &ptypes,
+                        cfg.simulation.dt,
+                        gadget_ng_rt::chemistry::ChemParams::default().n_h_ref,
+                    )
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let chem_cuda_ok = false;
+
+        if !chem_cuda_ok {
+            gadget_ng_rt::apply_chemistry(
+                local,
+                sph_chem_states,
+                rf,
+                &gadget_ng_rt::chemistry::ChemParams::default(),
+                cfg.simulation.dt,
+            );
+        }
+
+        // ── RT reionization stats CUDA path ───────────────────────────────────
+        // try_reionization_stats bajo cuda_rt_chem.
+        // El resultado ReionizationState actualmente se descarta en ambos paths.
+        #[cfg(feature = "cuda")]
+        let reion_cuda_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_rt_chem {
+            if let Ok(solver) = gadget_ng_cuda::CudaRtSolver::try_new_checked() {
+                solver
+                    .try_reionization_stats(sph_chem_states, z_eor, n_src)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let reion_cuda_ok = false;
+
+        if !reion_cuda_ok {
+            let _reion_state =
+                gadget_ng_rt::compute_reionization_state(sph_chem_states, z_eor, n_src);
+        }
+
+        // ── reionization_step: deposit UV sources + M1 update ────────────────
+        // (no tiene path CUDA propio; ya se cubrió M1 advection en step_rt)
+        let _ = gadget_ng_rt::reionization_step(
             rf,
             sph_chem_states,
             &sources,

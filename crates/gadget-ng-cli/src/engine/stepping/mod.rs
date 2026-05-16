@@ -661,7 +661,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,
@@ -971,7 +971,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,
@@ -1607,7 +1607,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,
@@ -2118,7 +2118,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,
@@ -2403,7 +2403,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,
@@ -2512,7 +2512,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,
@@ -2650,7 +2650,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
-                &local,
+                &mut local,
                 &mut rt_field_opt,
                 &mut sph_chem_states,
                 cfg,

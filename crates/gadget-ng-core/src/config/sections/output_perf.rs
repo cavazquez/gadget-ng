@@ -49,6 +49,21 @@ pub struct AcceleratorsSection {
     /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
     #[serde(default)]
     pub cuda_tree: bool,
+
+    /// Activar kernels CUDA RT chemistry: tasas de fotoionización Γ_HI por partícula
+    /// (NGP lookup), cooling Bremsstrahlung+Lyα, red química stiff de 12 especies
+    /// (subciclo implícito adaptativo), estadísticos de reionización y campo 21cm.
+    /// Solo tiene efecto cuando `[reionization] enabled = true`.
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_rt_chem: bool,
+
+    /// Activar kernels CUDA MHD CR streaming + backreaction (O(N²) por partícula).
+    /// Solo tiene efecto cuando `[sph.cr] streaming_coefficient > 0`
+    /// y `[mhd] enabled = true`.
+    /// Requiere `[performance] use_gpu_cuda = true` y `--features cuda`.
+    #[serde(default)]
+    pub cuda_cr: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
