@@ -8,6 +8,25 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CUDA (`gadget-ng-cuda`)
+
+- **RT chemistry rates/cooling CUDA:** `rt_chemistry_rates_kernel` (NGP lookup Γ_HI por partícula)
+  + `rt_cooling_apply_kernel` (Bremsstrahlung + Lyα cooling en f32) en `rt_kernels.cu`;
+  FFI en `ffi.rs`; `CudaRtSolver::try_chemistry_rates` + `try_apply_cooling` en Rust;
+  tests `cuda_rt_chemistry_rates_match_cpu` + stiff en `cuda_rt_smoke.rs`.
+- **RT chemistry stiff solver CUDA:** `rt_chemistry_stiff_kernel` (subciclo implícito adaptativo
+  para red de 12 especies en f32, MAX_SUB=2000 pasos/hilo) en `rt_kernels.cu`;
+  `CudaRtSolver::try_apply_chemistry` en Rust (tol 5%).
+- **RT reionización / 21cm CUDA:** `rt_reionization_stats_kernel` (reducción paralela con shared
+  memory: Σ x_HII, Σ x_HII², cuenta ionizados) + `rt_cm21_field_kernel` (map δT_b por partícula)
+  en `rt_kernels.cu`; `CudaRtSolver::try_reionization_stats` + `try_cm21_field` en Rust (tol 1e-4).
+- **MHD CR streaming + backreaction CUDA:** `mhd_cr_streaming_o2_kernel` (O(N²) div_v SPH +
+  pérdida compresional + streaming Alfvén en f32) + `mhd_cr_backreaction_kernel` (gradiente de
+  presión CR por pares) en `mhd_kernels.cu`; `CudaMhdSolver::try_cr_streaming` +
+  `try_cr_backreaction` en Rust (tol 5%); tests en `cuda_mhd_smoke.rs`.
+- Matrices de paridad actualizadas en `docs/reports/2026-05-accelerator-parity-pending.md`
+  y `README.md`: todas las filas ❌ pasaron a ⚠️ smoke/parity ⚡.
+
 ### CLI (`gadget-ng-cli`)
 
 - Sección TOML **`[accelerators]`** (opt-in por módulo): flags `cuda_sph`, `cuda_mhd`,

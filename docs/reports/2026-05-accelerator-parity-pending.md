@@ -25,14 +25,14 @@ the remaining scalar/stiff solver rows.
 | MHD induction/forces/cleaning | Complete | Complete | **Induction pair accumulation AVX2+AVX-512**; **Dedner**: serial SIMD pairwise + final batch; **Dedner `rayon`+`simd` on x86** (`par_simd`, per-particle SIMD + final batch) | Smoke/parity kernels |
 | MHD flux-freeze | Complete | Complete | **AVX2 + AVX-512 (B-field scaling + mean density)** | Smoke/parity kernels |
 | MHD two-fluid (electron-ion coupling) | Complete | Complete | **AVX2+AVX-512 e-i coupling + T_e/T_i reduction** | Smoke/parity kernels |
-| MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | **Dynamo AVX2+AVX-512 (B-field update + energy ratio)**; **Ambipolar diffusion AVX2+AVX-512** | Smoke/parity kernels |
+| MHD anisotropic/Braginskii/reconnection/CR/dynamo | Complete | Complete | **Dynamo AVX2+AVX-512 (B-field update + energy ratio)**; **Ambipolar diffusion AVX2+AVX-512** | **Complete** — kernels existentes + `mhd_cr_streaming_o2_kernel` + `mhd_cr_backreaction_kernel`; `try_cr_streaming` + `try_cr_backreaction` |
 | MHD stats b_field_stats | Complete | Complete | **AVX-512 real 8-lane (was stub)** | Smoke/parity kernels |
 | RT diagnostics/photoheating | Complete | Complete | AVX2 + AVX-512 diagnostics/photoheating | Smoke/parity kernels |
-| RT full M1 advection | Complete | Complete advection + update | AVX2 + AVX-512 final update | Pending |
-| RT chemistry rates/cooling | Complete | Complete | AVX2 + AVX-512 particle photoionization rates and cooling update | Pending |
-| RT chemistry stiff solver | Complete | Complete | AVX2 + AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane | Pending CUDA |
-| RT reionization state / 21cm | Complete | Complete | AVX2 + AVX-512 reductions and brightness field | Pending |
-| Analysis observables | Complete | Complete | AVX2 + AVX-512 spin/luminosity/SED reductions | Pending |
+| RT full M1 advection | Complete | Complete advection + update | AVX2 + AVX-512 final update | **Complete** — `m1_substep_kernel` |
+| RT chemistry rates/cooling | Complete | Complete | AVX2 + AVX-512 particle photoionization rates and cooling update | **Complete** — `rt_chemistry_rates_kernel` + `rt_cooling_apply_kernel`; `try_chemistry_rates` + `try_apply_cooling` |
+| RT chemistry stiff solver | Complete | Complete | AVX2 + AVX-512 masked-lane dispatch; stiff chemistry scalar-per-lane | **Complete** — `rt_chemistry_stiff_kernel` (subciclo implícito f32/partícula); `try_apply_chemistry` |
+| RT reionization state / 21cm | Complete | Complete | AVX2 + AVX-512 reductions and brightness field | **Complete** — `rt_reionization_stats_kernel` + `rt_cm21_field_kernel`; `try_reionization_stats` + `try_cm21_field` |
+| Analysis observables | Complete | Complete | AVX2 + AVX-512 spin/luminosity/SED reductions | **Complete** — `halo_spin_kernel` + `galaxy_luminosity_kernel` + `xray_luminosity_kernel`; `CudaAnalysisSolver` |
 | SIDM | Complete | Complete density + pair evaluation | AVX2 + AVX-512 density and pair prefilter | Smoke/parity kernel |
 
 ## Remaining implementation backlog

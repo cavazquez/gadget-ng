@@ -620,6 +620,155 @@ impl CudaMhdSolver {
         }
     }
 
+    /// CR streaming O(N²): actualiza `cr_energy` con pérdidas compresional + streaming.
+    ///
+    /// Replica `gadget_ng_mhd::streaming::streaming_crk` en GPU con aritmética f32.
+    /// La tolerancia en smoke tests es 5% (divergencia f32/f64 en la suma SPH de div_v).
+    pub fn try_cr_streaming(
+        &self,
+        particles: &mut [Particle],
+        dt: f64,
+        streaming_coeff: f64,
+        periodic_box: Option<f64>,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, dt, streaming_coeff, periodic_box);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let px: Vec<f32> = particles.iter().map(|p| p.position.x as f32).collect();
+            let py: Vec<f32> = particles.iter().map(|p| p.position.y as f32).collect();
+            let pz: Vec<f32> = particles.iter().map(|p| p.position.z as f32).collect();
+            let vx: Vec<f32> = particles.iter().map(|p| p.velocity.x as f32).collect();
+            let vy: Vec<f32> = particles.iter().map(|p| p.velocity.y as f32).collect();
+            let vz: Vec<f32> = particles.iter().map(|p| p.velocity.z as f32).collect();
+            let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
+            let h_sml: Vec<f32> = particles
+                .iter()
+                .map(|p| p.smoothing_length.max(1e-10) as f32)
+                .collect();
+            let cr_in: Vec<f32> = particles.iter().map(|p| p.cr_energy as f32).collect();
+            let bx: Vec<f32> = particles.iter().map(|p| p.b_field.x as f32).collect();
+            let by: Vec<f32> = particles.iter().map(|p| p.b_field.y as f32).collect();
+            let bz: Vec<f32> = particles.iter().map(|p| p.b_field.z as f32).collect();
+            let mut cr_out = vec![0.0_f32; n];
+            let pbox = periodic_box.unwrap_or(0.0) as f32;
+
+            // SAFETY: todos los slices son válidos y de longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_cr_streaming(
+                    ptype.as_ptr(),
+                    px.as_ptr(), py.as_ptr(), pz.as_ptr(),
+                    vx.as_ptr(), vy.as_ptr(), vz.as_ptr(),
+                    mass.as_ptr(), h_sml.as_ptr(),
+                    cr_in.as_ptr(),
+                    bx.as_ptr(), by.as_ptr(), bz.as_ptr(),
+                    cr_out.as_mut_ptr(),
+                    n as i32,
+                    dt as f32,
+                    streaming_coeff as f32,
+                    pbox,
+                )
+            };
+            check_kernel("cuda_mhd_cr_streaming", code)?;
+            for (p, &cr) in particles.iter_mut().zip(&cr_out) {
+                p.cr_energy = cr as f64;
+            }
+            Ok(())
+        }
+    }
+
+    /// CR backreaction O(N²): aceleración gas desde gradiente de presión CR.
+    ///
+    /// Replica `gadget_ng_mhd::streaming::cr_pressure_backreaction` en GPU.
+    /// Devuelve el vector de aceleraciones por partícula.
+    pub fn try_cr_backreaction(
+        &self,
+        particles: &[Particle],
+        periodic_box: Option<f64>,
+    ) -> Result<Vec<Vec3>, CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, periodic_box);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let px: Vec<f32> = particles.iter().map(|p| p.position.x as f32).collect();
+            let py: Vec<f32> = particles.iter().map(|p| p.position.y as f32).collect();
+            let pz: Vec<f32> = particles.iter().map(|p| p.position.z as f32).collect();
+            let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
+            let h_sml: Vec<f32> = particles
+                .iter()
+                .map(|p| p.smoothing_length.max(1e-10) as f32)
+                .collect();
+            let cr: Vec<f32> = particles.iter().map(|p| p.cr_energy as f32).collect();
+            let mut ax = vec![0.0_f32; n];
+            let mut ay = vec![0.0_f32; n];
+            let mut az = vec![0.0_f32; n];
+            let pbox = periodic_box.unwrap_or(0.0) as f32;
+
+            // SAFETY: todos los slices son válidos y de longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_cr_backreaction(
+                    ptype.as_ptr(),
+                    px.as_ptr(), py.as_ptr(), pz.as_ptr(),
+                    mass.as_ptr(), h_sml.as_ptr(),
+                    cr.as_ptr(),
+                    ax.as_mut_ptr(), ay.as_mut_ptr(), az.as_mut_ptr(),
+                    n as i32,
+                    pbox,
+                )
+            };
+            check_kernel("cuda_mhd_cr_backreaction", code)?;
+            let result = ax
+                .iter()
+                .zip(ay.iter())
+                .zip(az.iter())
+                .map(|((&x, &y), &z)| Vec3 {
+                    x: x as f64,
+                    y: y as f64,
+                    z: z as f64,
+                })
+                .collect();
+            Ok(result)
+        }
+    }
+
     pub fn try_reconnection_streaming_dynamo(
         &self,
         particles: &mut [Particle],

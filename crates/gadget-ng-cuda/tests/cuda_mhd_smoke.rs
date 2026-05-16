@@ -89,3 +89,109 @@ fn cuda_mhd_flux_freeze_matches_cpu() {
         assert_close_rel(&format!("bz[{i}]"), g.b_field.z, c.b_field.z, 5.0e-5);
     }
 }
+
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_mhd_cr_streaming_match_cpu() {
+    let Some(cuda) = cuda_solver_or_skip() else {
+        return;
+    };
+    use gadget_ng_mhd::streaming_crk;
+
+    // N=64 partículas gas con cr_energy > 0 y campo B
+    let n = 64_usize;
+    let mut cpu: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                1.0,
+                Vec3::new(i as f64 * 0.1, 0.1, 0.1),
+                Vec3::new(0.001 * i as f64, 0.0, 0.0),
+                0.1 + 0.002 * i as f64,
+                0.3,
+            );
+            p.cr_energy = 0.01 + 0.001 * i as f64;
+            p.b_field = Vec3::new(1.0e-4, 2.0e-4, 0.0);
+            p
+        })
+        .collect();
+    let mut gpu = cpu.clone();
+
+    let dt = 0.5;
+    let coeff = 0.1;
+    let pbox = Some(10.0);
+
+    streaming_crk(&mut cpu, dt, coeff, pbox);
+    cuda.try_cr_streaming(&mut gpu, dt, coeff, pbox).unwrap();
+
+    // Tolerancia 5%: f32 vs f64 + divergencia de div_v SPH en f32
+    let tol = 0.05;
+    for i in 0..n {
+        let rel = (gpu[i].cr_energy - cpu[i].cr_energy).abs()
+            / cpu[i].cr_energy.abs().max(1.0e-20);
+        assert!(
+            rel <= tol,
+            "cr_energy[{i}]: gpu={:.6e} cpu={:.6e} rel={:.3e}",
+            gpu[i].cr_energy,
+            cpu[i].cr_energy,
+            rel
+        );
+    }
+}
+
+#[test]
+#[ignore = "Requiere hardware CUDA; ejecutar con `-- --ignored`"]
+fn cuda_mhd_cr_backreaction_match_cpu() {
+    let Some(cuda) = cuda_solver_or_skip() else {
+        return;
+    };
+    use gadget_ng_mhd::cr_pressure_backreaction;
+
+    let n = 64_usize;
+    let parts: Vec<Particle> = (0..n)
+        .map(|i| {
+            let mut p = Particle::new_gas(
+                i,
+                1.0,
+                Vec3::new(i as f64 * 0.15, 0.1, 0.1),
+                Vec3::zero(),
+                0.1 + 0.003 * i as f64,
+                0.3,
+            );
+            p.cr_energy = 0.01 + 0.002 * i as f64;
+            p
+        })
+        .collect();
+    let mut cpu = parts.clone();
+
+    // CPU: aplica backreaction in-place
+    cr_pressure_backreaction(&mut cpu, Some(10.0));
+
+    // GPU: devuelve aceleraciones
+    let accel_gpu = cuda.try_cr_backreaction(&parts, Some(10.0)).unwrap();
+    assert_eq!(accel_gpu.len(), n);
+
+    // Para partículas con cr_energy > 0 en el rango central, compara magnitudes
+    let tol = 0.05;
+    for i in 0..n {
+        if parts[i].cr_energy < 1.0e-15 {
+            continue;
+        }
+        let da_cpu = (cpu[i].acceleration.x - parts[i].acceleration.x).hypot(
+            (cpu[i].acceleration.y - parts[i].acceleration.y)
+                .hypot(cpu[i].acceleration.z - parts[i].acceleration.z),
+        );
+        let da_gpu = accel_gpu[i]
+            .x
+            .hypot(accel_gpu[i].y.hypot(accel_gpu[i].z));
+        let denom = da_cpu.abs().max(1.0e-30);
+        let rel = (da_gpu - da_cpu).abs() / denom;
+        assert!(
+            rel <= tol || da_cpu < 1.0e-20,
+            "cr_backreaction[{i}]: |a_gpu|={:.6e} |a_cpu|={:.6e} rel={:.3e}",
+            da_gpu,
+            da_cpu,
+            rel
+        );
+    }
+}

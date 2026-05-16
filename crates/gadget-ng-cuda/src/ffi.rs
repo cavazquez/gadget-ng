@@ -593,4 +593,118 @@ unsafe extern "C" {
         gamma: f32,
         lx_out: *mut f64,
     ) -> i32;
+
+    // ── Kernels RT chemistry rates ────────────────────────────────────────────
+
+    /// Tasa de fotoionización Γ_HI por partícula (NGP lookup en campo E).
+    pub fn cuda_rt_chemistry_rates(
+        ptype: *const u8,
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        energy_density: *const f32,
+        gamma_hi_out: *mut f32,
+        n_particles: i32,
+        n_cells: i32,
+        nx: i32,
+        ny: i32,
+        nz: i32,
+        box_size: f32,
+        c_red_cgs: f32,
+    ) -> i32;
+
+    /// Aplica cooling_rate_approx a la energía interna de partículas gas.
+    pub fn cuda_rt_cooling_apply(
+        ptype: *const u8,
+        u_inout: *mut f32,
+        x_e: *const f32,
+        n: i32,
+        gamma_eos: f32,
+        n_h_ref: f32,
+        dt: f32,
+    ) -> i32;
+
+    // ── Kernels RT chemistry stiff solver ─────────────────────────────────────
+
+    /// Solver subcíclico implícito de red química (12 especies) por partícula.
+    pub fn cuda_rt_chemistry_stiff(
+        ptype: *const u8,
+        x_hi: *mut f32,
+        x_hii: *mut f32,
+        x_hei: *mut f32,
+        x_heii: *mut f32,
+        x_heiii: *mut f32,
+        x_e: *mut f32,
+        x_hm: *mut f32,
+        x_h2: *mut f32,
+        x_h2p: *mut f32,
+        x_d: *mut f32,
+        x_dp: *mut f32,
+        x_hd: *mut f32,
+        gamma_hi: *const f32,
+        temperature: *const f32,
+        n: i32,
+        dt: f32,
+        n_h_ref: f32,
+    ) -> i32;
+
+    // ── Kernels RT reionization stats ─────────────────────────────────────────
+
+    /// Reducción paralela: suma x_hii, suma x_hii², cuenta ionizados (>0.5).
+    pub fn cuda_rt_reionization_stats(
+        x_hii: *const f32,
+        n: i32,
+        sum_xhii_out: *mut f64,
+        sum_sq_out: *mut f64,
+        ionized_count_out: *mut i32,
+    ) -> i32;
+
+    /// Map: δT_b = 27 × x_HI × overdensity × sqrt((1+z)/10)  [mK].
+    pub fn cuda_rt_cm21_field(
+        x_hii: *const f32,
+        overdensity: *const f32,
+        z: f32,
+        delta_tb_out: *mut f32,
+        n: i32,
+    ) -> i32;
+
+    // ── Kernels MHD CR streaming / backreaction ───────────────────────────────
+
+    /// CR streaming O(N²): actualiza cr_energy con pérdidas compresional + streaming.
+    pub fn cuda_mhd_cr_streaming(
+        ptype: *const u8,
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        h_sml: *const f32,
+        cr_energy_in: *const f32,
+        bx: *const f32,
+        by: *const f32,
+        bz: *const f32,
+        cr_energy_out: *mut f32,
+        n: i32,
+        dt: f32,
+        streaming_coeff: f32,
+        periodic_box: f32,
+    ) -> i32;
+
+    /// CR backreaction O(N²): aceleración gas desde gradiente de presión CR.
+    pub fn cuda_mhd_cr_backreaction(
+        ptype: *const u8,
+        px: *const f32,
+        py: *const f32,
+        pz: *const f32,
+        mass: *const f32,
+        h_sml: *const f32,
+        cr_energy: *const f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        n: i32,
+        periodic_box: f32,
+    ) -> i32;
 }

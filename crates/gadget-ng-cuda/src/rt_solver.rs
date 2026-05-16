@@ -215,6 +215,325 @@ impl CudaRtSolver {
         }
     }
 
+    /// Calcula Γ_HI por partícula (NGP lookup) usando el campo RT.
+    pub fn try_chemistry_rates(
+        &self,
+        particles: &[Particle],
+        rad: &RadiationField,
+        params: &M1Params,
+        box_size: f64,
+    ) -> Result<Vec<f64>, CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, rad, params, box_size);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let px: Vec<f32> = particles.iter().map(|p| p.position.x as f32).collect();
+            let py: Vec<f32> = particles.iter().map(|p| p.position.y as f32).collect();
+            let pz: Vec<f32> = particles.iter().map(|p| p.position.z as f32).collect();
+            let energy: Vec<f32> = rad.energy_density.iter().map(|&v| v as f32).collect();
+            let n_cells = rad.n_cells();
+            let c_red_cgs = (C_KMS * 1.0e5 / params.c_red_factor) as f32;
+            let mut gamma_out = vec![0.0_f32; n];
+
+            // SAFETY: todos los slices son válidos y tienen longitud correcta.
+            let code = unsafe {
+                crate::ffi::cuda_rt_chemistry_rates(
+                    ptype.as_ptr(),
+                    px.as_ptr(),
+                    py.as_ptr(),
+                    pz.as_ptr(),
+                    energy.as_ptr(),
+                    gamma_out.as_mut_ptr(),
+                    n as i32,
+                    n_cells as i32,
+                    rad.nx as i32,
+                    rad.ny as i32,
+                    rad.nz as i32,
+                    box_size as f32,
+                    c_red_cgs,
+                )
+            };
+            check_kernel("cuda_rt_chemistry_rates", code)?;
+            Ok(gamma_out.into_iter().map(f64::from).collect())
+        }
+    }
+
+    /// Aplica cooling_rate_approx a las energías internas de las partículas gas.
+    pub fn try_apply_cooling(
+        &self,
+        particles: &mut [Particle],
+        x_e: &[f64],
+        params: &gadget_ng_rt::chemistry::ChemParams,
+        dt: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, x_e, params, dt);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let mut u: Vec<f32> = particles
+                .iter()
+                .map(|p| p.internal_energy as f32)
+                .collect();
+            let xe_f32: Vec<f32> = x_e.iter().map(|&v| v as f32).collect();
+
+            // SAFETY: slices válidos; u es modificado in-place en el kernel.
+            let code = unsafe {
+                crate::ffi::cuda_rt_cooling_apply(
+                    ptype.as_ptr(),
+                    u.as_mut_ptr(),
+                    xe_f32.as_ptr(),
+                    n as i32,
+                    params.gamma as f32,
+                    params.n_h_ref as f32,
+                    dt as f32,
+                )
+            };
+            check_kernel("cuda_rt_cooling_apply", code)?;
+            for (p, &ui) in particles.iter_mut().zip(&u) {
+                p.internal_energy = ui as f64;
+            }
+            Ok(())
+        }
+    }
+
+    /// Solver químico stiff (subciclo implícito) en GPU sobre todas las partículas.
+    pub fn try_apply_chemistry(
+        &self,
+        chem_states: &mut [gadget_ng_rt::chemistry::ChemState],
+        gamma_hi: &[f64],
+        temperature: &[f64],
+        particle_types: &[gadget_ng_core::ParticleType],
+        dt: f64,
+        n_h_ref: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = chem_states.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (chem_states, gamma_hi, temperature, particle_types, dt, n_h_ref);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let ptype: Vec<u8> = particle_types
+                .iter()
+                .map(|t| match t {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            // Extraer los 12 campos de ChemState en arrays f32
+            macro_rules! field_f32 {
+                ($field:ident) => {
+                    chem_states
+                        .iter()
+                        .map(|s| s.$field as f32)
+                        .collect::<Vec<f32>>()
+                };
+            }
+            let mut x_hi    = field_f32!(x_hi);
+            let mut x_hii   = field_f32!(x_hii);
+            let mut x_hei   = field_f32!(x_hei);
+            let mut x_heii  = field_f32!(x_heii);
+            let mut x_heiii = field_f32!(x_heiii);
+            let mut x_e     = field_f32!(x_e);
+            let mut x_hm    = field_f32!(x_hm);
+            let mut x_h2    = field_f32!(x_h2);
+            let mut x_h2p   = field_f32!(x_h2p);
+            let mut x_d     = field_f32!(x_d);
+            let mut x_dp    = field_f32!(x_dp);
+            let mut x_hd    = field_f32!(x_hd);
+            let ghi_f32: Vec<f32> = gamma_hi.iter().map(|&v| v as f32).collect();
+            let temp_f32: Vec<f32> = temperature.iter().map(|&v| v as f32).collect();
+
+            // SAFETY: todos los arrays son válidos y de longitud n; el kernel opera in-place.
+            let code = unsafe {
+                crate::ffi::cuda_rt_chemistry_stiff(
+                    ptype.as_ptr(),
+                    x_hi.as_mut_ptr(),
+                    x_hii.as_mut_ptr(),
+                    x_hei.as_mut_ptr(),
+                    x_heii.as_mut_ptr(),
+                    x_heiii.as_mut_ptr(),
+                    x_e.as_mut_ptr(),
+                    x_hm.as_mut_ptr(),
+                    x_h2.as_mut_ptr(),
+                    x_h2p.as_mut_ptr(),
+                    x_d.as_mut_ptr(),
+                    x_dp.as_mut_ptr(),
+                    x_hd.as_mut_ptr(),
+                    ghi_f32.as_ptr(),
+                    temp_f32.as_ptr(),
+                    n as i32,
+                    dt as f32,
+                    n_h_ref as f32,
+                )
+            };
+            check_kernel("cuda_rt_chemistry_stiff", code)?;
+
+            // Copiar de vuelta al slice de ChemState
+            for (i, s) in chem_states.iter_mut().enumerate() {
+                s.x_hi    = x_hi[i] as f64;
+                s.x_hii   = x_hii[i] as f64;
+                s.x_hei   = x_hei[i] as f64;
+                s.x_heii  = x_heii[i] as f64;
+                s.x_heiii = x_heiii[i] as f64;
+                s.x_e     = x_e[i] as f64;
+                s.x_hm    = x_hm[i] as f64;
+                s.x_h2    = x_h2[i] as f64;
+                s.x_h2p   = x_h2p[i] as f64;
+                s.x_d     = x_d[i] as f64;
+                s.x_dp    = x_dp[i] as f64;
+                s.x_hd    = x_hd[i] as f64;
+            }
+            Ok(())
+        }
+    }
+
+    /// Reducción paralela sobre x_hii: media, sigma, fracción ionizada.
+    pub fn try_reionization_stats(
+        &self,
+        chem_states: &[gadget_ng_rt::chemistry::ChemState],
+        z: f64,
+        n_sources: usize,
+    ) -> Result<gadget_ng_rt::reionization::ReionizationState, CudaExecutionError> {
+        let n = chem_states.len();
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (chem_states, z, n_sources);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            if n == 0 {
+                return Ok(gadget_ng_rt::reionization::ReionizationState {
+                    x_hii_mean: 0.0,
+                    x_hii_sigma: 0.0,
+                    ionized_volume_fraction: 0.0,
+                    z,
+                    n_sources,
+                });
+            }
+            let xhii_f32: Vec<f32> = chem_states.iter().map(|s| s.x_hii as f32).collect();
+            let mut sum_xhii = 0.0_f64;
+            let mut sum_sq = 0.0_f64;
+            let mut ionized_count = 0_i32;
+
+            // SAFETY: slices válidos; salidas son escalares.
+            let code = unsafe {
+                crate::ffi::cuda_rt_reionization_stats(
+                    xhii_f32.as_ptr(),
+                    n as i32,
+                    &mut sum_xhii,
+                    &mut sum_sq,
+                    &mut ionized_count,
+                )
+            };
+            check_kernel("cuda_rt_reionization_stats", code)?;
+
+            let mean = sum_xhii / n as f64;
+            let var = (sum_sq / n as f64 - mean * mean).max(0.0);
+            let ivf = ionized_count as f64 / n as f64;
+            Ok(gadget_ng_rt::reionization::ReionizationState {
+                x_hii_mean: mean,
+                x_hii_sigma: var.sqrt(),
+                ionized_volume_fraction: ivf,
+                z,
+                n_sources,
+            })
+        }
+    }
+
+    /// Calcula el campo de temperatura de brillo 21cm por partícula.
+    pub fn try_cm21_field(
+        &self,
+        chem_states: &[gadget_ng_rt::chemistry::ChemState],
+        overdensity: &[f64],
+        z: f64,
+    ) -> Result<Vec<f64>, CudaExecutionError> {
+        let n = chem_states.len();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (chem_states, overdensity, z);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let xhii_f32: Vec<f32> = chem_states.iter().map(|s| s.x_hii as f32).collect();
+            let od_f32: Vec<f32> = overdensity.iter().map(|&v| v as f32).collect();
+            let mut dtb = vec![0.0_f32; n];
+
+            // SAFETY: slices válidos y de longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_rt_cm21_field(
+                    xhii_f32.as_ptr(),
+                    od_f32.as_ptr(),
+                    z as f32,
+                    dtb.as_mut_ptr(),
+                    n as i32,
+                )
+            };
+            check_kernel("cuda_rt_cm21_field", code)?;
+            Ok(dtb.into_iter().map(f64::from).collect())
+        }
+    }
+
     /// Aplica fotoheating gas-partícula usando tasas `gamma_hi` por celda.
     pub fn try_apply_photoheating(
         &self,
