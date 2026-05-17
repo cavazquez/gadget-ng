@@ -10,6 +10,10 @@ description = "Pruebas de validación física para gadget-ng (Kepler, Sod, Plumm
 name = "gadget_ng_physics"
 path = "src/lib.rs"
 
+[features]
+default = []
+mpi = ["gadget-ng-parallel/mpi"]
+
 [dependencies]
 gadget-ng-core        = { path = "../gadget-ng-core" }
 gadget-ng-integrators = { path = "../gadget-ng-integrators" }
