@@ -422,7 +422,7 @@ pub fn reionization_step(
 /// - `n_h`        — densidad numérica de H [cm⁻³]
 ///
 /// # Retorna
-/// Radio de Strömgren R_S [cm].
+/// Radio de Strömgren R_S \[cm\].
 pub fn stromgren_radius(n_ion_rate: f64, n_h: f64) -> f64 {
     let vol = 3.0 * n_ion_rate / (4.0 * std::f64::consts::PI * n_h * n_h * ALPHA_B);
     vol.cbrt()

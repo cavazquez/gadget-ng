@@ -39,7 +39,7 @@ pub enum Spsband {
 ///
 /// Dimensiones: 6 edades × 5 metalicidades.
 ///
-/// Edades [Gyr]: 0.01, 0.1, 0.5, 1.0, 5.0, 13.0
+/// Edades \[Gyr\]: 0.01, 0.1, 0.5, 1.0, 5.0, 13.0
 /// Metalicidades Z: 0.0004, 0.004, 0.008, 0.02, 0.05
 #[derive(Debug, Clone)]
 pub struct SpsGrid {
@@ -47,15 +47,15 @@ pub struct SpsGrid {
     pub ages_gyr: [f64; 6],
     /// Metalicidades Z (longitud 5).
     pub metals: [f64; 5],
-    /// Luminosidad en banda U [L☉/M☉], indexada [edad][metal].
+    /// Luminosidad en banda U [L☉/M☉], indexada \[edad\]\[metal\].
     pub l_u: [[f64; 5]; 6],
-    /// Luminosidad en banda B [L☉/M☉], indexada [edad][metal].
+    /// Luminosidad en banda B [L☉/M☉], indexada \[edad\]\[metal\].
     pub l_b: [[f64; 5]; 6],
-    /// Luminosidad en banda V [L☉/M☉], indexada [edad][metal].
+    /// Luminosidad en banda V [L☉/M☉], indexada \[edad\]\[metal\].
     pub l_v: [[f64; 5]; 6],
-    /// Luminosidad en banda R [L☉/M☉], indexada [edad][metal].
+    /// Luminosidad en banda R [L☉/M☉], indexada \[edad\]\[metal\].
     pub l_r: [[f64; 5]; 6],
-    /// Luminosidad en banda I [L☉/M☉], indexada [edad][metal].
+    /// Luminosidad en banda I [L☉/M☉], indexada \[edad\]\[metal\].
     pub l_i: [[f64; 5]; 6],
 }
 
@@ -65,7 +65,7 @@ impl SpsGrid {
     /// Los valores son representativos del comportamiento cualitativo de BC03:
     /// galaxias jóvenes son más azules y luminosas; las viejas son más rojas.
     pub fn bc03_lite() -> Self {
-        // Edades [Gyr]: 0.01, 0.1, 0.5, 1.0, 5.0, 13.0
+        // Edades \[Gyr\]: 0.01, 0.1, 0.5, 1.0, 5.0, 13.0
         let ages_gyr = [0.01, 0.1, 0.5, 1.0, 5.0, 13.0];
         // Metalicidades: 0.0004 (sub-solar), 0.004, 0.008, 0.02 (solar), 0.05 (super-solar)
         let metals = [0.0004, 0.004, 0.008, 0.02, 0.05];

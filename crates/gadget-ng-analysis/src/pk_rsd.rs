@@ -71,7 +71,7 @@ pub struct PkMultipoleBin {
 pub struct PkRsdParams {
     /// Número de bins en k. 0 → usa n/2.
     pub n_k_bins: usize,
-    /// Número de bins en μ ∈ [0,1].
+    /// Número de bins en μ ∈ \[0,1\].
     pub n_mu_bins: usize,
     /// Eje de la LOS.
     pub los: LosAxis,

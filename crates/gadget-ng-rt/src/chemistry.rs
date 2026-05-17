@@ -217,7 +217,7 @@ impl ChemState {
     ///
     /// # Nota de unidades
     /// Para unidades internas de gadget-ng (1 Mpc/h, 10^10 M☉/h, km/s):
-    /// `u [km²/s²] → T [K]` ≈ u × 1e10 × (γ-1) × μ × m_p / k_B.
+    /// `u [km²/s²] → T \[K\]` ≈ u × 1e10 × (γ-1) × μ × m_p / k_B.
     /// μ ≈ 0.588 (gas totalmente ionizado de H+He al 24% en masa).
     pub fn temperature_from_internal_energy(&self, u_code: f64, gamma: f64) -> f64 {
         const K_B_CGS: f64 = 1.380649e-16; // erg/K
@@ -369,7 +369,7 @@ pub fn k_hd_destruction(t: f64) -> f64 {
 /// - `state`    — estado de ionización inicial
 /// - `gamma_hi` — tasa de fotoionización de HI [1/s], desde el campo de radiación
 /// - `gamma_hei`— tasa de fotoionización de HeI [1/s]
-/// - `t`        — temperatura del gas [K]
+/// - `t`        — temperatura del gas \[K\]
 /// - `dt`       — paso de tiempo [s del código]
 ///
 /// # Retorna

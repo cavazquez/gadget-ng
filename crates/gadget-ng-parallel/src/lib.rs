@@ -102,13 +102,13 @@ pub trait ParallelRuntime {
 
     /// Migra partículas a su rango propietario según la descomposición de slabs en **z**.
     ///
-    /// Análogo a [`exchange_domain_by_x`] pero usando la coordenada z.
+    /// Análogo a [`ParallelRuntime::exchange_domain_by_x`] pero usando la coordenada z.
     /// Se usa para la descomposición de dominio del slab PM distribuido (Fase 20).
     fn exchange_domain_by_z(&self, local: &mut Vec<Particle>, my_z_lo: f64, my_z_hi: f64);
 
     /// Intercambia partículas de halo con los rangos vecinos en el eje z.
     ///
-    /// Análogo a [`exchange_halos_by_x`] pero para el eje z.
+    /// Análogo a [`ParallelRuntime::exchange_halos_by_x`] pero para el eje z.
     fn exchange_halos_by_z(
         &self,
         local: &[Particle],
@@ -119,7 +119,7 @@ pub trait ParallelRuntime {
 
     /// Intercambia halos de corto alcance en z con **wrap periódico**.
     ///
-    /// Versión periódica de [`exchange_halos_by_z`] para el path TreePM distribuido (Fase 21).
+    /// Versión periódica de [`ParallelRuntime::exchange_halos_by_z`] para el path TreePM distribuido (Fase 21).
     /// Garantiza que rank 0 reciba halos de rank P-1 y viceversa (borde periódico).
     ///
     /// - Cada rank envía a su vecino izquierdo las partículas con `z < z_lo + halo_width`.

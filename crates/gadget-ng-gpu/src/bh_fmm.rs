@@ -1,5 +1,5 @@
 //! Barnes–Hut FMM en GPU (WGSL): órdenes multipolares **1–4** alineados con
-//! [`gadget_ng_tree::Octree::walk_accel_multipole`] (hexadecapolo vía `hex_dt_patterns` + pesos STF).
+//! `gadget_ng_tree::Octree::walk_accel_multipole` (hexadecapolo vía `hex_dt_patterns` + pesos STF).
 //!
 //! MAC geométrico y **MAC relativo** (estimación quad / mono) cuando `use_relative != 0`.
 

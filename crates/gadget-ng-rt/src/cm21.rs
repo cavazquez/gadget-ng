@@ -15,8 +15,8 @@
 //! 1. Deposición CIC trilineal del campo δT_b en malla N³
 //! 2. Sustracción de la media (campo de contraste)
 //! 3. FFT 3D via 3 pasadas de FFT 1D complejas (separabilidad de la DFT)
-//! 4. Binning esférico de |δ̃(k)|² → P(k) [mK² (Mpc/h)³]
-//! 5. Varianza dimensional Δ²(k) = k³ P(k) / (2π²) [mK²]
+//! 4. Binning esférico de |δ̃(k)|² → P(k) \[mK² (Mpc/h)³]
+//! 5. Varianza dimensional Δ²(k) = k³ P(k) / (2π²) \[mK²]
 
 use crate::ChemState;
 use gadget_ng_core::Particle;
@@ -41,9 +41,9 @@ use std::arch::x86_64::*;
 /// Parámetros para el cálculo de estadísticas 21cm.
 #[derive(Debug, Clone)]
 pub struct Cm21Params {
-    /// Temperatura de spin T_S [K] (default: 1000 K >> T_CMB).
+    /// Temperatura de spin T_S \[K\] (default: 1000 K >> T_CMB).
     pub t_s_kelvin: f64,
-    /// Frecuencia de la línea 21cm [MHz] (default: 1420.406 MHz).
+    /// Frecuencia de la línea 21cm \[MHz\] (default: 1420.406 MHz).
     pub nu_21cm_mhz: f64,
 }
 
@@ -61,7 +61,7 @@ impl Default for Cm21Params {
 pub struct Cm21PkBin {
     /// Número de onda central [h Mpc⁻¹].
     pub k: f64,
-    /// Varianza dimensional Δ²₂₁(k) = k³ P(k) / (2π²) [mK²].
+    /// Varianza dimensional Δ²₂₁(k) = k³ P(k) / (2π²) \[mK²].
     pub delta_sq: f64,
 }
 
@@ -70,15 +70,15 @@ pub struct Cm21PkBin {
 pub struct Cm21Output {
     /// Redshift del snapshot.
     pub z: f64,
-    /// Temperatura de brillo media <δT_b> [mK].
+    /// Temperatura de brillo media <δT_b> \[mK\].
     pub delta_tb_mean: f64,
-    /// Dispersión σ(δT_b) [mK].
+    /// Dispersión σ(δT_b) \[mK\].
     pub delta_tb_sigma: f64,
-    /// Power spectrum dimensional Δ²₂₁(k) [mK²].
+    /// Power spectrum dimensional Δ²₂₁(k) \[mK²].
     pub pk_21cm: Vec<Cm21PkBin>,
 }
 
-/// Calcula la temperatura de brillo diferencial δT_b para una partícula de gas [mK].
+/// Calcula la temperatura de brillo diferencial δT_b para una partícula de gas \[mK\].
 ///
 /// Usa la fórmula estándar:
 /// δT_b ≈ 27 x_HI (1+δ) √((1+z)/10) mK
@@ -95,7 +95,7 @@ pub fn brightness_temperature(x_hii: f64, overdensity: f64, z: f64, _params: &Cm
 
 /// Calcula el campo de temperatura de brillo δT_b para cada partícula de gas.
 ///
-/// Devuelve un vector con δT_b [mK] por partícula.
+/// Devuelve un vector con δT_b \[mK\] por partícula.
 #[cfg(not(feature = "rayon"))]
 fn compute_delta_tb_field_impl(
     particles: &[Particle],
@@ -525,8 +525,8 @@ fn fft3d_real(grid_real: &[f64], n_mesh: usize) -> Vec<Complex<f64>> {
 /// 1. CIC trilineal → malla δT_b(x) de N³ celdas
 /// 2. Substracción de la media → campo de contraste
 /// 3. FFT 3D (3 × FFT 1D complejas) → δ̃T_b(k)
-/// 4. |δ̃T_b(k)|² × V / N³ → estimador de P(k) [mK² (Mpc/h)³]
-/// 5. Binning esférico → Δ²(k) = k³ P(k) / (2π²) [mK²]
+/// 4. |δ̃T_b(k)|² × V / N³ → estimador de P(k) \[mK² (Mpc/h)³]
+/// 5. Binning esférico → Δ²(k) = k³ P(k) / (2π²) \[mK²]
 fn compute_pk_21cm_fft(
     delta_tb: &[f64],
     particles: &[Particle],

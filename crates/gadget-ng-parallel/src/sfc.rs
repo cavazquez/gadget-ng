@@ -234,11 +234,11 @@ impl SfcDecomposition {
     /// Construye la descomposición SFC a partir de un conjunto de posiciones.
     ///
     /// Usa Morton Z-order (default retrocompatible). Para Hilbert usar
-    /// [`build_with_kind`] o [`build_with_bbox_and_kind`].
+    /// [`SfcDecomposition::build_with_kind`] o [`SfcDecomposition::build_with_bbox_and_kind`].
     ///
     /// La bounding box se calcula directamente desde `positions`.
     ///
-    /// **Nota MPI:** en modo multirank, usa [`build_with_bbox`] pasando la bounding
+    /// **Nota MPI:** en modo multirank, usa [`SfcDecomposition::build_with_bbox`] pasando la bounding
     /// box global (obtenida vía `allreduce_min/max` o [`global_bbox`]) para que todos
     /// los rangos produzcan exactamente los mismos cutpoints.
     pub fn build(positions: &[Vec3], box_size: f64, n_ranks: i32) -> Self {
@@ -282,7 +282,7 @@ impl SfcDecomposition {
     /// Construye la descomposición SFC con bounding box explícita (correcta en modo MPI).
     ///
     /// Usa Morton Z-order (retrocompatible con Fases 8-12).
-    /// Para Hilbert usar [`build_with_bbox_and_kind`].
+    /// Para Hilbert usar [`SfcDecomposition::build_with_bbox_and_kind`].
     ///
     /// En modo MPI, todos los rangos deben llamar a esta función con la **bbox global**
     /// (obtenida por `allreduce`), garantizando cutpoints idénticos en todos los rangos.
@@ -402,7 +402,7 @@ impl SfcDecomposition {
     /// - `positions` — posiciones locales (todas las partículas del rank local).
     /// - `weights` — coste por partícula (p. ej. `opened_nodes` del walk BH).
     ///   Debe tener la misma longitud que `positions`. Valores ≤ 0 se tratan como 1.
-    /// - Los demás parámetros tienen el mismo significado que en [`build_with_bbox_and_kind`].
+    /// - Los demás parámetros tienen el mismo significado que en [`SfcDecomposition::build_with_bbox_and_kind`].
     ///
     /// ## Invariante MPI
     /// Todos los ranks deben ver exactamente la **misma** lista ordenada de

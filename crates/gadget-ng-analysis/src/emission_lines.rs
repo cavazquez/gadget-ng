@@ -3,15 +3,15 @@
 //! ## Modelo físico
 //!
 //! Las emissividades se calculan para gas ionizado (T > 5000 K) usando
-//! recombinación case B (Hα) y excitación colisional ([OIII], [NII]):
+//! recombinación case B (Hα) y excitación colisional (\[OIII\], \[NII\]):
 //!
 //! - **Hα 6563Å**: `j_Hα = 1.37×10⁻²⁵ × n_e² × T^{-0.9}` (Osterbrock 2006).
-//! - **[OIII] 5007Å**: `j_OIII = 1.8×10⁻²⁴ × n_e² × (Z/Z_sun) × exp(-29000/T)`.
-//! - **[NII] 6583Å**: `j_NII = 4.5×10⁻²⁵ × n_e² × (Z/Z_sun) × exp(-21500/T)`.
+//! - **\[OIII\] 5007Å**: `j_OIII = 1.8×10⁻²⁴ × n_e² × (Z/Z_sun) × exp(-29000/T)`.
+//! - **\[NII\] 6583Å**: `j_NII = 4.5×10⁻²⁵ × n_e² × (Z/Z_sun) × exp(-21500/T)`.
 //!
 //! El diagrama BPT (Baldwin, Phillips & Terlevich 1981) usa los cocientes:
-//! - **y-axis**: log₁₀([OIII]/Hβ)  donde Hβ ≈ Hα/2.86 (Balmer decrement)
-//! - **x-axis**: log₁₀([NII]/Hα)
+//! - **y-axis**: log₁₀(\[OIII\]/Hβ)  donde Hβ ≈ Hα/2.86 (Balmer decrement)
+//! - **x-axis**: log₁₀(\[NII\]/Hα)
 //!
 //! ## Referencias
 //!
@@ -21,7 +21,7 @@
 
 use gadget_ng_core::Particle;
 
-/// Temperatura mínima para gas ionizado [K].
+/// Temperatura mínima para gas ionizado \[K\].
 const T_ION_MIN: f64 = 5.0e3;
 
 /// Temperatura solar de referencia para metalicidad [Z_sun = 0.02].
@@ -40,13 +40,13 @@ fn u_to_temperature(u: f64, gamma: f64) -> f64 {
 pub struct EmissionLine {
     /// Emissividad Hα en unidades internas.
     pub h_alpha: f64,
-    /// Emissividad [OIII] 5007Å en unidades internas.
+    /// Emissividad \[OIII\] 5007Å en unidades internas.
     pub oiii: f64,
-    /// Emissividad [NII] 6583Å en unidades internas.
+    /// Emissividad \[NII\] 6583Å en unidades internas.
     pub nii: f64,
-    /// Cociente [NII]/Hα (diagnóstico BPT eje-x).
+    /// Cociente \[NII\]/Hα (diagnóstico BPT eje-x).
     pub r_nii_halpha: f64,
-    /// Cociente [OIII]/Hβ (diagnóstico BPT eje-y, con Hβ = Hα/2.86).
+    /// Cociente \[OIII\]/Hβ (diagnóstico BPT eje-y, con Hβ = Hα/2.86).
     pub r_oiii_hbeta: f64,
 }
 
@@ -64,7 +64,7 @@ pub fn emissivity_halpha(rho: f64, t_k: f64) -> f64 {
     1.37e-25 * rho * rho * t_k.powf(-0.9)
 }
 
-/// Emissividad [OIII] 5007Å (excitación colisional) (Phase 152).
+/// Emissividad \[OIII\] 5007Å (excitación colisional) (Phase 152).
 ///
 /// `j_OIII ∝ n_e² × (Z/Z_sun) × exp(-29000/T)`.
 ///
@@ -80,7 +80,7 @@ pub fn emissivity_oiii(rho: f64, t_k: f64, metallicity: f64) -> f64 {
     1.8e-24 * rho * rho * z_rel * (-29_000.0 / t_k).exp()
 }
 
-/// Emissividad [NII] 6583Å (excitación colisional) (Phase 152).
+/// Emissividad \[NII\] 6583Å (excitación colisional) (Phase 152).
 ///
 /// `j_NII ∝ n_e² × (Z/Z_sun) × exp(-21500/T)`.
 ///
@@ -149,7 +149,7 @@ pub fn compute_emission_lines(particles: &[Particle], gamma: f64) -> Vec<Emissio
 /// Genera puntos para el diagrama BPT (Phase 152).
 ///
 /// # Retorna
-/// `Vec<(f64, f64)>` — (log₁₀([NII]/Hα), log₁₀([OIII]/Hβ)) para cada línea
+/// `Vec<(f64, f64)>` — (log₁₀(\[NII\]/Hα), log₁₀(\[OIII\]/Hβ)) para cada línea
 /// con Hα > 0. Galaxias SF se encuentran bajo la línea de Kauffmann+2003.
 pub fn bpt_diagram(lines: &[EmissionLine]) -> Vec<(f64, f64)> {
     lines

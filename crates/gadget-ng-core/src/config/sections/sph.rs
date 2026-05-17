@@ -236,16 +236,16 @@ pub struct PopIIISection {
     /// Fracción mínima HD/H alternativa para gas muy frío (default: 1e-8).
     #[serde(default = "default_pop3_min_hd_fraction")]
     pub min_hd_fraction: f64,
-    /// Temperatura máxima para formar Pop III [K] (default: 3000 K).
+    /// Temperatura máxima para formar Pop III \[K\] (default: 3000 K).
     #[serde(default = "default_pop3_max_temperature_k")]
     pub max_temperature_k: f64,
     /// Fracción de masa de gas convertida en cluster Pop III por evento (default: 0.1).
     #[serde(default = "default_pop3_cluster_efficiency")]
     pub cluster_efficiency: f64,
-    /// Masa mínima de la IMF top-heavy [M_sun] (default: 10).
+    /// Masa mínima de la IMF top-heavy \[M_sun\] (default: 10).
     #[serde(default = "default_pop3_imf_m_min_msun")]
     pub imf_m_min_msun: f64,
-    /// Masa máxima de la IMF top-heavy [M_sun] (default: 300).
+    /// Masa máxima de la IMF top-heavy \[M_sun\] (default: 300).
     #[serde(default = "default_pop3_imf_m_max_msun")]
     pub imf_m_max_msun: f64,
     /// Pendiente de la IMF top-heavy `dN/dm ∝ m^-alpha` (default: 1.7).
@@ -361,7 +361,7 @@ pub struct FeedbackSection {
     /// Basado en Maoz & Mannucci (2012): ~2 × 10⁻³ SN/Gyr/M_sun.
     #[serde(default = "default_a_ia")]
     pub a_ia: f64,
-    /// Tiempo mínimo para SN Ia tras la formación estelar [Gyr] (Phase 113).
+    /// Tiempo mínimo para SN Ia tras la formación estelar \[Gyr\] (Phase 113).
     /// Default: 0.1 Gyr.
     #[serde(default = "default_t_ia_min_gyr")]
     pub t_ia_min_gyr: f64,
@@ -372,7 +372,7 @@ pub struct FeedbackSection {
     /// Modo de feedback estelar: cinético o térmico estocástico (Phase 177).
     #[serde(default)]
     pub feedback_mode: StellarFeedbackMode,
-    /// Salto de temperatura objetivo ΔT [K] para feedback térmico estocástico (default: 1e7 K).
+    /// Salto de temperatura objetivo ΔT \[K\] para feedback térmico estocástico (default: 1e7 K).
     #[serde(default = "default_delta_t_heat_k")]
     pub delta_t_heat_k: f64,
     /// Número máximo de vecinos a calentar por evento (default: 1).
@@ -640,7 +640,7 @@ pub struct ConductionSection {
     /// Conductividad Spitzer en unidades internas (default: `1e-4`).
     #[serde(default = "default_kappa_spitzer")]
     pub kappa_spitzer: f64,
-    /// Factor de supresión ψ ∈ [0,1] por campo magnético o turbulencia (default: `0.1`).
+    /// Factor de supresión ψ ∈ \[0,1\] por campo magnético o turbulencia (default: `0.1`).
     #[serde(default = "default_psi_suppression")]
     pub psi_suppression: f64,
     /// Activa conducción anisótropa ∥B (Phase 133). Si `false` usa Spitzer isótropo.

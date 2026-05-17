@@ -191,7 +191,7 @@ pub struct ModifiedGravitySection {
     /// Iteraciones Jacobi para suavizar el campo chameleon de screening (default: `4`).
     #[serde(default = "default_fr_mesh_iterations")]
     pub mesh_iterations: usize,
-    /// Mezcla de suavizado por iteración para el screening en [0,1] (default: `0.5`).
+    /// Mezcla de suavizado por iteración para el screening en \[0,1\] (default: `0.5`).
     #[serde(default = "default_fr_screening_smoothing")]
     pub screening_smoothing: f64,
 }

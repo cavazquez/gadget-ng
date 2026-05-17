@@ -23,11 +23,11 @@ pub trait GravitySolver: Send + Sync {
         out: &mut [Vec3],
     );
 
-    /// Como [`accelerations_for_indices`] pero también devuelve el coste de interacción
+    /// Como [`GravitySolver::accelerations_for_indices`] pero también devuelve el coste de interacción
     /// estimado (p. ej. nodos abiertos del árbol) para cada partícula en `global_indices`.
     ///
     /// El vector `costs` se rellena con un valor `u64` por entrada de `global_indices`.
-    /// La implementación por defecto llama a [`accelerations_for_indices`] y deja `costs`
+    /// La implementación por defecto llama a [`GravitySolver::accelerations_for_indices`] y deja `costs`
     /// vacío (coste cero implícito), compatible con solvers que no rastrean costes.
     ///
     /// Implementaciones que soporten rastreo de coste deben rellenar `costs` con la

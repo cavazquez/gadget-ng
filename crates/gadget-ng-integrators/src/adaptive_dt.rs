@@ -11,12 +11,12 @@
 //!
 //! ## Criterios disponibles
 //!
-//! * [`AdaptiveDtCriterion::Fixed`] — control a `dt` constante (equivalente a
+//! * `AdaptiveDtCriterion::Fixed` — control a `dt` constante (equivalente a
 //!   no usar adaptativo, expuesto para uniformar la API del caller).
-//! * [`AdaptiveDtCriterion::Acceleration`] — criterio tipo Aarseth global:
+//! * `AdaptiveDtCriterion::Acceleration` — criterio tipo Aarseth global:
 //!   `dt = η · sqrt(ε / a_max)` con `a_max = max_i |a_i|`. `ε` es el
 //!   softening físico (mismo que usa el solver).
-//! * [`AdaptiveDtCriterion::CosmoAcceleration`] — combina el criterio de
+//! * `AdaptiveDtCriterion::CosmoAcceleration` — combina el criterio de
 //!   aceleración con una cota cosmológica `dt ≤ κ · H(a)^{-1} · a`. Esto
 //!   evita que `dt` crezca sin control en épocas tempranas donde `a_max` es
 //!   pequeño (típico en 2LPT ICs a `a_init = 0.02`) y mantiene la expansión
@@ -44,7 +44,7 @@
 //!
 //! ## Clamps
 //!
-//! Los parámetros [`AdaptiveDtCriterion::dt_min`] y [`AdaptiveDtCriterion::dt_max`]
+//! Los campos `dt_min` y `dt_max` de las variantes `Acceleration` / `CosmoAcceleration`
 //! imponen un intervalo de `dt` admisible. El `dt_max` evita saltos grandes
 //! cuando la dinámica está congelada (ICs homogéneos); `dt_min` evita
 //! deadlocks numéricos si un par de partículas se acerca patológicamente.
@@ -67,7 +67,7 @@ pub enum AdaptiveDtCriterion {
         /// Paso máximo absoluto.
         dt_max: f64,
     },
-    /// Combina [`Acceleration`] con una cota cosmológica
+    /// Combina la variante `Acceleration` con una cota cosmológica
     /// `dt ≤ kappa_h · a / H(a)`. Usa el valor más restrictivo.
     ///
     /// Con `kappa_h = 0.02` garantiza ≥50 pasos por e-folding del factor de

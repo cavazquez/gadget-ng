@@ -283,7 +283,7 @@ pub(crate) fn compute_forces_hierarchical_let(
 /// 1. Construye un árbol con solo las partículas locales.
 /// 2. Para cada partícula, aplica la fuerza del árbol local (con auto-exclusión).
 /// 3. Suma la contribución de los nodos multipolares remotos (`remote_let_bufs`,
-///    buffers wire en `f64` empaquetados con [`pack_let_nodes`]).
+///    buffers wire en `f64` empaquetados con [`gadget_ng_tree::pack_let_nodes`]).
 ///
 /// Esta función implementa el kernel SFC+LET de Fase 8.
 pub(crate) fn compute_forces_sfc_let(

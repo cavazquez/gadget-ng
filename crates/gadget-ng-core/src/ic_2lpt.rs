@@ -58,7 +58,7 @@
 //! - signo global invertido.
 //!
 //! El patch de Phase 44 unifica el Poisson y el gradiente en
-//! [`source_to_psi2`], que implementa `Ψ² = −i·k/k² · S` tal como
+//! `source_to_psi2`, que implementa `Ψ² = −i·k/k² · S` tal como
 //! `2LPTic` (Crocce+06) y coincide con la ec. 2 de Jenkins (2010).
 
 use crate::{

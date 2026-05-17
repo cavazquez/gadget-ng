@@ -1,6 +1,6 @@
 //! Configuración global de la simulación.
 //!
-//! Tipos por dominio viven en el submódulo [`sections`] (archivos por área:
+//! Tipos por dominio viven en el submódulo `sections` (archivos por área:
 //! simulación/IC, gravedad, salida/rendimiento, etc.); [`RunConfig`] los agrupa.
 
 mod error;

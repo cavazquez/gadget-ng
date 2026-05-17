@@ -54,7 +54,7 @@ pub struct Particle {
     /// `0.0` para DM y estrellas.
     #[serde(default)]
     pub cr_energy: f64,
-    /// Fracción de gas en fase molecular H₂ ∈ [0,1] (Phase 122).
+    /// Fracción de gas en fase molecular H₂ ∈ \[0,1\] (Phase 122).
     /// `0.0` por defecto para todos los tipos.
     #[serde(default)]
     pub h2_fraction: f64,

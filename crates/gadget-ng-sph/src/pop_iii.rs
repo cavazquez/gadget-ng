@@ -17,7 +17,7 @@ pub struct PopIIICluster {
     pub mass_total: f64,
     /// Número efectivo de estrellas muestreadas.
     pub n_stars: usize,
-    /// Masa media de la IMF muestreada [M_sun].
+    /// Masa media de la IMF muestreada \[M_sun\].
     pub mean_stellar_mass_msun: f64,
     /// Metalicidad heredada del gas.
     pub metallicity: f64,

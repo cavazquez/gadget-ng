@@ -705,7 +705,7 @@ unsafe extern "C" {
         ionized_count_out: *mut i32,
     ) -> i32;
 
-    /// Map: δT_b = 27 × x_HI × overdensity × sqrt((1+z)/10)  [mK].
+    /// Map: δT_b = 27 × x_HI × overdensity × sqrt((1+z)/10)  \[mK\].
     pub fn cuda_rt_cm21_field(
         x_hii: *const f32,
         overdensity: *const f32,

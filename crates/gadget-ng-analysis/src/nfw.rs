@@ -197,7 +197,7 @@ impl NfwProfile {
     ///
     /// Las unidades de v_c dependen de las unidades de G usadas.
     /// En unidades (Mpc/h, M_sun/h, G = 4.3009×10⁻³ pc M_sun⁻¹ (km/s)²):
-    /// v_c² [km²/s²] = G [pc M_sun⁻¹ (km/s)²] × M [M_sun] / r [pc]
+    /// v_c² \[km²/s²\] = G \[pc M_sun⁻¹ (km/s)²\] × M \[M_sun\] / r \[pc\]
     ///
     /// Para uso en código con G genérico, esta función devuelve sqrt(M(<r)/r)
     /// en unidades (M_sun/h / (Mpc/h))^{1/2}. El usuario multiplica por sqrt(G).

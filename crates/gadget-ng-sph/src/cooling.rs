@@ -67,19 +67,19 @@ const LAMBDA_0: f64 = 2e-5;
 /// Exponente de la ley de potencia Λ ∝ T^β.
 const BETA: f64 = 0.7;
 
-/// Temperatura de referencia [K].
+/// Temperatura de referencia \[K\].
 const T_REF: f64 = 1e4;
 
 /// Fracción de hidrógeno en masa.
 const X_H: f64 = 0.76;
 
-/// Convierte energía interna específica `u` [(km/s)²] a temperatura [K].
+/// Convierte energía interna específica `u` [(km/s)²] a temperatura \[K\].
 #[inline]
 pub fn u_to_temperature(u: f64, gamma: f64) -> f64 {
     u * (gamma - 1.0) / KB_OVER_MH_MU
 }
 
-/// Convierte temperatura [K] a energía interna específica [(km/s)²].
+/// Convierte temperatura \[K\] a energía interna específica [(km/s)²].
 #[inline]
 pub fn temperature_to_u(t_k: f64, gamma: f64) -> f64 {
     t_k * KB_OVER_MH_MU / (gamma - 1.0)
@@ -199,7 +199,7 @@ const COOLING_TABLE: [[f64; 20]; 7] = [
 /// - `rho`: densidad local (actualmente no usada, reservada para normalización futura)
 /// - `metallicity`: fracción de masa en metales Z
 /// - `gamma`: índice adiabático
-/// - `t_floor_k`: temperatura mínima [K]; por debajo retorna 0
+/// - `t_floor_k`: temperatura mínima \[K\]; por debajo retorna 0
 pub fn cooling_rate_tabular(
     u: f64,
     _rho: f64,

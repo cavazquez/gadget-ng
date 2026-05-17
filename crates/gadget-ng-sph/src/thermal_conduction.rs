@@ -14,7 +14,7 @@
 //! κ_eff = κ_Spitzer × ψ × T_mean^{5/2}
 //! ```
 //!
-//! con `ψ ∈ [0,1]` el factor de supresión por campo magnético o turbulencia.
+//! con `ψ ∈ \[0,1\]` el factor de supresión por campo magnético o turbulencia.
 //! En cúmulos de galaxias, ψ ≈ 0.1–0.3 (Narayan & Medvedev 2001).
 //!
 //! ## Conservación de energía

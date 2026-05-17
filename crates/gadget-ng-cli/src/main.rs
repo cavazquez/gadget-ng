@@ -221,7 +221,7 @@ enum Commands {
         /// Activar WDM/FDM en ICs.
         #[arg(long)]
         dark_matter: Option<String>,
-        /// Masa WDM [keV].
+        /// Masa WDM \[keV\].
         #[arg(long)]
         wdm_mass_kev: Option<f64>,
         /// Masa FDM en 1e-22 eV.

@@ -377,7 +377,7 @@ pub fn find_halos_with_membership(
 ///
 /// # Phase 107
 ///
-/// Usado en [`super::merge_tree_cmd`] cuando solo se dispone del catálogo
+/// Usado en el subcomando CLI `merge-tree` cuando solo se dispone del catálogo
 /// de halos JSONL (sin re-ejecutar FoF).
 pub fn particle_snapshots_from_catalog(
     positions: &[Vec3],

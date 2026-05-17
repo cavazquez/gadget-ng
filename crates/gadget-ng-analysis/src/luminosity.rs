@@ -140,7 +140,7 @@ pub struct SedResult {
     pub bv: f64,
     /// Color V-R ponderado por L_V.
     pub vr: f64,
-    /// Edad media ponderada por masa [Gyr].
+    /// Edad media ponderada por masa \[Gyr\].
     pub mass_weighted_age: f64,
     /// Número de partículas estelares.
     pub n_stars: usize,

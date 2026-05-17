@@ -182,7 +182,7 @@ pub fn dust_uv_opacity_active(cfg: &DustSection, dust_to_gas: f64, rho: f64, h: 
 ///
 /// Retorna `1 + boost × (1 − exp(−tau_dust))`, acotado y suave. El resultado
 /// multiplica la fracción de equilibrio H2 y alarga el tiempo efectivo de
-/// fotodisociación en [`update_h2_fraction_with_dust`].
+/// fotodisociación en [`crate::molecular_gas::update_h2_fraction_with_dust`].
 pub fn dust_h2_shielding_factor(p: &Particle, cfg: &DustSection) -> f64 {
     if !cfg.enabled || p.ptype != ParticleType::Gas || p.dust_to_gas <= 0.0 {
         return 1.0;

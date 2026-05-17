@@ -28,7 +28,7 @@ use gadget_ng_core::Particle;
 /// k_B / (m_H · μ) en (km/s)² / K — misma constante que en gadget-ng-sph/cooling.rs.
 const KB_OVER_MH_MU: f64 = 8.254e-3 / 0.6;
 
-/// Convierte energía interna específica `u` [(km/s)²] a temperatura [K].
+/// Convierte energía interna específica `u` [(km/s)²] a temperatura \[K\].
 #[inline]
 fn u_to_temperature(u: f64, gamma: f64) -> f64 {
     u * (gamma - 1.0) / KB_OVER_MH_MU
@@ -37,7 +37,7 @@ fn u_to_temperature(u: f64, gamma: f64) -> f64 {
 /// Constante de bremsstrahlung: Λ_0 = 3×10⁻²⁷ erg·s⁻¹·cm³·K^{-1/2}.
 const LAMBDA_0: f64 = 3.0e-27;
 
-/// Temperatura de corte mínima [K]: gas frío no emite en X.
+/// Temperatura de corte mínima \[K\]: gas frío no emite en X.
 const T_X_MIN_K: f64 = 1.0e5;
 
 /// Resultado de un bin radial de emisión de rayos X.
@@ -47,7 +47,7 @@ pub struct XrayBin {
     pub r_center: f64,
     /// Luminosidad de rayos X en el bin [unidades internas].
     pub luminosity_x: f64,
-    /// Temperatura promedio ponderada por emissividad [K].
+    /// Temperatura promedio ponderada por emissividad \[K\].
     pub temperature_x: f64,
     /// Número de partículas de gas caliente en el bin.
     pub n_particles: usize,

@@ -58,15 +58,15 @@ use std::arch::x86_64::*;
 pub struct IgmTempBin {
     /// Redshift del instante.
     pub z: f64,
-    /// Temperatura media del IGM [K].
+    /// Temperatura media del IGM \[K\].
     pub t_mean: f64,
-    /// Temperatura mediana del IGM [K].
+    /// Temperatura mediana del IGM \[K\].
     pub t_median: f64,
-    /// Desviación estándar de la temperatura [K].
+    /// Desviación estándar de la temperatura \[K\].
     pub t_sigma: f64,
-    /// Temperatura del 16° percentil [K].
+    /// Temperatura del 16° percentil \[K\].
     pub t_p16: f64,
-    /// Temperatura del 84° percentil [K].
+    /// Temperatura del 84° percentil \[K\].
     pub t_p84: f64,
     /// Número de partículas de gas IGM usadas en el cálculo.
     pub n_particles: usize,

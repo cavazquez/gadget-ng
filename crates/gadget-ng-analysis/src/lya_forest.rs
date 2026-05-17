@@ -103,7 +103,7 @@ pub struct LyaParams {
     pub z_source: f64,
     /// Resolución de velocidad (km/s) por celda. Default: 25.0.
     pub dv_kms: f64,
-    /// Temperatura del IGM para ensanchamiento térmico [K]. Default: 1e4.
+    /// Temperatura del IGM para ensanchamiento térmico \[K\]. Default: 1e4.
     pub t_igm_kelvin: f64,
 }
 

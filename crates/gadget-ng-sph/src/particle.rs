@@ -34,7 +34,7 @@ pub struct GasData {
     pub da_dt: f64,
 
     // ── Limitador de Balsara (Balsara 1995) ──────────────────────────────────
-    /// Factor Balsara f_i = |∇·v_i| / (|∇·v_i| + |∇×v_i| + ε c_s/h) ∈ [0,1].
+    /// Factor Balsara f_i = |∇·v_i| / (|∇·v_i| + |∇×v_i| + ε c_s/h) ∈ \[0,1\].
     /// Suprime la viscosidad artificial en flujos de cizallamiento.
     pub balsara: f64,
 
