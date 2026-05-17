@@ -708,7 +708,8 @@ impl CudaRtSolver {
             // Calcular percentiles ordenando el array compacto en host.
             let (t_median, t_p16, t_p84) = if n_igm > 0 {
                 let mut sorted: Vec<f32> = temps_buf[..n_igm as usize].to_vec();
-                sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                sorted
+                    .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let m = sorted.len();
                 let percentile = |p: f64| -> f64 {
                     let idx = ((p / 100.0) * (m - 1) as f64).round() as usize;

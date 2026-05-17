@@ -377,7 +377,10 @@ fn cuda_mhd_dedner_match_cpu() {
             rel_psi
         );
     }
-    eprintln!("[cuda_mhd_dedner_match_cpu] OK — n={n}, psi_div matches within {:.0}%", tol_psi * 100.0);
+    eprintln!(
+        "[cuda_mhd_dedner_match_cpu] OK — n={n}, psi_div matches within {:.0}%",
+        tol_psi * 100.0
+    );
 }
 
 // ── AP-17: Conducción anisótropa CUDA O(N²) ────────────────────────────────
@@ -432,4 +435,59 @@ fn cuda_mhd_anisotropic_conduction_match_cpu() {
         "anisotropic conduction L2 rel={l2_rel:.4} > 5%"
     );
     eprintln!("[cuda_mhd_anisotropic_conduction_match_cpu] OK — L2 rel = {l2_rel:.4}");
+}
+
+// ── AP-20: Hall drift GPU vs CPU ──────────────────────────────────────────────
+
+#[test]
+#[ignore = "requiere GPU NVIDIA (GTX 1060 / sm_61)"]
+fn cuda_hall_drift_match_cpu() {
+    use gadget_ng_mhd::apply_hall_drift;
+    use std::f64::consts::PI;
+
+    let cuda = CudaMhdSolver::try_new_checked()
+        .expect("GPU no disponible — omitir con cargo test sin --include-ignored");
+
+    let n = 64_usize;
+    let eta_hall = 0.5_f64;
+    let dt = 0.01_f64;
+
+    // Partículas gas: B y v mutuamente ortogonales, |B| = 1, |v| = 1.
+    let mut parts_cpu: Vec<Particle> = (0..n)
+        .map(|k| {
+            let angle = 2.0 * PI * (k as f64) / (n as f64);
+            let mut p = Particle::new_gas(
+                k,
+                1.0,
+                Vec3::zero(),
+                Vec3::new(-angle.sin(), angle.cos(), 0.0),
+                1.0,
+                1.0,
+            );
+            p.b_field = Vec3::new(angle.cos(), angle.sin(), 0.0);
+            p
+        })
+        .collect();
+    let mut parts_gpu = parts_cpu.clone();
+
+    // CPU reference
+    apply_hall_drift(&mut parts_cpu, eta_hall, dt);
+
+    // GPU
+    cuda.try_hall_drift(&mut parts_gpu, eta_hall, dt)
+        .expect("try_hall_drift falló en GPU");
+
+    let mut max_b_diff = 0.0_f64;
+    for i in 0..n {
+        let b_gpu = parts_gpu[i].b_field;
+        let b_cpu = parts_cpu[i].b_field;
+        let db = (b_gpu.x - b_cpu.x).hypot(b_gpu.y - b_cpu.y);
+        let db3d = (db * db + (b_gpu.z - b_cpu.z) * (b_gpu.z - b_cpu.z)).sqrt();
+        max_b_diff = max_b_diff.max(db3d);
+    }
+    assert!(
+        max_b_diff < 1.0e-4,
+        "Hall drift GPU vs CPU: max |ΔB| = {max_b_diff:.2e} > 1e-4"
+    );
+    eprintln!("[cuda_hall_drift_match_cpu] OK — max |ΔB| = {max_b_diff:.2e}");
 }

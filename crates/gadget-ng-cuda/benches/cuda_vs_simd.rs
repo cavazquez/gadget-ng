@@ -270,7 +270,8 @@ fn bench_sph_core_cuda_vs_cpu(c: &mut Criterion) {
         }
     }
 
-    group.finish();}
+    group.finish();
+}
 
 // ── Benchmark: MHD flux_freeze ───────────────────────────────────────────────
 

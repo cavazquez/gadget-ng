@@ -23,4 +23,5 @@ pub use distributed::{
     HaloStats, PmScatterStats, SfcShortRangeParams, SlabShortRangeParams, halo_stats,
     pm_scatter_gather_accels, short_range_accels_sfc, short_range_accels_slab,
 };
+pub use short_range::{ShortRangeParams, erfc_approx, erfc_factor, short_range_accels};
 pub use solver::TreePmSolver;

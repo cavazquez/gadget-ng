@@ -589,8 +589,7 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
             .iter()
             .enumerate()
             .map(|(h_idx, h)| {
-                let lambda = if h_idx < halo_member_ids.len()
-                    && !halo_member_ids[h_idx].is_empty()
+                let lambda = if h_idx < halo_member_ids.len() && !halo_member_ids[h_idx].is_empty()
                 {
                     let ids = &halo_member_ids[h_idx];
 
@@ -604,12 +603,14 @@ pub fn run_analyze(params: &AnalyzeParams<'_>) -> Result<(), CliError> {
                         gadget_ng_cuda::CudaAnalysisSolver::try_new_checked()
                             .ok()
                             .and_then(|s| {
-                                s.try_halo_spin(&pos_h, &vel_h, &mass_h, pos_com, vel_com).ok()
+                                s.try_halo_spin(&pos_h, &vel_h, &mass_h, pos_com, vel_com)
+                                    .ok()
                             })
                             .map(|l_vec| {
-                                let l_mag =
-                                    (l_vec[0] * l_vec[0] + l_vec[1] * l_vec[1] + l_vec[2] * l_vec[2])
-                                        .sqrt();
+                                let l_mag = (l_vec[0] * l_vec[0]
+                                    + l_vec[1] * l_vec[1]
+                                    + l_vec[2] * l_vec[2])
+                                    .sqrt();
                                 let r200 = h.r_vir;
                                 let v_vir = if r200 > 0.0 {
                                     (spin_params.g_newton * h.mass / r200).sqrt()

@@ -36,6 +36,10 @@ pub struct PmSolver {
     pub fr_mesh_iterations: usize,
     /// Mezcla por iteración para el screening f(R).
     pub fr_screening_smoothing: f64,
+    /// Campo de screening f(R) pre-computado externamente (AP-20: GPU via CUDA).
+    /// Si `Some`, se usa directamente en `solve_forces_fr_screened_mesh` en lugar de
+    /// calcular en CPU. Se consume (toma) en la primera llamada.
+    pub screening_override: Option<Vec<f64>>,
 }
 
 impl PmSolver {
@@ -49,7 +53,14 @@ impl PmSolver {
             fr_nonlinear_mesh: false,
             fr_mesh_iterations: 4,
             fr_screening_smoothing: 0.5,
+            screening_override: None,
         }
+    }
+
+    /// Inyecta un campo de screening pre-computado (e.g. desde GPU) para la
+    /// próxima llamada a `accelerations_for_indices`. Se consume en esa llamada.
+    pub fn set_screening_override(&mut self, screening: Vec<f64>) {
+        self.screening_override = Some(screening);
     }
 }
 
@@ -91,6 +102,8 @@ impl GravitySolver for PmSolver {
                         iterations: self.fr_mesh_iterations,
                         smoothing: self.fr_screening_smoothing,
                         plummer_eps: self.plummer_eps,
+                        // AP-20: screening pre-computado por GPU si disponible.
+                        screening_override: self.screening_override.clone(),
                     },
                 )
             } else {

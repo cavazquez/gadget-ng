@@ -8,6 +8,35 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### CUDA (`gadget-ng-cuda`) — AP-20 (cierre total de paridad)
+
+- **MHD Hall drift CUDA:** `mhd_hall_drift_kernel` en `mhd_kernels.cu` — rotación de Rodrigues de B
+  alrededor de `v×B` por hilo, conserva `|B|`, sin heating. FFI `cuda_mhd_hall_drift`;
+  `CudaMhdSolver::try_hall_drift`; wired en `step_mhd` bajo `cuda_mhd`.
+- **f(R) chameleon screening CUDA:** `fr_screening_per_cell_kernel` + `fr_screening_jacobi_kernel`
+  en `pm_gravity.cu`. `CudaPmSolver::try_fr_screening_field`; `PmSolver::screening_override`
+  como mecanismo de inyección desde CLI.
+- **TreePM short-range CUDA:** `treepm_sr_erfc_kernel` O(N²) con erfc A&S §7.1.26 y mínima imagen
+  periódica. `CudaTreeSolver::try_short_range`; wired en el paso SR SFC.
+- **Barnes-Hut local GPU walk:** `bh_walk_monopole_kernel` con pila por hilo `stack[32]`, MAC θ²,
+  self-skip por `particle_idx`, monopolo Plummer. Consume `BhMonopoleGpuNode` (96 bytes, repr(C))
+  vía `Octree::export_bh_monopole_gpu_nodes()`. `CudaTreeSolver::try_bh_local_walk`; wired en
+  `compute_forces_local_tree` path.
+- **Tests `#[ignore]`:** `cuda_hall_drift_match_cpu` (`|ΔB|<1e-4`), `cuda_fr_screening_match_cpu`
+  (L2<1e-3), `cuda_treepm_sr_match_cpu` (<5%), `cuda_bh_walk_match_cpu` (<1%).
+
+### PM (`gadget-ng-pm`) — AP-20
+
+- `FrMeshParams::screening_override: Option<Vec<f64>>` — campo de screening pre-computado
+  externamente (e.g. desde GPU); bypasea el cálculo CPU si `Some`.
+- `PmSolver::screening_override` + `PmSolver::set_screening_override` — API para inyectar
+  screening GPU desde el CLI sin dependencia circular.
+
+### Tree (`gadget-ng-treepm`) — AP-20
+
+- Re-exporta `ShortRangeParams`, `erfc_approx`, `erfc_factor`, `short_range_accels` desde
+  `gadget_ng_treepm` para uso en tests de parity CUDA.
+
 ### CUDA (`gadget-ng-cuda`) — AP-19
 
 - **Pipeline SPH persistente:** `try_sph_density_and_forces_core` reescrito con mapa de 21 slots

@@ -224,6 +224,54 @@ impl CudaPmSolver {
             Ok(())
         }
     }
+
+    /// Calcula el campo de screening chameleon f(R) en GPU (AP-20).
+    ///
+    /// Replica `gadget_ng_pm::fft_poisson::fr_screening_field`: por cada celda
+    /// computa `S = min(1, |f_R / f_R0|)` y luego suaviza con `iterations`
+    /// pasos Jacobi con factor de mezcla `smoothing`. Devuelve un `Vec<f64>`
+    /// de longitud `nm³`.
+    pub fn try_fr_screening_field(
+        &self,
+        density: &[f64],
+        nm: usize,
+        f_r0: f64,
+        n_fr: f64,
+        smoothing: f64,
+        iterations: usize,
+    ) -> Result<Vec<f64>, CudaExecutionError> {
+        let nm3 = nm * nm * nm;
+        assert_eq!(density.len(), nm3, "density.len() debe ser nm³");
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (density, nm, f_r0, n_fr, smoothing, iterations);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let den_f32: Vec<f32> = density.iter().map(|&v| v as f32).collect();
+            let mut screen_out = vec![0.0_f32; nm3];
+
+            // SAFETY: slices son válidos, nm3 == density.len().
+            let code = unsafe {
+                crate::ffi::cuda_fr_screening_field(
+                    den_f32.as_ptr(),
+                    screen_out.as_mut_ptr(),
+                    nm as i32,
+                    f_r0 as f32,
+                    n_fr as f32,
+                    smoothing as f32,
+                    iterations as i32,
+                )
+            };
+            check_kernel("cuda_fr_screening_field", code)?;
+            Ok(screen_out.iter().map(|&v| v as f64).collect())
+        }
+    }
 }
 
 impl Drop for CudaPmSolver {
@@ -267,6 +315,14 @@ impl GravitySolver for CudaPmSolver {
         ) {
             panic!("CudaPmSolver::accelerations_for_indices falló: {err}");
         }
+    }
+}
+
+fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionError> {
+    if code == 0 {
+        Ok(())
+    } else {
+        Err(CudaExecutionError::KernelFailed { kernel, code })
     }
 }
 

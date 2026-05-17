@@ -945,6 +945,86 @@ impl CudaMhdSolver {
         }
     }
 
+    /// Aplica drift Hall en GPU (AP-20 / Phase 186).
+    ///
+    /// Rota B alrededor del eje `v × B` con ángulo `θ = η_H |B| / ρ_proxy dt`
+    /// usando la fórmula de Rodrigues. Conserva `|B|` exactamente; no modifica
+    /// la energía interna (Hall no disipa energía magnética).
+    pub fn try_hall_drift(
+        &self,
+        particles: &mut [Particle],
+        eta_hall: f64,
+        dt: f64,
+    ) -> Result<(), CudaExecutionError> {
+        let n = particles.len();
+        if n == 0 {
+            return Ok(());
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (particles, eta_hall, dt);
+            return Err(CudaExecutionError::Unavailable(CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let bx_in: Vec<f32> = particles.iter().map(|p| p.b_field.x as f32).collect();
+            let by_in: Vec<f32> = particles.iter().map(|p| p.b_field.y as f32).collect();
+            let bz_in: Vec<f32> = particles.iter().map(|p| p.b_field.z as f32).collect();
+            let vx: Vec<f32> = particles.iter().map(|p| p.velocity.x as f32).collect();
+            let vy: Vec<f32> = particles.iter().map(|p| p.velocity.y as f32).collect();
+            let vz: Vec<f32> = particles.iter().map(|p| p.velocity.z as f32).collect();
+            let mass: Vec<f32> = particles.iter().map(|p| p.mass as f32).collect();
+            let h_sml: Vec<f32> = particles
+                .iter()
+                .map(|p| p.smoothing_length as f32)
+                .collect();
+            let soa_ptype: Vec<u8> = particles
+                .iter()
+                .map(|p| match p.ptype {
+                    ParticleType::DarkMatter => 0,
+                    ParticleType::Gas => 1,
+                    ParticleType::Star => 2,
+                })
+                .collect();
+            let mut bx_out = vec![0.0_f32; n];
+            let mut by_out = vec![0.0_f32; n];
+            let mut bz_out = vec![0.0_f32; n];
+
+            // SAFETY: todos los slices son válidos y tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_mhd_hall_drift(
+                    soa_ptype.as_ptr(),
+                    bx_in.as_ptr(),
+                    by_in.as_ptr(),
+                    bz_in.as_ptr(),
+                    vx.as_ptr(),
+                    vy.as_ptr(),
+                    vz.as_ptr(),
+                    mass.as_ptr(),
+                    h_sml.as_ptr(),
+                    bx_out.as_mut_ptr(),
+                    by_out.as_mut_ptr(),
+                    bz_out.as_mut_ptr(),
+                    n as i32,
+                    eta_hall as f32,
+                    dt as f32,
+                )
+            };
+            check_kernel("cuda_mhd_hall_drift", code)?;
+
+            for (i, p) in particles.iter_mut().enumerate() {
+                p.b_field.x = bx_out[i] as f64;
+                p.b_field.y = by_out[i] as f64;
+                p.b_field.z = bz_out[i] as f64;
+            }
+            Ok(())
+        }
+    }
+
     /// Actualiza temperatura electrónica `t_electron` vía acoplamiento Coulomb e-i en GPU.
     ///
     /// Replica `gadget_ng_mhd::apply_electron_ion_coupling` por partícula.

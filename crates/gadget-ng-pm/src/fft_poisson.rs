@@ -37,7 +37,7 @@ type PmFftPlanPair = (Arc<dyn rustfft::Fft<f64>>, Arc<dyn rustfft::Fft<f64>>);
 type PmFftPlanCache = Mutex<HashMap<usize, PmFftPlanPair>>;
 
 /// Parámetros del solver PM f(R) con screening espacial.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct FrMeshParams<'a> {
     /// Parámetros Hu-Sawicki.
     pub fr: &'a gadget_ng_core::FRParams,
@@ -47,6 +47,9 @@ pub struct FrMeshParams<'a> {
     pub smoothing: f64,
     /// Suavizado Plummer opcional en k-space.
     pub plummer_eps: Option<f64>,
+    /// Campo de screening pre-computado externamente (e.g. desde GPU via AP-20).
+    /// Si `Some`, se usa directamente en lugar de calcular en CPU.
+    pub screening_override: Option<Vec<f64>>,
 }
 
 /// Resuelve la ecuación de Poisson y devuelve las tres componentes de la fuerza
@@ -172,7 +175,9 @@ pub fn solve_forces_fr_screened_mesh(
         return gr;
     }
 
-    let screening = fr_screening_field(density, nm, params.fr, params.iterations, params.smoothing);
+    let screening = params.screening_override.unwrap_or_else(|| {
+        fr_screening_field(density, nm, params.fr, params.iterations, params.smoothing)
+    });
     let scalar_density: Vec<f64> = density
         .iter()
         .zip(screening.iter())

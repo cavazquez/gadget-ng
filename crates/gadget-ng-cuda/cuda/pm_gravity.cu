@@ -520,3 +520,96 @@ int cuda_pm_solve(
 }
 
 } /* extern "C" */
+
+// ── f(R) chameleon screening (AP-20) ─────────────────────────────────────────
+// Implementa `fr_screening_field` de gadget-ng-pm en GPU.
+// Paso 1: por celda, calcula S = fifth_force_factor(chameleon_field(delta)).
+// Paso 2 (iterativo): suavizado Jacobi periódico, `iterations` veces.
+
+#ifndef FR_BLOCK_SIZE
+#define FR_BLOCK_SIZE 256
+#endif
+
+__device__ static float chameleon_field_f32(float delta, float f_r0, float n) {
+    if (delta <= -1.0f) return fabsf(f_r0);
+    float rho_ratio = 1.0f + delta;
+    return fabsf(f_r0) * powf(rho_ratio, -(n + 1.0f));
+}
+
+__device__ static float fifth_force_factor_f32(float fr_local, float f_r0) {
+    if (fabsf(f_r0) <= 0.0f) return 0.0f;
+    return fminf(fabsf(fr_local) / fabsf(f_r0), 1.0f);
+}
+
+__global__ void fr_screening_per_cell_kernel(
+    const float* density, float* screen, int nm3,
+    float f_r0, float n_fr, float rho_bar
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nm3) return;
+    float delta = (rho_bar > 0.0f) ? ((density[i] - rho_bar) / rho_bar) : 0.0f;
+    float fr = chameleon_field_f32(delta, f_r0, n_fr);
+    screen[i] = fifth_force_factor_f32(fr, f_r0);
+}
+
+__global__ void fr_screening_jacobi_kernel(
+    const float* screen_old, float* screen_new, int nm, float mix
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int nm3 = nm * nm * nm;
+    if (i >= nm3) return;
+    int iz = i / (nm * nm);
+    int iy = (i / nm) % nm;
+    int ix = i % nm;
+    int izm = (iz + nm - 1) % nm; int izp = (iz + 1) % nm;
+    int iym = (iy + nm - 1) % nm; int iyp = (iy + 1) % nm;
+    int ixm = (ix + nm - 1) % nm; int ixp = (ix + 1) % nm;
+    float neigh = screen_old[iz*nm*nm + iy*nm + ixm]
+                + screen_old[iz*nm*nm + iy*nm + ixp]
+                + screen_old[iz*nm*nm + iym*nm + ix]
+                + screen_old[iz*nm*nm + iyp*nm + ix]
+                + screen_old[izm*nm*nm + iy*nm + ix]
+                + screen_old[izp*nm*nm + iy*nm + ix];
+    float val = (1.0f - mix) * screen_old[i] + mix * neigh / 6.0f;
+    screen_new[i] = fminf(fmaxf(val, 0.0f), 1.0f);
+}
+
+extern "C" int cuda_fr_screening_field(
+    const float* density, float* screen_out, int nm,
+    float f_r0, float n_fr, float smoothing, int iterations
+) {
+    int nm3 = nm * nm * nm;
+    if (nm3 <= 0) return 0;
+    // Compute rho_bar on host side (small array, fast)
+    float rho_sum = 0.0f;
+    for (int i = 0; i < nm3; i++) rho_sum += density[i];
+    float rho_bar = rho_sum / (float)nm3;
+
+    float *dden, *dscr, *dscr2;
+    if (cudaMalloc(&dden,  (size_t)nm3 * sizeof(float)) != cudaSuccess) return -1;
+    if (cudaMalloc(&dscr,  (size_t)nm3 * sizeof(float)) != cudaSuccess) { cudaFree(dden); return -1; }
+    if (cudaMalloc(&dscr2, (size_t)nm3 * sizeof(float)) != cudaSuccess) { cudaFree(dden); cudaFree(dscr); return -1; }
+    if (cudaMemcpy(dden, density, (size_t)nm3 * sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess) {
+        cudaFree(dden); cudaFree(dscr); cudaFree(dscr2); return -1;
+    }
+    int blocks = (nm3 + FR_BLOCK_SIZE - 1) / FR_BLOCK_SIZE;
+    fr_screening_per_cell_kernel<<<blocks, FR_BLOCK_SIZE>>>(dden, dscr, nm3, f_r0, n_fr, rho_bar);
+    if (cudaGetLastError() != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess) {
+        cudaFree(dden); cudaFree(dscr); cudaFree(dscr2); return -1;
+    }
+    float mix = smoothing;
+    if (mix < 0.0f) mix = 0.0f;
+    if (mix > 1.0f) mix = 1.0f;
+    for (int it = 0; it < iterations; it++) {
+        fr_screening_jacobi_kernel<<<blocks, FR_BLOCK_SIZE>>>(dscr, dscr2, nm, mix);
+        if (cudaGetLastError() != cudaSuccess || cudaDeviceSynchronize() != cudaSuccess) {
+            cudaFree(dden); cudaFree(dscr); cudaFree(dscr2); return -1;
+        }
+        float* tmp = dscr; dscr = dscr2; dscr2 = tmp;
+    }
+    if (cudaMemcpy(screen_out, dscr, (size_t)nm3 * sizeof(float), cudaMemcpyDeviceToHost) != cudaSuccess) {
+        cudaFree(dden); cudaFree(dscr); cudaFree(dscr2); return -1;
+    }
+    cudaFree(dden); cudaFree(dscr); cudaFree(dscr2);
+    return 0;
+}

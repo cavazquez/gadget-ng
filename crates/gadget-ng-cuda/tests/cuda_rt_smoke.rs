@@ -450,8 +450,7 @@ fn cuda_rt_igm_temp_percentiles_match_cpu() {
             )
         })
         .collect();
-    let chem: Vec<gadget_ng_rt::ChemState> =
-        vec![gadget_ng_rt::ChemState::neutral(); n];
+    let chem: Vec<gadget_ng_rt::ChemState> = vec![gadget_ng_rt::ChemState::neutral(); n];
     let igm_params = IgmTempParams {
         delta_max: 0.0,
         gamma: 5.0 / 3.0,
@@ -465,15 +464,19 @@ fn cuda_rt_igm_temp_percentiles_match_cpu() {
     let cpu_bin = compute_igm_temp_profile(&particles, &chem, mean_density, z, &igm_params);
 
     assert!(cpu_bin.n_particles > 0, "CPU: no hay partículas IGM");
-    assert_eq!(gpu_bin.n_particles, cpu_bin.n_particles, "n_igm: gpu={} cpu={}", gpu_bin.n_particles, cpu_bin.n_particles);
+    assert_eq!(
+        gpu_bin.n_particles, cpu_bin.n_particles,
+        "n_igm: gpu={} cpu={}",
+        gpu_bin.n_particles, cpu_bin.n_particles
+    );
 
     // Verificar que los percentiles son coherentes (GPU ordena el array compacto)
     // Tolerancia del 5% para percentiles (f32 vs f64)
     let tol = 0.05_f64;
     for (label, gpu_val, cpu_val) in [
         ("t_median", gpu_bin.t_median, cpu_bin.t_median),
-        ("t_p16",   gpu_bin.t_p16,   cpu_bin.t_p16),
-        ("t_p84",   gpu_bin.t_p84,   cpu_bin.t_p84),
+        ("t_p16", gpu_bin.t_p16, cpu_bin.t_p16),
+        ("t_p84", gpu_bin.t_p84, cpu_bin.t_p84),
     ] {
         let rel = (gpu_val - cpu_val).abs() / cpu_val.abs().max(1.0e-10);
         assert!(

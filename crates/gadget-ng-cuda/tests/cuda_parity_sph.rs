@@ -6,13 +6,14 @@
 //!   `gadget_ng_core::Particle` (AP-18): densidad + Balsara + fuerzas clásicas en GPU
 //!   vs equivalente CPU con `SphParticle` como referencia.
 
-use gadget_ng_core::{CoolingKind, DustSection, MolecularSection, Particle, ParticleType, SphSection, Vec3};
+use gadget_ng_core::{
+    CoolingKind, DustSection, MolecularSection, Particle, ParticleType, SphSection, Vec3,
+};
 use gadget_ng_cuda::{CudaCoolingSolver, CudaDustSolver, CudaMolecularSolver, CudaSphSolver};
 use gadget_ng_sph::{
     compute_balsara_factors_with_periodic, compute_density_with_periodic,
     compute_sph_forces_gadget2_with_periodic, compute_sph_forces_with_periodic, cooling, dust,
-    molecular_gas,
-    particle::SphParticle,
+    molecular_gas, particle::SphParticle,
 };
 
 fn cuda_sph_or_skip() -> Option<CudaSphSolver> {
@@ -258,7 +259,10 @@ fn cuda_parity_sph_core_pipeline() {
         .iter()
         .map(|sp| {
             let u = sp.gas.as_ref().map_or(1.5, |g| g.u);
-            let h = sp.gas.as_ref().map_or(box_size / n_side as f64 * 2.0, |g| g.h_sml);
+            let h = sp
+                .gas
+                .as_ref()
+                .map_or(box_size / n_side as f64 * 2.0, |g| g.h_sml);
             let mut p = Particle::new(sp.global_id, sp.mass, sp.position, sp.velocity);
             p.ptype = ParticleType::Gas;
             p.internal_energy = u;
@@ -297,10 +301,9 @@ fn cuda_parity_sph_core_pipeline() {
                 "acc_sph[{i}] GPU no es finita: {a:?}"
             );
             let cpu_gas = cpu_sph[i].gas.as_ref().unwrap();
-            let mag_cpu = (cpu_gas.acc_sph.x.powi(2)
-                + cpu_gas.acc_sph.y.powi(2)
-                + cpu_gas.acc_sph.z.powi(2))
-            .sqrt();
+            let mag_cpu =
+                (cpu_gas.acc_sph.x.powi(2) + cpu_gas.acc_sph.y.powi(2) + cpu_gas.acc_sph.z.powi(2))
+                    .sqrt();
             let mag_gpu = (a.x.powi(2) + a.y.powi(2) + a.z.powi(2)).sqrt();
             // Magnitudes en el mismo orden de magnitud (factor 10×).
             // Diferencias mayores se deben a f32 vs f64 en el kernel de suavizado.

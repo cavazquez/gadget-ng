@@ -454,9 +454,7 @@ pub fn maybe_run_insitu(
                         .collect();
                     gadget_ng_cuda::CudaRtSolver::try_new_checked()
                         .ok()
-                        .and_then(|s| {
-                            s.try_cm21_field(&chem_for_21cm, &overdensity, z).ok()
-                        })
+                        .and_then(|s| s.try_cm21_field(&chem_for_21cm, &overdensity, z).ok())
                         .filter(|v| !v.is_empty())
                         .map(|dtb| {
                             let n = dtb.len() as f64;

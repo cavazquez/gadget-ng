@@ -371,3 +371,67 @@ fn cuda_pm_try_new_without_cuda_returns_none_or_some() {
         "is_available() y try_new() deben ser consistentes"
     );
 }
+
+// ── AP-20: f(R) screening GPU vs CPU ─────────────────────────────────────────
+
+#[test]
+#[ignore = "requiere GPU NVIDIA (GTX 1060 / sm_61)"]
+fn cuda_fr_screening_match_cpu() {
+    use gadget_ng_core::FRParams;
+    use gadget_ng_pm::fr_screening_field;
+
+    let cuda = CudaPmSolver::try_new_checked(32, 100.0)
+        .expect("GPU no disponible — omitir con cargo test sin --include-ignored");
+
+    let nm = 16_usize;
+    let nm3 = nm * nm * nm;
+    let f_r0 = 1.0e-5_f64;
+    let n_fr = 1.0_f64;
+    let smoothing = 0.5_f64;
+    let iterations = 4_usize;
+
+    // Densidad gaussiana centrada
+    let mut density = vec![1.0_f64; nm3];
+    let cx = (nm / 2) as f64;
+    for iz in 0..nm {
+        for iy in 0..nm {
+            for ix in 0..nm {
+                let dx = ix as f64 - cx;
+                let dy = iy as f64 - cx;
+                let dz = iz as f64 - cx;
+                let r2 = dx * dx + dy * dy + dz * dz;
+                density[iz * nm * nm + iy * nm + ix] = 1.0 + 10.0 * (-r2 / 8.0_f64).exp();
+            }
+        }
+    }
+
+    // CPU reference
+    let params = FRParams { f_r0, n: n_fr };
+    let screen_cpu = fr_screening_field(&density, nm, &params, iterations, smoothing);
+
+    // GPU
+    let screen_gpu = cuda
+        .try_fr_screening_field(&density, nm, f_r0, n_fr, smoothing, iterations)
+        .expect("try_fr_screening_field falló en GPU");
+
+    assert_eq!(
+        screen_gpu.len(),
+        nm3,
+        "longitud del vector screening GPU incorrecta"
+    );
+
+    // L2 relativa entre GPU y CPU
+    let mut l2_num = 0.0_f64;
+    let mut l2_den = 0.0_f64;
+    for i in 0..nm3 {
+        let diff = screen_gpu[i] - screen_cpu[i];
+        l2_num += diff * diff;
+        l2_den += screen_cpu[i] * screen_cpu[i];
+    }
+    let l2_rel = (l2_num / l2_den.max(1.0e-30)).sqrt();
+    assert!(
+        l2_rel < 1.0e-3,
+        "f(R) screening GPU vs CPU: L2 rel = {l2_rel:.2e} > 1e-3"
+    );
+    eprintln!("[cuda_fr_screening_match_cpu] OK — L2 rel = {l2_rel:.2e}");
+}

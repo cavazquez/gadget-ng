@@ -26,6 +26,7 @@ gadget-ng-tree = { path = "../gadget-ng-tree" }
 criterion.workspace = true
 gadget-ng-pm = { path = "../gadget-ng-pm" }
 gadget-ng-analysis = { path = "../gadget-ng-analysis" }
+gadget-ng-treepm = { path = "../gadget-ng-treepm" }
 
 [[bench]]
 name = "cuda_vs_simd"

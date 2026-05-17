@@ -79,6 +79,17 @@ unsafe extern "C" {
         r_split: f32,
     ) -> i32;
 
+    /// Calcula el campo de screening chameleon f(R) por celda + suavizado Jacobi (AP-20).
+    pub fn cuda_fr_screening_field(
+        density: *const f32,
+        screen_out: *mut f32,
+        nm: i32,
+        f_r0: f32,
+        n_fr: f32,
+        smoothing: f32,
+        iterations: i32,
+    ) -> i32;
+
     // ── Solver directo N² (gravedad directa con shared-memory tiling) ─────────
 
     /// Crea un handle para el solver de gravedad directa N².
@@ -420,6 +431,41 @@ unsafe extern "C" {
         az_out: *mut f32,
     ) -> i32;
 
+    /// Barnes-Hut local GPU walk monopole con pila por hilo (AP-20).
+    pub fn cuda_bh_walk_monopole(
+        nodes_raw: *const std::ffi::c_void,
+        n_nodes: i32,
+        root_idx: u32,
+        qx: *const f32,
+        qy: *const f32,
+        qz: *const f32,
+        target_idx: *const u32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        n_targets: i32,
+        theta2: f32,
+        g: f32,
+        eps2: f32,
+    ) -> i32;
+
+    /// TreePM short-range O(N²) con erfc y mínima imagen (AP-20).
+    pub fn cuda_treepm_short_range(
+        x: *const f32,
+        y: *const f32,
+        z: *const f32,
+        mass: *const f32,
+        ax_out: *mut f32,
+        ay_out: *mut f32,
+        az_out: *mut f32,
+        n: i32,
+        r_split: f32,
+        r_cut2: f32,
+        eps2: f32,
+        g: f32,
+        box_size: f32,
+    ) -> i32;
+
     // ── Kernels RT ──────────────────────────────────────────────────────────
 
     pub fn cuda_rt_energy_xi_photoion(
@@ -719,6 +765,25 @@ unsafe extern "C" {
     ) -> i32;
 
     // ── Kernels MHD ambipolar + two-fluid (AP-16) ─────────────────────────────
+
+    /// Hall drift (AP-20): rota B alrededor de v×B con fórmula de Rodrigues; conserva |B|.
+    pub fn cuda_mhd_hall_drift(
+        ptype: *const u8,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        vx: *const f32,
+        vy: *const f32,
+        vz: *const f32,
+        mass: *const f32,
+        h_sml: *const f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        n: i32,
+        eta_hall: f32,
+        dt: f32,
+    ) -> i32;
 
     /// Difusión ambipolar: amortigua B con rate eta_ad / x_ion; calienta u.
     pub fn cuda_mhd_ambipolar(

@@ -242,3 +242,17 @@ steady-state solves.
 
 Detailed pending work is tracked in
 [`2026-05-accelerator-parity-pending.md`](2026-05-accelerator-parity-pending.md).
+
+## AP-20 update — 2026-05-16 — Cierre total de paridad CUDA
+
+Tras AP-20, todos los gaps CUDA remanentes han sido cerrados:
+
+| Módulo | Kernel CUDA | Estado |
+|---|---|---|
+| MHD Hall drift | `mhd_hall_drift_kernel` (Rodrigues, `v×B`) | ✅ completo AP-20 |
+| f(R) chameleon screening | `fr_screening_per_cell_kernel` + `fr_screening_jacobi_kernel` | ✅ completo AP-20 |
+| TreePM short-range | `treepm_sr_erfc_kernel` (erfc A&S §7.1.26, O(N²)) | ✅ completo AP-20 |
+| Barnes-Hut local GPU | `bh_walk_monopole_kernel` (pila por hilo, MAC θ²) | ✅ completo AP-20 |
+
+La tabla de paridad en `README.md` no tiene más filas `⚠️` en columna CUDA.
+Todos los tests `#[ignore]` relevantes están anotados y pasan en GTX 1060 sm_61.

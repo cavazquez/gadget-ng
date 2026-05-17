@@ -954,3 +954,91 @@ extern "C" int cuda_mhd_cr_diffusion_anisotropic(
     cudaFree(crdiff_bx); cudaFree(crdiff_by); cudaFree(crdiff_bz); cudaFree(crdiff_out);
     return 0;
 }
+
+// ── Hall drift (AP-20 / Phase 186) ────────────────────────────────────────────
+// Rota B alrededor del eje (v × B) usando la fórmula de Rodrigues.
+// Conserva |B| exactamente; no modifica u (Hall no disipa energía).
+
+__global__ void mhd_hall_drift_kernel(
+    const unsigned char* ptype,
+    const float* bx_in, const float* by_in, const float* bz_in,
+    const float* vx, const float* vy, const float* vz,
+    const float* mass, const float* h_sml,
+    float* bx_out, float* by_out, float* bz_out,
+    int n, float eta_hall, float dt
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float bx = bx_in[i], by = by_in[i], bz = bz_in[i];
+    if (ptype[i] != PTYPE_GAS) {
+        bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz; return;
+    }
+    float b2 = bx*bx + by*by + bz*bz;
+    if (b2 <= 0.0f) { bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz; return; }
+    float b_norm = sqrtf(b2);
+    float h   = h_sml[i];
+    float h3  = h * h * h;
+    float rho = (h > 0.0f) ? (mass[i] / fmaxf(h3, 1.0e-30f)) : fmaxf(mass[i], 1.0e-30f);
+    float theta = eta_hall * b_norm / fmaxf(rho, 1.0e-30f) * dt;
+    // Clamp rotation to [-PI, PI]
+    if (theta >  3.14159265f) theta =  3.14159265f;
+    if (theta < -3.14159265f) theta = -3.14159265f;
+    if (fabsf(theta) < 1.0e-15f) { bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz; return; }
+    // Rotation axis: k = normalize(v × B)
+    float ax = vy[i]*bz - vz[i]*by;
+    float ay = vz[i]*bx - vx[i]*bz;
+    float az = vx[i]*by - vy[i]*bx;
+    float a2 = ax*ax + ay*ay + az*az;
+    if (a2 < 1.0e-60f) { bx_out[i] = bx; by_out[i] = by; bz_out[i] = bz; return; }
+    float inv_a = rsqrtf(a2);
+    float kx = ax*inv_a, ky = ay*inv_a, kz = az*inv_a;
+    // Rodrigues: B_new = B cos(θ) + (k × B) sin(θ) + k (k·B)(1 − cos(θ))
+    float cos_t = cosf(theta), sin_t = sinf(theta);
+    float k_dot_b = kx*bx + ky*by + kz*bz;
+    float kcx = ky*bz - kz*by;
+    float kcy = kz*bx - kx*bz;
+    float kcz = kx*by - ky*bx;
+    float one_mc = 1.0f - cos_t;
+    bx_out[i] = bx*cos_t + kcx*sin_t + kx*k_dot_b*one_mc;
+    by_out[i] = by*cos_t + kcy*sin_t + ky*k_dot_b*one_mc;
+    bz_out[i] = bz*cos_t + kcz*sin_t + kz*k_dot_b*one_mc;
+}
+
+extern "C" int cuda_mhd_hall_drift(
+    const unsigned char* ptype,
+    const float* bx_in, const float* by_in, const float* bz_in,
+    const float* vx,    const float* vy,    const float* vz,
+    const float* mass,  const float* h_sml,
+    float* bx_out, float* by_out, float* bz_out,
+    int n, float eta_hall, float dt
+) {
+    if (n <= 0) return 0;
+    unsigned char* dp;
+    float *dbxi, *dbyi, *dbzi, *dvx, *dvy, *dvz, *dm, *dh;
+    float *dbxo, *dbyo, *dbzo;
+    if (alloc_copy(&dp,   ptype,  n)) return -1;
+    if (alloc_copy(&dbxi, bx_in,  n)) return -1;
+    if (alloc_copy(&dbyi, by_in,  n)) return -1;
+    if (alloc_copy(&dbzi, bz_in,  n)) return -1;
+    if (alloc_copy(&dvx,  vx,     n)) return -1;
+    if (alloc_copy(&dvy,  vy,     n)) return -1;
+    if (alloc_copy(&dvz,  vz,     n)) return -1;
+    if (alloc_copy(&dm,   mass,   n)) return -1;
+    if (alloc_copy(&dh,   h_sml,  n)) return -1;
+    if (alloc_zero(&dbxo, n)) return -1;
+    if (alloc_zero(&dbyo, n)) return -1;
+    if (alloc_zero(&dbzo, n)) return -1;
+    int blocks = (n + MHD_BLOCK_SIZE - 1) / MHD_BLOCK_SIZE;
+    mhd_hall_drift_kernel<<<blocks, MHD_BLOCK_SIZE>>>(
+        dp, dbxi, dbyi, dbzi, dvx, dvy, dvz, dm, dh,
+        dbxo, dbyo, dbzo, n, eta_hall, dt);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(bx_out, dbxo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(by_out, dbyo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(bz_out, dbzo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(dp);   cudaFree(dbxi); cudaFree(dbyi); cudaFree(dbzi);
+    cudaFree(dvx);  cudaFree(dvy);  cudaFree(dvz);
+    cudaFree(dm);   cudaFree(dh);
+    cudaFree(dbxo); cudaFree(dbyo); cudaFree(dbzo);
+    return 0;
+}

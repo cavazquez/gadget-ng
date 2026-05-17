@@ -291,3 +291,197 @@ extern "C" int cuda_tree_let_accel(
     cudaFree(dax); cudaFree(day); cudaFree(daz);
     return 0;
 }
+// ── TreePM short-range erfc kernel (AP-20) ────────────────────────────────────
+// O(N²) con guard r² < r_cut² y mínima imagen periódica.
+// Usa la misma aproximación erfc (Abramowitz & Stegun §7.1.26) que el CPU.
+
+__device__ static float erfc_approx_f32(float x) {
+    if (x < 0.0f) return 2.0f - erfc_approx_f32(-x);
+    float t = 1.0f / (1.0f + 0.3275911f * x);
+    float poly = t * (0.254829592f
+               + t * (-0.284496736f
+               + t * (1.421413741f
+               + t * (-1.453152027f
+               + t * 1.061405429f))));
+    return poly * expf(-x * x);
+}
+
+__global__ void treepm_sr_erfc_kernel(
+    const float* px, const float* py, const float* pz,
+    const float* mass,
+    float* ax, float* ay, float* az,
+    int n, float r_split, float r_cut2, float eps2, float g, float box_size
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float xi = px[i], yi = py[i], zi = pz[i];
+    float axi = 0.0f, ayi = 0.0f, azi = 0.0f;
+    float sqrt2_rsplit = 1.41421356f * r_split;
+    for (int j = 0; j < n; j++) {
+        if (j == i) continue;
+        float dx = px[j] - xi;
+        float dy = py[j] - yi;
+        float dz = pz[j] - zi;
+        // Mínima imagen
+        if (box_size > 0.0f) {
+            dx -= box_size * rintf(dx / box_size);
+            dy -= box_size * rintf(dy / box_size);
+            dz -= box_size * rintf(dz / box_size);
+        }
+        float r2 = dx*dx + dy*dy + dz*dz;
+        if (r2 >= r_cut2) continue;
+        float r = sqrtf(r2);
+        float w = erfc_approx_f32(r / sqrt2_rsplit);
+        float denom = (r2 + eps2) * sqrtf(r2 + eps2);
+        float fac = g * mass[j] * w / denom;
+        axi += fac * dx;
+        ayi += fac * dy;
+        azi += fac * dz;
+    }
+    ax[i] = axi;
+    ay[i] = ayi;
+    az[i] = azi;
+}
+
+extern "C" int cuda_treepm_short_range(
+    const float* x, const float* y, const float* z,
+    const float* mass,
+    float* ax_out, float* ay_out, float* az_out,
+    int n, float r_split, float r_cut2, float eps2, float g, float box_size
+) {
+    if (n <= 0) return 0;
+    float *dx, *dy, *dz, *dm, *dax, *day, *daz;
+    if (alloc_copy(&dx, x, n) || alloc_copy(&dy, y, n) || alloc_copy(&dz, z, n) ||
+        alloc_copy(&dm, mass, n) ||
+        alloc_zero(&dax, n) || alloc_zero(&day, n) || alloc_zero(&daz, n)) return -1;
+    int blocks = (n + TREE_BLOCK_SIZE - 1) / TREE_BLOCK_SIZE;
+    treepm_sr_erfc_kernel<<<blocks, TREE_BLOCK_SIZE>>>(
+        dx, dy, dz, dm, dax, day, daz,
+        n, r_split, r_cut2, eps2, g, box_size);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(ax_out, dax, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(ay_out, day, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(az_out, daz, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(dx); cudaFree(dy); cudaFree(dz); cudaFree(dm);
+    cudaFree(dax); cudaFree(day); cudaFree(daz);
+    return 0;
+}
+
+// ── Barnes-Hut local GPU walk monopole (AP-20) ───────────────────────────────
+// Recorre el octree BH con pila por hilo (stack[32]). Usa MAC de apertura
+// theta2 y omite la auto-interacción con particle_idx.
+// Los nodos se pasan como buffer binario coincidente con BhMonopoleGpuNode (repr C, 96 bytes).
+
+#define BH_NO_CHILD    0xFFFFFFFFu
+#define BH_NO_PARTICLE 0xFFFFFFFFu
+#define BH_STACK_DEPTH 32
+
+struct GpuBhNode {
+    float com[3];
+    float mass;
+    float center[3];
+    float half;
+    unsigned int children[8];
+    unsigned int particle_idx;
+    unsigned int _reserved[7];
+};
+
+__global__ void bh_walk_monopole_kernel(
+    const GpuBhNode* nodes, int n_nodes, unsigned int root_idx,
+    const float* qx, const float* qy, const float* qz,
+    const unsigned int* target_idx,
+    float* ax, float* ay, float* az,
+    int n_targets, float theta2, float g, float eps2
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_targets) return;
+    float xi = qx[i], yi = qy[i], zi = qz[i];
+    unsigned int self_idx = target_idx[i];
+    float axi = 0.0f, ayi = 0.0f, azi = 0.0f;
+
+    unsigned int stack[BH_STACK_DEPTH];
+    int top = 0;
+    stack[top++] = root_idx;
+
+    while (top > 0) {
+        unsigned int nidx = stack[--top];
+        if (nidx == BH_NO_CHILD || nidx >= (unsigned int)n_nodes) continue;
+        const GpuBhNode& nd = nodes[nidx];
+        float dx = nd.com[0] - xi;
+        float dy = nd.com[1] - yi;
+        float dz = nd.com[2] - zi;
+        float d2 = dx*dx + dy*dy + dz*dz;
+        float h  = nd.half;
+        // MAC: node.half² < theta2 * d2 → usar monopolo
+        if (h * h < theta2 * d2) {
+            // Leaf self-skip
+            if (nd.particle_idx != BH_NO_PARTICLE && nd.particle_idx == self_idx) continue;
+            if (d2 < 1.0e-30f) continue;
+            float denom = (d2 + eps2) * sqrtf(d2 + eps2);
+            float fac = g * nd.mass / denom;
+            axi += fac * dx;
+            ayi += fac * dy;
+            azi += fac * dz;
+        } else {
+            // Internal node: push children
+            bool any_child = false;
+            for (int c = 0; c < 8; c++) {
+                unsigned int ch = nd.children[c];
+                if (ch != BH_NO_CHILD && top < BH_STACK_DEPTH) {
+                    stack[top++] = ch;
+                    any_child = true;
+                }
+            }
+            // Leaf (no children) — apply monopole directly
+            if (!any_child) {
+                if (nd.particle_idx == self_idx) continue;
+                if (d2 < 1.0e-30f) continue;
+                float denom = (d2 + eps2) * sqrtf(d2 + eps2);
+                float fac = g * nd.mass / denom;
+                axi += fac * dx;
+                ayi += fac * dy;
+                azi += fac * dz;
+            }
+        }
+    }
+    ax[i] = axi;
+    ay[i] = ayi;
+    az[i] = azi;
+}
+
+extern "C" int cuda_bh_walk_monopole(
+    const void* nodes_raw, int n_nodes, unsigned int root_idx,
+    const float* qx, const float* qy, const float* qz,
+    const unsigned int* target_idx_h,
+    float* ax_out, float* ay_out, float* az_out,
+    int n_targets, float theta2, float g, float eps2
+) {
+    if (n_targets <= 0 || n_nodes <= 0) return 0;
+    const GpuBhNode* nodes_h = (const GpuBhNode*)nodes_raw;
+    GpuBhNode* d_nodes;
+    float *dqx, *dqy, *dqz, *dax, *day, *daz;
+    unsigned int* d_tidx;
+    size_t node_bytes = (size_t)n_nodes * sizeof(GpuBhNode);
+    if (cudaMalloc(&d_nodes, node_bytes) != cudaSuccess) return -1;
+    if (cudaMemcpy(d_nodes, nodes_h, node_bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
+        cudaFree(d_nodes); return -1;
+    }
+    if (alloc_copy(&dqx, qx, n_targets) || alloc_copy(&dqy, qy, n_targets) ||
+        alloc_copy(&dqz, qz, n_targets) || alloc_copy(&d_tidx, target_idx_h, n_targets) ||
+        alloc_zero(&dax, n_targets) || alloc_zero(&day, n_targets) || alloc_zero(&daz, n_targets)) {
+        cudaFree(d_nodes); return -1;
+    }
+    int blocks = (n_targets + TREE_BLOCK_SIZE - 1) / TREE_BLOCK_SIZE;
+    bh_walk_monopole_kernel<<<blocks, TREE_BLOCK_SIZE>>>(
+        d_nodes, n_nodes, root_idx,
+        dqx, dqy, dqz, d_tidx,
+        dax, day, daz,
+        n_targets, theta2, g, eps2);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(ax_out, dax, (size_t)n_targets*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(ay_out, day, (size_t)n_targets*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(az_out, daz, (size_t)n_targets*sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(d_nodes); cudaFree(dqx); cudaFree(dqy); cudaFree(dqz);
+    cudaFree(d_tidx); cudaFree(dax); cudaFree(day); cudaFree(daz);
+    return 0;
+}

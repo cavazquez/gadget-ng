@@ -1115,7 +1115,52 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         box_size,
                     };
                     let mut acc_sr = vec![Vec3::zero(); parts.len()];
-                    treepm_dist::short_range_accels_sfc(&sr_params, &mut acc_sr);
+                    // AP-20: intenta GPU O(N²) SR; fallback al árbol CPU si falla o N grande.
+                    #[cfg(feature = "cuda")]
+                    let cuda_sr_done = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_tree
+                    {
+                        let n_local = parts.len();
+                        let n_halo = sr_halos.len();
+                        let all_pos: Vec<Vec3> = parts
+                            .iter()
+                            .map(|p| p.position)
+                            .chain(sr_halos.iter().map(|p| p.position))
+                            .collect();
+                        let all_mass: Vec<f64> = parts
+                            .iter()
+                            .map(|p| p.mass)
+                            .chain(sr_halos.iter().map(|p| p.mass))
+                            .collect();
+                        if let Ok(solver) = gadget_ng_cuda::CudaTreeSolver::try_new_checked() {
+                            match solver.try_short_range(
+                                &all_pos,
+                                &all_mass,
+                                r_s,
+                                (sr_params.r_split * 5.0),
+                                eps2,
+                                g_cosmo,
+                                Some(box_size),
+                            ) {
+                                Ok(all_acc) => {
+                                    for (k, a) in all_acc[..n_local].iter().enumerate() {
+                                        acc_sr[k] = *a;
+                                    }
+                                    let _ = n_halo;
+                                    true
+                                }
+                                Err(_) => false,
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    #[cfg(not(feature = "cuda"))]
+                    let cuda_sr_done = false;
+                    if !cuda_sr_done {
+                        treepm_dist::short_range_accels_sfc(&sr_params, &mut acc_sr);
+                    }
                     let tree_sr_ns = t_sr_tree.elapsed().as_nanos() as u64;
                     *this_grav += tree_sr_ns;
 
@@ -1986,8 +2031,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                                                 eps2,
                                             );
                                     });
-                                    hpc.accel_from_let_soa_ns +=
-                                        t_soa.elapsed().as_nanos() as u64;
+                                    hpc.accel_from_let_soa_ns += t_soa.elapsed().as_nanos() as u64;
                                 }
                                 #[cfg(not(all(feature = "rayon", feature = "simd")))]
                                 {
@@ -2357,7 +2401,57 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
                         bh_parallel,
                     );
                 } else {
-                    compute_forces_local_tree(parts, &halos, g, eps2, acc, bh_walk, bh_parallel);
+                    // AP-20: intenta BH walk GPU (cuda_tree); fallback al árbol CPU.
+                    #[cfg(feature = "cuda")]
+                    let cuda_bh_done = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_tree
+                    {
+                        let all_pos: Vec<Vec3> = parts
+                            .iter()
+                            .chain(halos.iter())
+                            .map(|p| p.position)
+                            .collect();
+                        let all_mass: Vec<f64> =
+                            parts.iter().chain(halos.iter()).map(|p| p.mass).collect();
+                        if let Ok(solver) = gadget_ng_cuda::CudaTreeSolver::try_new_checked() {
+                            let tree = gadget_ng_tree::Octree::build(&all_pos, &all_mass);
+                            let nodes = tree.export_bh_monopole_gpu_nodes();
+                            let target_idx: Vec<usize> = (0..parts.len()).collect();
+                            match solver.try_bh_local_walk(
+                                &all_pos,
+                                &target_idx,
+                                &nodes,
+                                tree.root,
+                                bh_walk.theta as f64,
+                                g,
+                                eps2,
+                            ) {
+                                Ok(bh_acc) => {
+                                    for (a_out, a_bh) in acc.iter_mut().zip(bh_acc.iter()) {
+                                        *a_out = *a_bh;
+                                    }
+                                    true
+                                }
+                                Err(_) => false,
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    #[cfg(not(feature = "cuda"))]
+                    let cuda_bh_done = false;
+                    if !cuda_bh_done {
+                        compute_forces_local_tree(
+                            parts,
+                            &halos,
+                            g,
+                            eps2,
+                            acc,
+                            bh_walk,
+                            bh_parallel,
+                        );
+                    }
                 }
                 this_grav += t1.elapsed().as_nanos() as u64;
             };

@@ -165,3 +165,61 @@ Ver detalles en `docs/reports/2026-05-cuda-ap18-sph-tree-validation.md`.
 - Barnes-Hut local GPU: requiere octree en device.
 - TreePM SR: híbrido wgpu/CUDA sin wiring completo.
 - f(R) chameleon screening: solo PM CUDA.
+
+---
+
+## AP-19 — Pipeline SPH CUDA persistente — 2026-05-16
+
+Reescritura de `try_sph_density_and_forces_core`: 1 `pool.reset()`, 21 slots fijos,
+inputs subidos una sola vez. `cuda_sph_forces` → `cuda_sph_gadget2_forces` (Balsara correcto).
+Reduce H→D −65% (116 → 41 bytes/partícula). Break-even N≈300 → N≈120–150.
+
+Ver `docs/reports/2026-05-cuda-ap19-sph-pipeline.md`.
+
+---
+
+## AP-20 — Cierre total de los 4 gaps CUDA — 2026-05-16
+
+Todos los gaps remanentes quedan cerrados:
+
+### A — MHD Hall drift CUDA
+
+- Kernel: `mhd_hall_drift_kernel` en `mhd_kernels.cu`
+  — Rodrigues rotation por hilo, eje `v×B`, ángulo `θ = η_H |B| / ρ_proxy dt`.
+  Conserva `|B|` exactamente; sin heating.
+- FFI: `cuda_mhd_hall_drift` (12 parámetros, sin `u_out`).
+- Rust: `CudaMhdSolver::try_hall_drift`.
+- Wiring: `step_mhd` bajo `cuda_mhd`, fallback CPU `apply_hall_drift`.
+- Test `#[ignore]`: `cuda_hall_drift_match_cpu` — N=64, `|ΔB| < 1e-4`.
+
+### B — f(R) chameleon screening CUDA
+
+- Kernels: `fr_screening_per_cell_kernel` (S = fifth\_force\_factor, por celda) +
+  `fr_screening_jacobi_kernel` (suavizado periódico iterativo) en `pm_gravity.cu`.
+- FFI: `cuda_fr_screening_field`.
+- Rust: `CudaPmSolver::try_fr_screening_field`.
+- Wiring: `FrMeshParams::screening_override` + `PmSolver::set_screening_override`.
+- Test `#[ignore]`: `cuda_fr_screening_match_cpu` — malla 16³, L2 rel < 1e-3.
+
+### C — TreePM short-range CUDA
+
+- Kernel: `treepm_sr_erfc_kernel` — O(N²) con guard `r² < r_cut²`, erfc A&S §7.1.26,
+  mínima imagen periódica.
+- FFI: `cuda_treepm_short_range`.
+- Rust: `CudaTreeSolver::try_short_range`.
+- Wiring: paso SR SFC en `stepping/mod.rs` bajo `cuda_tree`, fallback árbol CPU.
+- Test `#[ignore]`: `cuda_treepm_sr_match_cpu` — N=128, magnitud rel < 5%.
+
+### D — Barnes-Hut local GPU walk
+
+- Kernel: `bh_walk_monopole_kernel` — pila por hilo (`stack[32]`), MAC θ²,
+  self-skip por `particle_idx`, monopolo Plummer. Consume `BhMonopoleGpuNode` (96 bytes, repr(C)).
+- FFI: `cuda_bh_walk_monopole`.
+- Rust: `CudaTreeSolver::try_bh_local_walk`.
+- Wiring: `compute_forces_local_tree` path en `stepping/mod.rs` bajo `cuda_tree`.
+- Test `#[ignore]`: `cuda_bh_walk_match_cpu` — N=256, magnitud rel < 1%.
+
+### Estado final
+
+Tabla de paridad README.md: todos los `⚠️` → `✅`.
+`cargo check --workspace` pasa con 0 errores tras AP-20 (2026-05-16).

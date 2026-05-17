@@ -776,6 +776,7 @@ dependencies = [
  "gadget-ng-rt",
  "gadget-ng-sph",
  "gadget-ng-tree",
+ "gadget-ng-treepm",
 ]
 
 [[package]]

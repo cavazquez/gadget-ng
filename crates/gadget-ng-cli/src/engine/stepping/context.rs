@@ -74,9 +74,26 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
         }
     }
 
-    // Hall drift (Phase 186): rota B sin disipar energía magnética.
+    // Hall drift (AP-20 / Phase 186): rota B sin disipar energía magnética.
+    // Intenta GPU (cuda_mhd); fallback al CPU Rayon/SIMD existente.
     if cfg.mhd.hall_enabled && cfg.mhd.hall_eta > 0.0 {
-        gadget_ng_mhd::apply_hall_drift(local, cfg.mhd.hall_eta, dt_mhd);
+        #[cfg(feature = "cuda")]
+        let cuda_hall_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_hall_drift(local, cfg.mhd.hall_eta, dt_mhd)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_hall_ok = false;
+        if !cuda_hall_ok {
+            gadget_ng_mhd::apply_hall_drift(local, cfg.mhd.hall_eta, dt_mhd);
+        }
     }
 
     // Magnetic forces: CUDA si `cuda_mhd` opt-in, else CPU.

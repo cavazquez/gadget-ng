@@ -8,7 +8,7 @@ use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
 #[cfg(not(cuda_unavailable))]
 use gadget_ng_core::ParticleType;
-use gadget_ng_core::{Particle, Vec3};
+use gadget_ng_core::{BhMonopoleGpuNode, Particle, Vec3};
 use gadget_ng_tree::RmnSoa;
 
 /// Solver CUDA para kernels tree/SIDM con buffers device persistentes.
@@ -311,6 +311,156 @@ impl CudaTreeSolver {
                 }
             }
             Ok(())
+        }
+    }
+
+    /// Walk Barnes-Hut monopolo en GPU con pila por hilo (AP-20).
+    ///
+    /// Los nodos (`nodes`) se obtienen vía `Octree::export_bh_monopole_gpu_nodes()`.
+    /// El criterio MAC `θ²` controla la apertura; `theta = 0.5` es el valor estándar.
+    /// La fuerza es Plummer con suavizado `eps2`. No aplica periodicidad.
+    #[expect(clippy::too_many_arguments)]
+    pub fn try_bh_local_walk(
+        &self,
+        positions: &[Vec3],
+        target_indices: &[usize],
+        nodes: &[BhMonopoleGpuNode],
+        root: u32,
+        theta: f64,
+        g: f64,
+        eps2: f64,
+    ) -> Result<Vec<Vec3>, CudaExecutionError> {
+        let n = target_indices.len();
+        if n == 0 || nodes.is_empty() {
+            return Ok(vec![Vec3::zero(); n]);
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (positions, target_indices, nodes, root, theta, g, eps2);
+            return Err(CudaExecutionError::Unavailable(crate::CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let qx: Vec<f32> = target_indices
+                .iter()
+                .map(|&i| positions[i].x as f32)
+                .collect();
+            let qy: Vec<f32> = target_indices
+                .iter()
+                .map(|&i| positions[i].y as f32)
+                .collect();
+            let qz: Vec<f32> = target_indices
+                .iter()
+                .map(|&i| positions[i].z as f32)
+                .collect();
+            let tidx: Vec<u32> = target_indices.iter().map(|&i| i as u32).collect();
+            let mut ax = vec![0.0_f32; n];
+            let mut ay = vec![0.0_f32; n];
+            let mut az = vec![0.0_f32; n];
+            let theta2 = (theta * theta) as f32;
+            let n_nodes = nodes.len() as i32;
+
+            // SAFETY: BhMonopoleGpuNode es repr(C); el puntero es válido.
+            let code = unsafe {
+                crate::ffi::cuda_bh_walk_monopole(
+                    nodes.as_ptr() as *const std::ffi::c_void,
+                    n_nodes,
+                    root,
+                    qx.as_ptr(),
+                    qy.as_ptr(),
+                    qz.as_ptr(),
+                    tidx.as_ptr(),
+                    ax.as_mut_ptr(),
+                    ay.as_mut_ptr(),
+                    az.as_mut_ptr(),
+                    n as i32,
+                    theta2,
+                    g as f32,
+                    eps2 as f32,
+                )
+            };
+            check_kernel("cuda_bh_walk_monopole", code)?;
+            Ok(ax
+                .iter()
+                .zip(ay.iter())
+                .zip(az.iter())
+                .map(|((&axi, &ayi), &azi)| Vec3::new(axi as f64, ayi as f64, azi as f64))
+                .collect())
+        }
+    }
+
+    /// Calcula aceleraciones TreePM de corto alcance en GPU O(N²) con erfc y mínima imagen.
+    ///
+    /// Replica `gadget_ng_treepm::short_range_accels_sfc` (O(N²) sin árbol) usando
+    /// el mismo polinomio erfc de Abramowitz & Stegun §7.1.26. Tolerancia f32 vs f64 < 5%.
+    #[expect(clippy::too_many_arguments)]
+    pub fn try_short_range(
+        &self,
+        positions: &[gadget_ng_core::Vec3],
+        masses: &[f64],
+        r_split: f64,
+        r_cut: f64,
+        eps2: f64,
+        g: f64,
+        box_size: Option<f64>,
+    ) -> Result<Vec<gadget_ng_core::Vec3>, CudaExecutionError> {
+        let n = positions.len();
+        assert_eq!(masses.len(), n);
+        if n == 0 {
+            return Ok(vec![]);
+        }
+
+        #[cfg(cuda_unavailable)]
+        {
+            let _ = (positions, masses, r_split, r_cut, eps2, g, box_size);
+            return Err(CudaExecutionError::Unavailable(crate::CudaUnavailable {
+                availability: CudaPmSolver::availability(),
+            }));
+        }
+
+        #[cfg(not(cuda_unavailable))]
+        {
+            let x: Vec<f32> = positions.iter().map(|p| p.x as f32).collect();
+            let y: Vec<f32> = positions.iter().map(|p| p.y as f32).collect();
+            let z: Vec<f32> = positions.iter().map(|p| p.z as f32).collect();
+            let mass: Vec<f32> = masses.iter().map(|&m| m as f32).collect();
+            let mut ax = vec![0.0_f32; n];
+            let mut ay = vec![0.0_f32; n];
+            let mut az = vec![0.0_f32; n];
+            let r_cut2 = (r_cut * r_cut) as f32;
+            let bs = box_size.unwrap_or(0.0) as f32;
+
+            // SAFETY: todos los slices tienen longitud n.
+            let code = unsafe {
+                crate::ffi::cuda_treepm_short_range(
+                    x.as_ptr(),
+                    y.as_ptr(),
+                    z.as_ptr(),
+                    mass.as_ptr(),
+                    ax.as_mut_ptr(),
+                    ay.as_mut_ptr(),
+                    az.as_mut_ptr(),
+                    n as i32,
+                    r_split as f32,
+                    r_cut2,
+                    eps2 as f32,
+                    g as f32,
+                    bs,
+                )
+            };
+            check_kernel("cuda_treepm_short_range", code)?;
+            Ok(ax
+                .iter()
+                .zip(ay.iter())
+                .zip(az.iter())
+                .map(|((&axi, &ayi), &azi)| {
+                    gadget_ng_core::Vec3::new(axi as f64, ayi as f64, azi as f64)
+                })
+                .collect())
         }
     }
 }
