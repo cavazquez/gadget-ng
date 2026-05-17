@@ -12,6 +12,8 @@ simd = []
 # Bench-only: compila todas las rutas Dedner (serial, Rayon, SIMD+Rayon, SIMD forzado AVX2/AVX-512 sin Rayon)
 # para `dedner_cleaning_step_with_backend` y Criterion.
 bench-all-dedner-paths = ["rayon", "simd"]
+# Bench-only: exposes StreamingBackend enum + streaming_crk_with_backend for Criterion.
+bench-all-streaming-paths = ["rayon"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
@@ -38,3 +40,8 @@ required-features = ["simd"]
 name = "dedner_backend_bench"
 harness = false
 required-features = ["bench-all-dedner-paths"]
+
+[[bench]]
+name = "ap21_cr_streaming"
+harness = false
+required-features = ["bench-all-streaming-paths"]

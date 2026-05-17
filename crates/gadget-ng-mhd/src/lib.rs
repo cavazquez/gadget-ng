@@ -51,6 +51,8 @@ pub use relativistic::{
     srmhd_conserved_to_primitive,
 };
 pub use stats::{b_field_stats, magnetic_power_spectrum};
+#[cfg(feature = "bench-all-streaming-paths")]
+pub use streaming::{StreamingBackend, streaming_crk_with_backend};
 pub use streaming::{cr_pressure_backreaction, streaming_crk};
 pub use turbulence::{apply_turbulent_forcing, turbulence_stats};
 pub use two_fluid::{apply_electron_ion_coupling, mean_te_over_ti};

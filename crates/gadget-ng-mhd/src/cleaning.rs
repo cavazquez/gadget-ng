@@ -98,6 +98,7 @@ fn grad_w_scalar(r_vec: Vec3, h: f64) -> Vec3 {
 #[cfg(any(
     not(feature = "rayon"),
     feature = "bench-all-dedner-paths",
+    feature = "bench-all-streaming-paths",
     all(feature = "rayon", feature = "simd")
 ))]
 fn dedner_pair_increment(
@@ -437,6 +438,7 @@ fn dedner_cleaning_step_impl(particles: &mut [Particle], c_h: f64, c_r: f64, dt:
 #[cfg(any(
     not(feature = "rayon"),
     feature = "bench-all-dedner-paths",
+    feature = "bench-all-streaming-paths",
     all(feature = "rayon", feature = "simd")
 ))]
 fn dedner_density(particles: &[Particle]) -> Vec<f64> {
@@ -493,6 +495,7 @@ fn dedner_density(particles: &[Particle]) -> Vec<f64> {
 #[cfg(any(
     not(feature = "rayon"),
     feature = "bench-all-dedner-paths",
+    feature = "bench-all-streaming-paths",
     all(feature = "rayon", feature = "simd")
 ))]
 fn dedner_density_scalar(particles: &[Particle]) -> Vec<f64> {

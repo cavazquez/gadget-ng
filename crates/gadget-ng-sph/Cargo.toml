@@ -8,6 +8,9 @@ license.workspace = true
 default = []
 rayon = ["dep:rayon"]
 simd = []
+# Bench-only: exposes sph_gadget2_update_for_particle_scalar_ref (pre-AP21 baseline)
+# and compute_sph_forces_gadget2_scalar_ref for Criterion comparison.
+bench-sph-forces-ref = ["rayon"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
@@ -26,3 +29,8 @@ harness = false
 [[bench]]
 name = "baryonic_stack"
 harness = false
+
+[[bench]]
+name = "ap21_sph_forces"
+harness = false
+required-features = ["bench-sph-forces-ref"]

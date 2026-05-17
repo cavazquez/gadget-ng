@@ -549,6 +549,146 @@ fn sph_gadget2_update_for_particle(
 /// Parámetro de viscosidad artificial (compartido entre ambos integradores).
 const ALPHA_VISC: f64 = 1.0;
 
+// ── Benchmark reference API ───────────────────────────────────────────────────
+
+/// Pre-AP21 scalar reference for `sph_gadget2_update_for_particle`.
+///
+/// Computes SPH forces for particle `i` using a scalar `grad_w` call per pair,
+/// without batching neighbour distances into a SIMD buffer.  This is the code
+/// path that existed *before* AP-21 and is exposed for Criterion comparison.
+///
+/// Enabled only with `feature = "bench-sph-forces-ref"` (implies `rayon`).
+#[cfg(feature = "bench-sph-forces-ref")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "benchmark reference, not production"
+)]
+pub fn sph_gadget2_update_for_particle_scalar_ref(
+    i: usize,
+    pos: &[Vec3],
+    vel: &[Vec3],
+    mass: &[f64],
+    rho: &[f64],
+    pressure: &[f64],
+    h_sml: &[f64],
+    balsara: &[f64],
+    is_gas: &[bool],
+    periodic_box: Option<f64>,
+) -> (Vec3, f64, f64) {
+    let n = pos.len();
+    let pi_rho2 = pressure[i] / (rho[i] * rho[i]);
+    let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
+    let fi = balsara[i];
+    let hi = h_sml[i];
+    let pi_pos = pos[i];
+    let pi_vel = vel[i];
+
+    let mut acc = Vec3::zero();
+    let mut da_dt = 0.0_f64;
+    let mut max_vsig = 0.0_f64;
+    let inv_hi = 1.0 / hi;
+
+    for j in 0..n {
+        if j == i || !is_gas[j] || rho[j] < 1e-200 {
+            continue;
+        }
+        let r_ij = periodic_delta(pos[j], pi_pos, periodic_box);
+        let r = r_ij.norm();
+        let hj = h_sml[j];
+        let gw_i = grad_w(r, hi);
+        let gw_j = grad_w(r, hj);
+        if gw_i == 0.0 && gw_j == 0.0 {
+            continue;
+        }
+        let r_hat = if r > 1e-300 {
+            r_ij * (1.0 / r)
+        } else {
+            Vec3::zero()
+        };
+        let nabla_w_i = r_hat * (gw_i * inv_hi);
+        let nabla_w_j = r_hat * (gw_j / hj);
+        let nabla_w_bar = (nabla_w_i + nabla_w_j) * 0.5;
+        let v_ij = pi_vel - vel[j];
+        let w_ij = v_ij.dot(r_hat);
+        let (pi_visc, vsig) = if w_ij < 0.0 {
+            let cs_j = (GAMMA * pressure[j] / rho[j]).sqrt().max(0.0);
+            let vsig_ij = ALPHA_VISC * (cs_i + cs_j - 3.0 * w_ij) * 0.5;
+            let rho_bar = 0.5 * (rho[i] + rho[j]);
+            let fij = 0.5 * (fi + balsara[j]);
+            (-fij * vsig_ij * w_ij / rho_bar, vsig_ij)
+        } else {
+            (0.0, 0.0)
+        };
+        max_vsig = max_vsig.max(vsig);
+        let pj_rho2 = pressure[j] / (rho[j] * rho[j]);
+        let coeff_i = pi_rho2 + 0.5 * pi_visc;
+        let coeff_j = pj_rho2 + 0.5 * pi_visc;
+        acc -= (nabla_w_i * coeff_i + nabla_w_j * coeff_j) * mass[j];
+        da_dt += mass[j] * pi_visc * v_ij.dot(nabla_w_bar);
+    }
+
+    let da_factor = if rho[i] > 0.0 {
+        (GAMMA - 1.0) * 0.5 / rho[i].powf(GAMMA - 1.0)
+    } else {
+        0.0
+    };
+    (acc, da_dt * da_factor, max_vsig)
+}
+
+/// Pre-AP21 reference path for `compute_sph_forces_gadget2`.
+///
+/// Uses the same outer Rayon loop as the production path but calls
+/// `sph_gadget2_update_for_particle_scalar_ref` (scalar per-pair `grad_w`)
+/// instead of the batched SIMD version introduced in AP-21.
+///
+/// Enabled only with `feature = "bench-sph-forces-ref"`.
+#[cfg(feature = "bench-sph-forces-ref")]
+pub fn compute_sph_forces_gadget2_scalar_ref(particles: &mut [SphParticle]) {
+    use rayon::prelude::*;
+
+    let n = particles.len();
+    let pos: Vec<Vec3> = particles.iter().map(|p| p.position).collect();
+    let vel: Vec<Vec3> = particles.iter().map(|p| p.velocity).collect();
+    let mass: Vec<f64> = particles.iter().map(|p| p.mass).collect();
+    let rho: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.rho).unwrap_or(0.0))
+        .collect();
+    let pressure: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.pressure).unwrap_or(0.0))
+        .collect();
+    let h_sml: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.h_sml).unwrap_or(1.0))
+        .collect();
+    let balsara: Vec<f64> = particles
+        .iter()
+        .map(|p| p.gas.as_ref().map(|g| g.balsara).unwrap_or(1.0))
+        .collect();
+    let is_gas: Vec<bool> = particles.iter().map(|p| p.gas.is_some()).collect();
+
+    let updates: Vec<Option<(Vec3, f64, f64)>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if !is_gas[i] || rho[i] < 1e-200 {
+                return None;
+            }
+            Some(sph_gadget2_update_for_particle_scalar_ref(
+                i, &pos, &vel, &mass, &rho, &pressure, &h_sml, &balsara, &is_gas, None,
+            ))
+        })
+        .collect();
+
+    for (p, update) in particles.iter_mut().zip(updates) {
+        if let (Some(gas), Some((acc, da_dt, max_vsig))) = (p.gas.as_mut(), update) {
+            gas.acc_sph = acc;
+            gas.da_dt = da_dt;
+            gas.max_vsig = max_vsig;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

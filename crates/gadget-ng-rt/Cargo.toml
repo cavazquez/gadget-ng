@@ -10,6 +10,8 @@ default = []
 mpi = ["dep:mpi"]
 rayon = ["dep:rayon"]
 simd = []
+# Bench-only: exposes ChemistryBackend enum + apply_chemistry_with_backend for Criterion.
+bench-all-chemistry-paths = ["rayon", "simd"]
 
 [dependencies]
 gadget-ng-core = { path = "../gadget-ng-core" }
@@ -21,3 +23,9 @@ rustfft = "6.4.1"
 
 [dev-dependencies]
 approx.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "ap21_chemistry"
+harness = false
+required-features = ["bench-all-chemistry-paths"]

@@ -51,6 +51,8 @@ pub use chemistry::{
     k_h2_from_h2p, k_h2_from_hm, k_h2p_formation, k_hd_destruction, k_hd_formation, k_hm_formation,
     solve_chemistry_implicit,
 };
+#[cfg(feature = "bench-all-chemistry-paths")]
+pub use chemistry::{ChemistryBackend, apply_chemistry_with_backend};
 pub use cm21::{
     Cm21Output, Cm21Params, Cm21PkBin, brightness_temperature, compute_cm21_output,
     compute_delta_tb_field,

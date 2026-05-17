@@ -729,6 +729,47 @@ pub fn cr_pressure_backreaction(particles: &mut [Particle], periodic_box: Option
     }
 }
 
+// ── Benchmark backend API ─────────────────────────────────────────────────────
+
+/// Selects the execution backend for CR streaming benchmarks.
+///
+/// Enabled only with `feature = "bench-all-streaming-paths"` (implies `rayon`).
+/// Follows the same pattern as `DednerCleaningBackend` in `cleaning.rs`.
+#[cfg(feature = "bench-all-streaming-paths")]
+#[derive(Debug, Clone, Copy)]
+pub enum StreamingBackend {
+    /// Scalar serial path: no Rayon, no SIMD batch.
+    Scalar,
+    /// Rayon-parallel path: `par_iter` over particle pairs.
+    Par,
+    /// Active dispatcher: routes to the best available path at compile time.
+    Dispatch,
+}
+
+/// Runs `streaming_crk` using the specified backend.
+///
+/// Intended for Criterion benchmarks only; see `bench-all-streaming-paths` feature.
+#[cfg(feature = "bench-all-streaming-paths")]
+pub fn streaming_crk_with_backend(
+    particles: &mut [Particle],
+    dt: f64,
+    streaming_coefficient: f64,
+    periodic_box: Option<f64>,
+    backend: StreamingBackend,
+) {
+    match backend {
+        StreamingBackend::Scalar => {
+            streaming_crk_scalar(particles, dt, streaming_coefficient, periodic_box);
+        }
+        StreamingBackend::Par => {
+            streaming_crk_par(particles, dt, streaming_coefficient, periodic_box);
+        }
+        StreamingBackend::Dispatch => {
+            streaming_crk(particles, dt, streaming_coefficient, periodic_box);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

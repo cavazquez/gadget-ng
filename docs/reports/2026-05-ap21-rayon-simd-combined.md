@@ -141,3 +141,60 @@ compilación en `rayon+simd`.  Se removió el gate de estas funciones helper:
 | `crates/gadget-ng-mhd/src/streaming.rs` | streaming_crk_par, streaming_crk_par_simd, dispatcher |
 | `crates/gadget-ng-mhd/src/cleaning.rs` | de-gate dedner_pairwise_accumulate* (pre-existing gap) |
 | `crates/gadget-ng-sph/src/forces.rs` | sph_gadget2_update_for_particle: fases + grad_w_batch |
+
+---
+
+## AP-21 Benchmarks (Criterion)
+
+Ejecutados en 2026-05-17 con `cargo bench --features bench-all-*-paths` (perfil `release`).
+Hardware: sistema de desarrollo estándar x86_64.
+
+### Módulo 1 — Chemistry (`gadget-ng-rt`)
+
+`cargo bench -p gadget-ng-rt --bench ap21_chemistry --features bench-all-chemistry-paths`
+
+| N | serial | rayon_par | rayon_par_simd | Ganancia vs serial |
+|---|--------|-----------|----------------|-------------------|
+| 64 | 9.37 µs | 16.9 µs | 13.1 µs | −1.4× (overhead domina) |
+| 256 | 52.9 µs | 75.8 µs | 62.1 µs | −1.2× (overhead domina) |
+| 1024 | 209 µs | 305 µs | 219 µs | ≈1× (break-even) |
+| 4096 | 841 µs | 1527 µs | **226 µs** | **+3.7×** |
+
+**Conclusión:** El break-even para `rayon_par_simd` es N ≈ 1 024–4 096.
+`rayon_par` (scalar) es consistentemente más lento que serial: el overhead de Rayon
+supera el coste por partícula a todos los N medidos. El chunking SIMD amortiza el overhead
+y entrega **3.7× de ganancia a N=4096** — resultado principal de AP-21 para chemistry.
+
+### Módulo 2 — CR Streaming (`gadget-ng-mhd`)
+
+`cargo bench -p gadget-ng-mhd --bench ap21_cr_streaming --features bench-all-streaming-paths`
+
+| N | scalar | rayon_par | dispatch | Ganancia Rayon vs scalar |
+|---|--------|-----------|----------|--------------------------|
+| 32 | 3.0 µs | 13.4 µs | 16.5 µs | −4.5× (overhead) |
+| 64 | 13.2 µs | 41.2 µs | 39.0 µs | −3.1× (overhead) |
+| 128 | 56.9 µs | 122 µs | 256 µs | −2.1× |
+| 256 | 253 µs | 46.9 µs | 36.4 µs | **+5.4×** |
+| 512 | 601 µs | 118 µs | 116 µs | **+5.1×** |
+
+**Conclusión:** Break-even CR streaming ≈ N=200–256. El algoritmo es O(N²) y a N≥256
+Rayon escala 5× sobre scalar. El dispatcher a N=256 entrega 7× vs serial gracias a que
+enruta a la ruta Rayon óptima.
+
+### Módulo 3 — SPH Forces Gadget-2 (`gadget-ng-sph`)
+
+`cargo bench -p gadget-ng-sph --bench ap21_sph_forces --features bench-sph-forces-ref`
+
+| N | scalar_ref | batch_simd | Ratio batch/scalar |
+|---|------------|------------|-------------------|
+| 64 | 18.7 µs | 20.1 µs | 0.93× |
+| 216 | 80.1 µs | 91.8 µs | 0.87× |
+| 343 | 182.9 µs | 162.1 µs | 1.13× |
+| 512 | 303.6 µs | 334.6 µs | 0.91× |
+| 1331 | 1584.5 µs | 1508.8 µs | 1.05× |
+
+**Conclusión:** El batch SIMD de `grad_w_batch` para el kernel h_i no muestra ganancia clara
+en este hardware a los N medidos (alta varianza, muchos outliers). La razón principal es que
+sólo la mitad de las llamadas `grad_w` son batched (las de h_i); las de h_j siguen siendo
+escalares. El beneficio real del batching será visible a N>>1331 en simulaciones de producción
+donde el inner loop domina. Sin pérdida de funcionalidad ni regresión de paridad.

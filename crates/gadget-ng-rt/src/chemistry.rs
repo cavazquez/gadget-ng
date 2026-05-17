@@ -793,7 +793,7 @@ impl Default for ChemParams {
 /// - `rad`       — campo de radiación M1 (para Γ_HI)
 /// - `params`    — parámetros de química
 /// - `dt`        — paso de tiempo [código]
-#[cfg(not(feature = "rayon"))]
+#[cfg(any(not(feature = "rayon"), feature = "bench-all-chemistry-paths"))]
 fn apply_chemistry_impl(
     particles: &mut [Particle],
     chem_states: &mut [ChemState],
@@ -1305,6 +1305,48 @@ pub fn cooling_rate_hd(t: f64, x_hd: f64, n_h: f64) -> f64 {
     let rotational = (-128.0 / t).exp();
     let low_t_boost = (t / 100.0).powf(2.0) / (1.0 + (t / 1.0e4).powf(2.0));
     1.0e-23 * n_h * n_h * x_hd * rotational * low_t_boost
+}
+
+// ── Benchmark backend API ─────────────────────────────────────────────────────
+
+/// Selects the execution backend for chemistry benchmarks.
+///
+/// Enabled only with `feature = "bench-all-chemistry-paths"` (implies `rayon` + `simd`).
+/// Follows the same pattern as `DednerCleaningBackend` in `gadget-ng-mhd`.
+#[cfg(feature = "bench-all-chemistry-paths")]
+#[derive(Debug, Clone, Copy)]
+pub enum ChemistryBackend {
+    /// Serial path: scalar per-particle, no Rayon, no SIMD batch.
+    Serial,
+    /// Rayon-parallel path: `par_iter_mut` with scalar `solve_chemistry_implicit` per particle.
+    Par,
+    /// Rayon + SIMD combined path: `par_chunks_mut(64)` with AVX2/AVX-512 slice dispatch.
+    ParSimd,
+}
+
+/// Runs `apply_chemistry` using the specified backend.
+///
+/// Intended for Criterion benchmarks only; see `bench-all-chemistry-paths` feature.
+#[cfg(feature = "bench-all-chemistry-paths")]
+pub fn apply_chemistry_with_backend(
+    particles: &mut [Particle],
+    chem_states: &mut [ChemState],
+    rad: &RadiationField,
+    params: &ChemParams,
+    dt: f64,
+    backend: ChemistryBackend,
+) {
+    match backend {
+        ChemistryBackend::Serial => {
+            apply_chemistry_impl(particles, chem_states, rad, params, dt);
+        }
+        ChemistryBackend::Par => {
+            apply_chemistry_par(particles, chem_states, rad, params, dt);
+        }
+        ChemistryBackend::ParSimd => {
+            apply_chemistry_par_simd(particles, chem_states, rad, params, dt);
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

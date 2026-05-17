@@ -82,6 +82,10 @@ pub use forces::{
     compute_sph_forces, compute_sph_forces_gadget2, compute_sph_forces_gadget2_with_periodic,
     compute_sph_forces_with_periodic,
 };
+#[cfg(feature = "bench-sph-forces-ref")]
+pub use forces::{
+    compute_sph_forces_gadget2_scalar_ref, sph_gadget2_update_for_particle_scalar_ref,
+};
 pub use gmc::inject_sn_from_cluster_periodic;
 pub use gmc::{GmcCluster, KroupaImf, collapse_gmc, inject_sn_from_cluster, sample_stellar_mass};
 pub use integrator::{courant_dt, sph_cosmo_kdk_step, sph_kdk_step, sph_kdk_step_gadget2};
