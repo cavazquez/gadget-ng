@@ -359,6 +359,7 @@ mod tests {
             sidm: Default::default(),
             modified_gravity: Default::default(),
             dark_matter: Default::default(),
+            accelerators: Default::default(),
         }
     }
 

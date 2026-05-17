@@ -67,9 +67,9 @@ fn make_core_gas(n: usize, box_size: f64) -> Vec<Particle> {
     parts
 }
 
-fn make_direct_gravity_data(
-    n: usize,
-) -> (Vec<Vec3>, Vec<f64>, Vec<[f32; 3]>, Vec<f32>, Vec<usize>) {
+type DirectGravityBenchData = (Vec<Vec3>, Vec<f64>, Vec<[f32; 3]>, Vec<f32>, Vec<usize>);
+
+fn make_direct_gravity_data(n: usize) -> DirectGravityBenchData {
     let positions64: Vec<Vec3> = (0..n)
         .map(|i| {
             let t = i as f64 * 0.37;
@@ -87,11 +87,12 @@ fn make_direct_gravity_data(
 }
 
 fn cooling_cfg() -> SphSection {
-    let mut c = SphSection::default();
-    c.gamma = 5.0 / 3.0;
-    c.t_floor_k = 1e4;
-    c.cooling = CoolingKind::AtomicHHe;
-    c
+    SphSection {
+        gamma: 5.0 / 3.0,
+        t_floor_k: 1e4,
+        cooling: CoolingKind::AtomicHHe,
+        ..Default::default()
+    }
 }
 
 fn dust_cfg() -> DustSection {

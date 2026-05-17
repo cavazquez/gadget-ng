@@ -1,10 +1,9 @@
 //! Tests de paridad SPH: CPU vs CUDA.
 //!
-//! `cuda_parity_sph_full_pipeline` — pipeline completo SphParticle (densidad + Balsara
-//!   + fuerzas Gadget-2 + cooling + dust + H2) en CPU vs CUDA.
-//! `cuda_parity_sph_core_pipeline` — pipeline `try_sph_density_and_forces_core` sobre
-//!   `gadget_ng_core::Particle` (AP-18): densidad + Balsara + fuerzas clásicas en GPU
-//!   vs equivalente CPU con `SphParticle` como referencia.
+//! - `cuda_parity_sph_full_pipeline`: pipeline SphParticle (densidad, Balsara, fuerzas
+//!   Gadget-2, cooling, dust, H2) CPU vs CUDA.
+//! - `cuda_parity_sph_core_pipeline`: `try_sph_density_and_forces_core` sobre
+//!   `gadget_ng_core::Particle` (AP-18) vs referencia CPU con `SphParticle`.
 
 use gadget_ng_core::{
     CoolingKind, DustSection, MolecularSection, Particle, ParticleType, SphSection, Vec3,
@@ -109,11 +108,12 @@ fn sph_to_core_particles(sph: &[SphParticle]) -> Vec<Particle> {
 }
 
 fn cooling_cfg() -> SphSection {
-    let mut cfg = SphSection::default();
-    cfg.gamma = 5.0 / 3.0;
-    cfg.t_floor_k = 1e4;
-    cfg.cooling = CoolingKind::AtomicHHe;
-    cfg
+    SphSection {
+        gamma: 5.0 / 3.0,
+        t_floor_k: 1e4,
+        cooling: CoolingKind::AtomicHHe,
+        ..Default::default()
+    }
 }
 
 fn dust_config() -> DustSection {

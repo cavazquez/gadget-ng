@@ -21,11 +21,12 @@ fn assert_close_abs(label: &str, got: f64, expected: f64, tol: f64) {
 }
 
 fn cfg_atomic_hhe() -> SphSection {
-    let mut cfg = SphSection::default();
-    cfg.gamma = 5.0 / 3.0;
-    cfg.t_floor_k = 1e4;
-    cfg.cooling = CoolingKind::AtomicHHe;
-    cfg
+    SphSection {
+        gamma: 5.0 / 3.0,
+        t_floor_k: 1e4,
+        cooling: CoolingKind::AtomicHHe,
+        ..Default::default()
+    }
 }
 
 fn hot_gas_particles(n: usize) -> Vec<Particle> {

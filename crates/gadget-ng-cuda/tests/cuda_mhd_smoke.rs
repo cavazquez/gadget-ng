@@ -178,28 +178,24 @@ fn cuda_mhd_cr_backreaction_match_cpu() {
     // f32 vs f64 producen diferentes resultados para pares exactamente en q=1.
     //
     // (1) Todos los valores deben ser finitos.
-    for i in 0..n {
+    for (i, a) in accel_gpu.iter().enumerate() {
         assert!(
-            accel_gpu[i].x.is_finite() && accel_gpu[i].y.is_finite() && accel_gpu[i].z.is_finite(),
-            "cr_backreaction[{i}] no finito: {:?}",
-            accel_gpu[i]
+            a.x.is_finite() && a.y.is_finite() && a.z.is_finite(),
+            "cr_backreaction[{i}] no finito: {a:?}"
         );
     }
 
     // (2) Newton's 3rd law: suma de fuerzas ≈ 0 (con precisión f32 relativa).
-    let total_ax: f64 = accel_gpu.iter().map(|a| a.x as f64).sum();
-    let max_ax: f64 = accel_gpu
-        .iter()
-        .map(|a| a.x.abs() as f64)
-        .fold(0.0_f64, f64::max);
+    let total_ax: f64 = accel_gpu.iter().map(|a| a.x).sum();
+    let max_ax: f64 = accel_gpu.iter().map(|a| a.x.abs()).fold(0.0_f64, f64::max);
     assert!(
         total_ax.abs() < 1e-3 * max_ax * n as f64,
         "suma fuerzas no es 0: total_ax={total_ax:.3e} max_ax={max_ax:.3e}"
     );
 
     // (3) Las fuerzas deben estar acotadas (escala física razonable).
-    for i in 0..n {
-        let mag = accel_gpu[i].x.hypot(accel_gpu[i].y.hypot(accel_gpu[i].z)) as f64;
+    for (i, a) in accel_gpu.iter().enumerate() {
+        let mag = a.x.hypot(a.y.hypot(a.z));
         assert!(
             mag < 1e6,
             "cr_backreaction[{i}] magnitud no acotada: {mag:.3e}"

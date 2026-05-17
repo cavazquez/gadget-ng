@@ -528,7 +528,7 @@ mod tests {
             rho[0]
         );
         // Node (1,1,1)=idx 1*16+1*4+1 = 21 gets 8.0 * 0.125 = 1.0
-        let idx_111 = 1 * 16 + 1 * 4 + 1;
+        let idx_111 = 21; // node (1,1,1) en malla 4³
         assert!(
             (rho[idx_111] - 1.0).abs() < 1e-12,
             "rho[{}] = {} (esperado 1.0)",

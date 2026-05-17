@@ -38,6 +38,7 @@ fn lattice_cfg(n: usize) -> RunConfig {
         sidm: Default::default(),
         dark_matter: Default::default(),
         modified_gravity: Default::default(),
+        accelerators: Default::default(),
     }
 }
 
