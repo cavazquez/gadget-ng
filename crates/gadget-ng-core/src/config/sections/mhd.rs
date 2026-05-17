@@ -110,6 +110,23 @@ pub struct MhdSection {
     /// Valores típicos en unidades code: `0.01`–`1.0`.
     #[serde(default)]
     pub hall_eta: f64,
+    /// Activa difusión óhmica resistiva (Phase 187). Default: `false`.
+    ///
+    /// `dB/dt|_Ohm = −η_Ohm B / h²`. Complementa difusión ambipolar y Hall.
+    #[serde(default)]
+    pub ohmic_enabled: bool,
+    /// Coeficiente de difusión óhmica η_Ohm [L²/T en unidades code] (Phase 187). Default: `0.0`.
+    ///
+    /// Valores típicos: `1e-4`–`0.1` dependiendo de la resolución.
+    #[serde(default)]
+    pub ohmic_eta: f64,
+    /// Usa fracción ionizada del solver de química para difusión ambipolar (Phase 187).
+    ///
+    /// Cuando `true`, `apply_ambipolar_diffusion_with_chem` sustituye al proxy térmico
+    /// con `x_e` real del solver de química (Phase 86/87). Requiere que el stack de
+    /// química esté activo (`rt.enabled = true`). Default: `false`.
+    #[serde(default)]
+    pub ambipolar_use_chem_ionization: bool,
 }
 
 fn default_mhd_c_h() -> f64 {
@@ -177,6 +194,9 @@ impl Default for MhdSection {
             ambipolar_dust_coupling: default_ambipolar_dust_coupling(),
             hall_enabled: false,
             hall_eta: 0.0,
+            ohmic_enabled: false,
+            ohmic_eta: 0.0,
+            ambipolar_use_chem_ionization: false,
         }
     }
 }

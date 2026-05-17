@@ -1,12 +1,20 @@
-//! MHD no ideal: difusión ambipolar (Phase 194) y término Hall (Phase 186).
+//! MHD no ideal: difusión ambipolar (Phase 194), término Hall (Phase 186),
+//! difusión óhmica resistiva y acoplamiento con química (Phase 187).
 //!
 //! **Ambipolar:** en gas poco ionizado, las partículas neutras desacoplan el
 //! campo magnético del fluido. Amortiguamiento local proporcional a `eta_ad / x_i`.
+//!
+//! **Óhmica (Phase 187):** `dB/dt|_Ohm = −η_Ohm B / h²` — decaimiento de B
+//! independiente de ionización; la energía disipada calienta el gas.
 //!
 //! **Hall:** la diferencia de velocidades entre iones y electrones produce una
 //! rotación del campo B sin disipar energía. Modelado como rotación de Rodrigues
 //! alrededor del eje `v × B` con ángulo `θ = η_H |B| / ρ_proxy × dt`. Conserva
 //! `|B|` exactamente y no cambia la energía interna.
+//!
+//! **Acoplamiento química (Phase 187):** `apply_ambipolar_diffusion_with_chem` usa
+//! la fracción de electrones `x_e` del solver de química (ChemState) en lugar del
+//! proxy térmico `u/(u+1)`, acoplando correctamente RT/química con MHD no-ideal.
 
 use gadget_ng_core::{Particle, ParticleType};
 #[cfg(feature = "rayon")]
@@ -769,6 +777,431 @@ unsafe fn apply_hall_drift_avx512(particles: &mut [Particle], eta_hall: f64, dt:
     }
 }
 
+// ── Ohmic resistive diffusion (Phase 187) ────────────────────────────────────
+
+/// Applies one Ohmic resistive diffusion step to a single gas particle.
+///
+/// Local approximation: `dB/dt|_Ohm = −η_Ohm B / h²`.
+/// Damping factor: `exp(−η_Ohm dt / h²)`.
+/// Dissipated magnetic energy heats the gas: `Δu = heat_eff × ΔB² / (2 m)`.
+fn ohmic_diffusion_particle(p: &mut Particle, eta_ohm: f64, heat_eff: f64, dt: f64) {
+    if p.ptype != ParticleType::Gas {
+        return;
+    }
+    let b2_before = p.b_field.dot(p.b_field);
+    if b2_before <= 0.0 {
+        return;
+    }
+    let h2 = (p.smoothing_length * p.smoothing_length).max(1e-60);
+    let rate = eta_ohm / h2;
+    let damping = (-rate * dt).exp().clamp(0.0, 1.0);
+    p.b_field *= damping;
+    let b2_after = p.b_field.dot(p.b_field);
+    let dissipated = 0.5 * (b2_before - b2_after).max(0.0);
+    p.internal_energy += heat_eff * dissipated / p.mass.max(1e-30);
+}
+
+/// Applies Ohmic resistive diffusion to all particles.
+///
+/// Implements `dB/dt|_Ohm = −η_Ohm B / h²` (local approximation).
+/// The factor `η_Ohm` has units of `[length²/time]` (code units).
+/// Dissipated energy heats gas via `heat_eff = (γ − 1)`.
+///
+/// Uses Rayon when `feature = "rayon"`, then AVX2+FMA or AVX-512F on x86_64.
+pub fn apply_ohmic_diffusion(particles: &mut [Particle], eta_ohm: f64, gamma: f64, dt: f64) {
+    if eta_ohm <= 0.0 || dt <= 0.0 {
+        return;
+    }
+    let heat_eff = (gamma - 1.0).max(0.0);
+
+    #[cfg(feature = "rayon")]
+    {
+        particles
+            .par_iter_mut()
+            .for_each(|p| ohmic_diffusion_particle(p, eta_ohm, heat_eff, dt));
+        return;
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    {
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: AVX-512F availability was checked at runtime.
+                unsafe {
+                    apply_ohmic_diffusion_avx512(particles, eta_ohm, heat_eff, dt);
+                    return;
+                }
+            }
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2+FMA availability was checked at runtime.
+                unsafe {
+                    apply_ohmic_diffusion_avx2(particles, eta_ohm, heat_eff, dt);
+                    return;
+                }
+            }
+        }
+        for p in particles.iter_mut() {
+            ohmic_diffusion_particle(p, eta_ohm, heat_eff, dt);
+        }
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx2", enable = "fma")]
+unsafe fn apply_ohmic_diffusion_avx2(
+    particles: &mut [Particle],
+    eta_ohm: f64,
+    heat_eff: f64,
+    dt: f64,
+) {
+    use std::arch::x86_64::*;
+
+    let lanes = 4;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let zero_v = _mm256_set1_pd(0.0);
+    let half_v = _mm256_set1_pd(0.5);
+    let heat_eff_v = _mm256_set1_pd(heat_eff);
+    let min_mass_v = _mm256_set1_pd(1e-30);
+    let eta_dt_v = _mm256_set1_pd(eta_ohm * dt);
+    let mut i = 0;
+    while i + lanes <= chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            for lane in 0..lanes {
+                ohmic_diffusion_particle(&mut particles[i + lane], eta_ohm, heat_eff, dt);
+            }
+            i += lanes;
+            continue;
+        }
+        let bx = _mm256_set_pd(
+            particles[i + 3].b_field.x,
+            particles[i + 2].b_field.x,
+            particles[i + 1].b_field.x,
+            particles[i].b_field.x,
+        );
+        let by = _mm256_set_pd(
+            particles[i + 3].b_field.y,
+            particles[i + 2].b_field.y,
+            particles[i + 1].b_field.y,
+            particles[i].b_field.y,
+        );
+        let bz = _mm256_set_pd(
+            particles[i + 3].b_field.z,
+            particles[i + 2].b_field.z,
+            particles[i + 1].b_field.z,
+            particles[i].b_field.z,
+        );
+        let b2_before = _mm256_fmadd_pd(bx, bx, _mm256_fmadd_pd(by, by, _mm256_mul_pd(bz, bz)));
+        let h_v = _mm256_set_pd(
+            particles[i + 3].smoothing_length,
+            particles[i + 2].smoothing_length,
+            particles[i + 1].smoothing_length,
+            particles[i].smoothing_length,
+        );
+        let h2_v = _mm256_max_pd(_mm256_mul_pd(h_v, h_v), _mm256_set1_pd(1e-60));
+        // rate = eta_ohm * dt / h²; damping computed per-lane (needs exp)
+        let rate_v = _mm256_div_pd(eta_dt_v, h2_v);
+        let b2_before_arr = {
+            let mut arr = [0.0f64; 4];
+            // SAFETY: arr has exactly 4 lanes.
+            _mm256_storeu_pd(arr.as_mut_ptr(), b2_before);
+            arr
+        };
+        let rate_arr = {
+            let mut arr = [0.0f64; 4];
+            // SAFETY: arr has exactly 4 lanes.
+            _mm256_storeu_pd(arr.as_mut_ptr(), rate_v);
+            arr
+        };
+        let mut damping_arr = [1.0f64; 4];
+        for lane in 0..lanes {
+            damping_arr[lane] = (-rate_arr[lane]).exp().clamp(0.0, 1.0);
+        }
+        let damping_v = _mm256_set_pd(
+            damping_arr[3],
+            damping_arr[2],
+            damping_arr[1],
+            damping_arr[0],
+        );
+        let new_bx = _mm256_mul_pd(bx, damping_v);
+        let new_by = _mm256_mul_pd(by, damping_v);
+        let new_bz = _mm256_mul_pd(bz, damping_v);
+        let b2_after = _mm256_fmadd_pd(
+            new_bx,
+            new_bx,
+            _mm256_fmadd_pd(new_by, new_by, _mm256_mul_pd(new_bz, new_bz)),
+        );
+        let dissipated = _mm256_max_pd(
+            zero_v,
+            _mm256_mul_pd(half_v, _mm256_sub_pd(b2_before, b2_after)),
+        );
+        let m = _mm256_set_pd(
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let mass_safe = _mm256_max_pd(min_mass_v, m);
+        let energy_delta = _mm256_mul_pd(heat_eff_v, _mm256_div_pd(dissipated, mass_safe));
+        let mut out_bx = [0.0f64; 4];
+        let mut out_by = [0.0f64; 4];
+        let mut out_bz = [0.0f64; 4];
+        let mut out_ue = [0.0f64; 4];
+        // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
+        _mm256_storeu_pd(out_bx.as_mut_ptr(), new_bx);
+        _mm256_storeu_pd(out_by.as_mut_ptr(), new_by);
+        _mm256_storeu_pd(out_bz.as_mut_ptr(), new_bz);
+        _mm256_storeu_pd(out_ue.as_mut_ptr(), energy_delta);
+        for lane in 0..lanes {
+            if b2_before_arr[lane] > 0.0 {
+                particles[i + lane].b_field.x = out_bx[lane];
+                particles[i + lane].b_field.y = out_by[lane];
+                particles[i + lane].b_field.z = out_bz[lane];
+                particles[i + lane].internal_energy += out_ue[lane];
+            }
+        }
+        i += lanes;
+    }
+    for p in particles[chunks..].iter_mut() {
+        ohmic_diffusion_particle(p, eta_ohm, heat_eff, dt);
+    }
+}
+
+#[cfg(all(
+    not(feature = "rayon"),
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+#[target_feature(enable = "avx512f")]
+unsafe fn apply_ohmic_diffusion_avx512(
+    particles: &mut [Particle],
+    eta_ohm: f64,
+    heat_eff: f64,
+    dt: f64,
+) {
+    use std::arch::x86_64::*;
+
+    let lanes = 8;
+    let n = particles.len();
+    let chunks = n / lanes * lanes;
+    let zero_v = _mm512_set1_pd(0.0);
+    let half_v = _mm512_set1_pd(0.5);
+    let heat_eff_v = _mm512_set1_pd(heat_eff);
+    let min_mass_v = _mm512_set1_pd(1e-30);
+    let eta_dt_v = _mm512_set1_pd(eta_ohm * dt);
+    let mut i = 0;
+    while i + lanes <= chunks {
+        let all_gas = particles[i..i + lanes]
+            .iter()
+            .all(|p| p.ptype == ParticleType::Gas);
+        if !all_gas {
+            for lane in 0..lanes {
+                ohmic_diffusion_particle(&mut particles[i + lane], eta_ohm, heat_eff, dt);
+            }
+            i += lanes;
+            continue;
+        }
+        let bx = _mm512_set_pd(
+            particles[i + 7].b_field.x,
+            particles[i + 6].b_field.x,
+            particles[i + 5].b_field.x,
+            particles[i + 4].b_field.x,
+            particles[i + 3].b_field.x,
+            particles[i + 2].b_field.x,
+            particles[i + 1].b_field.x,
+            particles[i].b_field.x,
+        );
+        let by = _mm512_set_pd(
+            particles[i + 7].b_field.y,
+            particles[i + 6].b_field.y,
+            particles[i + 5].b_field.y,
+            particles[i + 4].b_field.y,
+            particles[i + 3].b_field.y,
+            particles[i + 2].b_field.y,
+            particles[i + 1].b_field.y,
+            particles[i].b_field.y,
+        );
+        let bz = _mm512_set_pd(
+            particles[i + 7].b_field.z,
+            particles[i + 6].b_field.z,
+            particles[i + 5].b_field.z,
+            particles[i + 4].b_field.z,
+            particles[i + 3].b_field.z,
+            particles[i + 2].b_field.z,
+            particles[i + 1].b_field.z,
+            particles[i].b_field.z,
+        );
+        let b2_before = _mm512_fmadd_pd(bx, bx, _mm512_fmadd_pd(by, by, _mm512_mul_pd(bz, bz)));
+        let active_mask = _mm512_cmp_pd_mask(b2_before, zero_v, _CMP_GT_OQ);
+        let h_v = _mm512_set_pd(
+            particles[i + 7].smoothing_length,
+            particles[i + 6].smoothing_length,
+            particles[i + 5].smoothing_length,
+            particles[i + 4].smoothing_length,
+            particles[i + 3].smoothing_length,
+            particles[i + 2].smoothing_length,
+            particles[i + 1].smoothing_length,
+            particles[i].smoothing_length,
+        );
+        let h2_v = _mm512_max_pd(_mm512_mul_pd(h_v, h_v), _mm512_set1_pd(1e-60));
+        let rate_v = _mm512_div_pd(eta_dt_v, h2_v);
+        let b2_before_arr = {
+            let mut arr = [0.0f64; 8];
+            // SAFETY: arr has exactly 8 lanes.
+            _mm512_storeu_pd(arr.as_mut_ptr(), b2_before);
+            arr
+        };
+        let rate_arr = {
+            let mut arr = [0.0f64; 8];
+            // SAFETY: arr has exactly 8 lanes.
+            _mm512_storeu_pd(arr.as_mut_ptr(), rate_v);
+            arr
+        };
+        let mut damping_arr = [1.0f64; 8];
+        for lane in 0..lanes {
+            damping_arr[lane] = (-rate_arr[lane]).exp().clamp(0.0, 1.0);
+        }
+        let damping_v = _mm512_set_pd(
+            damping_arr[7],
+            damping_arr[6],
+            damping_arr[5],
+            damping_arr[4],
+            damping_arr[3],
+            damping_arr[2],
+            damping_arr[1],
+            damping_arr[0],
+        );
+        let new_bx = _mm512_mask_mul_pd(bx, active_mask, bx, damping_v);
+        let new_by = _mm512_mask_mul_pd(by, active_mask, by, damping_v);
+        let new_bz = _mm512_mask_mul_pd(bz, active_mask, bz, damping_v);
+        let b2_after = _mm512_fmadd_pd(
+            new_bx,
+            new_bx,
+            _mm512_fmadd_pd(new_by, new_by, _mm512_mul_pd(new_bz, new_bz)),
+        );
+        let dissipated = _mm512_maskz_add_pd(
+            active_mask,
+            _mm512_mul_pd(half_v, _mm512_sub_pd(b2_before, b2_after)),
+            _mm512_setzero_pd(),
+        );
+        let m = _mm512_set_pd(
+            particles[i + 7].mass,
+            particles[i + 6].mass,
+            particles[i + 5].mass,
+            particles[i + 4].mass,
+            particles[i + 3].mass,
+            particles[i + 2].mass,
+            particles[i + 1].mass,
+            particles[i].mass,
+        );
+        let mass_safe = _mm512_max_pd(min_mass_v, m);
+        let energy_delta = _mm512_mul_pd(heat_eff_v, _mm512_div_pd(dissipated, mass_safe));
+        let mut out_bx = [0.0f64; 8];
+        let mut out_by = [0.0f64; 8];
+        let mut out_bz = [0.0f64; 8];
+        let mut out_ue = [0.0f64; 8];
+        // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
+        _mm512_storeu_pd(out_bx.as_mut_ptr(), new_bx);
+        _mm512_storeu_pd(out_by.as_mut_ptr(), new_by);
+        _mm512_storeu_pd(out_bz.as_mut_ptr(), new_bz);
+        _mm512_storeu_pd(out_ue.as_mut_ptr(), energy_delta);
+        for lane in 0..lanes {
+            particles[i + lane].b_field.x = out_bx[lane];
+            particles[i + lane].b_field.y = out_by[lane];
+            particles[i + lane].b_field.z = out_bz[lane];
+            particles[i + lane].internal_energy += out_ue[lane];
+        }
+        i += lanes;
+    }
+    for p in particles[chunks..].iter_mut() {
+        ohmic_diffusion_particle(p, eta_ohm, heat_eff, dt);
+    }
+}
+
+// ── Chemistry-coupled ambipolar diffusion (Phase 187) ─────────────────────────
+
+/// Applies ambipolar diffusion using externally supplied ionization fractions.
+///
+/// Unlike `apply_ambipolar_diffusion` (which uses a thermal proxy `u/(u+1)` for
+/// the ionization fraction), this function accepts a pre-computed `ion_fracs` slice
+/// — typically `ChemState::x_e` extracted by the engine from the chemistry solver
+/// (Phase 86/87) — to correctly couple the non-ideal MHD term to the RT pipeline.
+///
+/// `ion_fracs[i]` is the electron fraction per H atom for particle `i`.
+/// Falls back to `ion_floor` when the provided fraction is below that threshold.
+///
+/// `ion_fracs` must have the same length as `particles`.
+pub fn apply_ambipolar_diffusion_with_chem(
+    particles: &mut [Particle],
+    ion_fracs: &[f64],
+    eta_ad: f64,
+    ion_floor: f64,
+    gamma: f64,
+    dt: f64,
+) {
+    debug_assert_eq!(
+        particles.len(),
+        ion_fracs.len(),
+        "particles and ion_fracs must have the same length"
+    );
+    if eta_ad <= 0.0 || dt <= 0.0 {
+        return;
+    }
+    let heat_eff = (gamma - 1.0).max(0.0);
+    let ion_floor_eff = ion_floor.max(1e-12);
+
+    #[cfg(feature = "rayon")]
+    {
+        particles
+            .par_iter_mut()
+            .zip(ion_fracs.par_iter())
+            .for_each(|(p, &x_e)| {
+                if p.ptype != ParticleType::Gas {
+                    return;
+                }
+                let b2_before = p.b_field.dot(p.b_field);
+                if b2_before <= 0.0 {
+                    return;
+                }
+                let x_i = x_e.clamp(ion_floor_eff, 1.0);
+                let rate = eta_ad.max(0.0) * (1.0 / x_i - 1.0).max(0.0);
+                let damping = (-rate * dt).exp().clamp(0.0, 1.0);
+                p.b_field *= damping;
+                let b2_after = p.b_field.dot(p.b_field);
+                let dissipated = 0.5 * (b2_before - b2_after).max(0.0);
+                p.internal_energy += heat_eff * dissipated / p.mass.max(1e-30);
+            });
+        return;
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    for (p, &x_e) in particles.iter_mut().zip(ion_fracs.iter()) {
+        if p.ptype != ParticleType::Gas {
+            continue;
+        }
+        let b2_before = p.b_field.dot(p.b_field);
+        if b2_before <= 0.0 {
+            continue;
+        }
+        let x_i = x_e.clamp(ion_floor_eff, 1.0);
+        let rate = eta_ad.max(0.0) * (1.0 / x_i - 1.0).max(0.0);
+        let damping = (-rate * dt).exp().clamp(0.0, 1.0);
+        p.b_field *= damping;
+        let b2_after = p.b_field.dot(p.b_field);
+        let dissipated = 0.5 * (b2_before - b2_after).max(0.0);
+        p.internal_energy += heat_eff * dissipated / p.mass.max(1e-30);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -854,5 +1287,122 @@ mod tests {
         // v × B = 0 when v ∥ B → no rotation
         assert!((p.b_field.x - b_before.x).abs() < 1e-12);
         assert!((p.b_field.y - b_before.y).abs() < 1e-12);
+    }
+
+    // ── Ohmic diffusion tests (Phase 187) ─────────────────────────────────
+
+    fn gas_for_ohmic(b_x: f64, h: f64) -> Particle {
+        let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 0.0, h);
+        p.b_field = Vec3::new(b_x, 0.0, 0.0);
+        p
+    }
+
+    #[test]
+    fn ohmic_diffusion_reduces_b() {
+        let mut particles = vec![gas_for_ohmic(1.0, 0.1)];
+        let b0 = particles[0].b_field.norm();
+        apply_ohmic_diffusion(&mut particles, 0.1, 5.0 / 3.0, 1.0);
+        assert!(
+            particles[0].b_field.norm() < b0,
+            "|B| should decrease under Ohmic diffusion"
+        );
+    }
+
+    #[test]
+    fn ohmic_diffusion_heats_gas() {
+        let mut particles = vec![gas_for_ohmic(1.0, 0.1)];
+        let u0 = particles[0].internal_energy;
+        apply_ohmic_diffusion(&mut particles, 0.1, 5.0 / 3.0, 1.0);
+        assert!(
+            particles[0].internal_energy > u0,
+            "internal energy should increase (dissipation → heat)"
+        );
+    }
+
+    #[test]
+    fn ohmic_diffusion_energy_conservation() {
+        // Total energy (magnetic + thermal) should be conserved within numerical precision.
+        let mut particles = vec![gas_for_ohmic(2.0, 0.1)];
+        let b2_before = particles[0].b_field.dot(particles[0].b_field);
+        let u_before = particles[0].internal_energy;
+        let gamma = 5.0 / 3.0;
+        apply_ohmic_diffusion(&mut particles, 0.05, gamma, 0.5);
+        let b2_after = particles[0].b_field.dot(particles[0].b_field);
+        let u_after = particles[0].internal_energy;
+        // ΔU_thermal = heat_eff × ΔB²/2 / mass, so magnetic + (thermal/heat_eff) should be conserved
+        let heat_eff = gamma - 1.0;
+        let mag_before = b2_before / 2.0;
+        let mag_after = b2_after / 2.0;
+        let thermal_before = u_before / heat_eff;
+        let thermal_after = u_after / heat_eff;
+        let total_before = mag_before + thermal_before;
+        let total_after = mag_after + thermal_after;
+        let rel_err = (total_after - total_before).abs() / total_before.max(1e-30);
+        assert!(
+            rel_err < 1e-12,
+            "energy conservation violated: rel_err = {rel_err}"
+        );
+    }
+
+    #[test]
+    fn ohmic_diffusion_no_effect_with_zero_eta() {
+        let mut particles = vec![gas_for_ohmic(1.5, 0.1)];
+        let b_before = particles[0].b_field;
+        apply_ohmic_diffusion(&mut particles, 0.0, 5.0 / 3.0, 1.0);
+        assert_eq!(particles[0].b_field.x, b_before.x);
+    }
+
+    #[test]
+    fn ohmic_diffusion_no_effect_on_dm() {
+        let mut p = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        p.b_field = Vec3::new(1.0, 0.0, 0.0);
+        let b_before = p.b_field;
+        apply_ohmic_diffusion(std::slice::from_mut(&mut p), 0.5, 5.0 / 3.0, 1.0);
+        assert_eq!(p.b_field.x, b_before.x);
+    }
+
+    // ── Chemistry-coupled ambipolar tests (Phase 187) ──────────────────────
+
+    #[test]
+    fn chem_coupled_ambipolar_high_ionization_gives_less_damping() {
+        // Highly ionized: x_e ≈ 1 → rate ≈ 0 → damping ≈ 1 → B barely changes.
+        let mut low = vec![gas(0.01, 0.0)];
+        let mut high = vec![gas(0.01, 0.0)];
+        // Low ionization: x_e = 0.001
+        let ion_fracs_low = vec![0.001_f64];
+        // High ionization: x_e = 0.99
+        let ion_fracs_high = vec![0.99_f64];
+        let b_low_before = low[0].b_field.norm();
+        let b_high_before = high[0].b_field.norm();
+        apply_ambipolar_diffusion_with_chem(&mut low, &ion_fracs_low, 0.1, 1e-6, 5.0 / 3.0, 1.0);
+        apply_ambipolar_diffusion_with_chem(&mut high, &ion_fracs_high, 0.1, 1e-6, 5.0 / 3.0, 1.0);
+        let b_low_after = low[0].b_field.norm();
+        let b_high_after = high[0].b_field.norm();
+        // Low ionization → more damping → |B| decreases more
+        assert!(b_low_after < b_high_after, "low x_e should damp B more");
+        // Both should be ≤ initial
+        assert!(b_low_after <= b_low_before + 1e-15);
+        assert!(b_high_after <= b_high_before + 1e-15);
+    }
+
+    #[test]
+    fn chem_coupled_ambipolar_matches_proxy_at_full_ionization() {
+        // When x_e = 1.0, 1/x_i - 1 = 0 → rate = 0 → no damping.
+        let mut particles = vec![gas(1.0, 0.0)];
+        let b_before = particles[0].b_field.norm();
+        let ion_fracs = vec![1.0_f64];
+        apply_ambipolar_diffusion_with_chem(
+            &mut particles,
+            &ion_fracs,
+            10.0,
+            1e-6,
+            5.0 / 3.0,
+            100.0,
+        );
+        let b_after = particles[0].b_field.norm();
+        assert!(
+            (b_after - b_before).abs() < 1e-12,
+            "fully ionized gas should have no ambipolar damping"
+        );
     }
 }

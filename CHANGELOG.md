@@ -8,6 +8,28 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Added — Phase 187: Non-ideal MHD completo (Ohmic + ambipolar acoplada a química)
+
+- **`gadget-ng-mhd` — Difusión óhmica resistiva (`apply_ohmic_diffusion`):**
+  `dB/dt|_Ohm = −η_Ohm B / h²` — tercer término de la ecuación de inducción no-ideal.
+  Completa el cuadro junto a Hall (Phase 186) y ambipolar (Phase 194).
+  Rutas: Rayon `par_iter_mut` + AVX2+FMA (lotes 4) + AVX-512F (lotes 8) + scalar.
+  Energía disipada calienta el gas: `Δu = (γ−1) × ΔB²/(2m)`.
+
+- **`gadget-ng-mhd` — Ambipolar acoplada a química (`apply_ambipolar_diffusion_with_chem`):**
+  Acepta `ion_fracs: &[f64]` (típicamente `ChemState::x_e`) en lugar del proxy térmico
+  `u/(u+1)`, acoplando correctamente el término no-ideal MHD al solver de química (Phase 86).
+  Fronteras de crates preservadas (`gadget-ng-mhd` no depende de `gadget-ng-rt`).
+
+- **`gadget-ng-core` — Config TOML:**
+  Nuevos campos en `[mhd]`: `ohmic_enabled`, `ohmic_eta`, `ambipolar_use_chem_ionization`.
+
+- **`gadget-ng-cli` — Engine wiring:**
+  Ohmic integrado en `step_mhd`; nueva `step_mhd_chem_ambipolar` en los 7 loops de integración.
+
+- **7 tests nuevos** en `nonideal::tests`: conservación energética óhmica (tol 1e-12),
+  reducción de |B|, calor por disipación, sin efecto en DM, comparación bajas/altas x_e.
+
 ### Performance — AP-21: Rayon + SIMD combinados
 
 - **`gadget-ng-rt` — Chemistry stiff solver:** `apply_chemistry_par_simd` combina Rayon exterior

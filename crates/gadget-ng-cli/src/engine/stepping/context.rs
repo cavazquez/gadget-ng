@@ -74,6 +74,12 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
         }
     }
 
+    // Ohmic resistive diffusion (Phase 187): dB/dt = −η_Ohm B / h².
+    // CPU-only (no CUDA path yet); follows same guard pattern as ambipolar.
+    if cfg.mhd.ohmic_enabled && cfg.mhd.ohmic_eta > 0.0 {
+        gadget_ng_mhd::apply_ohmic_diffusion(local, cfg.mhd.ohmic_eta, cfg.sph.gamma, dt_mhd);
+    }
+
     // Hall drift (AP-20 / Phase 186): rota B sin disipar energía magnética.
     // Intenta GPU (cuda_mhd); fallback al CPU Rayon/SIMD existente.
     if cfg.mhd.hall_enabled && cfg.mhd.hall_eta > 0.0 {
@@ -269,6 +275,42 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
         };
         gadget_ng_mhd::apply_turbulent_dynamo(local, v_rms, dt_mhd, cfg.mhd.dynamo_decay_time);
     }
+}
+
+/// Applies chemistry-coupled ambipolar diffusion (Phase 187).
+///
+/// Called after `step_mhd` when both `mhd.ambipolar_diffusion_enabled` and
+/// `mhd.ambipolar_use_chem_ionization` are set, using the ionization fractions
+/// extracted from the chemistry solver (`x_e` field of `ChemState`).
+///
+/// If `chem_states` is empty or the feature flags are off, this is a no-op.
+pub(crate) fn step_mhd_chem_ambipolar(
+    local: &mut [gadget_ng_core::Particle],
+    chem_states: &[gadget_ng_rt::ChemState],
+    cfg: &gadget_ng_core::RunConfig,
+) {
+    if !cfg.mhd.enabled
+        || !cfg.mhd.ambipolar_diffusion_enabled
+        || !cfg.mhd.ambipolar_use_chem_ionization
+        || cfg.mhd.ambipolar_eta <= 0.0
+        || chem_states.is_empty()
+    {
+        return;
+    }
+    if chem_states.len() != local.len() {
+        return;
+    }
+    let dt_alfven = gadget_ng_mhd::alfven_dt(local, cfg.mhd.cfl_mhd);
+    let dt_mhd = cfg.simulation.dt.min(dt_alfven);
+    let ion_fracs: Vec<f64> = chem_states.iter().map(|cs| cs.x_e).collect();
+    gadget_ng_mhd::apply_ambipolar_diffusion_with_chem(
+        local,
+        &ion_fracs,
+        cfg.mhd.ambipolar_eta,
+        cfg.mhd.ambipolar_ion_floor,
+        cfg.sph.gamma,
+        dt_mhd,
+    );
 }
 
 pub(crate) fn step_rt(

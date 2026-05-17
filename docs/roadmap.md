@@ -1,11 +1,13 @@
 # Roadmap
 
-> **Estado al 16 de mayo de 2026:** Phases 1–186 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
+> **Estado al 17 de mayo de 2026:** Phases 1–187 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
 > AP-16/AP-17/AP-18 CUDA: cierre completo de brechas CUDA; todos los tests `--ignored` pasan en sm_61.
 > AP-19: pipeline SPH CUDA persistente — reduce PCIe en 65%, fix físico Balsara en fuerzas.
 > AP-20: cierre total paridad CUDA (Hall, f(R), TreePM SR, Barnes-Hut local GPU).
 > **AP-21: Rayon + SIMD combinados** — chemistry stiff solver (`apply_chemistry_par_simd`), SPH density (documentado + test), CR streaming (`streaming_crk_par`), SPH forces Gadget-2 (`grad_w_batch` batch SIMD). Corrección gap `dedner_pairwise_accumulate*` con `rayon+simd`.
+> **AP-21 Benchmarks Criterion:** chemistry (3.7× @ N=4096), CR streaming (5.1× @ N≥256), SPH forces (sin ganancia clara en rango medido).
 > Phase 186: MHD Hall term — rotación de B sin disipación (`apply_hall_drift`, Rodrigues, AVX2/AVX512, 7 tests physics).
+> **Phase 187: Non-ideal MHD completo** — `apply_ohmic_diffusion` (`dB/dt = −η_Ohm B/h²`, Rayon+AVX2+AVX-512) + `apply_ambipolar_diffusion_with_chem` (acoplamiento `x_e` del solver de química vs proxy térmico). Config `ohmic_enabled/eta`, `ambipolar_use_chem_ionization`. 7 tests nuevos.
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
 > Phase 170: CR Transport (streaming lungo B + backreaction).

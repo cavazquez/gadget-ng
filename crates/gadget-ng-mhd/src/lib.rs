@@ -43,7 +43,10 @@ pub use dynamo::{
 };
 pub use flux_freeze::{apply_flux_freeze, flux_freeze_error, mean_gas_density};
 pub use induction::{advance_induction, alfven_dt, apply_artificial_resistivity, init_b_field};
-pub use nonideal::{apply_ambipolar_diffusion, apply_hall_drift, ionization_fraction_proxy};
+pub use nonideal::{
+    apply_ambipolar_diffusion, apply_ambipolar_diffusion_with_chem, apply_hall_drift,
+    apply_ohmic_diffusion, ionization_fraction_proxy,
+};
 pub use pressure::{apply_magnetic_forces, magnetic_pressure, maxwell_stress};
 pub use reconnection::{apply_magnetic_reconnection, sweet_parker_rate};
 pub use relativistic::{

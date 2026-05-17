@@ -658,6 +658,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
@@ -968,6 +969,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
@@ -1649,6 +1651,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
@@ -2193,6 +2196,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
@@ -2528,6 +2532,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
@@ -2637,6 +2642,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(
@@ -2775,6 +2781,7 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
             context::step_agn(&mut local, cfg, &mut agn_bhs, &halo_centers);
             context::step_rt(&mut local, &mut rt_field_opt, cfg);
             context::step_mhd(&mut local, cfg);
+            context::step_mhd_chem_ambipolar(&mut local, &sph_chem_states, cfg);
             context::step_sidm(&mut local, cfg, step);
             context::step_fr(&mut local, cfg, a_current);
             context::step_reionization(

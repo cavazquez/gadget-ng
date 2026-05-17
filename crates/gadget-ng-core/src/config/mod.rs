@@ -255,6 +255,18 @@ impl RunConfig {
                 value: self.mhd.ambipolar_dust_coupling,
             });
         }
+        if self.mhd.ohmic_enabled && !self.mhd.enabled {
+            return Err(ConfigError::FeatureRequires {
+                feature: "mhd.ohmic_diffusion",
+                requires: "mhd.enabled",
+            });
+        }
+        if self.mhd.ohmic_eta < 0.0 {
+            return Err(ConfigError::NegativeParameter {
+                field: "mhd.ohmic_eta",
+                value: self.mhd.ohmic_eta,
+            });
+        }
         if self.sidm.enabled && self.sidm.sigma_m < 0.0 {
             return Err(ConfigError::NegativeParameter {
                 field: "sidm.sigma_m",
