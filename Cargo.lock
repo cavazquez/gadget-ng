@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-analysis"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "gadget-ng-core",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",
@@ -751,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-cuda"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "gadget-ng-analysis",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-gpu"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "gadget-ng-core",
@@ -797,18 +797,18 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-gpu-layout"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "gadget-ng-hip"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gadget-ng-core",
 ]
 
 [[package]]
 name = "gadget-ng-integrators"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "gadget-ng-core",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-io"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bincode",
  "chrono",
@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-mhd"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-parallel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gadget-ng-core",
  "gadget-ng-integrators",
@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-physics"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "gadget-ng-analysis",
@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-pm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -899,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-rt"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-sph"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-tree"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-treepm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "approx",
  "criterion",
@@ -950,7 +950,7 @@ dependencies = [
 
 [[package]]
 name = "gadget-ng-vis"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gadget-ng-core",
  "png",

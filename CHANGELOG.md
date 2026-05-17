@@ -8,6 +8,10 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - 2026-05-17
+
 ### Added — Phase 187: Non-ideal MHD completo (Ohmic + ambipolar acoplada a química)
 
 - **`gadget-ng-mhd` — Difusión óhmica resistiva (`apply_ohmic_diffusion`):**
