@@ -256,3 +256,20 @@ Tras AP-20, todos los gaps CUDA remanentes han sido cerrados:
 
 La tabla de paridad en `README.md` no tiene más filas `⚠️` en columna CUDA.
 Todos los tests `#[ignore]` relevantes están anotados y pasan en GTX 1060 sm_61.
+
+## AP-21 update — 2026-05-16 — Rayon + SIMD combinados
+
+Cuatro módulos de alto impacto actualizados para ejecutar Rayon externo + SIMD interno
+de forma simultánea (patrón `dedner_cleaning_step_par_simd`):
+
+| Módulo | Path anterior | Path AP-21 |
+|--------|--------------|-----------|
+| **Chemistry stiff solver** (`gadget-ng-rt`) | Rayon escalar OR SIMD batch serial | `apply_chemistry_par_simd`: Rayon por chunks + SIMD AVX/AVX512 por chunk |
+| **SPH density** (`gadget-ng-sph`) | Rayon exterior + kernel.rs SIMD implícito | Ya combinado — documentado + test `density_rayon_matches_serial` |
+| **CR streaming** (`gadget-ng-mhd`) | SIMD serial OR Rayon (inexistente) | `streaming_crk_par` + dispatcher triple via |
+| **SPH forces Gadget-2** (`gadget-ng-sph`) | Rayon + `grad_w` escalar por par | Rayon + `grad_w_batch` SIMD sobre buffer de vecinos |
+
+Corrección adicional: de-gate de `dedner_pairwise_accumulate*` que causaban error de
+compilación con `rayon+simd` (gap pre-existente en `cleaning.rs`).
+
+Reporte completo: `docs/reports/2026-05-ap21-rayon-simd-combined.md`.

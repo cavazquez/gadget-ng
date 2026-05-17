@@ -34,6 +34,14 @@ pub fn compute_density(particles: &mut [SphParticle]) {
 }
 
 /// Igual que `compute_density`, pero usando imagen mínima si `periodic_box = Some(L)`.
+///
+/// # Rayon + SIMD combined path
+///
+/// When the `rayon` feature is active the outer loop over particles runs in parallel via Rayon.
+/// Regardless of the `simd` feature flag, the inner kernel evaluation (`w_and_grad_w_batch` in
+/// `kernel.rs`) already dispatches at runtime to AVX-512 → AVX2+FMA → scalar based on
+/// `is_x86_feature_detected!`. Therefore the Rayon path already constitutes a true
+/// "Rayon-outer + SIMD-inner" combined path — no additional cfg gate is required here.
 pub fn compute_density_with_periodic(particles: &mut [SphParticle], periodic_box: Option<f64>) {
     let n = particles.len();
     // Extrae datos de todas las partículas (pos, mass) para no tener borrowing doble.
@@ -270,5 +278,51 @@ mod tests {
             (mean_rho - rho_true).abs() / rho_true < 0.30,
             "rho_mean={mean_rho:.4} rho_true={rho_true:.4}"
         );
+    }
+
+    /// Confirms that the Rayon path and the serial path agree bit-near.
+    ///
+    /// Both paths call `w_and_grad_w_batch` (kernel.rs) which dispatches to AVX-512/AVX2/scalar
+    /// at runtime. This test verifies the combined "Rayon-outer + SIMD-inner" behaviour is
+    /// numerically identical to the serial reference.
+    #[test]
+    #[cfg(feature = "rayon")]
+    fn density_rayon_matches_serial() {
+        let n = 27usize;
+        let box_size = 3.0_f64;
+        let mut rayon_parts = glass_particles(n, box_size);
+        let mut serial_parts = rayon_parts.clone();
+
+        // Use the Rayon path (current feature).
+        compute_density(&mut rayon_parts);
+
+        // Force the serial path by calling the inner per-particle function directly.
+        let pos: Vec<Vec3> = serial_parts.iter().map(|p| p.position).collect();
+        let mass: Vec<f64> = serial_parts.iter().map(|p| p.mass).collect();
+        for i in 0..n {
+            let gas = match serial_parts[i].gas.as_ref() {
+                Some(g) => g,
+                None => continue,
+            };
+            let (h, rho, pressure, entropy) =
+                density_update_for_particle(&pos, &mass, i, gas.h_sml, gas.u, None);
+            if let Some(g) = serial_parts[i].gas.as_mut() {
+                g.h_sml = h;
+                g.rho = rho;
+                g.pressure = pressure;
+                g.entropy = entropy;
+            }
+        }
+
+        for (rp, sp) in rayon_parts.iter().zip(serial_parts.iter()) {
+            let rg = rp.gas.as_ref().unwrap();
+            let sg = sp.gas.as_ref().unwrap();
+            assert!(
+                (rg.rho - sg.rho).abs() < 1e-12,
+                "rho mismatch at particle: rayon={} serial={}",
+                rg.rho,
+                sg.rho
+            );
+        }
     }
 }

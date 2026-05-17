@@ -163,7 +163,6 @@ fn dedner_sum_for_i_scalar_loop(particles: &[Particle], rho: &[f64], i: usize) -
 
 /// Ruta serial por pares (densidad + acumulación i–j) usada sin `rayon`, en benches
 /// `bench-all-dedner-paths`, o en tests (`cfg(test)`).
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test))]
 fn dedner_pairwise_accumulate_scalar(
     particles: &[Particle],
     rho: &[f64],
@@ -187,11 +186,7 @@ fn dedner_pairwise_accumulate_scalar(
     }
 }
 
-#[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 fn dedner_pairwise_accumulate_dispatch(
     particles: &[Particle],
     rho: &[f64],
@@ -268,7 +263,6 @@ fn dedner_pairwise_accumulate_dispatch(
     dedner_pairwise_accumulate_scalar(particles, rho, div_b, grad_psi);
 }
 
-#[cfg(any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test))]
 fn dedner_pairwise_accumulate(
     particles: &[Particle],
     rho: &[f64],
@@ -1389,11 +1383,7 @@ fn dedner_sum_for_i_avx2(particles: &[Particle], rho: &[f64], i: usize) -> (f64,
     (div_acc, Vec3::new(gx_acc, gy_acc, gz_acc))
 }
 
-#[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx2", enable = "fma")]
 fn dedner_pairwise_accumulate_avx2(
     particles: &[Particle],
@@ -1694,11 +1684,7 @@ fn dedner_sum_for_i_avx512(particles: &[Particle], rho: &[f64], i: usize) -> (f6
     (div_acc, Vec3::new(gx_acc, gy_acc, gz_acc))
 }
 
-#[cfg(all(
-    any(not(feature = "rayon"), feature = "bench-all-dedner-paths", test),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx512f")]
 fn dedner_pairwise_accumulate_avx512(
     particles: &[Particle],

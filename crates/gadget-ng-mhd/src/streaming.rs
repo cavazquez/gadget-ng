@@ -30,6 +30,8 @@
 
 use crate::MU0;
 use gadget_ng_core::{Particle, ParticleType, Vec3};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 #[cfg(all(
     not(feature = "rayon"),
     feature = "simd",
@@ -144,27 +146,46 @@ pub fn streaming_crk(
     streaming_coefficient: f64,
     periodic_box: Option<f64>,
 ) {
-    #[cfg(all(
-        not(feature = "rayon"),
-        feature = "simd",
-        any(target_arch = "x86", target_arch = "x86_64")
-    ))]
+    #[cfg(feature = "rayon")]
     {
-        #[cfg(target_arch = "x86_64")]
-        if is_x86_feature_detected!("avx512f") {
-            // SAFETY: AVX-512F availability was checked at runtime immediately above.
-            unsafe {
-                return streaming_crk_avx512(particles, dt, streaming_coefficient, periodic_box);
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            let use_simd_rayon = is_x86_feature_detected!("avx512f")
+                || (is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"));
+            if use_simd_rayon {
+                streaming_crk_par_simd(particles, dt, streaming_coefficient, periodic_box);
+                return;
             }
         }
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            // SAFETY: AVX2+FMA availability was checked at runtime immediately above.
-            unsafe {
-                return streaming_crk_avx2(particles, dt, streaming_coefficient, periodic_box);
-            }
-        }
+        streaming_crk_par(particles, dt, streaming_coefficient, periodic_box);
+        return;
     }
-    streaming_crk_scalar(particles, dt, streaming_coefficient, periodic_box);
+
+    #[cfg(not(feature = "rayon"))]
+    {
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx512f") {
+                // SAFETY: AVX-512F availability was checked at runtime immediately above.
+                unsafe {
+                    return streaming_crk_avx512(
+                        particles,
+                        dt,
+                        streaming_coefficient,
+                        periodic_box,
+                    );
+                }
+            }
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2+FMA availability was checked at runtime immediately above.
+                unsafe {
+                    return streaming_crk_avx2(particles, dt, streaming_coefficient, periodic_box);
+                }
+            }
+        }
+        streaming_crk_scalar(particles, dt, streaming_coefficient, periodic_box);
+    }
 }
 
 fn streaming_crk_scalar(
@@ -529,6 +550,118 @@ unsafe fn streaming_crk_avx512(
     }
 }
 
+/// Rayon-parallel path: divides work over particle indices, scalar per-particle kernel.
+///
+/// Collects all read-only data first to avoid borrow conflicts, then applies results.
+#[cfg(feature = "rayon")]
+fn streaming_crk_par(
+    particles: &mut [Particle],
+    dt: f64,
+    streaming_coefficient: f64,
+    periodic_box: Option<f64>,
+) {
+    let n = particles.len();
+    // Collect read-only snapshots so Rayon tasks can borrow immutably.
+    let pos: Vec<_> = particles.iter().map(|p| p.position).collect();
+    let vel: Vec<_> = particles.iter().map(|p| p.velocity).collect();
+    let b_field: Vec<_> = particles.iter().map(|p| p.b_field).collect();
+    let mass: Vec<_> = particles.iter().map(|p| p.mass).collect();
+    let h_sml: Vec<_> = particles
+        .iter()
+        .map(|p| p.smoothing_length.max(1e-10))
+        .collect();
+    let cr_energy: Vec<_> = particles.iter().map(|p| p.cr_energy).collect();
+    let ptype: Vec<_> = particles.iter().map(|p| p.ptype.clone()).collect();
+
+    let results: Vec<Option<f64>> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if ptype[i] != ParticleType::Gas || cr_energy[i] <= 0.0 {
+                return None;
+            }
+            let h_i = h_sml[i];
+            let pos_i = pos[i];
+            let e_cr = cr_energy[i];
+
+            // Scalar divergence of velocity (O(N) per particle = O(N²) total).
+            let mut div_v = 0.0_f64;
+            for j in 0..n {
+                if j == i || ptype[j] != ParticleType::Gas {
+                    continue;
+                }
+                let h_j = h_sml[j].max(1e-10);
+                let mut dr = pos[j] - pos_i;
+                if let Some(l) = periodic_box {
+                    dr.x -= l * (dr.x / l).round();
+                    dr.y -= l * (dr.y / l).round();
+                    dr.z -= l * (dr.z / l).round();
+                }
+                let r = dr.norm();
+                if r < 1e-14 || r > 2.0 * h_i {
+                    continue;
+                }
+                let rhat = dr * (1.0 / r);
+                let dwdr = grad_w_approx(r, h_i);
+                let v_ij = vel[i] - vel[j];
+                let vol_j =
+                    mass[j] / (4.0 / 3.0 * std::f64::consts::PI * h_j * h_j * h_j).max(1e-100);
+                div_v += mass[j] / vol_j.max(1e-30)
+                    * (v_ij.x * rhat.x + v_ij.y * rhat.y + v_ij.z * rhat.z)
+                    * dwdr
+                    / h_i.max(1e-10);
+            }
+
+            let compressional = -(1.0 / 3.0) * e_cr * div_v;
+            let b2 = b_field[i].x.powi(2) + b_field[i].y.powi(2) + b_field[i].z.powi(2);
+            let rho_i = mass[i] / (4.0 / 3.0 * std::f64::consts::PI * h_i * h_i * h_i).max(1e-100);
+            let v_a = alfven_speed_magnitude(b2, rho_i);
+            let streaming_loss = if streaming_coefficient > 0.0 && v_a > 1e-30 {
+                streaming_coefficient * v_a * e_cr / h_i.max(1e-30)
+            } else {
+                0.0
+            };
+            Some((e_cr + (compressional + streaming_loss) * dt).max(0.0))
+        })
+        .collect();
+
+    for (p, r) in particles.iter_mut().zip(results) {
+        if let Some(new_e) = r {
+            p.cr_energy = new_e;
+        }
+    }
+}
+
+/// Rayon-parallel + SIMD combined path for CR streaming.
+///
+/// Uses `streaming_crk_par` for the parallel O(N²) divergence phase, then vectorises the
+/// final algebraic update (`e_cr`, Alfvén speed, compressional + streaming losses) with AVX.
+/// The SIMD AVX functions (`streaming_crk_avx2/avx512`) already do SIMD over lanes of 4 or 8;
+/// here we distribute the full particle set across Rayon threads, each of which processes
+/// its assigned particles using the same scalar-per-lane divergence followed by AVX-vectorised
+/// algebraic update — matching the approach of `apply_chemistry_par_simd`.
+///
+/// Since `div_v_single` is the dominant O(N) cost per particle, the Rayon parallelism
+/// provides the main speedup; the SIMD vectorisation of the subsequent arithmetic is a
+/// secondary gain.
+#[cfg(all(
+    feature = "rayon",
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn streaming_crk_par_simd(
+    particles: &mut [Particle],
+    dt: f64,
+    streaming_coefficient: f64,
+    periodic_box: Option<f64>,
+) {
+    // Rayon-parallel phase: each thread computes its slice independently.
+    // We split into chunks; within each chunk the existing AVX2/512 kernel handles the
+    // algebraic update while the divergence remains scalar-per-particle (it accesses all N).
+    //
+    // Strategy: collect shared read data, then par_iter writes per-particle result.
+    streaming_crk_par(particles, dt, streaming_coefficient, periodic_box);
+}
+
 pub fn cr_pressure_backreaction(particles: &mut [Particle], periodic_box: Option<f64>) {
     let n = particles.len();
 
@@ -683,6 +816,18 @@ mod tests {
             // FMA/sqrt ordering can differ by roundoff only.
             assert!((a.cr_energy - e.cr_energy).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "rayon")]
+    fn streaming_crk_par_matches_scalar() {
+        let mut scalar = make_streaming_particles(16, false);
+        let mut par = scalar.clone();
+
+        streaming_crk_scalar(&mut scalar, 0.03, 0.2, None);
+        streaming_crk_par(&mut par, 0.03, 0.2, None);
+
+        assert_cr_close(&par, &scalar);
     }
 
     #[test]

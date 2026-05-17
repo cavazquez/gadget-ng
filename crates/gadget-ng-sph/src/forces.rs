@@ -458,32 +458,68 @@ fn sph_gadget2_update_for_particle(
     let pi_rho2 = pressure[i] / (rho[i] * rho[i]);
     let cs_i = (GAMMA * pressure[i] / rho[i]).sqrt().max(0.0);
     let fi = balsara[i];
-    let mut acc = Vec3::zero();
-    let mut da_dt = 0.0_f64;
-    let mut max_vsig = 0.0_f64;
+    let hi = h_sml[i];
+    let pi_pos = pos[i];
+    let pi_vel = vel[i];
+
+    // Phase 1: collect neighbours — same filter pattern as sph_force_update_for_particle.
+    let mut r_buf: Vec<f64> = Vec::with_capacity(n);
+    let mut idx_buf: Vec<usize> = Vec::with_capacity(n);
+    let mut r_ij_buf: Vec<Vec3> = Vec::with_capacity(n);
+    let mut r_hat_buf: Vec<Vec3> = Vec::with_capacity(n);
 
     for j in 0..n {
         if j == i || !is_gas[j] || rho[j] < 1e-200 {
             continue;
         }
-        let r_ij = periodic_delta(pos[j], pos[i], periodic_box);
+        let r_ij = periodic_delta(pos[j], pi_pos, periodic_box);
         let r = r_ij.norm();
-        let hi = h_sml[i];
-        let hj = h_sml[j];
         let gw_i = grad_w(r, hi);
-        let gw_j = grad_w(r, hj);
-        if gw_i == 0.0 && gw_j == 0.0 {
-            continue;
+        if gw_i == 0.0 {
+            // Only add if h_j kernel contributes.
+            if grad_w(r, h_sml[j]) == 0.0 {
+                continue;
+            }
         }
-        let r_hat = if r > 1e-300 {
+        r_buf.push(r);
+        idx_buf.push(j);
+        r_ij_buf.push(r_ij);
+        r_hat_buf.push(if r > 1e-300 {
             r_ij * (1.0 / r)
         } else {
             Vec3::zero()
-        };
-        let nabla_w_i = r_hat * (gw_i / hi);
+        });
+    }
+
+    let m = r_buf.len();
+    if m == 0 {
+        return (Vec3::zero(), 0.0, 0.0);
+    }
+
+    // Phase 2: batch SIMD evaluation of grad_w for fixed h_i across all neighbours.
+    // `grad_w_batch` dispatches to AVX-512 → AVX2+FMA → scalar at runtime.
+    let mut gw_i_buf = vec![0.0_f64; m];
+    grad_w_batch(&r_buf, hi, &mut gw_i_buf);
+
+    // Phase 3: accumulate forces using pre-computed gw_i values.
+    let mut acc = Vec3::zero();
+    let mut da_dt = 0.0_f64;
+    let mut max_vsig = 0.0_f64;
+    let inv_hi = 1.0 / hi;
+
+    for k in 0..m {
+        let gw_i = gw_i_buf[k];
+        let j = idx_buf[k];
+        let hj = h_sml[j];
+        let gw_j = grad_w(r_buf[k], hj);
+        if gw_i == 0.0 && gw_j == 0.0 {
+            continue;
+        }
+        let r_hat = r_hat_buf[k];
+        let nabla_w_i = r_hat * (gw_i * inv_hi);
         let nabla_w_j = r_hat * (gw_j / hj);
         let nabla_w_bar = (nabla_w_i + nabla_w_j) * 0.5;
-        let v_ij = vel[i] - vel[j];
+        let v_ij = pi_vel - vel[j];
         let w_ij = v_ij.dot(r_hat);
         let (pi_visc, vsig) = if w_ij < 0.0 {
             let cs_j = (GAMMA * pressure[j] / rho[j]).sqrt().max(0.0);

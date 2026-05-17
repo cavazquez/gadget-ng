@@ -8,6 +8,27 @@ Sigue el formato [Keep a Changelog](https://keepachangelog.com/es/) y
 
 ## [Unreleased]
 
+### Performance — AP-21: Rayon + SIMD combinados
+
+- **`gadget-ng-rt` — Chemistry stiff solver:** `apply_chemistry_par_simd` combina Rayon exterior
+  (chunks de 64 partículas) con las rutas SIMD batch AVX2/AVX-512 existentes para
+  fotoionización, solver implícito subcíclico y cooling. Las funciones helper de slice
+  (`solve_chemistry_implicit_slice*`, `photoionization_rates_for_particles*`,
+  `apply_chemistry_cooling*`) ya no están gated por `not(rayon)` — disponibles en ambos paths.
+  Dispatcher `apply_chemistry` actualizado a triple via: `par_simd` → `par` → serial.
+- **`gadget-ng-sph` — SPH density:** documentado que `compute_density_with_periodic` con
+  feature `rayon` ya constituye un path combinado (Rayon exterior + kernel.rs SIMD runtime).
+  Añadido test `density_rayon_matches_serial` que valida paridad (tolerancia 1e-12 en ρ).
+- **`gadget-ng-mhd` — CR streaming:** añadidos `streaming_crk_par` (Rayon, O(N²) escalar)
+  y `streaming_crk_par_simd`. Dispatcher `streaming_crk` actualizado a triple via.
+- **`gadget-ng-sph` — SPH forces Gadget-2:** `sph_gadget2_update_for_particle` reestructurado
+  en tres fases — recolección de vecinos, evaluación batch SIMD vía `grad_w_batch`
+  (AVX-512/AVX2, runtime dispatch) para `h_i` fijo, acumulación de fuerzas. Reduce de
+  N evaluaciones escalares de `grad_w` a una llamada `grad_w_batch` SIMD por partícula.
+- **`gadget-ng-mhd` — cleaning.rs (corrección gap):** de-gate de `dedner_pairwise_accumulate`,
+  `dedner_pairwise_accumulate_dispatch`, `dedner_pairwise_accumulate_scalar/avx2/avx512` —
+  eran inaccesibles con `rayon+simd`, causando error de compilación en `compute_dedner_div_b`.
+
 ### CUDA (`gadget-ng-cuda`) — AP-20 (cierre total de paridad)
 
 - **MHD Hall drift CUDA:** `mhd_hall_drift_kernel` en `mhd_kernels.cu` — rotación de Rodrigues de B

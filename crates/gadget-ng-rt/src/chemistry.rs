@@ -61,18 +61,10 @@ use crate::m1::RadiationField;
 use gadget_ng_core::Particle;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[cfg(target_arch = "x86")]
 use std::arch::x86::*;
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
@@ -489,11 +481,7 @@ pub fn solve_chemistry_implicit(
     st
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[derive(Clone, Copy)]
 struct ChemistryRates {
     a_hii: f64,
@@ -513,11 +501,7 @@ struct ChemistryRates {
     k_hd_to_h2: f64,
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 impl ChemistryRates {
     fn at_temperature(t: f64) -> Self {
         Self {
@@ -540,11 +524,7 @@ impl ChemistryRates {
     }
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[derive(Clone, Copy)]
 struct ChemistryStep {
     dt_chem: f64,
@@ -552,11 +532,7 @@ struct ChemistryStep {
     rate_hei: f64,
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 fn chemistry_step_info(
     st: &ChemState,
     rates: &ChemistryRates,
@@ -591,11 +567,7 @@ fn chemistry_step_info(
     }
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 fn advance_chemistry_substep(
     st: &mut ChemState,
     rates: &ChemistryRates,
@@ -644,7 +616,10 @@ fn advance_chemistry_substep(
     st.clamp_and_normalize();
 }
 
-#[cfg(not(feature = "rayon"))]
+#[cfg(any(
+    not(feature = "rayon"),
+    all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64"))
+))]
 fn solve_chemistry_implicit_slice(
     states: &mut [ChemState],
     gamma_hi: &[f64],
@@ -674,7 +649,10 @@ fn solve_chemistry_implicit_slice(
     solve_chemistry_implicit_slice_scalar(states, gamma_hi, gamma_hei, t_gas, dt);
 }
 
-#[cfg(not(feature = "rayon"))]
+#[cfg(any(
+    not(feature = "rayon"),
+    all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64"))
+))]
 fn solve_chemistry_implicit_slice_scalar(
     states: &mut [ChemState],
     gamma_hi: &[f64],
@@ -687,11 +665,7 @@ fn solve_chemistry_implicit_slice_scalar(
     }
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn solve_chemistry_implicit_slice_avx2(
     states: &mut [ChemState],
@@ -703,11 +677,7 @@ unsafe fn solve_chemistry_implicit_slice_avx2(
     solve_chemistry_implicit_slice_masked::<4>(states, gamma_hi, gamma_hei, t_gas, dt);
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx512f")]
 unsafe fn solve_chemistry_implicit_slice_avx512(
     states: &mut [ChemState],
@@ -719,11 +689,7 @@ unsafe fn solve_chemistry_implicit_slice_avx512(
     solve_chemistry_implicit_slice_masked::<8>(states, gamma_hi, gamma_hei, t_gas, dt);
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 fn solve_chemistry_implicit_slice_masked<const LANES: usize>(
     states: &mut [ChemState],
     gamma_hi: &[f64],
@@ -752,11 +718,7 @@ fn solve_chemistry_implicit_slice_masked<const LANES: usize>(
     );
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 fn solve_chemistry_implicit_masked_chunk<const LANES: usize>(
     states: &mut [ChemState],
     gamma_hi: &[f64],
@@ -868,7 +830,10 @@ fn apply_chemistry_impl(
     apply_chemistry_cooling(particles, chem_states, &t_gas, params.n_h_ref, dt);
 }
 
-#[cfg(not(feature = "rayon"))]
+#[cfg(any(
+    not(feature = "rayon"),
+    all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64"))
+))]
 fn photoionization_rates_for_particles(
     particles: &[Particle],
     rad: &RadiationField,
@@ -900,7 +865,10 @@ fn photoionization_rates_for_particles(
         .collect()
 }
 
-#[cfg(not(feature = "rayon"))]
+#[cfg(any(
+    not(feature = "rayon"),
+    all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64"))
+))]
 fn apply_chemistry_cooling(
     particles: &mut [Particle],
     chem_states: &[ChemState],
@@ -984,6 +952,72 @@ fn apply_chemistry_par(
         });
 }
 
+/// Rayon + SIMD combined path: outer Rayon parallel over chunks, SIMD dispatch per chunk.
+///
+/// Follows the same triple-dispatch pattern as `dedner_cleaning_step_par_simd`.
+/// Reduces per-particle overhead by processing photoionisation rates and cooling
+/// with SIMD over contiguous slices while keeping threads busy via Rayon.
+#[cfg(all(
+    feature = "rayon",
+    feature = "simd",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
+fn apply_chemistry_par_simd(
+    particles: &mut [Particle],
+    chem_states: &mut [ChemState],
+    rad: &RadiationField,
+    params: &ChemParams,
+    dt: f64,
+) {
+    use crate::m1::M1Params;
+    const CHUNK: usize = 64;
+
+    let m1_dummy = M1Params {
+        c_red_factor: 100.0,
+        kappa_abs: 1.0,
+        kappa_scat: 0.0,
+        substeps: 1,
+        sigma_dust: 0.1,
+    };
+
+    assert_eq!(
+        particles.len(),
+        chem_states.len(),
+        "apply_chemistry: particles y chem_states deben tener la misma longitud"
+    );
+
+    let box_size = rad.dx * rad.nx as f64;
+
+    // Step 1: compute gamma_hi with SIMD for all particles (serial gather, then SIMD dispatch).
+    let gamma_hi = photoionization_rates_for_particles(particles, rad, box_size, &m1_dummy);
+
+    // Step 2: compute t_gas for all particles.
+    let t_gas: Vec<f64> = particles
+        .iter()
+        .zip(chem_states.iter())
+        .map(|(p, st)| st.temperature_from_internal_energy(p.internal_energy, params.gamma))
+        .collect();
+
+    // Step 3: solve chemistry in parallel chunks — SIMD dispatch per chunk via slice function.
+    chem_states
+        .par_chunks_mut(CHUNK)
+        .zip(gamma_hi.par_chunks(CHUNK))
+        .zip(t_gas.par_chunks(CHUNK))
+        .for_each(|((st_chunk, gh_chunk), tg_chunk)| {
+            solve_chemistry_implicit_slice(st_chunk, gh_chunk, 0.0, tg_chunk, dt);
+        });
+
+    // Step 4: apply cooling in parallel chunks — SIMD dispatch per chunk.
+    let n_h_ref = params.n_h_ref;
+    particles
+        .par_chunks_mut(CHUNK)
+        .zip(chem_states.par_chunks(CHUNK))
+        .zip(t_gas.par_chunks(CHUNK))
+        .for_each(|((p_chunk, st_chunk), tg_chunk)| {
+            apply_chemistry_cooling(p_chunk, st_chunk, tg_chunk, n_h_ref, dt);
+        });
+}
+
 pub fn apply_chemistry(
     particles: &mut [Particle],
     chem_states: &mut [ChemState],
@@ -993,6 +1027,15 @@ pub fn apply_chemistry(
 ) {
     #[cfg(feature = "rayon")]
     {
+        #[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
+        {
+            let use_simd_rayon = is_x86_feature_detected!("avx512f")
+                || (is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"));
+            if use_simd_rayon {
+                apply_chemistry_par_simd(particles, chem_states, rad, params, dt);
+                return;
+            }
+        }
         apply_chemistry_par(particles, chem_states, rad, params, dt);
     }
 
@@ -1029,11 +1072,7 @@ fn photoionization_rate_at_pos(
     SIGMA_HI_CHEM * c_red * e_uv / H_NU_0_ERG_CHEM
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn photoionization_rates_for_particles_avx2(
     particles: &[Particle],
@@ -1088,11 +1127,7 @@ unsafe fn photoionization_rates_for_particles_avx2(
     out
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx512f")]
 unsafe fn photoionization_rates_for_particles_avx512(
     particles: &[Particle],
@@ -1104,11 +1139,7 @@ unsafe fn photoionization_rates_for_particles_avx512(
     unsafe { photoionization_rates_for_particles_avx2(particles, rad, box_size, params) }
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx2", enable = "fma")]
 unsafe fn apply_chemistry_cooling_avx2(
     particles: &mut [Particle],
@@ -1213,11 +1244,7 @@ unsafe fn apply_chemistry_cooling_avx2(
     }
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[target_feature(enable = "avx512f")]
 unsafe fn apply_chemistry_cooling_avx512(
     particles: &mut [Particle],
@@ -1230,11 +1257,7 @@ unsafe fn apply_chemistry_cooling_avx512(
     unsafe { apply_chemistry_cooling_avx2(particles, chem_states, t_gas, n_h_ref, dt) }
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[derive(Clone, Copy)]
 struct ChemRateGrid {
     inv_box: f64,
@@ -1246,11 +1269,7 @@ struct ChemRateGrid {
     nz: usize,
 }
 
-#[cfg(all(
-    not(feature = "rayon"),
-    feature = "simd",
-    any(target_arch = "x86", target_arch = "x86_64")
-))]
+#[cfg(all(feature = "simd", any(target_arch = "x86", target_arch = "x86_64")))]
 #[inline]
 fn particle_cell_idx(p: &Particle, grid: ChemRateGrid) -> usize {
     let ix = ((p.position.x * grid.inv_box * grid.nx_f) as usize).min(grid.nx - 1);
@@ -1481,6 +1500,65 @@ mod tests {
             warm > cold,
             "HD cooling debe activarse sobre escala rotacional"
         );
+    }
+
+    #[test]
+    #[cfg(all(
+        feature = "rayon",
+        feature = "simd",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    fn apply_chemistry_par_simd_matches_scalar() {
+        use crate::m1::RadiationField;
+        use gadget_ng_core::{Particle, Vec3};
+
+        let n = 16;
+        let (states, _gamma_hi, _t_gas) = parity_inputs(n);
+        let mut par_simd_states = states.clone();
+        let mut scalar_states = states.clone();
+        let mut par_simd_particles = (0..n)
+            .map(|i| {
+                Particle::new_gas(
+                    i,
+                    1.0,
+                    Vec3::new(0.03 * i as f64, 0.02 * i as f64, 0.01 * i as f64),
+                    Vec3::zero(),
+                    0.7 + 0.04 * (i % 4) as f64,
+                    0.1,
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut scalar_particles = par_simd_particles.clone();
+        let rad = RadiationField::uniform(4, 4, 4, 1.0, 2e-12);
+        let params = ChemParams::default();
+
+        apply_chemistry_par_simd(
+            &mut par_simd_particles,
+            &mut par_simd_states,
+            &rad,
+            &params,
+            1e9,
+        );
+        // Use the plain Rayon path (scalar per-particle) as the reference.
+        apply_chemistry_par(
+            &mut scalar_particles,
+            &mut scalar_states,
+            &rad,
+            &params,
+            1e9,
+        );
+
+        for (got, want) in par_simd_states.iter().zip(scalar_states.iter()) {
+            assert_chem_close(got, want);
+        }
+        for (got, want) in par_simd_particles.iter().zip(scalar_particles.iter()) {
+            assert!(
+                (got.internal_energy - want.internal_energy).abs() < 1e-12,
+                "internal_energy diverged: got {}, want {}",
+                got.internal_energy,
+                want.internal_energy
+            );
+        }
     }
 
     #[test]

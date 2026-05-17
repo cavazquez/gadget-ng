@@ -3,6 +3,8 @@
 > **Estado al 16 de mayo de 2026:** Phases 1–186 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
 > AP-16/AP-17/AP-18 CUDA: cierre completo de brechas CUDA; todos los tests `--ignored` pasan en sm_61.
 > AP-19: pipeline SPH CUDA persistente — reduce PCIe en 65%, fix físico Balsara en fuerzas.
+> AP-20: cierre total paridad CUDA (Hall, f(R), TreePM SR, Barnes-Hut local GPU).
+> **AP-21: Rayon + SIMD combinados** — chemistry stiff solver (`apply_chemistry_par_simd`), SPH density (documentado + test), CR streaming (`streaming_crk_par`), SPH forces Gadget-2 (`grad_w_batch` batch SIMD). Corrección gap `dedner_pairwise_accumulate*` con `rayon+simd`.
 > Phase 186: MHD Hall term — rotación de B sin disipación (`apply_hall_drift`, Rodrigues, AVX2/AVX512, 7 tests physics).
 > Phases 161–164: HPC Engineering (V3 ICs MHD + validaciones analíticas, V2 engine cosmo+jerárquico, V1 GPU stubs+tests).
 > Phases 165–168: SPH Gadget-2 + Validaciones PF-01..PF-16.
