@@ -11,7 +11,7 @@ echo "== cargo fmt =="
 cargo fmt --all -- --check
 
 echo "== MSRV check =="
-# MSRV 1.85 verified in CI via rust-toolchain@1.100.0 (see .github/workflows/ci.yml).
+# MSRV 1.95 verified in CI via rust-toolchain@1.95.0 (see .github/workflows/ci.yml).
 # Locally we use whatever toolchain is installed; CI catches MSRV violations.
 cargo check --workspace
 

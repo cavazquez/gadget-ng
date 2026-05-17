@@ -2,7 +2,7 @@
 
 ## Getting Started
 
-1. Install Rust 1.85+ via [rustup](https://rustup.rs)
+1. Install Rust 1.95+ via [rustup](https://rustup.rs) (`rust-toolchain.toml` pins 1.95.0)
 2. Clone: `git clone https://github.com/cavazquez/gadget-ng.git`
 3. Build: `cargo build --release -p gadget-ng-cli`
 4. Test: `cargo test --workspace`

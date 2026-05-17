@@ -643,13 +643,17 @@ unsafe fn apply_hall_drift_avx2(particles: &mut [Particle], eta_hall: f64, dt: f
         let b_sq_arr = {
             let mut arr = [0.0f64; 4];
             // SAFETY: arr has exactly 4 lanes.
-            _mm256_storeu_pd(arr.as_mut_ptr(), b_sq);
+            unsafe {
+                _mm256_storeu_pd(arr.as_mut_ptr(), b_sq);
+            }
             arr
         };
         let theta_arr = {
             let mut arr = [0.0f64; 4];
             // SAFETY: arr has exactly 4 lanes.
-            _mm256_storeu_pd(arr.as_mut_ptr(), theta_clamped);
+            unsafe {
+                _mm256_storeu_pd(arr.as_mut_ptr(), theta_clamped);
+            }
             arr
         };
         for lane in 0..lanes {
@@ -756,13 +760,17 @@ unsafe fn apply_hall_drift_avx512(particles: &mut [Particle], eta_hall: f64, dt:
         let b_sq_arr = {
             let mut arr = [0.0f64; 8];
             // SAFETY: arr has exactly 8 lanes.
-            _mm512_storeu_pd(arr.as_mut_ptr(), b_sq);
+            unsafe {
+                _mm512_storeu_pd(arr.as_mut_ptr(), b_sq);
+            }
             arr
         };
         let theta_arr = {
             let mut arr = [0.0f64; 8];
             // SAFETY: arr has exactly 8 lanes.
-            _mm512_storeu_pd(arr.as_mut_ptr(), theta_clamped);
+            unsafe {
+                _mm512_storeu_pd(arr.as_mut_ptr(), theta_clamped);
+            }
             arr
         };
         for lane in 0..lanes {
@@ -913,13 +921,17 @@ unsafe fn apply_ohmic_diffusion_avx2(
         let b2_before_arr = {
             let mut arr = [0.0f64; 4];
             // SAFETY: arr has exactly 4 lanes.
-            _mm256_storeu_pd(arr.as_mut_ptr(), b2_before);
+            unsafe {
+                _mm256_storeu_pd(arr.as_mut_ptr(), b2_before);
+            }
             arr
         };
         let rate_arr = {
             let mut arr = [0.0f64; 4];
             // SAFETY: arr has exactly 4 lanes.
-            _mm256_storeu_pd(arr.as_mut_ptr(), rate_v);
+            unsafe {
+                _mm256_storeu_pd(arr.as_mut_ptr(), rate_v);
+            }
             arr
         };
         let mut damping_arr = [1.0f64; 4];
@@ -957,10 +969,12 @@ unsafe fn apply_ohmic_diffusion_avx2(
         let mut out_bz = [0.0f64; 4];
         let mut out_ue = [0.0f64; 4];
         // SAFETY: fixed-size stack arrays have exactly four f64 lanes.
-        _mm256_storeu_pd(out_bx.as_mut_ptr(), new_bx);
-        _mm256_storeu_pd(out_by.as_mut_ptr(), new_by);
-        _mm256_storeu_pd(out_bz.as_mut_ptr(), new_bz);
-        _mm256_storeu_pd(out_ue.as_mut_ptr(), energy_delta);
+        unsafe {
+            _mm256_storeu_pd(out_bx.as_mut_ptr(), new_bx);
+            _mm256_storeu_pd(out_by.as_mut_ptr(), new_by);
+            _mm256_storeu_pd(out_bz.as_mut_ptr(), new_bz);
+            _mm256_storeu_pd(out_ue.as_mut_ptr(), energy_delta);
+        }
         for lane in 0..lanes {
             if b2_before_arr[lane] > 0.0 {
                 particles[i + lane].b_field.x = out_bx[lane];
@@ -1057,13 +1071,17 @@ unsafe fn apply_ohmic_diffusion_avx512(
         let b2_before_arr = {
             let mut arr = [0.0f64; 8];
             // SAFETY: arr has exactly 8 lanes.
-            _mm512_storeu_pd(arr.as_mut_ptr(), b2_before);
+            unsafe {
+                _mm512_storeu_pd(arr.as_mut_ptr(), b2_before);
+            }
             arr
         };
         let rate_arr = {
             let mut arr = [0.0f64; 8];
             // SAFETY: arr has exactly 8 lanes.
-            _mm512_storeu_pd(arr.as_mut_ptr(), rate_v);
+            unsafe {
+                _mm512_storeu_pd(arr.as_mut_ptr(), rate_v);
+            }
             arr
         };
         let mut damping_arr = [1.0f64; 8];
@@ -1110,15 +1128,19 @@ unsafe fn apply_ohmic_diffusion_avx512(
         let mut out_bz = [0.0f64; 8];
         let mut out_ue = [0.0f64; 8];
         // SAFETY: fixed-size stack arrays have exactly eight f64 lanes.
-        _mm512_storeu_pd(out_bx.as_mut_ptr(), new_bx);
-        _mm512_storeu_pd(out_by.as_mut_ptr(), new_by);
-        _mm512_storeu_pd(out_bz.as_mut_ptr(), new_bz);
-        _mm512_storeu_pd(out_ue.as_mut_ptr(), energy_delta);
+        unsafe {
+            _mm512_storeu_pd(out_bx.as_mut_ptr(), new_bx);
+            _mm512_storeu_pd(out_by.as_mut_ptr(), new_by);
+            _mm512_storeu_pd(out_bz.as_mut_ptr(), new_bz);
+            _mm512_storeu_pd(out_ue.as_mut_ptr(), energy_delta);
+        }
         for lane in 0..lanes {
-            particles[i + lane].b_field.x = out_bx[lane];
-            particles[i + lane].b_field.y = out_by[lane];
-            particles[i + lane].b_field.z = out_bz[lane];
-            particles[i + lane].internal_energy += out_ue[lane];
+            if b2_before_arr[lane] > 0.0 {
+                particles[i + lane].b_field.x = out_bx[lane];
+                particles[i + lane].b_field.y = out_by[lane];
+                particles[i + lane].b_field.z = out_bz[lane];
+                particles[i + lane].internal_energy += out_ue[lane];
+            }
         }
         i += lanes;
     }

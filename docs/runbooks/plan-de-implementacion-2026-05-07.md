@@ -387,7 +387,7 @@ cargo bench -p gadget-ng-cuda --features cuda
 - [ ] Agregar después de `cargo fmt`:
   ```bash
   echo "=== MSRV check ==="
-  rustup run 1.85 cargo check --workspace
+  rustup run 1.95 cargo check --workspace
   ```
   (o usar `cargo msrv verify` si se instala `cargo-msrv`).
 

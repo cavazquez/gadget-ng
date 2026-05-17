@@ -5,7 +5,7 @@ For deeper project documentation, inspect the repo files referenced below instea
 
 ## Project
 
-`gadget-ng` is a Rust 1.85+ / Edition 2024 cosmological N-body + SPH + MHD simulator, inspired by GADGET-4 but with no shared code or history.
+`gadget-ng` is a Rust 1.95+ / Edition 2024 cosmological N-body + SPH + MHD simulator, inspired by GADGET-4 but with no shared code or history.
 
 - Workspace: Cargo workspace, primary binary `gadget-ng` from crate `gadget-ng-cli`.
 - License: GPL-3.0-or-later.

@@ -38,13 +38,13 @@ jobs:
       - run: cargo build --release -p gadget-ng-cli
       - run: ./scripts/validate_example_configs.sh
 
-  # ── Compatibilidad MSRV declarada en workspace (1.85) ──────────────────────
+  # ── Compatibilidad MSRV declarada en workspace (1.95) ──────────────────────
   msrv:
-    name: MSRV (1.85)
+    name: MSRV (1.95)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.100.0
+      - uses: dtolnay/rust-toolchain@1.95.0
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
       - uses: Swatinem/rust-cache@v2
