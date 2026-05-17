@@ -218,7 +218,7 @@ fn cuda_mhd_ambipolar_match_cpu() {
         return;
     };
 
-    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_core::{Particle, Vec3};
     use gadget_ng_mhd::apply_ambipolar_diffusion;
 
     let n = 256_usize;
@@ -275,7 +275,7 @@ fn cuda_mhd_two_fluid_match_cpu() {
     };
 
     use gadget_ng_core::TwoFluidSection;
-    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_core::{Particle, Vec3};
     use gadget_ng_mhd::apply_electron_ion_coupling;
 
     let n = 256_usize;

@@ -46,6 +46,7 @@ fn screened_mesh_is_weaker_than_homogeneous_boost_near_dense_source() {
             iterations: 2,
             smoothing: 0.5,
             plummer_eps: None,
+            screening_override: None,
         },
     );
     let cell = idx(5, 4, 4);

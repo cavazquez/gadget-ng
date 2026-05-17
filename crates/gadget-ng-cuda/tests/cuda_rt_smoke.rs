@@ -369,7 +369,7 @@ fn cuda_rt_igm_temp_match_cpu() {
         return;
     };
 
-    use gadget_ng_core::{Particle, ParticleType, Vec3};
+    use gadget_ng_core::{Particle, Vec3};
     use gadget_ng_rt::chemistry::ChemState;
     use gadget_ng_rt::{IgmTempParams, compute_igm_temp_profile};
 

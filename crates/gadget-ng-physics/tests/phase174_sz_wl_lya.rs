@@ -3,8 +3,7 @@
 use gadget_ng_analysis::{
     LensingMap, LightconeHit, LyaCosmoParams, LyaParams, SzParams, TomographyParams,
     accumulate_tomographic_lensing, analyze_lya_forest, compute_compton_y_map,
-    compute_kinetic_sz_map, compute_tau_along_sightline, convergence_angular_cl,
-    kaiser_squires_reconstruct,
+    compute_kinetic_sz_map, convergence_angular_cl, kaiser_squires_reconstruct,
 };
 use gadget_ng_core::{Particle, Vec3};
 
@@ -179,7 +178,7 @@ fn lya_ionized_gas_transparent() {
 // T9: compute_tau_along_sightline gives absorption for neutral gas
 #[test]
 fn lya_single_sightline_neutral_absorption() {
-    use gadget_ng_analysis::{LyaChemState, compute_tau_along_sightline};
+    use gadget_ng_analysis::compute_tau_along_sightline;
     let cosmo = LyaCosmoParams::default();
     let params = LyaParams {
         n_sightlines: 4,

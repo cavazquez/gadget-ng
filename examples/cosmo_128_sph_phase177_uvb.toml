@@ -6,7 +6,7 @@
 #   --out runs/phase177_uvb --snapshot
 
 [simulation]
-particle_count = 128
+particle_count = 2097152 # 128³
 box_size = 64.0
 dt = 0.0003
 num_steps = 200

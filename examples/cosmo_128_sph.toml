@@ -11,7 +11,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 [simulation]
-particle_count = 128   # 128³ = 2,097,152 partículas (DM)
+particle_count = 2097152 # 128³ partículas (DM)
 box_size       = 64.0  # [Mpc/h comoving]
 dt             = 0.0003
 num_steps      = 1000
@@ -41,13 +41,11 @@ checkpoint_interval = 200
 
 [sph]
 enabled    = true
-gamma      = 5.0 / 3.0
+gamma      = 1.6666666666666667 # 5/3
 n_neigh    = 48
 alpha_visc = 1.0
-
-[sph.cooling]
-kind        = "simplified"
-t_floor_k   = 100.0
+cooling    = "atomic_h_he"
+t_floor_k  = 100.0
 
 [sph.feedback]
 enabled          = true

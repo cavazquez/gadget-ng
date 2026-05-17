@@ -27,6 +27,11 @@ EXTRA_CONFIGS=(
   "configs/eor_test.toml"
 )
 
+# Subcomandos distintos de `stepping` / `config` (sin sección [simulation]).
+SKIP_CONFIGS=(
+  "examples/fisher_planck.toml"
+)
+
 shopt -s nullglob
 mapfile -t FILES < <(printf '%s\n' examples/*.toml "${EXTRA_CONFIGS[@]}" | sort -u)
 
@@ -40,6 +45,12 @@ for f in "${FILES[@]}"; do
     echo "[validate_example_configs] WARN: no existe $f (omitido)"
     continue
   fi
+  for skip in "${SKIP_CONFIGS[@]}"; do
+    if [[ "$f" == "$skip" ]]; then
+      echo "[validate_example_configs] SKIP $f (no es config de simulación)"
+      continue 2
+    fi
+  done
   echo "[validate_example_configs] $f"
   "$BIN" config --config "$f" >/dev/null
 done
