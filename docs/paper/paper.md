@@ -29,7 +29,7 @@ and distributed-memory parallelism via MPI. The code is organized as a Rust
 workspace of specialized crates, enabling modular development, strong compile-time
 safety guarantees, and zero-cost abstractions for high-performance computing.
 
-The software version documented here is **0.2.0** of the Rust workspace (`Cargo.toml`).
+The software version documented here is **0.3.0** of the Rust workspace (`Cargo.toml`).
 
 # Statement of Need
 

@@ -1,6 +1,6 @@
 name: gadgetng
 base: core24
-version: "0.2.0"
+version: "0.3.0"
 platforms:
   amd64:
 summary: Cosmological N-body + SPH + MHD simulator

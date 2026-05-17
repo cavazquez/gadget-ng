@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Estado al 17 de mayo de 2026:** Phases 1–187 completadas · **release v0.2.0** del workspace (CHANGELOG, Snap).
+> **Estado al 17 de mayo de 2026:** Phases 1–187 completadas · **release v0.3.0** del workspace (CHANGELOG, Snap).
 > AP-16/AP-17/AP-18 CUDA: cierre completo de brechas CUDA; todos los tests `--ignored` pasan en sm_61.
 > AP-19: pipeline SPH CUDA persistente — reduce PCIe en 65%, fix físico Balsara en fuerzas.
 > AP-20: cierre total paridad CUDA (Hall, f(R), TreePM SR, Barnes-Hut local GPU).

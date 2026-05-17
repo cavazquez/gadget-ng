@@ -22,7 +22,7 @@
 > → solver PM GPU CUDA/HIP opcional (Phase 57)
 > → CLI `analyze` con pipeline completo FoF+P(k)+ξ(r)+c(M) y render PPM**.
 >
-> **Estado:** Phases 1–185 completadas · **v0.2.0** (CHANGELOG) · **cartera Physics Extensions cerrada** (D/HD, Pop III, RT multifrecuencia, polvo IR, AGN spin/mergers, WDM/FDM y f(R) no lineal PM) · **SPH Gadget-2 completo** (entropía + Balsara + colapso de Evrard) ·
+> **Estado:** Phases 1–187 completadas · **v0.3.0** (CHANGELOG) · **cartera Physics Extensions cerrada** (D/HD, Pop III, RT multifrecuencia, polvo IR, AGN spin/mergers, WDM/FDM y f(R) no lineal PM) · **SPH Gadget-2 completo** (entropía + Balsara + colapso de Evrard) ·
 > GPU kernels reales CUDA/HIP N² · MHD 3D solenoidal · `cargo test -p gadget-ng-physics` en ~3.5 min.
 >
 > **Mayo 2026 — validación tipo paper:** transferencia **tabulada** CLASS/CAMB en ICs, **pancake** Zel’dovich analítico,
