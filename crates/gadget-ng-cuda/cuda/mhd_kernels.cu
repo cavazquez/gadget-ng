@@ -559,6 +559,75 @@ extern "C" int cuda_mhd_ambipolar(
     return 0;
 }
 
+// ── Ohmic resistive diffusion (Phase 187) ────────────────────────────────────
+// dB/dt|_Ohm = -eta_Ohm * B / h²   →   B_new = B_old * exp(-eta_Ohm * dt / h²)
+// u_out[i] = heat_eff * (B²_before - B²_after) / (2 * mass)   (energy delta)
+
+__global__ void mhd_ohmic_kernel(
+    const unsigned char* ptype,
+    const float* bx_in, const float* by_in, const float* bz_in,
+    const float* h_sml, const float* mass,
+    float* bx_out, float* by_out, float* bz_out, float* u_delta_out,
+    int n, float eta_ohm, float heat_eff, float dt
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    bx_out[i] = bx_in[i]; by_out[i] = by_in[i]; bz_out[i] = bz_in[i];
+    u_delta_out[i] = 0.0f;
+    if (ptype[i] != PTYPE_GAS) return;
+    float bx = bx_in[i], by = by_in[i], bz = bz_in[i];
+    float b2_before = bx*bx + by*by + bz*bz;
+    if (b2_before <= 0.0f) return;
+    float h  = fmaxf(h_sml[i], 1.0e-10f);
+    float h2 = fmaxf(h * h, 1.0e-60f);
+    float rate = eta_ohm * dt / h2;
+    float damp = expf(-rate);
+    damp = fminf(fmaxf(damp, 0.0f), 1.0f);
+    float nbx = bx * damp, nby = by * damp, nbz = bz * damp;
+    float b2_after = nbx*nbx + nby*nby + nbz*nbz;
+    float dissipated = 0.5f * fmaxf(b2_before - b2_after, 0.0f);
+    float m = fmaxf(mass[i], 1.0e-30f);
+    bx_out[i] = nbx; by_out[i] = nby; bz_out[i] = nbz;
+    u_delta_out[i] = heat_eff * dissipated / m;
+}
+
+extern "C" int cuda_mhd_ohmic(
+    const unsigned char* ptype,
+    const float* bx_in, const float* by_in, const float* bz_in,
+    const float* h_sml, const float* mass,
+    float* bx_out, float* by_out, float* bz_out, float* u_out,
+    int n, float eta_ohm, float heat_eff, float dt
+) {
+    if (n <= 0) return 0;
+    unsigned char* dp;
+    float *dbxi, *dbyi, *dbzi, *dh, *dm;
+    float *dbxo, *dbyo, *dbzo, *duo;
+    if (alloc_copy(&dp,   ptype,  n)) return -1;
+    if (alloc_copy(&dbxi, bx_in,  n)) return -1;
+    if (alloc_copy(&dbyi, by_in,  n)) return -1;
+    if (alloc_copy(&dbzi, bz_in,  n)) return -1;
+    if (alloc_copy(&dh,   h_sml,  n)) return -1;
+    if (alloc_copy(&dm,   mass,   n)) return -1;
+    if (alloc_zero(&dbxo, n)) return -1;
+    if (alloc_zero(&dbyo, n)) return -1;
+    if (alloc_zero(&dbzo, n)) return -1;
+    if (alloc_zero(&duo,  n)) return -1;
+    int blocks = (n + MHD_BLOCK_SIZE - 1) / MHD_BLOCK_SIZE;
+    mhd_ohmic_kernel<<<blocks, MHD_BLOCK_SIZE>>>(
+        dp, dbxi, dbyi, dbzi, dh, dm,
+        dbxo, dbyo, dbzo, duo,
+        n, eta_ohm, heat_eff, dt);
+    CUDA_CHECK(cudaGetLastError()); CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(bx_out, dbxo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(by_out, dbyo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(bz_out, dbzo, (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(u_out,  duo,  (size_t)n*sizeof(float), cudaMemcpyDeviceToHost));
+    cudaFree(dp); cudaFree(dbxi); cudaFree(dbyi); cudaFree(dbzi);
+    cudaFree(dh); cudaFree(dm);
+    cudaFree(dbxo); cudaFree(dbyo); cudaFree(dbzo); cudaFree(duo);
+    return 0;
+}
+
 // ── Two-fluid: acoplamiento electrón-ión Coulomb (AP-16) ─────────────────────
 
 __global__ void mhd_two_fluid_kernel(

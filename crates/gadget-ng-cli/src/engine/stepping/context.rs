@@ -75,9 +75,25 @@ pub(crate) fn step_mhd(local: &mut [gadget_ng_core::Particle], cfg: &gadget_ng_c
     }
 
     // Ohmic resistive diffusion (Phase 187): dB/dt = −η_Ohm B / h².
-    // CPU-only (no CUDA path yet); follows same guard pattern as ambipolar.
+    // Intenta GPU (cuda_mhd); fallback al CPU Rayon/SIMD existente.
     if cfg.mhd.ohmic_enabled && cfg.mhd.ohmic_eta > 0.0 {
-        gadget_ng_mhd::apply_ohmic_diffusion(local, cfg.mhd.ohmic_eta, cfg.sph.gamma, dt_mhd);
+        #[cfg(feature = "cuda")]
+        let cuda_ohmic_ok = if cfg.performance.use_gpu_cuda && cfg.accelerators.cuda_mhd {
+            if let Ok(solver) = gadget_ng_cuda::CudaMhdSolver::try_new_checked() {
+                solver
+                    .try_ohmic_diffusion(local, cfg.mhd.ohmic_eta, cfg.sph.gamma, dt_mhd)
+                    .is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        #[cfg(not(feature = "cuda"))]
+        let cuda_ohmic_ok = false;
+        if !cuda_ohmic_ok {
+            gadget_ng_mhd::apply_ohmic_diffusion(local, cfg.mhd.ohmic_eta, cfg.sph.gamma, dt_mhd);
+        }
     }
 
     // Hall drift (AP-20 / Phase 186): rota B sin disipar energía magnética.

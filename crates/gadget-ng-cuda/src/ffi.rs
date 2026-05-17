@@ -806,6 +806,24 @@ unsafe extern "C" {
         dt: f32,
     ) -> i32;
 
+    /// Difusión óhmica resistiva (Phase 187): dB/dt = −eta_Ohm B / h².
+    pub fn cuda_mhd_ohmic(
+        ptype: *const u8,
+        bx_in: *const f32,
+        by_in: *const f32,
+        bz_in: *const f32,
+        h_sml: *const f32,
+        mass: *const f32,
+        bx_out: *mut f32,
+        by_out: *mut f32,
+        bz_out: *mut f32,
+        u_out: *mut f32,
+        n: i32,
+        eta_ohm: f32,
+        heat_eff: f32,
+        dt: f32,
+    ) -> i32;
+
     /// Acoplamiento Coulomb e-i: actualiza t_electron hacia T_ion.
     pub fn cuda_mhd_two_fluid(
         ptype: *const u8,
