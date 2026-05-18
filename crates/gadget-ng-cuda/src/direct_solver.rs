@@ -215,6 +215,11 @@ impl gadget_ng_core::gravity::GravitySolver for CudaDirectGravity {
     }
 }
 
+#[cfg(cuda_unavailable)]
+const _: () = {
+    let _ = std::mem::size_of::<CudaDirectGravity>();
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,8 +254,3 @@ mod tests {
         assert!(solver.recommended_max_n() > 0);
     }
 }
-
-#[cfg(cuda_unavailable)]
-const _: () = {
-    let _ = std::mem::size_of::<CudaDirectGravity>();
-};

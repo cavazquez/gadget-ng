@@ -56,9 +56,7 @@ run_benchmark() {
     local run_dir="bench_results/run_${n_ranks}ranks_${TIMESTAMP}"
     mkdir -p "${run_dir}"
 
-    local cmd_out
     local elapsed_s="-1"
-    local wall_s="-1"
 
     # Preparar directorio de salida temporal
     local tmp_config="${run_dir}/sim.toml"

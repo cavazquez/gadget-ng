@@ -16,6 +16,8 @@
     clippy::unnecessary_lazy_evaluations,
     clippy::manual_non_exhaustive
 )]
+// CI sin nvcc: métodos devuelven Err antes de llamar kernels; helpers quedan sin usar.
+#![cfg_attr(cuda_unavailable, allow(dead_code, unused_variables))]
 //!
 //! # Cadena de compilación
 //!

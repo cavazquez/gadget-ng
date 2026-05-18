@@ -6,7 +6,6 @@
 
 use crate::pool::CudaPool;
 use crate::{CudaExecutionError, CudaPmSolver, CudaUnavailable};
-#[cfg(not(cuda_unavailable))]
 use gadget_ng_core::Vec3;
 use gadget_ng_core::{Particle, ParticleType};
 use gadget_ng_sph::particle::SphParticle;
