@@ -849,6 +849,7 @@ pub fn apply_magnetic_forces(particles: &mut [Particle], dt: f64) {
 }
 
 #[cfg(test)]
+#[cfg_attr(feature = "rayon", allow(dead_code, unused_imports))]
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;

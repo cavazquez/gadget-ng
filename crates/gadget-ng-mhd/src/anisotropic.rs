@@ -1230,6 +1230,7 @@ pub fn beta_plasma(p_thermal: f64, b: Vec3) -> f64 {
 }
 
 #[cfg(test)]
+#[cfg_attr(feature = "rayon", allow(dead_code, unused_imports))]
 mod tests {
     use super::*;
 

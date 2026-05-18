@@ -713,6 +713,7 @@ pub fn sweet_parker_rate(v_a: f64, l_rec: f64, eta_eff: f64) -> f64 {
 }
 
 #[cfg(test)]
+#[cfg_attr(feature = "rayon", allow(dead_code, unused_imports))]
 mod tests {
     use super::*;
     use gadget_ng_core::Vec3;

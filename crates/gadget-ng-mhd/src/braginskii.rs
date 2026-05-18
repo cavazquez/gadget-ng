@@ -870,6 +870,7 @@ pub fn apply_braginskii_viscosity(particles: &mut [Particle], eta_visc: f64, dt:
 }
 
 #[cfg(test)]
+#[cfg_attr(feature = "rayon", allow(dead_code, unused_imports))]
 mod tests {
     use super::*;
 

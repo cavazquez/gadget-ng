@@ -149,16 +149,7 @@ jobs:
           fi
         env:
           FEATURES: ${{ matrix.features }}
-      - name: Test (solo si sin MPI)
-        if: ${{ !contains(matrix.features, 'mpi') }}
-        run: |
-          if [ -z "$FEATURES" ]; then
-            cargo test --workspace --no-run
-          else
-            cargo test --workspace --features "$FEATURES" --no-run
-          fi
-        env:
-          FEATURES: ${{ matrix.features }}
+      # Tests con features se cubren en el job «Tests»; aquí solo verificamos compilación.
 
   # ── Smoke MPI (serial, sin mpirun real) ─────────────────────────────────────
   test-parallel:
