@@ -214,10 +214,11 @@ jobs:
         # Solo unit tests en src/ (--lib). Los integration tests de gadget-ng-physics
         # (p. ej. phase32, phase49) tardan 10×+ bajo tarpaulin y ya corren en el job Tests.
         run: cargo tarpaulin --workspace --lib --out Xml --output-dir . --timeout 300
-      - name: Subir a Codecov
-        uses: codecov/codecov-action@v6
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          files: cobertura.xml,tarpaulin-report.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: cobertura.xml
 
   # ── Auditoría de seguridad (semanal) ──────────────────────────────────────
   audit:
