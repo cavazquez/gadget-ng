@@ -56,6 +56,7 @@ fn alfven_speed_magnitude(b2: f64, rho: f64) -> f64 {
     (b2 / (MU0 * rho)).sqrt()
 }
 
+#[cfg_attr(feature = "rayon", allow(dead_code))] // serial/SIMD-only; Rayon path inlines div_v
 fn div_v_single(
     i: usize,
     particles: &[Particle],
@@ -188,6 +189,7 @@ pub fn streaming_crk(
     }
 }
 
+#[cfg_attr(feature = "rayon", allow(dead_code))] // usado en tests y path !rayon
 fn streaming_crk_scalar(
     particles: &mut [Particle],
     dt: f64,
@@ -199,6 +201,7 @@ fn streaming_crk_scalar(
     }
 }
 
+#[cfg_attr(feature = "rayon", allow(dead_code))]
 fn streaming_crk_particle(
     particles: &mut [Particle],
     i: usize,
