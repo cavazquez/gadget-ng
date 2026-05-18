@@ -127,17 +127,44 @@ Posibles extensiones:
 - Tests: momento lineal (red cúbica), energía acotada (oscilador armónico en tests de integrador), paridad sub-bloque vs global, script serial/MPI.
 - CI: `fmt`, `clippy -D warnings`, `test`, smoke MPI + paridad.
 
-## Siguientes hitos
+## MVP inicial (archivado, ~abril 2026)
 
-1. **Solvers de gravedad**: **Barnes–Hut monopolar** (octree, `gadget-ng-tree`) ✓; **PM periódico 3D** (`gadget-ng-pm`, CIC + FFT `rustfft` + Poisson, `SolverKind::Pm`) ✓; **TreePM** (`gadget-ng-treepm`, splitting Gaussiano en k-space, kernel erfc corto + PM erf largo, `SolverKind::TreePm`) ✓; pendiente FMM (multipolos de orden superior).
-2. **I/O**: **HDF5** (GADGET-like) y **bincode** opcionales en `gadget-ng-io` ✓; **lectura unificada** (`SnapshotReader` + `reader_for` + `read_snapshot_formatted` para JSONL/bincode/HDF5) ✓; **MessagePack** (`SnapshotFormat::Msgpack`, `--features msgpack`, `rmp-serde`, `particles.msgpack`) ✓; **NetCDF-4** (`SnapshotFormat::Netcdf`, `--features netcdf`, layout SoA en `snapshot.nc` — variables x/y/z/vx/vy/vz/mass/id, atributos globales time/redshift/box_size, interoperable con `xarray`, `NCDatasets`) ✓.
-3. **Rendimiento**: **Rayon** en bucle externo de partículas para `DirectGravity` y `BarnesHutGravity` (`RayonDirectGravity`, `RayonBarnesHutGravity`), activado con `[performance] deterministic = false` y `--features simd`; benchmarks Criterion en `gadget-ng-core` y `gadget-ng-tree` ✓; **SIMD a nivel de instrucción + caché-blocking** (`SimdDirectGravity` con SoA, `BLOCK_J=64`, `#[target_feature(avx2,fma)]`) ✓; **Rayon en PM / TreePM** ✓ — `assign_rayon` + `interpolate_rayon` (CIC thread-local fold), k-space paralelo en `fft_poisson`, `short_range_accels` paralelo en TreePM; feature `pm-rayon` en CLI.
-4. **GPU**: crate `gadget-ng-gpu` (placeholder) ✓ — layout SoA (`GpuParticlesSoA`, 8 arrays planos), `GpuDirectGravity` stub con `GravitySolver` impl en `gadget_ng_core::gpu_bridge`; pendientes kernels reales (wgpu / CUDA / HIP) y `cfg.performance.use_gpu`.
-5. **Pasos temporales**: **block timesteps al estilo GADGET-4** ✓ — `TimestepSection` en `config.rs` (`hierarchical`, `eta`, `max_level`); módulo `gadget-ng-integrators::hierarchical` con `HierarchicalState`, `aarseth_bin` y `hierarchical_kdk_step`; integración en `engine.rs` vía `cfg.timestep.hierarchical`; **predictor de Störmer para partículas inactivas** ✓ — `Δx_j = 0.5·a_j·(elapsed·fine_dt)²` reduce error de posición O(Δt²) → O(Δt³) en evaluación de fuerzas, sin alterar la integración simpléctica; **snapshot de HierarchicalState** ✓ — `HierarchicalState` deriva `Serialize/Deserialize`, `save(dir)/load(dir)` a `hierarchical_state.json`, guardado automático en `engine.rs` junto al snapshot final; pendiente: acoplamiento a árbol distribuido.
-6. **Cosmología básica** ✓ — formulación de momentum canónico (estilo GADGET-4): `p = a²·dx_c/dt` en `particle.velocity`; `CosmologySection` en `config.rs` (`omega_m`, `omega_lambda`, `h0`, `a_init`); módulo `gadget-ng-core::cosmology` con `CosmologyParams`, `advance_a` (RK4 Friedmann) y `drift_kick_factors` (N_SUB=16, Simpson); **drifts con** `∫ dt/a²` y **kicks con** `∫ dt/a`; `leapfrog_cosmo_kdk_step` + `CosmoFactors` en `gadget-ng-integrators`; `hierarchical_kdk_step` extendido con `cosmo: Option<(&CosmologyParams, &mut f64)>` usando sumas prefijas de medios sub-pasos; `redshift = 1/a−1` en `SnapshotEnv`; retrocompatible (`enabled = false` → comportamiento Newtoniano sin cambios).
-7. **FMM — Fast Multipole Method** ✓ — cuadrupolo + octupolo STF completos; tensor cuadrupolar `[Qxx,Qxy,Qxz,Qyy,Qyz,Qzz]` y tensor octupolar STF `[O_xxx,O_xxy,O_xxz,O_xyy,O_xyz,O_yyy,O_yzz]` en `OctNode`; `outer3_tf` (TF3 para punto de masa) + `oct_accel` (corrección de fuerza octupolar); teorema del eje paralelo para quad y oct en `aggregate`; M2L implícito: `walk_inner` aplica mono+quad+oct cuando MAC se satisface; L2L implícito: acumulación jerárquica del árbol; error relativo medio θ=0.4, N=1000 < 0.1 % vs directo; 5 tests unitarios (sin-traza, mejora de precisión, N=1000).
-8. **GPU — kernels reales** ✓ — `GpuDirectGravity` real con wgpu 29 (WGSL compute shader); kernel O(N²) de Plummer suavizado en f32 (error relativo O(1e-7)); `GpuContext` con `Arc<>` + `Send+Sync`; readback síncrono via `PollType::wait_indefinitely()`; `[performance] use_gpu = true` en TOML activa la GPU con fallback automático a CPU si no hay adaptador; 3 tests unitarios GPU (se omiten en CI sin GPU); `use_gpu: bool` añadido a `PerformanceSection`. Pendiente: benchmarks GPU vs SIMD/Rayon, soporte CUDA/HIP.
-9. **MPI — árbol distribuido** ✓ — `SlabDecomposition` (dominio x en slabs uniformes) en `gadget-ng-parallel::domain`; `allreduce_min/max_f64` en `ParallelRuntime`; `exchange_domain_by_x` (migración de partículas entre rangos) y `exchange_halos_by_x` (halos punto-a-punto con vecinos izquierdo/derecho, patrón odd-even anti-deadlock) implementados en `SerialRuntime` (trivial) y `MpiRuntime` (send/receive bloqueante); `compute_forces_local_tree` en engine construye árbol local de (partículas + halos) y evalúa fuerzas por índice local; activado con `[performance] use_distributed_tree = true` y `SolverKind::BarnesHut`; `halo_factor` configurable (default 0.5). Comunicación O(N_halo × 2) en lugar de Allgather O(N). 3 tests unitarios. Limitaciones conocidas: slab 1D en x únicamente (SFC/ORB pendiente); jerárquico y cosmológico sin soporte distribuido aún.
+> Plan al cerrar el primer MVP. **No usar como backlog activo.** Los ítems 1–9 de abajo reflejan el estado *en ese momento*; varios “pendientes” ya están cerrados (tabla de reconciliación). Para trabajo nuevo: [Backlog post-v0.3.0](#backlog-post-v030-aceleradores-y-hpc) y [`future-grandes.md`](reports/2026-04-future-grandes.md).
+
+| # | Texto original (MVP) | Estado en v0.3.0 |
+|---|----------------------|------------------|
+| 1 | FMM multipolar pendiente | ✓ Cuad+oct en `walk_inner` (Fase 2); wgpu FMM órdenes 1–4 (`GpuBarnesHutFmm`) |
+| 4 | GPU placeholder | ✓ wgpu + CUDA (`gadget-ng-cuda`) + HIP (`gadget-ng-hip`); ver AP-03–AP-20 |
+| 5 | Jerárquico sin árbol distribuido | ✓ Phase 56 + Phase 162 (`use_hierarchical_let_cosmo`) |
+| 8 | CUDA/HIP pendiente | ✓ Cobertura amplia; benchmarks en `docs/reports/2026-05-ap08-cuda-benchmarks.md` |
+| 9 | SFC y cosmo+MPI pendientes | ✓ SFC Morton/Hilbert (Fase 13); cosmo distribuido (Fase 17b/162); slab 1D sigue como fallback |
+
+1. **Solvers de gravedad**: Barnes–Hut, PM, TreePM ✓ (MVP).
+2. **I/O**: HDF5, bincode, MessagePack, NetCDF ✓ (MVP).
+3. **Rendimiento**: Rayon + SIMD en gravedad/PM/TreePM ✓ (MVP).
+4. **GPU**: layout SoA + stubs ✓ (MVP) → **supersedido** por kernels reales (ver fila 8).
+5. **Pasos temporales**: block timesteps + snapshot jerárquico ✓ (MVP) → **supersedido** por LET distribuido (Phase 56/162).
+6. **Cosmología básica** ✓ (MVP).
+7. **FMM** ✓ (MVP, mismo bloque que fila 1 de la tabla).
+8. **GPU kernels** ✓ wgpu directo/BH FMM (MVP) → CUDA/HIP en releases posteriores.
+9. **MPI árbol distribuido** ✓ slab + halos (MVP) → **supersedido** por SFC/LET (Fases 8, 13, 56, 162).
+
+### Backlog post-v0.3.0 (aceleradores y HPC)
+
+No bloquean el release v0.3.0; son evolución de rendimiento y unificación de rutas. Detalle en [`2026-05-accelerator-parity-pending.md`](reports/2026-05-accelerator-parity-pending.md).
+
+| Prioridad | Tema | Situación actual | Objetivo |
+|-----------|------|------------------|----------|
+| P1 | BH CUDA | Árbol en CPU cada paso → `export_bh_monopole_gpu_nodes` → kernel `bh_walk_monopole` (AP-20) | Octree persistente en device; menos tráfico PCIe |
+| P2 | TreePM GPU | Dos caminos: `TreePmGpuHybridSolver` (PM CUDA + SR wgpu, `use_gpu_treepm`) vs SR CUDA O(N²) (`cuda_tree` en stepping) | Unificar pipeline TreePM GPU de producción |
+| P3 | f(R) screening | Solo PM CUDA + `screening_override` | Integración automática en más modos cosmo si hace falta |
+| P4 | Combinaciones MPI | Cosmo **periódica** → PM/TreePM (no BH árbol); jerárquico+cosmo aperiódico ✓ (`use_hierarchical_let_cosmo`); slab 1D en x si `use_sfc = false` | Documentar/lift límites según demanda de producción ΛCDM periódica + block ts |
+
+**Límites de modos vigentes** (engine `stepping/mod.rs`, no bugs):
+
+- `cosmology.periodic = true` exige `solver = pm` o `tree_pm`.
+- `use_sfc_let_cosmo` requiere `!timestep.hierarchical`; el cosmo jerárquico distribuido usa `use_hierarchical_let_cosmo` (Phase 162).
+- Aceleradores CUDA: opt-in vía `[accelerators]`; fallback CPU siempre disponible.
 
 ## Fase 2
 
