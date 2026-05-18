@@ -27,7 +27,8 @@ allow = [
     "MPL-2.0",
     "OpenSSL",
     "Unlicense",
-    "GPL-3.0",   # nuestro
+    "GPL-3.0",
+    "GPL-3.0-or-later", # workspace crates
 ]
 
 [bans]

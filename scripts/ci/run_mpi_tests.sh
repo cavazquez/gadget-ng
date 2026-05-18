@@ -19,6 +19,7 @@ RANK_LIST=(2 4)
 while [[ $# -gt 0 ]]; do
     case $1 in
         --ranks)
+            # shellcheck disable=SC2206 # espacios en lista de rangos desde CLI
             RANK_LIST=($2)
             shift 2
             ;;
