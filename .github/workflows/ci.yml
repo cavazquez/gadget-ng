@@ -211,7 +211,9 @@ jobs:
         with:
           tool: cargo-tarpaulin
       - name: Ejecutar cobertura
-        run: cargo tarpaulin --workspace --out Xml --output-dir . --timeout 120
+        # phase49_integrator_diagnosis (adaptive a→0.5) ~72 s sin tarpaulin; con
+        # instrumentación puede superar 120 s. 600 s deja margen al resto de physics.
+        run: cargo tarpaulin --workspace --out Xml --output-dir . --timeout 600
       - name: Subir a Codecov
         uses: codecov/codecov-action@v6
         with:
