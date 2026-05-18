@@ -40,6 +40,16 @@ cargo clippy --workspace -- -D warnings
 echo "== cargo clippy (all-targets) =="
 cargo clippy --workspace --all-targets -- -D warnings
 
+# CI (ubuntu-latest) no tiene nvcc/rocFFT: reproducir stubs cuda_unavailable / HIP_SKIP.
+echo "== cargo check (stub CUDA/HIP, sin GPU) =="
+CUDA_SKIP=1 HIP_SKIP=1 cargo check --workspace
+
+echo "== cargo clippy (stub CUDA/HIP, all-targets) =="
+CUDA_SKIP=1 HIP_SKIP=1 cargo clippy --workspace --all-targets -- -D warnings
+
+echo "== cargo check -p gadget-ng-cli --features full (stub CUDA/HIP) =="
+CUDA_SKIP=1 HIP_SKIP=1 cargo check -p gadget-ng-cli --features full
+
 echo "== cargo test (workspace) =="
 cargo test --workspace
 
