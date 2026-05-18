@@ -211,9 +211,9 @@ jobs:
         with:
           tool: cargo-tarpaulin
       - name: Ejecutar cobertura
-        # phase49_integrator_diagnosis (adaptive a→0.5) ~72 s sin tarpaulin; con
-        # instrumentación puede superar 120 s. 600 s deja margen al resto de physics.
-        run: cargo tarpaulin --workspace --out Xml --output-dir . --timeout 600
+        # Solo unit tests en src/ (--lib). Los integration tests de gadget-ng-physics
+        # (p. ej. phase32, phase49) tardan 10×+ bajo tarpaulin y ya corren en el job Tests.
+        run: cargo tarpaulin --workspace --lib --out Xml --output-dir . --timeout 300
       - name: Subir a Codecov
         uses: codecov/codecov-action@v6
         with:
