@@ -456,6 +456,7 @@ unsafe fn sum_f64_avx2(values: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gadget_ng_core::Vec3;
 
     #[test]
     fn stellar_luminosity_zero_for_nonpositive_mass() {
@@ -479,6 +480,28 @@ mod tests {
         let gr_young = gr_color(0.1, 0.001);
         let gr_old = gr_color(10.0, 0.04);
         assert!(gr_old > gr_young);
+    }
+
+    #[test]
+    fn galaxy_luminosity_from_stars() {
+        let mut young = Particle::new_star(0, 1.0e8, Vec3::zero(), Vec3::zero(), 0.02);
+        young.stellar_age = 0.1;
+        let mut old = Particle::new_star(1, 1.0e8, Vec3::new(1.0, 0.0, 0.0), Vec3::zero(), 0.02);
+        old.stellar_age = 8.0;
+        let dm = Particle::new(2, 1.0, Vec3::new(2.0, 0.0, 0.0), Vec3::zero());
+        let lum = galaxy_luminosity(&[young, old, dm]);
+        assert_eq!(lum.n_stars, 2);
+        assert!(lum.l_total > 0.0);
+    }
+
+    #[test]
+    fn galaxy_sed_populates_bands() {
+        let mut star = Particle::new_star(0, 5.0e7, Vec3::zero(), Vec3::zero(), 0.02);
+        star.stellar_age = 2.0;
+        let sed = galaxy_sed(&[star]);
+        assert_eq!(sed.n_stars, 1);
+        assert!(sed.l_b > 0.0 && sed.l_v > 0.0);
+        assert!(sed.mass_weighted_age > 0.0);
     }
 }
 

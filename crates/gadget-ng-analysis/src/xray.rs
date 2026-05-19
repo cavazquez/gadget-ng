@@ -237,3 +237,56 @@ pub fn compute_xray_profile(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, Vec3};
+
+    const GAMMA: f64 = 5.0 / 3.0;
+
+    fn hot_gas(u: f64, h: f64) -> Particle {
+        let mut p = Particle::new_gas(0, 1.0, Vec3::new(0.5, 0.5, 0.5), Vec3::zero(), u, h);
+        p.metallicity = 0.02;
+        p
+    }
+
+    #[test]
+    fn bremsstrahlung_zero_for_dm_and_cold_gas() {
+        let dm = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        assert_eq!(bremsstrahlung_emissivity(&dm, GAMMA), 0.0);
+        let cold = hot_gas(1.0, 0.1);
+        assert_eq!(bremsstrahlung_emissivity(&cold, GAMMA), 0.0);
+    }
+
+    #[test]
+    fn bremsstrahlung_positive_for_hot_cluster_gas() {
+        let hot = hot_gas(2500.0, 0.2);
+        assert!(bremsstrahlung_emissivity(&hot, GAMMA) > 0.0);
+    }
+
+    #[test]
+    fn total_xray_and_spectroscopic_temperature() {
+        let hot = hot_gas(2500.0, 0.2);
+        let dm = Particle::new(1, 1.0, Vec3::new(0.1, 0.1, 0.1), Vec3::zero());
+        let parts = [hot, dm];
+        let lx = total_xray_luminosity(&parts, GAMMA);
+        assert!(lx > 0.0);
+        let t_sl = spectroscopic_temperature(&parts[..1], GAMMA);
+        let t_mass = mass_weighted_temperature(&parts[..1], GAMMA);
+        assert!(t_sl > T_X_MIN_K);
+        assert!(t_mass > T_X_MIN_K);
+    }
+
+    #[test]
+    fn xray_profile_bins_hot_gas_near_center() {
+        let hot = hot_gas(2500.0, 0.15);
+        let center = [0.5, 0.5, 0.5];
+        let r_edges = [0.0, 0.1, 0.5, 1.0];
+        let profile = compute_xray_profile(&[hot], center, &r_edges, GAMMA);
+        assert_eq!(profile.len(), 3);
+        assert!(profile[0].luminosity_x > 0.0);
+        assert_eq!(profile[2].luminosity_x, 0.0);
+        assert_eq!(profile[2].n_particles, 0);
+    }
+}

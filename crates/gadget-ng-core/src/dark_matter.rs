@@ -80,3 +80,66 @@ pub fn dark_matter_transfer_suppression(
         DarkMatterModel::Fuzzy => fdm_transfer_suppression(k_hmpc, cfg.m_fdm_22, omega_m, h),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DarkMatterModel, DarkMatterSection};
+
+    const OM: f64 = 0.3;
+    const H: f64 = 0.7;
+
+    #[test]
+    fn wdm_suppression_monotone_and_bounded() {
+        let t_lo = wdm_transfer_suppression(0.1, 3.0, OM, H);
+        let t_hi = wdm_transfer_suppression(10.0, 3.0, OM, H);
+        assert!((0.0..=1.0).contains(&t_lo));
+        assert!((0.0..=1.0).contains(&t_hi));
+        assert!(t_lo > t_hi);
+        assert_eq!(wdm_transfer_suppression(0.0, 3.0, OM, H), 1.0);
+    }
+
+    #[test]
+    fn fdm_suppression_turns_over_at_high_k() {
+        let t_lo = fdm_transfer_suppression(0.01, 1.0, OM, H);
+        let t_hi = fdm_transfer_suppression(100.0, 1.0, OM, H);
+        assert!(t_lo > 0.99);
+        assert!(t_hi < t_lo);
+        assert_eq!(fdm_transfer_suppression(-1.0, 1.0, OM, H), 1.0);
+    }
+
+    #[test]
+    fn half_mode_increases_with_particle_mass() {
+        // Masa mayor → cutoff a k más alto (menos supresión en escalas grandes).
+        let k_wdm_light = wdm_half_mode_k(1.0, OM, H);
+        let k_wdm_heavy = wdm_half_mode_k(10.0, OM, H);
+        assert!(k_wdm_heavy > k_wdm_light);
+        let k_fdm_light = fdm_half_mode_k(0.5, OM, H);
+        let k_fdm_heavy = fdm_half_mode_k(2.0, OM, H);
+        assert!(k_fdm_heavy > k_fdm_light);
+    }
+
+    #[test]
+    fn dark_matter_transfer_dispatch() {
+        let mut cfg = DarkMatterSection::default();
+        assert_eq!(dark_matter_transfer_suppression(&cfg, 1.0, OM, H), 1.0);
+
+        cfg.enabled = true;
+        cfg.model = DarkMatterModel::Warm;
+        cfg.m_wdm_kev = 3.0;
+        let t_wdm = dark_matter_transfer_suppression(&cfg, 1.0, OM, H);
+        assert!(t_wdm < 1.0 && t_wdm > 0.0);
+
+        cfg.model = DarkMatterModel::Fuzzy;
+        let t_fdm = dark_matter_transfer_suppression(&cfg, 1.0, OM, H);
+        assert!(t_fdm > 0.0 && t_fdm <= 1.0);
+    }
+
+    #[test]
+    fn fdm_quantum_pressure_cs2_scales_with_k() {
+        assert_eq!(fdm_quantum_pressure_cs2(0.0, 1.0, 1.0), 0.0);
+        let c2_lo = fdm_quantum_pressure_cs2(0.5, 1.0, 1.0);
+        let c2_hi = fdm_quantum_pressure_cs2(2.0, 1.0, 1.0);
+        assert!(c2_hi > c2_lo);
+    }
+}

@@ -185,3 +185,29 @@ impl UnitsSection {
         1.0 / h0_int
     }
 }
+
+#[cfg(test)]
+mod units_tests {
+    use super::*;
+
+    #[test]
+    fn compute_g_scales_with_mass_and_velocity() {
+        let u = UnitsSection {
+            enabled: true,
+            length_in_kpc: 1.0,
+            mass_in_msun: 1.0e10,
+            velocity_in_km_s: 1.0,
+        };
+        let g = u.compute_g();
+        assert!(g > 0.0);
+        let mut u2 = u.clone();
+        u2.mass_in_msun *= 2.0;
+        assert!((u2.compute_g() / g - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn time_unit_in_gyr_positive() {
+        let u = UnitsSection::default();
+        assert!(u.time_unit_in_gyr() > 0.0);
+    }
+}

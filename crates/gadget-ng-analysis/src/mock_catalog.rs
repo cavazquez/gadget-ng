@@ -295,3 +295,89 @@ pub fn angular_power_spectrum_cl(catalog: &[MockGalaxy], l_max: usize, box_size:
     }
     cl
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fof::FofHalo;
+    use gadget_ng_core::{Particle, Vec3};
+
+    #[test]
+    fn apparent_magnitude_increases_with_redshift() {
+        let m_abs = -22.0;
+        assert_eq!(apparent_magnitude(m_abs, 0.0, 0.3), m_abs);
+        let m_z1 = apparent_magnitude(m_abs, 0.5, 0.3);
+        let m_z2 = apparent_magnitude(m_abs, 1.0, 0.3);
+        assert!(m_z2 > m_z1);
+    }
+
+    #[test]
+    fn selection_flux_limit_respects_magnitude_cut() {
+        assert!(selection_flux_limit(20.0, 21.0));
+        assert!(!selection_flux_limit(22.0, 21.0));
+    }
+
+    #[test]
+    fn build_mock_catalog_filters_by_magnitude() {
+        let halos = vec![FofHalo {
+            halo_id: 0,
+            n_particles: 100,
+            mass: 1.0e10,
+            x_com: 0.5,
+            y_com: 0.5,
+            z_com: 0.5,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 0.1,
+            r_vir: 0.2,
+        }];
+        let strict = build_mock_catalog(&[], &halos, 0.1, 0.3, 18.0);
+        let loose = build_mock_catalog(&[], &halos, 0.1, 0.3, 30.0);
+        assert!(loose.len() >= strict.len());
+        if !loose.is_empty() {
+            assert!(loose[0].stellar_mass > 0.0);
+            assert!(loose[0].halo_mass > 0.0);
+        }
+    }
+
+    #[test]
+    fn angular_power_spectrum_cl_nonempty_for_catalog() {
+        let gals = vec![MockGalaxy {
+            pos: [0.25, 0.25, 0.5],
+            z_obs: 0.1,
+            m_r_abs: -21.0,
+            m_r_app: 20.0,
+            bv: 0.6,
+            ssfr: 1e-10,
+            metallicity: 0.02,
+            halo_mass: 1e10,
+            stellar_mass: 1e9,
+        }];
+        let cl = angular_power_spectrum_cl(&gals, 8, 1.0);
+        assert_eq!(cl.len(), 9);
+        assert!(cl.iter().any(|&c| c.is_finite()));
+    }
+
+    #[test]
+    fn build_mock_catalog_uses_gas_metallicity() {
+        let mut gas = Particle::new_gas(0, 1.0, Vec3::new(0.51, 0.5, 0.5), Vec3::zero(), 1.0, 0.05);
+        gas.metallicity = 0.04;
+        let halos = vec![FofHalo {
+            halo_id: 0,
+            n_particles: 50,
+            mass: 5.0e9,
+            x_com: 0.5,
+            y_com: 0.5,
+            z_com: 0.5,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 0.1,
+            r_vir: 0.3,
+        }];
+        let cat = build_mock_catalog(&[gas], &halos, 0.05, 0.3, 30.0);
+        assert_eq!(cat.len(), 1);
+        assert!((cat[0].metallicity - 0.04).abs() < 1e-12);
+    }
+}

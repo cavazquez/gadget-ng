@@ -475,3 +475,88 @@ impl LcgState {
         (self.0 >> 33) as f64 / u32::MAX as f64
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{
+        CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection,
+        PerformanceSection, RunConfig, SimulationSection, TimestepSection, UnitsSection,
+    };
+
+    fn lattice_config(n: usize) -> RunConfig {
+        RunConfig {
+            simulation: SimulationSection {
+                dt: 0.01,
+                num_steps: 1,
+                softening: 0.05,
+                physical_softening: false,
+                gravitational_constant: 1.0,
+                particle_count: n,
+                box_size: 1.0,
+                seed: 7,
+                integrator: Default::default(),
+            },
+            initial_conditions: InitialConditionsSection {
+                kind: IcKind::Lattice,
+            },
+            output: OutputSection::default(),
+            gravity: GravitySection::default(),
+            performance: PerformanceSection::default(),
+            timestep: TimestepSection::default(),
+            cosmology: CosmologySection::default(),
+            units: UnitsSection::default(),
+            decomposition: Default::default(),
+            insitu_analysis: Default::default(),
+            sph: Default::default(),
+            rt: Default::default(),
+            reionization: Default::default(),
+            mhd: Default::default(),
+            turbulence: Default::default(),
+            two_fluid: Default::default(),
+            sidm: Default::default(),
+            modified_gravity: Default::default(),
+            dark_matter: Default::default(),
+            accelerators: Default::default(),
+        }
+    }
+
+    #[test]
+    fn build_lattice_particles_perfect_cube() {
+        let cfg = lattice_config(8);
+        let parts = build_particles(&cfg).expect("lattice 2^3");
+        assert_eq!(parts.len(), 8);
+        let total_mass: f64 = parts.iter().map(|p| p.mass).sum();
+        assert!((total_mass - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn build_plummer_particles() {
+        let mut cfg = lattice_config(64);
+        cfg.initial_conditions.kind = IcKind::Plummer { a: 0.5 };
+        let parts = build_particles(&cfg).expect("plummer");
+        assert_eq!(parts.len(), 64);
+        assert!(parts.iter().all(|p| p.velocity.norm() >= 0.0));
+    }
+
+    #[test]
+    fn gid_range_is_subslice_of_full_build() {
+        let cfg = lattice_config(27);
+        let full = build_particles(&cfg).expect("full");
+        let partial = build_particles_for_gid_range(&cfg, 3, 9).expect("partial");
+        assert_eq!(partial.len(), 6);
+        assert_eq!(partial[0].global_id, 3);
+        assert_eq!(partial.last().unwrap().global_id, 8);
+        for (a, b) in partial.iter().zip(&full[3..9]) {
+            assert_eq!(a.global_id, b.global_id);
+            assert!((a.position.x - b.position.x).abs() < 1e-15);
+        }
+    }
+
+    #[test]
+    fn lattice_rejects_non_cube_count() {
+        let cfg = lattice_config(10);
+        let err = build_particles(&cfg).unwrap_err();
+        assert!(matches!(err, IcError::LatticeNotCube(10)));
+    }
+}

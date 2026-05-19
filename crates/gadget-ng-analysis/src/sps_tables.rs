@@ -201,3 +201,32 @@ pub fn sps_luminosity(age_gyr: f64, metallicity: f64, band: Spsband) -> f64 {
     let grid = SpsGrid::bc03_lite();
     grid.interpolate(age_gyr, metallicity, band)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bc03_lite_younger_brighter_in_u_band() {
+        let grid = SpsGrid::bc03_lite();
+        let l_young = grid.interpolate(0.05, 0.02, Spsband::U);
+        let l_old = grid.interpolate(10.0, 0.02, Spsband::U);
+        assert!(l_young > l_old);
+    }
+
+    #[test]
+    fn sps_luminosity_clamps_age_and_metallicity() {
+        let l_edge = sps_luminosity(0.001, 0.0001, Spsband::B);
+        let l_mid = sps_luminosity(1.0, 0.02, Spsband::B);
+        assert!(l_edge > 0.0 && l_mid > 0.0);
+        assert!(sps_luminosity(100.0, 1.0, Spsband::V) > 0.0);
+    }
+
+    #[test]
+    fn interpolate_monotone_in_age_at_fixed_z() {
+        let grid = SpsGrid::bc03_lite();
+        let l1 = grid.interpolate(0.5, 0.02, Spsband::V);
+        let l2 = grid.interpolate(5.0, 0.02, Spsband::V);
+        assert!(l1 > l2);
+    }
+}

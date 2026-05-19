@@ -152,3 +152,51 @@ pub fn apply_modified_gravity(
         p.acceleration.z *= factor;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cosmology::CosmologyParams;
+    use crate::vec3::Vec3;
+
+    #[test]
+    fn chameleon_field_suppressed_in_dense_regions() {
+        let f_void = chameleon_field(0.0, 1.0e-4, 1.0);
+        let f_dense = chameleon_field(100.0, 1.0e-4, 1.0);
+        assert!(f_dense < f_void);
+        assert!((chameleon_field(-1.5, 1.0e-4, 1.0) - 1.0e-4).abs() < 1e-20);
+    }
+
+    #[test]
+    fn fifth_force_factor_saturates_at_one() {
+        assert_eq!(fifth_force_factor(2.0e-4, 1.0e-4), 1.0);
+        assert!((fifth_force_factor(1.0e-5, 1.0e-4) - 0.1).abs() < 1e-12);
+        assert_eq!(fifth_force_factor(1.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn apply_modified_gravity_amplifies_low_density() {
+        let cosmo = CosmologyParams {
+            omega_m: 0.3,
+            omega_lambda: 0.7,
+            h0: 1.0,
+            w0: -1.0,
+            wa: 0.0,
+            omega_nu: 0.0,
+        };
+        let params = FRParams {
+            f_r0: 1.0e-4,
+            n: 1.0,
+        };
+        let mut dense = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        dense.smoothing_length = 0.01;
+        dense.acceleration = Vec3::new(1.0, 0.0, 0.0);
+        let mut diffuse = Particle::new(1, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::zero());
+        diffuse.smoothing_length = 1.0;
+        diffuse.acceleration = Vec3::new(1.0, 0.0, 0.0);
+        let mut parts = [dense, diffuse];
+        apply_modified_gravity(&mut parts, &params, &cosmo, 1.0);
+        assert!(parts[1].acceleration.x > parts[0].acceleration.x);
+        assert!(parts[1].acceleration.x > 1.0);
+    }
+}
