@@ -379,3 +379,144 @@ impl RunConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{
+        CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection,
+        PerformanceSection, SimulationSection, SolverKind, TimestepSection, UnitsSection,
+    };
+
+    fn minimal_run_config() -> RunConfig {
+        RunConfig {
+            simulation: SimulationSection {
+                dt: 0.01,
+                num_steps: 10,
+                softening: 0.05,
+                physical_softening: false,
+                gravitational_constant: 1.0,
+                particle_count: 8,
+                box_size: 2.0,
+                seed: 42,
+                integrator: Default::default(),
+            },
+            initial_conditions: InitialConditionsSection {
+                kind: IcKind::Lattice,
+            },
+            output: OutputSection::default(),
+            gravity: GravitySection::default(),
+            performance: PerformanceSection::default(),
+            timestep: TimestepSection::default(),
+            cosmology: CosmologySection::default(),
+            units: UnitsSection::default(),
+            decomposition: Default::default(),
+            insitu_analysis: Default::default(),
+            sph: Default::default(),
+            rt: Default::default(),
+            reionization: Default::default(),
+            mhd: Default::default(),
+            turbulence: Default::default(),
+            two_fluid: Default::default(),
+            sidm: Default::default(),
+            modified_gravity: Default::default(),
+            dark_matter: Default::default(),
+            accelerators: Default::default(),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_minimal_plummer_config() {
+        let mut cfg = minimal_run_config();
+        cfg.simulation.particle_count = 512;
+        cfg.initial_conditions.kind = IcKind::Plummer { a: 1.0 };
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_non_flat_cosmology() {
+        let mut cfg = minimal_run_config();
+        cfg.cosmology.enabled = true;
+        cfg.cosmology.omega_m = 0.2;
+        cfg.cosmology.omega_lambda = 0.2;
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::NonFlatUniverse { .. }));
+    }
+
+    #[test]
+    fn validate_rejects_sph_feedback_without_sph() {
+        let mut cfg = minimal_run_config();
+        cfg.sph.feedback.enabled = true;
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigError::FeatureRequires {
+                feature: "sph.feedback",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn validate_pm_requires_periodic_and_power_of_two_grid() {
+        let mut cfg = minimal_run_config();
+        cfg.simulation.particle_count = 27;
+        cfg.gravity.solver = SolverKind::Pm;
+        cfg.gravity.pm_grid_size = 32;
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::PeriodicRequiredForPm));
+
+        cfg.cosmology.periodic = true;
+        cfg.gravity.pm_grid_size = 30;
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::PmGridNotPowerOfTwo(30)));
+    }
+
+    #[test]
+    fn softening_squared_and_rho_bar() {
+        let mut cfg = minimal_run_config();
+        cfg.simulation.softening = 0.2;
+        cfg.simulation.box_size = 4.0;
+        assert!((cfg.softening_squared() - 0.04).abs() < 1e-15);
+        assert!((cfg.rho_bar() - 1.0 / 64.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn softening_warnings_when_physical_without_cosmology() {
+        let mut cfg = minimal_run_config();
+        cfg.simulation.physical_softening = true;
+        let w = cfg.softening_warnings();
+        assert_eq!(w.len(), 1);
+    }
+
+    #[test]
+    fn plummer_toml_round_trip_and_validate() {
+        let toml = r#"
+[simulation]
+dt = 0.01
+num_steps = 100
+softening = 0.1
+particle_count = 512
+box_size = 20.0
+seed = 1234
+
+[initial_conditions]
+kind = { plummer = { a = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta = 0.5
+"#;
+        let cfg: RunConfig = toml::from_str(toml).expect("deserialize plummer example");
+        assert!(
+            matches!(cfg.initial_conditions.kind, IcKind::Plummer { a } if (a - 1.0).abs() < 1e-12)
+        );
+        assert!(cfg.validate().is_ok());
+        let back = toml::to_string(&cfg).expect("serialize");
+        let cfg2: RunConfig = toml::from_str(&back).expect("round-trip");
+        assert_eq!(
+            cfg.simulation.particle_count,
+            cfg2.simulation.particle_count
+        );
+    }
+}

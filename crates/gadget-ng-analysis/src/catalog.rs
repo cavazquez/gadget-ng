@@ -125,3 +125,93 @@ pub fn analyse(particles: &[Particle], params: &AnalysisParams) -> AnalysisResul
         power_spectrum,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fof::FofHalo;
+    use crate::power_spectrum::PkBin;
+    use gadget_ng_core::Vec3;
+    use tempfile::tempdir;
+
+    #[test]
+    fn halo_catalog_jsonl_round_trip() {
+        let dir = tempdir().unwrap();
+        let halos = vec![
+            FofHalo {
+                halo_id: 0,
+                n_particles: 4,
+                mass: 4.0,
+                x_com: 0.5,
+                y_com: 0.5,
+                z_com: 0.5,
+                vx_com: 0.0,
+                vy_com: 0.0,
+                vz_com: 0.0,
+                velocity_dispersion: 0.1,
+                r_vir: 0.2,
+            },
+            FofHalo {
+                halo_id: 1,
+                n_particles: 8,
+                mass: 8.0,
+                x_com: 0.1,
+                y_com: 0.9,
+                z_com: 0.5,
+                vx_com: 0.01,
+                vy_com: -0.02,
+                vz_com: 0.0,
+                velocity_dispersion: 0.2,
+                r_vir: 0.3,
+            },
+        ];
+        write_halo_catalog(dir.path(), &halos).unwrap();
+        let read = read_halo_catalog(dir.path()).unwrap();
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[0].halo_id, 0);
+        assert!((read[1].mass - 8.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn power_spectrum_jsonl_round_trip() {
+        let dir = tempdir().unwrap();
+        let bins = vec![
+            PkBin {
+                k: 1.0,
+                pk: 0.5,
+                n_modes: 10,
+            },
+            PkBin {
+                k: 2.0,
+                pk: 0.25,
+                n_modes: 20,
+            },
+        ];
+        write_power_spectrum(dir.path(), &bins).unwrap();
+        let read = read_power_spectrum(dir.path()).unwrap();
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[1].n_modes, 20);
+    }
+
+    #[test]
+    fn analyse_runs_fof_and_pk_on_lattice() {
+        let particles: Vec<_> = (0..27)
+            .map(|i| {
+                let x = (i % 3) as f64 * 0.3 + 0.05;
+                let y = ((i / 3) % 3) as f64 * 0.3 + 0.05;
+                let z = (i / 9) as f64 * 0.3 + 0.05;
+                gadget_ng_core::Particle::new(i, 1.0, Vec3::new(x, y, z), Vec3::zero())
+            })
+            .collect();
+        let params = AnalysisParams {
+            box_size: 1.0,
+            b: 0.2,
+            min_particles: 3,
+            rho_crit: 0.0,
+            pk_mesh: 8,
+        };
+        let out = analyse(&particles, &params);
+        assert!(!out.power_spectrum.is_empty());
+        assert!(out.halos.iter().all(|h| h.n_particles >= 3));
+    }
+}

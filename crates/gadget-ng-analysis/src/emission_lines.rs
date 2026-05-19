@@ -170,3 +170,42 @@ pub fn bpt_diagram(lines: &[EmissionLine]) -> Vec<(f64, f64)> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, Vec3};
+
+    #[test]
+    fn emissivity_zero_for_cold_or_empty_gas() {
+        assert_eq!(emissivity_halpha(1.0, 1.0e3), 0.0);
+        assert_eq!(emissivity_oiii(1.0, 4.0e3, 0.02), 0.0);
+        assert_eq!(emissivity_nii(0.0, 1.0e4, 0.02), 0.0);
+    }
+
+    #[test]
+    fn emissivity_positive_for_ionized_gas() {
+        let ha = emissivity_halpha(2.0, 1.0e4);
+        let oiii = emissivity_oiii(2.0, 1.0e4, 0.02);
+        let nii = emissivity_nii(2.0, 1.0e4, 0.02);
+        assert!(ha > 0.0 && oiii > 0.0 && nii > 0.0);
+    }
+
+    #[test]
+    fn compute_emission_lines_and_bpt_for_hot_gas() {
+        let mut p_cold =
+            Particle::new_gas(0, 1.0, Vec3::new(0.5, 0.5, 0.5), Vec3::zero(), 0.01, 0.1);
+        p_cold.metallicity = 0.02;
+        let dm = Particle::new(1, 1.0, Vec3::new(0.1, 0.1, 0.1), Vec3::zero());
+        let lines_cold = compute_emission_lines(&[p_cold, dm], 5.0 / 3.0);
+        assert_eq!(lines_cold.len(), 2);
+        assert_eq!(lines_cold[0].h_alpha, 0.0);
+
+        let mut p_hot =
+            Particle::new_gas(0, 1.0, Vec3::new(0.5, 0.5, 0.5), Vec3::zero(), 200.0, 0.5);
+        p_hot.metallicity = 0.02;
+        let lines_hot = compute_emission_lines(&[p_hot], 5.0 / 3.0);
+        assert!(lines_hot[0].h_alpha > 0.0);
+        assert!(!bpt_diagram(&lines_hot).is_empty());
+    }
+}

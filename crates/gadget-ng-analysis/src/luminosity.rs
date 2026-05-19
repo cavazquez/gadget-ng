@@ -453,6 +453,35 @@ unsafe fn sum_f64_avx2(values: &[f64]) -> f64 {
     tmp.into_iter().sum::<f64>() + values[chunks..].iter().sum::<f64>()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stellar_luminosity_zero_for_nonpositive_mass() {
+        assert_eq!(stellar_luminosity_solar(0.0, 1.0, 0.02), 0.0);
+        assert_eq!(stellar_luminosity_solar(-1.0, 1.0, 0.02), 0.0);
+    }
+
+    #[test]
+    fn stellar_luminosity_decreases_with_age() {
+        let l_young = stellar_luminosity_solar(1.0e10, 0.1, 0.02);
+        let l_old = stellar_luminosity_solar(1.0e10, 10.0, 0.02);
+        assert!(l_young > l_old);
+        assert!(l_young > 0.0);
+    }
+
+    #[test]
+    fn colors_increase_with_age_and_metallicity() {
+        let bv_young = bv_color(0.1, 0.001);
+        let bv_old = bv_color(10.0, 0.04);
+        assert!(bv_old > bv_young);
+        let gr_young = gr_color(0.1, 0.001);
+        let gr_old = gr_color(10.0, 0.04);
+        assert!(gr_old > gr_young);
+    }
+}
+
 #[cfg(all(
     not(feature = "rayon"),
     feature = "simd",
