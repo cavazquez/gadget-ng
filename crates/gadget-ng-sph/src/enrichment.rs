@@ -183,3 +183,33 @@ pub fn apply_enrichment_periodic(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{EnrichmentSection, Vec3};
+
+    #[test]
+    fn apply_enrichment_disabled_is_noop() {
+        let p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
+        let mut particles = vec![p];
+        let sfr = vec![10.0];
+        apply_enrichment(&mut particles, &sfr, 0.1, &EnrichmentSection::default());
+        assert_eq!(particles[0].metallicity, 0.0);
+    }
+
+    #[test]
+    fn apply_enrichment_distributes_metals_to_neighbor() {
+        let p_src = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
+        let p_dst = Particle::new_gas(1, 1.0, Vec3::new(0.01, 0.0, 0.0), Vec3::zero(), 1.0, 0.5);
+        let mut particles = vec![p_src, p_dst];
+        let sfr = vec![1.0, 0.0];
+        let cfg = EnrichmentSection {
+            enabled: true,
+            yield_snii: 0.1,
+            yield_agb: 0.0,
+        };
+        apply_enrichment(&mut particles, &sfr, 0.1, &cfg);
+        assert!(particles[1].metallicity > 0.0);
+    }
+}

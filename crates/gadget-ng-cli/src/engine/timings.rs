@@ -364,3 +364,38 @@ pub(crate) struct CosmoDiag {
     /// Diagnóstico TreePM SR-SFC por paso (Fases 23/24). `None` si no está activo.
     pub treepm: Option<TreePmStepDiag>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hpc_step_stats_default_serializes() {
+        let stats = HpcStepStats::default();
+        let json = serde_json::to_string(&stats).expect("json");
+        assert!(json.contains("tree_build_ns"));
+    }
+
+    #[test]
+    fn treepm_step_diag_add_accumulates() {
+        let a = TreePmStepDiag {
+            scatter_ns: 10,
+            gather_ns: 20,
+            scatter_particles: 1,
+            path: "sg",
+            ..Default::default()
+        };
+        let b = TreePmStepDiag {
+            scatter_ns: 5,
+            gather_ns: 7,
+            scatter_particles: 2,
+            path: "clone",
+            ..Default::default()
+        };
+        let sum = a.add(b);
+        assert_eq!(sum.scatter_ns, 15);
+        assert_eq!(sum.gather_ns, 27);
+        assert_eq!(sum.scatter_particles, 3);
+        assert_eq!(sum.path, "clone");
+    }
+}

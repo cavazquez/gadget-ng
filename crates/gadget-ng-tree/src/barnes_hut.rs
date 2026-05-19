@@ -121,3 +121,30 @@ impl GravitySolver for BarnesHutGravity {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::GravitySolver;
+
+    #[test]
+    fn default_solver_uses_classic_opening_angle() {
+        let s = BarnesHutGravity::default();
+        assert!((s.theta - 0.5).abs() < 1e-12);
+        assert_eq!(s.multipole_order, 3);
+    }
+
+    #[test]
+    fn two_body_attraction_has_opposite_x_components() {
+        let solver = BarnesHutGravity::default();
+        let positions = vec![
+            Vec3::new(0.1, 0.5, 0.5),
+            Vec3::new(0.9, 0.5, 0.5),
+        ];
+        let masses = vec![1.0, 1.0];
+        let mut acc = vec![Vec3::zero(); 2];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[0, 1], &mut acc);
+        assert!(acc[0].x > 0.0);
+        assert!(acc[1].x < 0.0);
+    }
+}

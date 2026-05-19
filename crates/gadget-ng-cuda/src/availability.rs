@@ -87,3 +87,32 @@ pub fn build_availability() -> CudaAvailability {
         reason,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_availability_has_reason_string() {
+        let avail = build_availability();
+        assert!(!avail.reason.is_empty());
+    }
+
+    #[test]
+    fn cuda_unavailable_display_mentions_cuda() {
+        let err = CudaUnavailable {
+            availability: build_availability(),
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("CUDA"));
+    }
+
+    #[test]
+    fn execution_error_from_unavailable_roundtrip() {
+        let inner = CudaUnavailable {
+            availability: build_availability(),
+        };
+        let err: CudaExecutionError = inner.into();
+        assert!(matches!(err, CudaExecutionError::Unavailable(_)));
+    }
+}

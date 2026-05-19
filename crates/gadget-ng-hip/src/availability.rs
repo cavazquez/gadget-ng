@@ -87,3 +87,34 @@ pub fn build_availability() -> HipAvailability {
         reason,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_availability_has_reason_string() {
+        let avail = build_availability();
+        assert!(!avail.reason.is_empty());
+    }
+
+    #[test]
+    fn hip_unavailable_display_mentions_hip() {
+        let err = HipUnavailable {
+            availability: build_availability(),
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("HIP"));
+    }
+
+    #[test]
+    fn execution_error_kernel_failed_formats() {
+        let err = HipExecutionError::KernelFailed {
+            kernel: "test_kernel",
+            code: 42,
+        };
+        let msg = format!("{err}");
+        assert!(msg.contains("test_kernel"));
+        assert!(msg.contains("42"));
+    }
+}

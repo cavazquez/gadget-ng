@@ -108,3 +108,28 @@ impl DivAssign<f64> for Vec3 {
         self.z /= s;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cross_product_orthonormal_basis() {
+        let i = Vec3::new(1.0, 0.0, 0.0);
+        let j = Vec3::new(0.0, 1.0, 0.0);
+        let k = i.cross(j);
+        assert!((k.z - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn vector_ops_compose() {
+        let a = Vec3::new(1.0, 2.0, 3.0);
+        let b = Vec3::new(4.0, 5.0, 6.0);
+        let c = (a + b) * 0.5 - a;
+        assert!((c.x - 1.5).abs() < 1e-15);
+        let mut d = a;
+        d += b;
+        d /= 3.0;
+        assert!((d.x - 5.0 / 3.0).abs() < 1e-15);
+    }
+}

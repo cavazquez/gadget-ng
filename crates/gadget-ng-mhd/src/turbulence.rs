@@ -235,3 +235,51 @@ pub fn turbulence_stats(particles: &[Particle], gamma: f64) -> (f64, f64) {
         turbulence_stats_impl(particles, gamma)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{TurbulenceSection, Vec3};
+
+    fn gas_with_bfield() -> Particle {
+        let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::new(1.0, 0.0, 0.0), 1.0, 0.1);
+        p.b_field = Vec3::new(0.0, 1.0, 0.0);
+        p
+    }
+
+    #[test]
+    fn turbulence_stats_empty_returns_zero() {
+        let (mach, ma) = turbulence_stats(&[], 5.0 / 3.0);
+        assert_eq!(mach, 0.0);
+        assert_eq!(ma, 0.0);
+    }
+
+    #[test]
+    fn turbulence_stats_positive_for_gas() {
+        let (mach, ma) = turbulence_stats(&[gas_with_bfield()], 5.0 / 3.0);
+        assert!(mach > 0.0);
+        assert!(ma > 0.0);
+    }
+
+    #[test]
+    fn apply_turbulent_forcing_changes_velocity_when_enabled() {
+        let mut particles = vec![gas_with_bfield()];
+        let v0 = particles[0].velocity.x;
+        let cfg = TurbulenceSection {
+            enabled: true,
+            amplitude: 1e-2,
+            ..Default::default()
+        };
+        apply_turbulent_forcing(&mut particles, &cfg, 0.01, 42);
+        assert_ne!(particles[0].velocity.x, v0);
+    }
+
+    #[test]
+    fn apply_turbulent_forcing_disabled_is_noop() {
+        let mut particles = vec![gas_with_bfield()];
+        let v0 = particles[0].velocity;
+        let cfg = TurbulenceSection::default();
+        apply_turbulent_forcing(&mut particles, &cfg, 0.01, 1);
+        assert_eq!(particles[0].velocity.x, v0.x);
+    }
+}

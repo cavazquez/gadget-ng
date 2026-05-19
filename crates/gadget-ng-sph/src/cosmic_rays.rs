@@ -248,3 +248,45 @@ pub fn apply_cr_hadronic_losses(particles: &mut [Particle], coeff: f64, dt: f64)
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn cr_pressure_scales_with_energy_and_density() {
+        let p_lo = cr_pressure(0.1, 2.0);
+        let p_hi = cr_pressure(0.2, 2.0);
+        assert!(p_hi > p_lo);
+        assert_abs_diff_eq!(p_hi / p_lo, 2.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn inject_cr_from_sn_adds_energy() {
+        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1)];
+        inject_cr_from_sn(&mut particles, &[1.0], 0.1, 0.01);
+        assert!(particles[0].cr_energy > 0.0);
+    }
+
+    #[test]
+    fn apply_cr_hadronic_losses_reduces_cr_energy() {
+        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1)];
+        particles[0].cr_energy = 1.0;
+        apply_cr_hadronic_losses(&mut particles, 1.0, 0.1);
+        assert!(particles[0].cr_energy < 1.0);
+    }
+
+    #[test]
+    fn diffuse_cr_redistributes_energy_between_neighbors() {
+        let hot = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
+        let mut cold = Particle::new_gas(1, 1.0, Vec3::new(0.05, 0.0, 0.0), Vec3::zero(), 1.0, 0.5);
+        cold.cr_energy = 0.0;
+        let mut particles = vec![hot, cold];
+        particles[0].cr_energy = 10.0;
+        diffuse_cr(&mut particles, 1.0, 0.0, 0.01);
+        assert!(particles[0].cr_energy < 10.0);
+        assert!(particles[1].cr_energy > 0.0);
+    }
+}

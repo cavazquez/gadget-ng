@@ -111,3 +111,33 @@ pub fn run_merge_tree(
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn run_merge_tree_empty_writes_empty_forest() {
+        let dir = TempDir::new().expect("tmpdir");
+        let out = dir.path().join("forest.json");
+        run_merge_tree(&[], &[], &out, 0.3).expect("empty merge tree");
+        let text = std::fs::read_to_string(&out).expect("read");
+        assert!(text.contains("\"nodes\""));
+        assert!(text.contains("\"roots\""));
+    }
+
+    #[test]
+    fn run_merge_tree_mismatched_lengths_errors() {
+        let dir = TempDir::new().expect("tmpdir");
+        let out = dir.path().join("forest.json");
+        let err = run_merge_tree(
+            &[dir.path().join("a")],
+            &[],
+            &out,
+            0.3,
+        )
+        .unwrap_err();
+        assert!(matches!(err, CliError::InvalidConfig(_)));
+    }
+}

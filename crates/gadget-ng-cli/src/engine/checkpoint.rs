@@ -178,3 +178,29 @@ pub(crate) fn load_checkpoint<R: ParallelRuntime + ?Sized>(
         chem_states,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::CheckpointMeta;
+
+    #[test]
+    fn checkpoint_meta_roundtrip_json() {
+        let meta = CheckpointMeta {
+            schema_version: 1,
+            completed_step: 42,
+            a_current: 0.5,
+            config_hash: "abc123".into(),
+            total_particles: 1024,
+            has_hierarchical_state: true,
+            sfc_state_saved: false,
+            has_agn_state: false,
+            has_chem_state: true,
+        };
+        let json = serde_json::to_string(&meta).expect("serialize");
+        let back: CheckpointMeta = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.completed_step, 42);
+        assert!((back.a_current - 0.5).abs() < 1e-12);
+        assert!(back.has_hierarchical_state);
+        assert!(back.has_chem_state);
+    }
+}

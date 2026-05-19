@@ -37,3 +37,36 @@ pub enum ConfigError {
         requires: &'static str,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_non_flat_universe_mentions_omegas() {
+        let err = ConfigError::NonFlatUniverse {
+            sum: 0.5,
+            tol: 0.05,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("omega_m"));
+        assert!(msg.contains("0.5"));
+    }
+
+    #[test]
+    fn display_feature_requires_names_dependency() {
+        let err = ConfigError::FeatureRequires {
+            feature: "sph.feedback",
+            requires: "sph.enabled",
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("sph.feedback"));
+        assert!(msg.contains("sph.enabled"));
+    }
+
+    #[test]
+    fn display_pm_grid_not_power_of_two() {
+        let err = ConfigError::PmGridNotPowerOfTwo(30);
+        assert!(err.to_string().contains("30"));
+    }
+}

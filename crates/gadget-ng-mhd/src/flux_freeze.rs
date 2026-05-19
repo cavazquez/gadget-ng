@@ -616,6 +616,7 @@ mod tests {
     use super::*;
 
     use approx::assert_abs_diff_eq;
+    use gadget_ng_core::Vec3;
 
     #[test]
     fn flux_freeze_error_at_reference_is_zero() {
@@ -650,5 +651,26 @@ mod tests {
     fn flux_freeze_error_known_mismatch() {
         let err = flux_freeze_error(1.0, 1.0, 8.0, 1.0);
         assert_abs_diff_eq!(err, 0.75, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn mean_gas_density_averages_gas_particles() {
+        let g1 = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1);
+        let g2 = Particle::new_gas(1, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.2);
+        let dm = Particle::new(2, 1.0, Vec3::zero(), Vec3::zero());
+        let rho1 = 1.0 / 0.1_f64.powi(3);
+        let rho2 = 1.0 / 0.2_f64.powi(3);
+        let mean = mean_gas_density(&[g1, g2, dm]);
+        assert_abs_diff_eq!(mean, 0.5 * (rho1 + rho2), epsilon = 1e-10);
+    }
+
+    #[test]
+    fn apply_flux_freeze_scales_b_when_beta_high() {
+        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1e4, 0.1)];
+        particles[0].b_field = Vec3::new(1.0, 0.0, 0.0);
+        let b0 = particles[0].b_field.x;
+        // rho_ref << densidad local (m/h³) para activar B ∝ ρ^{2/3}
+        apply_flux_freeze(&mut particles, 5.0 / 3.0, 0.1, 10.0);
+        assert!(particles[0].b_field.x > b0);
     }
 }

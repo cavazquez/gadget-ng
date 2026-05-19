@@ -1372,6 +1372,15 @@ mod tests {
 
     /// El tensor hexadecapolar agregado no es idénticamente cero para dos masas en ±x.
     #[test]
+    fn hex_dt_pattern_x0_finite_off_axis() {
+        use crate::hex_dt_patterns::dt_x_0;
+        let v = dt_x_0(1.0, 0.1, 0.0, 1.21);
+        assert!(v.is_finite());
+        assert!(v.abs() > 0.0);
+    }
+
+    /// El tensor hexadecapolar agregado no es idénticamente cero para dos masas en ±x.
+    #[test]
     fn hexadecapole_two_masses_has_nonzero_norm() {
         let d = 2.0_f64;
         let m = 1.0_f64;

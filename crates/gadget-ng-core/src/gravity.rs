@@ -254,3 +254,38 @@ impl GravitySolver for RayonDirectGravitySimdTier {
             });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::particle::Particle;
+
+    #[test]
+    fn pairwise_accel_points_along_separation() {
+        let a = pairwise_accel_plummer(Vec3::zero(), 1.0, Vec3::new(1.0, 0.0, 0.0), 1.0, 0.01);
+        assert!(a.x > 0.0 && a.y.abs() < 1e-12 && a.z.abs() < 1e-12);
+    }
+
+    #[test]
+    fn direct_gravity_two_body_symmetric() {
+        let pos = vec![Vec3::new(-0.5, 0.0, 0.0), Vec3::new(0.5, 0.0, 0.0)];
+        let mass = vec![1.0, 1.0];
+        let idx = vec![0, 1];
+        let mut acc = vec![Vec3::zero(); 2];
+        DirectGravity.accelerations_for_indices(&pos, &mass, 0.01, 1.0, &idx, &mut acc);
+        assert!(acc[0].x > 0.0 && acc[1].x < 0.0);
+        assert!((acc[0].y.abs() + acc[1].y.abs()) < 1e-12);
+    }
+
+    #[test]
+    fn accelerations_all_particles_matches_direct() {
+        let particles = vec![
+            Particle::new(0, 1.0, Vec3::new(0.1, 0.1, 0.1), Vec3::zero()),
+            Particle::new(1, 1.0, Vec3::new(0.9, 0.9, 0.9), Vec3::zero()),
+        ];
+        let mut scratch = vec![Vec3::zero(); 2];
+        accelerations_all_particles(&DirectGravity, &particles, 0.01, 1.0, &mut scratch);
+        assert!(scratch[0].norm() > 0.0);
+        assert!(scratch[1].norm() > 0.0);
+    }
+}

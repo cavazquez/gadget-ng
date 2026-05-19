@@ -132,3 +132,44 @@ pub fn unpack_full_to_particles(flat: &[f64], total_count: usize) -> Vec<Particl
     }
     particles
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, Vec3};
+
+    #[test]
+    fn pack_unpack_halo_roundtrip() {
+        let p0 = Particle::new(7, 2.5, Vec3::new(1.0, 2.0, 3.0), Vec3::new(0.1, 0.2, 0.3));
+        let buf = pack_halo(&[p0]);
+        let out = unpack_halo(&buf);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].global_id, 7);
+        assert!((out[0].mass - 2.5).abs() < 1e-12);
+        assert!((out[0].position.x - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pack_pm_unpack_flat_scatters_by_gid() {
+        let local = vec![
+            Particle::new(0, 1.0, Vec3::new(0.0, 0.0, 0.0), Vec3::zero()),
+            Particle::new(1, 2.0, Vec3::new(1.0, 0.0, 0.0), Vec3::zero()),
+        ];
+        let flat = pack_pm(&local);
+        let mut pos = Vec::new();
+        let mut mass = Vec::new();
+        unpack_pm_flat(&flat, &[10, 0], &mut pos, &mut mass, 2);
+        assert_eq!(pos.len(), 2);
+        assert!((mass[0] - 1.0).abs() < 1e-12);
+        assert!((pos[1].x - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pack_full_roundtrip_by_global_id() {
+        let p = Particle::new(0, 4.0, Vec3::new(5.0, 6.0, 7.0), Vec3::new(8.0, 9.0, 10.0));
+        let flat = pack_full(&[p]);
+        let out = unpack_full_to_particles(&flat, 1);
+        assert_eq!(out[0].mass, 4.0);
+        assert!((out[0].position.y - 6.0).abs() < 1e-12);
+    }
+}

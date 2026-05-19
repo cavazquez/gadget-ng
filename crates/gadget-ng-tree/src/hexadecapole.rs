@@ -196,3 +196,45 @@ pub(crate) fn hex_accel_softened(r: Vec3, hex: &[f64; 15], g: f64, eps2: f64) ->
     }
     Vec3::new(-g * L4_FACT * ax, -g * L4_FACT * ay, -g * L4_FACT * az)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn outer4_tf_point_mass_is_nonzero() {
+        let hex = outer4_tf(Vec3::new(1.0, 0.0, 0.0), 1.0);
+        let norm: f64 = hex.iter().map(|x| x * x).sum::<f64>().sqrt();
+        assert!(norm > 0.0);
+    }
+
+    #[test]
+    fn hex_accel_finite_at_distance() {
+        let hex = outer4_tf(Vec3::new(2.0, 0.0, 0.0), 1.0);
+        let a = hex_accel(Vec3::new(6.0, 0.0, 0.0), &hex, 1.0);
+        assert!(a.x.is_finite() && a.y.is_finite() && a.z.is_finite());
+    }
+
+    #[test]
+    fn hex_accel_zero_at_origin() {
+        let hex = outer4_tf(Vec3::zero(), 1.0);
+        let a = hex_accel(Vec3::zero(), &hex, 1.0);
+        assert_eq!(a.x, 0.0);
+        assert_eq!(a.y, 0.0);
+        assert_eq!(a.z, 0.0);
+    }
+
+    #[test]
+    fn hex_slot_maps_degree_quartet() {
+        assert_eq!(hex_slot(4, 0, 0), 0);
+        assert_eq!(hex_slot(0, 0, 4), 14);
+    }
+
+    #[test]
+    fn hex_accel_softened_finite_with_eps2() {
+        let hex = outer4_tf(Vec3::new(1.0, 0.0, 0.0), 1.0);
+        let a = hex_accel_softened(Vec3::new(3.0, 0.0, 0.0), &hex, 1.0, 0.01);
+        assert!(a.x.is_finite());
+    }
+}

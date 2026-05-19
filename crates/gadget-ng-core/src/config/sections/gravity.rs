@@ -240,3 +240,31 @@ pub enum SolverKind {
     /// Configurar `pm_grid_size` y opcionalmente `r_split`.
     TreePm,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gravity_section_toml_round_trip() {
+        let g: GravitySection = toml::from_str(
+            r#"
+solver = "tree_pm"
+theta = 0.6
+multipole_order = 3
+opening_criterion = "relative"
+pm_grid_size = 128
+"#,
+        )
+        .expect("gravity toml");
+        assert_eq!(g.solver, SolverKind::TreePm);
+        assert!((g.theta - 0.6).abs() < 1e-12);
+        assert_eq!(g.pm_grid_size, 128);
+        assert_eq!(g.opening_criterion, OpeningCriterion::Relative);
+    }
+
+    #[test]
+    fn mac_softening_default_is_bare() {
+        assert_eq!(MacSoftening::default(), MacSoftening::Bare);
+    }
+}

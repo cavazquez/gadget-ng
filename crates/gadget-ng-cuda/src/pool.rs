@@ -206,3 +206,29 @@ impl Drop for CudaPool {
 const _: () = {
     let _ = std::mem::size_of::<CudaPool>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::availability::build_availability;
+
+    #[test]
+    fn availability_matches_build() {
+        let a = CudaPool::availability();
+        let b = build_availability();
+        assert_eq!(a.compiled, b.compiled);
+        assert_eq!(a.reason, b.reason);
+    }
+
+    #[cfg(cuda_unavailable)]
+    #[test]
+    fn try_new_errors_when_cuda_not_compiled() {
+        assert!(CudaPool::try_new().is_err());
+    }
+
+    #[cfg(not(cuda_unavailable))]
+    #[test]
+    fn try_new_succeeds_when_cuda_is_compiled() {
+        assert!(CudaPool::try_new().is_ok());
+    }
+}

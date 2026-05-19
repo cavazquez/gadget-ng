@@ -331,3 +331,53 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
 const _: () = {
     let _ = std::mem::size_of::<c_void>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn try_new_checked_respects_cuda_cfg() {
+        #[cfg(cuda_unavailable)]
+        assert!(CudaPmSolver::try_new_checked(16, 1.0).is_err());
+        #[cfg(not(cuda_unavailable))]
+        assert!(CudaPmSolver::try_new_checked(16, 1.0).is_ok());
+    }
+
+    #[cfg(not(cuda_unavailable))]
+    #[test]
+    fn grid_size_and_r_split_preserved() {
+        let solver = CudaPmSolver::try_new_with_r_split_checked(32, 2.0, 0.5)
+            .expect("CUDA compilado en este host");
+        assert_eq!(solver.grid_size(), 32);
+        assert!((solver.r_split() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn try_accelerations_empty_indices_ok() {
+        if let Ok(solver) = CudaPmSolver::try_new_checked(8, 1.0) {
+            let mut out = Vec::new();
+            assert!(
+                solver
+                    .try_accelerations_for_indices(&[], &[], 0.01, 1.0, &[], &mut out)
+                    .is_ok()
+            );
+        }
+    }
+
+    #[cfg(not(cuda_unavailable))]
+    #[test]
+    fn pm_acceleration_two_particles_nonzero() {
+        let solver = CudaPmSolver::try_new_checked(16, 1.0).expect("CUDA");
+        let positions = vec![Vec3::new(0.2, 0.5, 0.5), Vec3::new(0.8, 0.5, 0.5)];
+        let masses = vec![1.0, 1.0];
+        let indices = vec![0, 1];
+        let mut acc = vec![Vec3::zero(); 2];
+        solver
+            .try_accelerations_for_indices(&positions, &masses, 0.01, 1.0, &indices, &mut acc)
+            .expect("kernel PM");
+        let norm: f64 = acc.iter().map(|a| a.dot(*a)).sum::<f64>().sqrt();
+        assert!(norm > 0.0);
+    }
+}

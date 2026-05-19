@@ -78,3 +78,75 @@ pub use pool::CudaPool;
 pub use rt_solver::CudaRtSolver;
 pub use sph_solver::CudaSphSolver;
 pub use tree_solver::CudaTreeSolver;
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+
+    macro_rules! assert_solver_constructible {
+        ($name:expr, $try:expr) => {
+            match $try {
+                Ok(_) => {}
+                Err(err) => assert!(
+                    !err.availability.is_available(),
+                    "{name}: falló con CUDA compilado: {err}",
+                    name = $name
+                ),
+            }
+        };
+    }
+
+    #[test]
+    fn pm_solver_try_new_checked() {
+        assert_solver_constructible!(
+            "CudaPmSolver",
+            CudaPmSolver::try_new_checked(16, 1.0)
+        );
+    }
+
+    #[test]
+    fn sph_solver_try_new_checked() {
+        assert_solver_constructible!("CudaSphSolver", CudaSphSolver::try_new_checked());
+    }
+
+    #[test]
+    fn mhd_solver_try_new_checked() {
+        assert_solver_constructible!("CudaMhdSolver", CudaMhdSolver::try_new_checked());
+    }
+
+    #[test]
+    fn tree_solver_try_new_checked() {
+        assert_solver_constructible!("CudaTreeSolver", CudaTreeSolver::try_new_checked());
+    }
+
+    #[test]
+    fn rt_solver_try_new_checked() {
+        assert_solver_constructible!("CudaRtSolver", CudaRtSolver::try_new_checked());
+    }
+
+    #[test]
+    fn cooling_solver_try_new_checked() {
+        assert_solver_constructible!("CudaCoolingSolver", CudaCoolingSolver::try_new_checked());
+    }
+
+    #[test]
+    fn dust_solver_try_new_checked() {
+        assert_solver_constructible!("CudaDustSolver", CudaDustSolver::try_new_checked());
+    }
+
+    #[test]
+    fn molecular_solver_try_new_checked() {
+        assert_solver_constructible!(
+            "CudaMolecularSolver",
+            CudaMolecularSolver::try_new_checked()
+        );
+    }
+
+    #[test]
+    fn analysis_solver_try_new_checked() {
+        assert_solver_constructible!(
+            "CudaAnalysisSolver",
+            CudaAnalysisSolver::try_new_checked()
+        );
+    }
+}

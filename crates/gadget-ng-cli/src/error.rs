@@ -45,3 +45,25 @@ impl CliError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_config_display() {
+        let err = CliError::InvalidConfig("pm_grid_size inválido".into());
+        let msg = format!("{err}");
+        assert!(msg.contains("configuración inválida"));
+    }
+
+    #[test]
+    fn io_error_includes_path() {
+        let err = CliError::io(
+            "/tmp/no-existe",
+            std::io::Error::new(std::io::ErrorKind::NotFound, "missing"),
+        );
+        let msg = format!("{err}");
+        assert!(msg.contains("/tmp/no-existe"));
+    }
+}

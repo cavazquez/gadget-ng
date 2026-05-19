@@ -60,3 +60,24 @@ pub fn hex_pattern_weights(hex: &[f64; 15]) -> [f64; 15] {
     }
     w
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_pattern_weights_is_deterministic_and_nonzero() {
+        let hex: [f64; 15] = std::array::from_fn(|i| (i + 1) as f64 * 0.1);
+        let w1 = hex_pattern_weights(&hex);
+        let w2 = hex_pattern_weights(&hex);
+        assert_eq!(w1, w2);
+        assert!(w1.iter().all(|x| x.is_finite()));
+        assert!(w1.iter().any(|&x| x > 0.0));
+    }
+
+    #[test]
+    fn hex_pattern_weights_zero_for_zero_hex() {
+        let w = hex_pattern_weights(&[0.0; 15]);
+        assert!(w.iter().all(|&x| x == 0.0));
+    }
+}

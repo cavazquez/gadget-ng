@@ -559,4 +559,28 @@ mod tests {
         let err = build_particles(&cfg).unwrap_err();
         assert!(matches!(err, IcError::LatticeNotCube(10)));
     }
+
+    #[test]
+    fn build_two_body_circular_orbit() {
+        let mut cfg = lattice_config(2);
+        cfg.initial_conditions.kind = IcKind::TwoBody {
+            mass1: 1.0,
+            mass2: 1.0,
+            separation: 2.0,
+        };
+        let parts = build_particles(&cfg).expect("two-body");
+        assert_eq!(parts.len(), 2);
+        let v_rel = (parts[0].velocity - parts[1].velocity).norm();
+        assert!(v_rel > 0.0);
+    }
+
+    #[test]
+    fn build_uniform_sphere_at_rest() {
+        let mut cfg = lattice_config(32);
+        cfg.initial_conditions.kind = IcKind::UniformSphere { r: 0.4 };
+        let parts = build_particles(&cfg).expect("uniform sphere");
+        assert_eq!(parts.len(), 32);
+        assert!(parts.iter().all(|p| p.velocity.norm() < 1e-12));
+        assert!(parts.iter().all(|p| p.position.norm() <= 0.4 + 1e-9));
+    }
 }

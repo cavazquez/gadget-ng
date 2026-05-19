@@ -695,3 +695,92 @@ deterministic = false
         assert!((a.z - b.z).abs() < tol);
     }
 }
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+    use gadget_ng_core::{
+        CosmologySection, GravitySection, IcKind, InitialConditionsSection, OpeningCriterion,
+        OutputSection, PerformanceSection, RunConfig, SimulationSection, TimestepSection,
+        UnitsSection,
+    };
+
+    fn minimal_cfg() -> RunConfig {
+        RunConfig {
+            simulation: SimulationSection {
+                dt: 0.01,
+                num_steps: 4,
+                softening: 0.05,
+                physical_softening: false,
+                gravitational_constant: 1.0,
+                particle_count: 8,
+                box_size: 1.0,
+                seed: 1,
+                integrator: Default::default(),
+            },
+            initial_conditions: InitialConditionsSection {
+                kind: IcKind::Lattice,
+            },
+            output: OutputSection::default(),
+            gravity: GravitySection::default(),
+            performance: PerformanceSection::default(),
+            timestep: TimestepSection::default(),
+            cosmology: CosmologySection::default(),
+            units: UnitsSection::default(),
+            decomposition: Default::default(),
+            insitu_analysis: Default::default(),
+            sph: Default::default(),
+            rt: Default::default(),
+            reionization: Default::default(),
+            mhd: Default::default(),
+            turbulence: Default::default(),
+            two_fluid: Default::default(),
+            sidm: Default::default(),
+            modified_gravity: Default::default(),
+            dark_matter: Default::default(),
+            accelerators: Default::default(),
+        }
+    }
+
+    #[test]
+    fn local_bh_walk_params_mirror_gravity_section() {
+        let mut cfg = minimal_cfg();
+        cfg.gravity.theta = 0.42;
+        cfg.gravity.multipole_order = 3;
+        cfg.gravity.opening_criterion = OpeningCriterion::Relative;
+        let bh = local_bh_walk_params(&cfg);
+        assert!((bh.theta - 0.42).abs() < 1e-12);
+        assert_eq!(bh.multipole_order, 3);
+        assert!(bh.use_relative_criterion);
+    }
+
+    #[test]
+    fn make_solver_direct_attracts_two_particles() {
+        let cfg = minimal_cfg();
+        let solver = make_solver(&cfg);
+        let positions = vec![Vec3::new(0.2, 0.5, 0.5), Vec3::new(0.8, 0.5, 0.5)];
+        let masses = vec![1.0, 1.0];
+        let mut acc = vec![Vec3::zero(); 2];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[0, 1], &mut acc);
+        assert!(acc[0].x > 0.0);
+        assert!(acc[1].x < 0.0);
+    }
+
+    #[test]
+    fn compute_forces_local_tree_empty_is_noop() {
+        let bh = local_bh_walk_params(&minimal_cfg());
+        let mut out = Vec::new();
+        compute_forces_local_tree(&[], &[], 1.0, 0.01, &mut out, bh, false);
+        assert!(out.is_empty());
+    }
+
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn local_bh_use_rayon_follows_deterministic_flag() {
+        let mut cfg = minimal_cfg();
+        cfg.performance.deterministic = false;
+        assert!(local_bh_use_rayon(&cfg));
+        cfg.performance.deterministic = true;
+        assert!(!local_bh_use_rayon(&cfg));
+    }
+}

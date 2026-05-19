@@ -103,3 +103,26 @@ pub use pop_iii::{
 };
 pub use thermal_conduction::{apply_thermal_conduction, apply_thermal_conduction_periodic};
 pub use viscosity::{compute_balsara_factors, compute_balsara_factors_with_periodic};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn periodic_delta_none_is_direct_difference() {
+        let a = Vec3::new(0.0, 0.0, 0.0);
+        let b = Vec3::new(1.0, 2.0, 3.0);
+        let d = periodic_delta(a, b, None);
+        assert!((d.x - 1.0).abs() < 1e-12);
+        assert!((d.y - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn periodic_delta_wraps_across_box() {
+        let a = Vec3::new(0.1, 0.0, 0.0);
+        let b = Vec3::new(0.9, 0.0, 0.0);
+        let d = periodic_delta(a, b, Some(1.0));
+        assert!((d.x + 0.2).abs() < 1e-12);
+    }
+}

@@ -163,3 +163,46 @@ impl ParallelRuntime for SerialRuntime {
         vec![sends[0].clone()]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ParallelRuntime;
+
+    #[test]
+    fn serial_runtime_is_single_rank() {
+        let rt = SerialRuntime;
+        assert_eq!(rt.rank(), 0);
+        assert_eq!(rt.size(), 1);
+    }
+
+    #[test]
+    fn allgatherv_state_fills_global_arrays() {
+        let rt = SerialRuntime;
+        let local = vec![
+            Particle::new(1, 2.0, Vec3::new(3.0, 0.0, 0.0), Vec3::zero()),
+            Particle::new(0, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::zero()),
+        ];
+        let mut pos = Vec::new();
+        let mut mass = Vec::new();
+        rt.allgatherv_state(&local, 2, &mut pos, &mut mass);
+        assert_eq!(pos.len(), 2);
+        assert!((mass[0] - 1.0).abs() < 1e-12);
+        assert!((pos[1].x - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn allgather_f64_wraps_local_slice() {
+        let rt = SerialRuntime;
+        let out = rt.allgather_f64(&[1.0, 2.0]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], vec![1.0, 2.0]);
+    }
+
+    #[test]
+    fn halo_exchange_returns_empty() {
+        let rt = SerialRuntime;
+        let local = vec![Particle::new(0, 1.0, Vec3::zero(), Vec3::zero())];
+        assert!(rt.exchange_halos_3d_periodic(&local, 1.0, 0.1).is_empty());
+    }
+}

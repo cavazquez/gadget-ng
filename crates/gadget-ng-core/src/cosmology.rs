@@ -780,6 +780,7 @@ pub fn wrap_position(pos: crate::vec3::Vec3, box_size: f64) -> crate::vec3::Vec3
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vec3::Vec3;
 
     /// Universo Einstein–de Sitter: Ω_m=1, Ω_Λ=0, a(t) ∝ t^{2/3}.
     ///
@@ -973,5 +974,30 @@ mod tests {
     fn growth_factor_d_zero_at_a_zero() {
         let p = CosmologyParams::new(0.3, 0.7, 1.0);
         assert_eq!(growth_factor_d(p, 0.0), 0.0);
+    }
+
+    #[test]
+    fn wrap_coord_and_minimum_image() {
+        assert!((wrap_coord(1.2, 1.0) - 0.2).abs() < 1e-12);
+        assert!((minimum_image(0.9, 1.0) + 0.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn wrap_position_periodic_box() {
+        let p = wrap_position(Vec3::new(-0.1, 1.1, 0.5), 1.0);
+        assert!((p.x - 0.9).abs() < 1e-12);
+        assert!((p.y - 0.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn dark_energy_eos_lcdm_is_minus_one() {
+        assert!((dark_energy_eos(1.0, -1.0, 0.0) + 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn g_code_consistent_matches_friedmann() {
+        let g = g_code_consistent(0.3, 1.0, 1.0);
+        assert!(g > 0.0);
+        assert!(cosmo_consistency_error(g, 0.3, 1.0, 1.0).abs() < 1e-12);
     }
 }

@@ -238,3 +238,50 @@ pub fn kepler_two_body(m1: f64, m2: f64, r: f64) -> (Vec<Particle>, f64) {
     let p1 = Particle::new(1, m2, Vec3::new(r, 0.0, 0.0), Vec3::new(0.0, vy2, 0.0));
     (vec![p0, p1], period)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn lcdm_config_has_cosmology_enabled() {
+        let cfg = lcdm_config();
+        assert!(cfg.cosmology.enabled);
+        assert_abs_diff_eq!(cfg.cosmology.omega_m, 0.31, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn eds_config_is_flat_universe() {
+        let cfg = eds_config();
+        assert_abs_diff_eq!(cfg.cosmology.omega_m, 1.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(cfg.cosmology.omega_lambda, 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn plummer_sphere_has_correct_count_and_mass() {
+        let n = 32;
+        let m_total = 1.0;
+        let parts = plummer_sphere(n, m_total, 0.5);
+        assert_eq!(parts.len(), n);
+        let sum_m: f64 = parts.iter().map(|p| p.mass).sum();
+        assert_abs_diff_eq!(sum_m, m_total, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn direct_accel_two_body_attractive() {
+        let positions = vec![Vec3::new(-1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)];
+        let masses = vec![1.0, 1.0];
+        let acc = direct_accel(&positions, &masses, 0.01, 1.0);
+        assert!(acc[0].x > 0.0);
+        assert!(acc[1].x < 0.0);
+    }
+
+    #[test]
+    fn kepler_two_body_circular_period() {
+        let (parts, period) = kepler_two_body(1.0, 1.0, 1.0);
+        assert_eq!(parts.len(), 2);
+        let expected = 2.0 * std::f64::consts::PI * (2.0_f64).powf(1.5) / 2.0_f64.sqrt();
+        assert_abs_diff_eq!(period, expected, epsilon = 1e-10);
+    }
+}

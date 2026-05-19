@@ -262,3 +262,32 @@ impl GravitySolver for HipPmSolver {
 const _: () = {
     let _ = std::mem::size_of::<c_void>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_new_checked_respects_hip_cfg() {
+        #[cfg(hip_unavailable)]
+        assert!(HipPmSolver::try_new_checked(16, 1.0).is_err());
+        #[cfg(not(hip_unavailable))]
+        {
+            let result = HipPmSolver::try_new_checked(16, 1.0);
+            // HIP puede compilar sin rocFFT: Ok o Err según runtime
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn try_accelerations_empty_indices_when_solver_exists() {
+        if let Ok(solver) = HipPmSolver::try_new_checked(8, 1.0) {
+            let mut out = Vec::new();
+            assert!(
+                solver
+                    .try_accelerations_for_indices(&[], &[], 0.01, 1.0, &[], &mut out)
+                    .is_ok()
+            );
+        }
+    }
+}

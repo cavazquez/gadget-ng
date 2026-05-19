@@ -543,3 +543,106 @@ unsafe fn apply_dust_radiation_pressure_kick_avx512(
     // SAFETY: the caller checked AVX-512F; AVX2 arithmetic preserves the same update semantics.
     unsafe { apply_dust_radiation_pressure_kick_avx2(particles, cfg, z_reference, dt) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::{DustSection, DustSpeciesModel, Vec3};
+
+    fn dust_cfg() -> DustSection {
+        DustSection {
+            enabled: true,
+            d_to_g_max: 0.01,
+            tau_grow: 1.0,
+            t_destroy_k: 1e6,
+            kappa_dust_uv: 1000.0,
+            ir_emission_enabled: true,
+            kappa_dust_ir: 10.0,
+            ir_emissivity: 1.0,
+            dust_temperature_floor_k: 2.725,
+            dust_temperature_cap_k: 100.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dust_uv_opacity_scales_with_dust_and_density() {
+        let tau_lo = dust_uv_opacity(1000.0, 0.001, 1.0, 0.1);
+        let tau_hi = dust_uv_opacity(1000.0, 0.01, 1.0, 0.1);
+        assert!(tau_hi > tau_lo);
+    }
+
+    #[test]
+    fn dust_species_fractions_single_is_all_silicate() {
+        let cfg = DustSection {
+            species_model: DustSpeciesModel::Single,
+            ..Default::default()
+        };
+        assert_eq!(dust_species_fractions(&cfg), (1.0, 0.0));
+    }
+
+    #[test]
+    fn effective_dust_uv_opacity_mixes_species() {
+        let cfg = DustSection {
+            species_model: DustSpeciesModel::SilicateGraphite,
+            silicate_fraction: 1.0,
+            graphite_fraction: 1.0,
+            kappa_silicate_uv: 100.0,
+            kappa_graphite_uv: 200.0,
+            ..Default::default()
+        };
+        assert_abs_diff_eq!(effective_dust_uv_opacity(&cfg), 150.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn update_dust_grows_d_to_g_in_cold_metal_rich_gas() {
+        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1e-8, 0.1)];
+        particles[0].metallicity = 0.5;
+        particles[0].dust_to_gas = 0.0;
+        update_dust(&mut particles, &dust_cfg(), 5.0 / 3.0, 0.5);
+        assert!(particles[0].dust_to_gas > 0.0);
+    }
+
+    #[test]
+    fn dust_h2_shielding_increases_with_dust() {
+        let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1);
+        p.dust_to_gas = 0.005;
+        let cfg = DustSection {
+            enabled: true,
+            h2_shielding_boost: 2.0,
+            kappa_dust_uv: 1000.0,
+            ..Default::default()
+        };
+        let shield = dust_h2_shielding_factor(&p, &cfg);
+        assert!(shield > 1.0);
+    }
+
+    #[test]
+    fn dust_equilibrium_temperature_respects_floor() {
+        let cfg = dust_cfg();
+        let t = dust_equilibrium_temperature(0.0, &cfg);
+        assert_abs_diff_eq!(t, cfg.dust_temperature_floor_k, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn dust_ir_luminosity_zero_without_dust() {
+        let p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1);
+        assert_abs_diff_eq!(dust_ir_luminosity(&p, 20.0, &dust_cfg()), 0.0, epsilon = 1e-30);
+    }
+
+    #[test]
+    fn radiation_pressure_kick_moves_gas_with_dust() {
+        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::new(0.0, 0.0, 1.0), Vec3::zero(), 1.0, 0.1)];
+        particles[0].dust_to_gas = 0.01;
+        let cfg = DustSection {
+            enabled: true,
+            radiation_pressure_enabled: true,
+            radiation_pressure_kappa: 1.0,
+            radiation_pressure_j_uv: 1.0,
+            ..Default::default()
+        };
+        apply_dust_radiation_pressure_kick(&mut particles, &cfg, 0.0, 0.1);
+        assert!(particles[0].velocity.z > 0.0);
+    }
+}

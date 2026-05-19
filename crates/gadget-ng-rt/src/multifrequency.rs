@@ -322,3 +322,54 @@ pub fn deposit_dust_ir_emission(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chemistry::ChemState;
+    use crate::m1::M1Params;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn photon_group_index_and_energy_are_stable() {
+        assert_eq!(PhotonGroup::LymanWerner.index(), 3);
+        assert!(PhotonGroup::HiIonizing.energy_ev() > PhotonGroup::Infrared.energy_ev());
+    }
+
+    #[test]
+    fn multi_frequency_rates_zero_is_all_zero() {
+        let r = MultiFrequencyRates::zero();
+        assert_abs_diff_eq!(r.gamma_hi, 0.0, epsilon = 1e-30);
+        assert_abs_diff_eq!(r.k_lw_h2, 0.0, epsilon = 1e-30);
+    }
+
+    #[test]
+    fn single_group_rates_positive_for_hi() {
+        let params = M1Params::default();
+        let rates = single_group_rates(PhotonGroup::HiIonizing, 1.0, &params);
+        assert!(rates.gamma_hi > 0.0);
+        assert_abs_diff_eq!(rates.gamma_hei, 0.0, epsilon = 1e-30);
+    }
+
+    #[test]
+    fn lw_photodissociation_reduces_h2() {
+        let mut state = ChemState::neutral();
+        state.x_h2 = 0.5;
+        state.x_hd = 0.01;
+        let rates = MultiFrequencyRates {
+            k_lw_h2: 1.0,
+            k_lw_hd: 0.5,
+            ..MultiFrequencyRates::zero()
+        };
+        apply_lw_photodissociation(&mut state, &rates, 0.5);
+        assert!(state.x_h2 < 0.5);
+        assert!(state.x_hd < 0.01);
+    }
+
+    #[test]
+    fn multi_frequency_field_uniform_groups() {
+        let energies = [1.0, 0.0, 0.0, 0.0, 0.0];
+        let field = MultiFrequencyField::uniform(2, 2, 2, 0.5, energies);
+        assert_eq!(field.group(PhotonGroup::HiIonizing).energy_density.len(), 8);
+    }
+}

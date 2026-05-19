@@ -519,4 +519,28 @@ theta = 0.5
             cfg2.simulation.particle_count
         );
     }
+
+    #[test]
+    fn effective_g_uses_cosmology_when_auto_g_enabled() {
+        let mut cfg = minimal_run_config();
+        cfg.simulation.particle_count = 27;
+        cfg.cosmology.enabled = true;
+        cfg.cosmology.auto_g = true;
+        cfg.cosmology.omega_m = 0.3;
+        cfg.cosmology.omega_lambda = 0.7;
+        cfg.cosmology.h0 = 1.0;
+        let g = cfg.effective_g();
+        let (g_ref, err) = cfg.cosmo_g_diagnostic().expect("diagnostic");
+        assert!((g - g_ref).abs() < 1e-12);
+        assert!(err < 1e-12);
+    }
+
+    #[test]
+    fn effective_g_uses_units_when_enabled() {
+        let mut cfg = minimal_run_config();
+        cfg.units.enabled = true;
+        cfg.units.mass_in_msun = 1.0e10;
+        let g_units = cfg.effective_g();
+        assert!((g_units - cfg.units.compute_g()).abs() < 1e-12);
+    }
 }

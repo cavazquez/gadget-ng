@@ -181,3 +181,76 @@ impl PmTreepmDomain {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{
+        CosmologySection, GravitySection, IcKind, InitialConditionsSection, OutputSection,
+        PerformanceSection, RunConfig, SimulationSection, SolverKind, TimestepSection,
+        UnitsSection,
+    };
+    use gadget_ng_parallel::SerialRuntime;
+
+    fn minimal_cfg() -> RunConfig {
+        RunConfig {
+            simulation: SimulationSection {
+                dt: 0.01,
+                num_steps: 4,
+                softening: 0.05,
+                physical_softening: false,
+                gravitational_constant: 1.0,
+                particle_count: 8,
+                box_size: 1.0,
+                seed: 1,
+                integrator: Default::default(),
+            },
+            initial_conditions: InitialConditionsSection {
+                kind: IcKind::Lattice,
+            },
+            output: OutputSection::default(),
+            gravity: GravitySection::default(),
+            performance: PerformanceSection::default(),
+            timestep: TimestepSection::default(),
+            cosmology: CosmologySection::default(),
+            units: UnitsSection::default(),
+            decomposition: Default::default(),
+            insitu_analysis: Default::default(),
+            sph: Default::default(),
+            rt: Default::default(),
+            reionization: Default::default(),
+            mhd: Default::default(),
+            turbulence: Default::default(),
+            two_fluid: Default::default(),
+            sidm: Default::default(),
+            modified_gravity: Default::default(),
+            dark_matter: Default::default(),
+            accelerators: Default::default(),
+        }
+    }
+
+    #[test]
+    fn from_cfg_barnes_hut_disables_pm_paths() {
+        let cfg = minimal_cfg();
+        let rt = SerialRuntime;
+        let domain = PmTreepmDomain::from_cfg(&cfg, &rt, &[]).expect("domain");
+        assert!(!domain.use_pm_dist);
+        assert!(!domain.use_pm_slab);
+        assert!(!domain.use_treepm_slab);
+        assert_eq!(domain.pm_nm, cfg.gravity.pm_grid_size);
+    }
+
+    #[test]
+    fn from_cfg_treepm_sets_r_cut() {
+        let mut cfg = minimal_cfg();
+        cfg.gravity.solver = SolverKind::TreePm;
+        cfg.gravity.treepm_slab = true;
+        cfg.cosmology.periodic = true;
+        cfg.gravity.pm_grid_size = 8;
+        let rt = SerialRuntime;
+        let domain = PmTreepmDomain::from_cfg(&cfg, &rt, &[]).expect("treepm domain");
+        assert!(domain.use_treepm_slab);
+        assert!(domain.treepm_r_split > 0.0);
+        assert!((domain.treepm_r_cut - 5.0 * domain.treepm_r_split).abs() < 1e-12);
+    }
+}

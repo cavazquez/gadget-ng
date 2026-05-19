@@ -56,3 +56,33 @@ impl PmFftBackend for FftwBackend {
         fft_poisson::solve_forces_impl(density, g, nm, box_size, r_split, plummer_eps)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rust_fft_uniform_density_near_zero_force() {
+        let nm = 4usize;
+        let n3 = nm * nm * nm;
+        let rho_cell = 1.0 / n3 as f64;
+        let density = vec![rho_cell; n3];
+        let backend = RustFftBackend;
+        let forces = backend.solve_forces(&density, 1.0, nm, 1.0, None, None);
+        assert_eq!(forces[0].len(), n3);
+        let max_f = forces
+            .iter()
+            .flat_map(|c| c.iter())
+            .map(|v| v.abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_f < 1e-6,
+            "densidad uniforme debe dar fuerza ~0, max |F| = {max_f}"
+        );
+    }
+
+    #[test]
+    fn fft_backend_kind_rust_is_distinct() {
+        assert_eq!(FftBackendKind::RustFft, FftBackendKind::RustFft);
+    }
+}

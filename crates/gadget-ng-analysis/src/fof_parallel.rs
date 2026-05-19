@@ -104,3 +104,39 @@ pub fn find_halos_parallel<R: ParallelRuntime>(
         rho_crit,
     )
 }
+
+#[cfg(all(test, feature = "parallel"))]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, Vec3};
+    use gadget_ng_parallel::{SerialRuntime, sfc::SfcDecomposition};
+
+    #[test]
+    fn find_halos_parallel_serial_matches_fof() {
+        let rt = SerialRuntime;
+        let positions = vec![
+            Vec3::new(0.1, 0.1, 0.1),
+            Vec3::new(0.11, 0.1, 0.1),
+            Vec3::new(0.9, 0.9, 0.9),
+            Vec3::new(0.91, 0.9, 0.9),
+        ];
+        let particles: Vec<Particle> = positions
+            .iter()
+            .enumerate()
+            .map(|(i, &pos)| Particle::new(i, 1.0, pos, Vec3::zero()))
+            .collect();
+        let decomp = SfcDecomposition::build(&positions, 1.0, 1);
+        let parallel =
+            find_halos_parallel(&particles, &rt, &decomp, 1.0, 0.2, 2, 0.0);
+        let serial = crate::fof::find_halos(
+            &positions,
+            &vec![Vec3::zero(); 4],
+            &vec![1.0; 4],
+            1.0,
+            0.2,
+            2,
+            0.0,
+        );
+        assert_eq!(parallel.len(), serial.len());
+    }
+}

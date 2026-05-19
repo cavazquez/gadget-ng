@@ -121,3 +121,31 @@ pub fn read_snapshot_formatted(
 ) -> Result<SnapshotData, SnapshotError> {
     reader_for(fmt)?.read(dir)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writer_for_jsonl_succeeds() {
+        let w = writer_for(SnapshotFormat::Jsonl);
+        assert!(w.is_ok());
+    }
+
+    #[test]
+    fn reader_for_jsonl_succeeds() {
+        let r = reader_for(SnapshotFormat::Jsonl);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn writer_for_hdf5_respects_feature() {
+        #[cfg(feature = "hdf5")]
+        assert!(writer_for(SnapshotFormat::Hdf5).is_ok());
+        #[cfg(not(feature = "hdf5"))]
+        assert!(matches!(
+            writer_for(SnapshotFormat::Hdf5),
+            Err(SnapshotError::UnsupportedFormat(_))
+        ));
+    }
+}

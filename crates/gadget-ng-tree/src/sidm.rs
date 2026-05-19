@@ -814,3 +814,61 @@ unsafe fn sidm_pair_deltas_for_i_avx512(
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::Vec3;
+
+    #[test]
+    fn scatter_probability_clamps_at_one() {
+        let p = scatter_probability(1e6, 1e6, 1.0, 1.0);
+        assert_abs_diff_eq!(p, 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn scatter_probability_scales_with_density() {
+        let p_lo = scatter_probability(1.0, 1.0, 1.0, 0.1);
+        let p_hi = scatter_probability(1.0, 10.0, 1.0, 0.1);
+        assert!(p_hi > p_lo);
+    }
+
+    #[test]
+    fn apply_sidm_zero_sigma_is_noop() {
+        let mut particles = vec![
+            Particle::new(0, 1.0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)),
+            Particle::new(1, 1.0, Vec3::new(0.05, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+        ];
+        particles[0].smoothing_length = 0.1;
+        particles[1].smoothing_length = 0.1;
+        let v0 = particles[0].velocity;
+        apply_sidm_scattering(
+            &mut particles,
+            &SidmParams {
+                sigma_m: 0.0,
+                ..Default::default()
+            },
+            0.01,
+            1,
+        );
+        assert_eq!(particles[0].velocity.x, v0.x);
+    }
+
+    #[test]
+    fn apply_sidm_can_change_velocities_for_close_dm() {
+        let mut particles = vec![
+            Particle::new(0, 1.0, Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)),
+            Particle::new(1, 1.0, Vec3::new(0.02, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+        ];
+        particles[0].smoothing_length = 0.2;
+        particles[1].smoothing_length = 0.2;
+        let v0 = particles[0].velocity.x;
+        let params = SidmParams {
+            sigma_m: 1.0,
+            v_max: 1e12,
+        };
+        apply_sidm_scattering(&mut particles, &params, 1.0, 12345);
+        assert_ne!(particles[0].velocity.x, v0);
+    }
+}

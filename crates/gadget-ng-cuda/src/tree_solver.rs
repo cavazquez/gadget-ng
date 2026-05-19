@@ -478,3 +478,26 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
 const _: () = {
     let _ = std::mem::size_of::<CudaTreeSolver>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_walk_monopole_empty_ok() {
+        if let Ok(solver) = CudaTreeSolver::try_new_checked() {
+            let acc = solver
+                .try_walk_monopole(&[], 1.0, 0.01)
+                .expect("vacío sin partículas");
+            assert!(acc.is_empty());
+        }
+    }
+
+    #[test]
+    fn try_new_checked_respects_cuda_cfg() {
+        #[cfg(cuda_unavailable)]
+        assert!(CudaTreeSolver::try_new_checked().is_err());
+        #[cfg(not(cuda_unavailable))]
+        assert!(CudaTreeSolver::try_new_checked().is_ok());
+    }
+}

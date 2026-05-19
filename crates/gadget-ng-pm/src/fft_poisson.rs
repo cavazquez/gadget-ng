@@ -816,6 +816,14 @@ fn ifft3d_inplace(
 mod tests {
     use super::*;
 
+    #[test]
+    fn pm_fifth_force_boost_gr_and_fr_limits() {
+        let gr = gadget_ng_core::FRParams { f_r0: 0.0, ..Default::default() };
+        assert!((pm_fifth_force_boost(&gr) - 1.0).abs() < 1e-12);
+        let fr = gadget_ng_core::FRParams { f_r0: 1.0, ..Default::default() };
+        assert!((pm_fifth_force_boost(&fr) - 4.0 / 3.0).abs() < 1e-12);
+    }
+
     /// Una densidad uniforme produce fuerzas ≈ 0 (el modo DC es cero).
     #[test]
     fn uniform_density_gives_zero_force() {

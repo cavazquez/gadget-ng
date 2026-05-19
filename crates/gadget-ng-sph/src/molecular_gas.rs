@@ -279,3 +279,50 @@ unsafe fn update_h2_avx512(
     // SAFETY: the caller checked AVX-512F; AVX2 arithmetic preserves the same update semantics.
     unsafe { update_h2_avx2(particles, cfg, dust, dt, t_dissoc) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::{MolecularSection, Vec3};
+
+    fn dense_gas() -> Particle {
+        let mut p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.01);
+        p.h2_fraction = 0.0;
+        p
+    }
+
+    #[test]
+    fn update_h2_disabled_is_noop() {
+        let mut particles = vec![dense_gas()];
+        let cfg = MolecularSection::default();
+        update_h2_fraction(&mut particles, &cfg, 0.1);
+        assert_abs_diff_eq!(particles[0].h2_fraction, 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn update_h2_grows_in_dense_gas() {
+        let mut particles = vec![dense_gas()];
+        let cfg = MolecularSection {
+            enabled: true,
+            rho_h2_threshold: 10.0,
+            sfr_h2_boost: 2.0,
+        };
+        update_h2_fraction(&mut particles, &cfg, 0.5);
+        assert!(particles[0].h2_fraction > 0.0);
+        assert!(particles[0].h2_fraction <= 1.0);
+    }
+
+    #[test]
+    fn update_h2_skips_dark_matter() {
+        let mut p = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        p.h2_fraction = 0.3;
+        let mut particles = vec![p];
+        let cfg = MolecularSection {
+            enabled: true,
+            ..Default::default()
+        };
+        update_h2_fraction(&mut particles, &cfg, 0.5);
+        assert_abs_diff_eq!(particles[0].h2_fraction, 0.3, epsilon = 1e-12);
+    }
+}

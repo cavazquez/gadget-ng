@@ -181,3 +181,39 @@ pub fn apply_thermal_conduction_periodic(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{ConductionSection, Vec3};
+
+    #[test]
+    fn apply_thermal_conduction_disabled_is_noop() {
+        let p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.5);
+        let u0 = p.internal_energy;
+        apply_thermal_conduction(
+            &mut [p],
+            &ConductionSection::default(),
+            5.0 / 3.0,
+            1e4,
+            0.01,
+        );
+        assert_eq!(u0, 1.0);
+    }
+
+    #[test]
+    fn apply_thermal_conduction_transfers_heat_between_neighbors() {
+        let hot = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 10.0, 0.5);
+        let cold = Particle::new_gas(1, 1.0, Vec3::new(0.05, 0.0, 0.0), Vec3::zero(), 0.1, 0.5);
+        let mut particles = vec![hot, cold];
+        let cfg = ConductionSection {
+            enabled: true,
+            kappa_spitzer: 1.0,
+            psi_suppression: 1.0,
+            ..Default::default()
+        };
+        apply_thermal_conduction(&mut particles, &cfg, 5.0 / 3.0, 1.0, 0.01);
+        assert!(particles[0].internal_energy < 10.0);
+        assert!(particles[1].internal_energy > 0.1);
+    }
+}

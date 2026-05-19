@@ -130,3 +130,41 @@ impl SphParticle {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GAMMA: f64 = 5.0 / 3.0;
+
+    #[test]
+    fn gas_sound_speed_from_pressure() {
+        let mut gas = GasData::new(1.0, 0.1);
+        gas.rho = 2.0;
+        gas.pressure = 1.5;
+        let cs = gas.sound_speed(GAMMA);
+        let expected = (GAMMA * 1.5 / 2.0).sqrt();
+        assert!((cs - expected).abs() < 1e-12);
+    }
+
+    #[test]
+    fn gas_sync_from_entropy_is_idempotent() {
+        let mut gas = GasData::new(2.0, 0.2);
+        gas.rho = 4.0;
+        gas.init_entropy(GAMMA);
+        gas.sync_from_entropy(GAMMA);
+        let p1 = gas.pressure;
+        let u1 = gas.u;
+        gas.sync_from_entropy(GAMMA);
+        assert!((gas.pressure - p1).abs() < 1e-12);
+        assert!((gas.u - u1).abs() < 1e-12);
+        assert!(p1 > 0.0);
+    }
+
+    #[test]
+    fn sph_particle_gas_has_data() {
+        let p = SphParticle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.05);
+        assert_eq!(p.ptype, ParticleType::Gas);
+        assert!(p.gas.is_some());
+    }
+}

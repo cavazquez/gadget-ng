@@ -142,3 +142,49 @@ pub(crate) fn write_diagnostic_line<R: ParallelRuntime + ?Sized>(
     rt.barrier();
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, Vec3};
+
+    #[test]
+    fn should_rebalance_when_cost_pending() {
+        assert!(should_rebalance(10, 1, 100, true));
+    }
+
+    #[test]
+    fn should_rebalance_when_interval_zero() {
+        assert!(should_rebalance(5, 1, 0, false));
+    }
+
+    #[test]
+    fn should_rebalance_on_interval_multiple() {
+        assert!(should_rebalance(11, 1, 5, false));
+        assert!(!should_rebalance(12, 1, 5, false));
+    }
+
+    #[test]
+    fn kinetic_local_two_particles() {
+        let parts = vec![
+            Particle::new(0, 2.0, Vec3::zero(), Vec3::new(1.0, 0.0, 0.0)),
+            Particle::new(1, 1.0, Vec3::zero(), Vec3::new(2.0, 0.0, 0.0)),
+        ];
+        let ke = kinetic_local(&parts);
+        assert!((ke - (1.0 + 2.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn local_moments_tracks_mass_and_momentum() {
+        let parts = vec![Particle::new(
+            0,
+            3.0,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 2.0, 0.0),
+        )];
+        let m = local_moments(&parts);
+        assert!((m.mass - 3.0).abs() < 1e-12);
+        assert!((m.p[1] - 6.0).abs() < 1e-12);
+        assert!((m.mass_weighted_pos[0] - 3.0).abs() < 1e-12);
+    }
+}

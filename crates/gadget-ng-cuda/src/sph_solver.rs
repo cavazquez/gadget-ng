@@ -696,3 +696,16 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
 const _: () = {
     let _ = std::mem::size_of::<CudaSphSolver>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_new_checked_respects_cuda_cfg() {
+        #[cfg(cuda_unavailable)]
+        assert!(CudaSphSolver::try_new_checked().is_err());
+        #[cfg(not(cuda_unavailable))]
+        assert!(CudaSphSolver::try_new_checked().is_ok());
+    }
+}

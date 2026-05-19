@@ -386,4 +386,31 @@ mod tests {
         assert_eq!(forest.nodes.len(), 1);
         assert_eq!(forest.roots, vec![0]);
     }
+
+    #[test]
+    fn merger_tree_links_snapshots_by_shared_particles() {
+        let halos_old = vec![make_halo(0, 5, 1e14)];
+        let halos_new = vec![make_halo(0, 5, 1.2e14)];
+        let parts_old = make_particles(5, Some(0), 0);
+        let parts_new = make_particles(5, Some(0), 0);
+        let forest = build_merger_forest(
+            &[(halos_old, parts_old), (halos_new, parts_new)],
+            0.5,
+        );
+        assert_eq!(forest.nodes.len(), 2);
+        let old_node = forest
+            .nodes
+            .iter()
+            .find(|n| n.snapshot == 0)
+            .expect("nodo snapshot antiguo");
+        assert_eq!(old_node.prog_main_id, Some(0));
+    }
+
+    #[test]
+    fn particle_snapshot_from_halos_assigns_membership() {
+        let halos = vec![make_halo(0, 2, 1.0), make_halo(1, 1, 0.5)];
+        let snaps = ParticleSnapshot::from_halos_and_ids(&halos, &[10, 11, 12], &[vec![0, 1], vec![2]]);
+        assert_eq!(snaps[0].halo_idx, Some(0));
+        assert_eq!(snaps[2].halo_idx, Some(1));
+    }
 }

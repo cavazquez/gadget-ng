@@ -297,3 +297,49 @@ pub fn inject_sn_from_cluster_periodic(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::{SphSection, Vec3};
+
+    #[test]
+    fn sample_stellar_mass_in_kroupa_range() {
+        let imf = KroupaImf::default();
+        let m = sample_stellar_mass(&imf, 42);
+        assert!(m >= imf.m_min && m <= imf.m_max);
+    }
+
+    #[test]
+    fn sample_stellar_mass_is_reproducible() {
+        let imf = KroupaImf::default();
+        let m1 = sample_stellar_mass(&imf, 99);
+        let m2 = sample_stellar_mass(&imf, 99);
+        assert_abs_diff_eq!(m1, m2, epsilon = 1e-15);
+    }
+
+    #[test]
+    fn collapse_gmc_forms_cluster_for_dense_gas() {
+        let p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.01);
+        let clusters = collapse_gmc(&mut [p], 1.0, 0.01, 7);
+        assert_eq!(clusters.len(), 1);
+        assert!(clusters[0].mass_total > 0.0);
+        assert!(clusters[0].n_stars >= 1);
+    }
+
+    #[test]
+    fn inject_sn_from_cluster_heats_nearby_gas() {
+        let cluster = GmcCluster {
+            pos: [0.0, 0.0, 0.0],
+            mass_total: 1.0,
+            n_stars: 100,
+            age_gyr: 0.01,
+            metallicity: 0.02,
+        };
+        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::new(0.1, 0.0, 0.0), Vec3::zero(), 1.0, 0.5)];
+        let u0 = particles[0].internal_energy;
+        inject_sn_from_cluster(&[cluster], &mut particles, 0.01, &SphSection::default());
+        assert!(particles[0].internal_energy > u0);
+    }
+}

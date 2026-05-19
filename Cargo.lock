@@ -761,6 +761,7 @@ dependencies = [
  "rayon",
  "rustfft",
  "serde",
+ "serde_json",
  "thiserror",
  "toml 1.1.2+spec-1.1.0",
 ]

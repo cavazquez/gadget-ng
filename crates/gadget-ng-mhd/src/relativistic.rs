@@ -350,4 +350,46 @@ mod tests {
             epsilon = 1e-12
         );
     }
+
+    #[test]
+    fn advance_srmhd_moves_relativistic_gas() {
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::zero(),
+            Vec3::new(0.9 * C_LIGHT, 0.0, 0.0),
+            1.0,
+            0.1,
+        )];
+        let z0 = particles[0].position.x;
+        advance_srmhd(&mut particles, 0.01, C_LIGHT, 0.5);
+        assert_ne!(particles[0].position.x, z0);
+    }
+
+    #[test]
+    fn inject_relativistic_jet_sets_bipolar_velocities() {
+        let mut particles = vec![
+            Particle::new_gas(0, 1.0, Vec3::new(0.0, 0.0, 0.1), Vec3::zero(), 0.1, 0.1),
+            Particle::new_gas(1, 1.0, Vec3::new(0.0, 0.0, -0.1), Vec3::zero(), 0.1, 0.1),
+        ];
+        inject_relativistic_jet(
+            &mut particles,
+            &[Vec3::zero()],
+            0.3,
+            1,
+            C_LIGHT,
+            1.0,
+        );
+        assert!(particles[0].velocity.z > 0.0);
+        assert!(particles[1].velocity.z < 0.0);
+    }
+
+    #[test]
+    fn srmhd_conserved_to_primitive_rejects_ultra_relativistic_momentum() {
+        let d = 1.0;
+        let s = [1e8, 0.0, 0.0];
+        let tau = 1.0;
+        let b = [0.0, 0.0, 0.0];
+        assert!(srmhd_conserved_to_primitive(d, s, tau, b, 5.0 / 3.0, C_LIGHT).is_none());
+    }
 }

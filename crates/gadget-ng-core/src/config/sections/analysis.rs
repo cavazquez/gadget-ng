@@ -175,3 +175,31 @@ impl Default for DecompositionConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insitu_section_toml_defaults() {
+        let s: InsituAnalysisSection = toml::from_str(
+            r#"
+enabled = true
+interval = 10
+pk_mesh = 64
+"#,
+        )
+        .expect("insitu toml");
+        assert!(s.enabled);
+        assert_eq!(s.interval, 10);
+        assert_eq!(s.pk_mesh, 64);
+        assert!((s.fof_b - 0.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn decomposition_config_defaults() {
+        let d = DecompositionConfig::default();
+        assert!(!d.cost_weighted);
+        assert!((d.ema_alpha - 0.3).abs() < 1e-12);
+    }
+}

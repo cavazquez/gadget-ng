@@ -172,3 +172,37 @@ impl Particle {
         self.ptype == ParticleType::Star
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vec3::Vec3;
+
+    #[test]
+    fn particle_type_constructors() {
+        let dm = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        assert!(!dm.is_gas() && !dm.is_star());
+        let gas = Particle::new_gas(1, 1.0, Vec3::zero(), Vec3::zero(), 10.0, 0.1);
+        assert!(gas.is_gas());
+        let star = Particle::new_star(2, 1.0, Vec3::zero(), Vec3::zero(), 0.02);
+        assert!(star.is_star());
+    }
+
+    #[test]
+    fn particle_serde_round_trip_omits_acceleration() {
+        let p = Particle::new_gas(
+            0,
+            2.0,
+            Vec3::new(1.0, 2.0, 3.0),
+            Vec3::new(0.1, 0.0, 0.0),
+            5.0,
+            0.2,
+        );
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("acceleration"));
+        let back: Particle = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.global_id, 0);
+        assert!((back.mass - 2.0).abs() < 1e-12);
+        assert_eq!(back.ptype, ParticleType::Gas);
+    }
+}

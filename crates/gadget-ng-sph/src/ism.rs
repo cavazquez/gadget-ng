@@ -145,3 +145,42 @@ fn update_ism_particle(
 pub fn effective_u(p: &Particle, q_star: f64) -> f64 {
     p.internal_energy + q_star * p.u_cold
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+    use gadget_ng_core::{IsmSection, Vec3};
+
+    #[test]
+    fn effective_pressure_includes_cold_phase() {
+        let p = effective_pressure(2.0, 1.0, 0.5, 2.5, 5.0 / 3.0);
+        let p_hot_only = effective_pressure(2.0, 1.0, 0.0, 2.5, 5.0 / 3.0);
+        assert!(p > p_hot_only);
+        assert_abs_diff_eq!(p / p_hot_only, 2.25, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn update_ism_phases_transfers_to_cold_component() {
+        let mut p = gadget_ng_core::Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1);
+        p.u_cold = 0.0;
+        let mut particles = vec![p];
+        let sfr = vec![1.0];
+        let cfg = IsmSection {
+            enabled: true,
+            q_star: 2.5,
+            f_cold: 0.5,
+        };
+        update_ism_phases(&mut particles, &sfr, 1.0, &cfg, 0.1);
+        assert!(particles[0].u_cold > 0.0);
+        let u_total = particles[0].internal_energy + particles[0].u_cold;
+        assert_abs_diff_eq!(u_total, 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn effective_u_matches_pressure_formula() {
+        let mut p = gadget_ng_core::Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 2.0, 0.1);
+        p.u_cold = 1.0;
+        assert_abs_diff_eq!(effective_u(&p, 2.5), 4.5, epsilon = 1e-12);
+    }
+}
