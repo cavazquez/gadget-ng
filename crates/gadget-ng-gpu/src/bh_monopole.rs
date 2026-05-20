@@ -546,3 +546,40 @@ fn bytes_to_f32s(b: &[u8]) -> Vec<f32> {
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::Vec3;
+    use gadget_ng_tree::Octree;
+
+    /// `try_new` no debe entrar en pánico. Si no hay adaptador wgpu (CI sin GPU),
+    /// devuelve `None`; si hay adaptador, devuelve `Some`.
+    #[test]
+    fn try_new_does_not_panic() {
+        let _result = GpuBarnesHutMonopole::try_new();
+    }
+
+    /// Smoke: con adaptador, dos partículas separadas reciben aceleración finita.
+    #[test]
+    fn two_particles_smoke_if_gpu_available() {
+        let Some(solver) = GpuBarnesHutMonopole::try_new() else {
+            return; // skip sin GPU
+        };
+        let positions = vec![Vec3::new(0.2, 0.5, 0.5), Vec3::new(0.8, 0.5, 0.5)];
+        let masses = vec![1.0_f64, 1.0];
+        let tree = Octree::build(&positions, &masses);
+        let nodes = tree.export_bh_monopole_gpu_nodes();
+        let flat_pos: Vec<f32> = positions
+            .iter()
+            .flat_map(|p| [p.x as f32, p.y as f32, p.z as f32])
+            .collect();
+        let flat_mass: Vec<f32> = masses.iter().map(|&m| m as f32).collect();
+        let query: Vec<u32> = vec![0, 1];
+        let acc = solver.compute_accelerations_raw(
+            &flat_pos, &flat_mass, &nodes, tree.root, &query, 0.01, 1.0, 0.5,
+        );
+        assert_eq!(acc.len(), 6); // 2 particles × 3 components
+        assert!(acc.iter().all(|v| v.is_finite()));
+    }
+}

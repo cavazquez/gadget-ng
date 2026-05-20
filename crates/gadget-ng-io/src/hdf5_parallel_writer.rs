@@ -270,3 +270,83 @@ pub fn read_snapshot_hdf5_serial(_path: &Path) -> Result<SnapshotData, SnapshotE
         "hdf5 feature no compilado".into(),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::writer::SnapshotEnv;
+    use gadget_ng_core::{Particle, Vec3};
+
+    fn make_particles(n: usize) -> Vec<Particle> {
+        (0..n)
+            .map(|i| {
+                Particle::new(
+                    i,
+                    1.0 + 0.1 * i as f64,
+                    Vec3::new(i as f64 * 0.1, i as f64 * 0.2, 0.0),
+                    Vec3::new(0.01, 0.0, 0.0),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn hdf5_parallel_options_defaults() {
+        let opts = Hdf5ParallelOptions::default();
+        assert_eq!(opts.chunk_size, 65536);
+        assert_eq!(opts.compression, 0);
+    }
+
+    #[test]
+    #[cfg(feature = "hdf5")]
+    fn hdf5_serial_roundtrip_p1() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("snap.hdf5");
+        let particles = make_particles(8);
+        let env = SnapshotEnv::default();
+        let opts = Hdf5ParallelOptions::default();
+        write_snapshot_hdf5_serial(&path, &particles, &env, &opts)
+            .expect("write_snapshot_hdf5_serial");
+        let data = read_snapshot_hdf5_serial(&path).expect("read_snapshot_hdf5_serial");
+        assert_eq!(data.particles.len(), 8);
+        for (orig, read) in particles.iter().zip(data.particles.iter()) {
+            assert!((orig.mass - read.mass).abs() < 1e-4);
+            assert!((orig.position.x - read.position.x).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "hdf5")]
+    fn hdf5_serial_empty_no_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("empty.hdf5");
+        let env = SnapshotEnv::default();
+        let opts = Hdf5ParallelOptions::default();
+        write_snapshot_hdf5_serial(&path, &[], &env, &opts).expect("empty write ok");
+    }
+
+    #[test]
+    #[cfg(feature = "hdf5")]
+    fn hdf5_serial_layout_has_header_and_parttype1() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("layout.hdf5");
+        let particles = make_particles(4);
+        let env = SnapshotEnv::default();
+        let opts = Hdf5ParallelOptions::default();
+        write_snapshot_hdf5_serial(&path, &particles, &env, &opts).expect("write");
+        let file = hdf5::File::open(&path).expect("open");
+        assert!(file.group("Header").is_ok());
+        assert!(file.group("PartType1").is_ok());
+    }
+
+    #[test]
+    #[cfg(not(feature = "hdf5"))]
+    fn hdf5_serial_stub_returns_err() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("x.hdf5");
+        let env = SnapshotEnv::default();
+        let opts = Hdf5ParallelOptions::default();
+        assert!(write_snapshot_hdf5_serial(&path, &[], &env, &opts).is_err());
+        assert!(read_snapshot_hdf5_serial(&path).is_err());
+    }
+}

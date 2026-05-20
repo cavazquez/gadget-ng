@@ -126,17 +126,9 @@ mod tests {
             .map(|(i, &pos)| Particle::new(i, 1.0, pos, Vec3::zero()))
             .collect();
         let decomp = SfcDecomposition::build(&positions, 1.0, 1);
-        let parallel =
-            find_halos_parallel(&particles, &rt, &decomp, 1.0, 0.2, 2, 0.0);
-        let serial = crate::fof::find_halos(
-            &positions,
-            &vec![Vec3::zero(); 4],
-            &vec![1.0; 4],
-            1.0,
-            0.2,
-            2,
-            0.0,
-        );
+        let parallel = find_halos_parallel(&particles, &rt, &decomp, 1.0, 0.2, 2, 0.0);
+        let serial =
+            crate::fof::find_halos(&positions, &[Vec3::zero(); 4], &[1.0; 4], 1.0, 0.2, 2, 0.0);
         assert_eq!(parallel.len(), serial.len());
     }
 }

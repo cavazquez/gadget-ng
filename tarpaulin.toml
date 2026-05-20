@@ -1,0 +1,17 @@
+# Config por defecto para `cargo tarpaulin` (v0.31+).
+# El timeout usa formato humantime: "60s", "5m", "1h" (no un entero suelto).
+# Uso habitual: cargo tarpaulin --workspace --lib
+#
+# Ver también .github/workflows/ci.yml (job Coverage).
+
+[run]
+workspace = true
+run-types = ["Lib"]
+timeout = "300s"
+# Excluir benches, tests de integración de física y tests de integradores del
+# informe de cobertura. Estos no son código de librería productiva.
+exclude-files = [
+    "*/benches/*",
+    "crates/gadget-ng-physics/tests/*",
+    "crates/gadget-ng-integrators/tests/*",
+]

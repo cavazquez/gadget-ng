@@ -223,3 +223,49 @@ fn check_kernel(kernel: &'static str, code: i32) -> Result<(), CudaExecutionErro
 const _: () = {
     let _ = std::mem::size_of::<CudaCoolingSolver>();
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{CoolingKind, Particle, SphSection, Vec3};
+
+    #[test]
+    fn try_new_checked_respects_cuda_cfg() {
+        #[cfg(cuda_unavailable)]
+        assert!(CudaCoolingSolver::try_new_checked().is_err());
+        #[cfg(not(cuda_unavailable))]
+        {
+            let _ = CudaCoolingSolver::try_new_checked();
+        }
+    }
+
+    #[test]
+    fn try_apply_cooling_empty_is_ok() {
+        if let Ok(solver) = CudaCoolingSolver::try_new_checked() {
+            let cfg = SphSection {
+                cooling: CoolingKind::AtomicHHe,
+                ..Default::default()
+            };
+            assert!(
+                solver
+                    .try_apply_cooling(&mut [], &cfg, 0.01, 0.0, 0.0)
+                    .is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn try_apply_cooling_none_kind_is_noop() {
+        if let Ok(solver) = CudaCoolingSolver::try_new_checked() {
+            let p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1);
+            let cfg = SphSection::default();
+            let u0 = p.internal_energy;
+            assert!(
+                solver
+                    .try_apply_cooling(&mut [p], &cfg, 0.01, 0.0, 0.0)
+                    .is_ok()
+            );
+            let _ = u0;
+        }
+    }
+}

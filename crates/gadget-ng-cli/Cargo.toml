@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "gadget-ng CLI binary"
 
+[lib]
+name = "gadget_ng_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "gadget-ng"
 path = "src/main.rs"
