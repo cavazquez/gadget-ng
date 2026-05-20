@@ -649,4 +649,65 @@ mod tests {
         let halos = find_halos(&pos, &vel, &mass, 1.0, 0.2, 3, 0.0);
         assert!(halos.is_empty());
     }
+
+    #[test]
+    fn find_halos_with_membership_assigns_indices() {
+        let pos = vec![
+            Vec3::new(0.1, 0.1, 0.1),
+            Vec3::new(0.11, 0.1, 0.1),
+            Vec3::new(0.9, 0.9, 0.9),
+            Vec3::new(0.91, 0.9, 0.9),
+        ];
+        let vel = vec![Vec3::zero(); 4];
+        let mass = vec![1.0; 4];
+        let (halos, membership) = find_halos_with_membership(&pos, &vel, &mass, 1.0, 0.2, 2, 0.0);
+        assert_eq!(halos.len(), 2);
+        assert_eq!(membership.iter().filter(|m| m.is_some()).count(), 4);
+    }
+
+    #[test]
+    fn find_halos_combined_matches_serial_when_no_halos() {
+        let pos = vec![Vec3::new(0.1, 0.1, 0.1), Vec3::new(0.9, 0.9, 0.9)];
+        let vel = vec![Vec3::zero(); 2];
+        let mass = vec![1.0; 2];
+        let serial = find_halos(&pos, &vel, &mass, 1.0, 0.2, 2, 0.0);
+        let combined = find_halos_combined(&pos, &vel, &mass, 2, 1.0, 0.2, 2, 0.0);
+        assert_eq!(serial.len(), combined.len());
+    }
+
+    #[test]
+    fn particle_snapshots_from_catalog_assigns_nearest_halo() {
+        let halos = vec![FofHalo {
+            halo_id: 0,
+            n_particles: 2,
+            mass: 2.0,
+            x_com: 0.1,
+            y_com: 0.1,
+            z_com: 0.1,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 0.0,
+            r_vir: 0.05,
+        }];
+        let positions = vec![Vec3::new(0.12, 0.1, 0.1), Vec3::new(0.9, 0.9, 0.9)];
+        let snaps = particle_snapshots_from_catalog(&positions, &[0, 1], &halos, 1.0);
+        assert_eq!(snaps[0].halo_idx, Some(0));
+        assert!(snaps[1].halo_idx.is_none());
+    }
+
+    #[test]
+    fn fof_periodic_wrap_links_across_boundary() {
+        let pos = vec![
+            Vec3::new(0.01, 0.5, 0.5),
+            Vec3::new(0.99, 0.5, 0.5),
+            Vec3::new(0.02, 0.5, 0.5),
+            Vec3::new(0.98, 0.5, 0.5),
+        ];
+        let vel = vec![Vec3::zero(); 4];
+        let mass = vec![1.0; 4];
+        let halos = find_halos(&pos, &vel, &mass, 1.0, 0.05, 2, 0.0);
+        assert_eq!(halos.len(), 1);
+        assert_eq!(halos[0].n_particles, 4);
+    }
 }

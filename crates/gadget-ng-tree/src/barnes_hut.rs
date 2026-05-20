@@ -137,10 +137,7 @@ mod tests {
     #[test]
     fn two_body_attraction_has_opposite_x_components() {
         let solver = BarnesHutGravity::default();
-        let positions = vec![
-            Vec3::new(0.1, 0.5, 0.5),
-            Vec3::new(0.9, 0.5, 0.5),
-        ];
+        let positions = vec![Vec3::new(0.1, 0.5, 0.5), Vec3::new(0.9, 0.5, 0.5)];
         let masses = vec![1.0, 1.0];
         let mut acc = vec![Vec3::zero(); 2];
         solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[0, 1], &mut acc);

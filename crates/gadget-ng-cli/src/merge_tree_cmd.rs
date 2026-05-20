@@ -131,13 +131,7 @@ mod tests {
     fn run_merge_tree_mismatched_lengths_errors() {
         let dir = TempDir::new().expect("tmpdir");
         let out = dir.path().join("forest.json");
-        let err = run_merge_tree(
-            &[dir.path().join("a")],
-            &[],
-            &out,
-            0.3,
-        )
-        .unwrap_err();
+        let err = run_merge_tree(&[dir.path().join("a")], &[], &out, 0.3).unwrap_err();
         assert!(matches!(err, CliError::InvalidConfig(_)));
     }
 }

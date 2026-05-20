@@ -145,3 +145,54 @@ impl GravitySolver for PmSolver {
 // pero se mantienen para documentar explícitamente que el tipo es thread-safe.
 unsafe impl Send for PmSolver {}
 unsafe impl Sync for PmSolver {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{GravitySolver, Vec3};
+
+    #[test]
+    fn pm_solver_two_particles_finite_acceleration() {
+        let solver = PmSolver::new(8, 1.0);
+        let positions = vec![Vec3::new(0.2, 0.5, 0.5), Vec3::new(0.8, 0.5, 0.5)];
+        let masses = vec![1.0, 1.0];
+        let mut acc = vec![Vec3::zero(); 2];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[0, 1], &mut acc);
+        let norm: f64 = acc.iter().map(|a| a.dot(*a)).sum::<f64>().sqrt();
+        assert!(norm > 0.0);
+    }
+
+    #[test]
+    fn pm_solver_empty_indices_is_noop() {
+        let solver = PmSolver::new(8, 1.0);
+        let positions = vec![Vec3::new(0.5, 0.5, 0.5)];
+        let masses = vec![1.0];
+        let mut acc: Vec<Vec3> = vec![];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[], &mut acc);
+        assert!(acc.is_empty());
+    }
+
+    #[test]
+    fn pm_solver_uniform_lattice_near_zero_mean_accel() {
+        let solver = PmSolver::new(8, 1.0);
+        let mut positions = Vec::new();
+        let mut masses = Vec::new();
+        for ix in 0..2 {
+            for iy in 0..2 {
+                for iz in 0..2 {
+                    positions.push(Vec3::new(
+                        (ix as f64 + 0.5) / 2.0,
+                        (iy as f64 + 0.5) / 2.0,
+                        (iz as f64 + 0.5) / 2.0,
+                    ));
+                    masses.push(1.0 / 8.0);
+                }
+            }
+        }
+        let indices: Vec<usize> = (0..8).collect();
+        let mut acc = vec![Vec3::zero(); 8];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &indices, &mut acc);
+        let mean = acc.iter().fold(Vec3::zero(), |s, a| s + *a) / 8.0;
+        assert!(mean.norm() < 1e-6);
+    }
+}

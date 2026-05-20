@@ -209,6 +209,7 @@ fn apply_phase_transition_particle(p: &mut Particle, dt: f64, gamma: f64, t_tran
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gadget_ng_core::Vec3;
 
     #[test]
     fn temperature_conversion_roundtrip() {
@@ -230,6 +231,26 @@ mod tests {
         let u_hot = u_from_temperature(1e6, 5.0 / 3.0);
         let phase = classify_phase(u_hot, 0.0, 5.0 / 3.0);
         assert!(matches!(phase, GasPhase::Hot));
+    }
+
+    #[test]
+    fn classify_warm_phase() {
+        let u_warm = u_from_temperature(5e4, 5.0 / 3.0);
+        let phase = classify_phase(u_warm, 0.0, 5.0 / 3.0);
+        assert!(matches!(phase, GasPhase::Warm));
+    }
+
+    #[test]
+    fn phase_fractions_sum_to_one_for_gas_only() {
+        let mut p_cold = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        p_cold.ptype = ParticleType::Gas;
+        p_cold.internal_energy = u_from_temperature(5e3, 5.0 / 3.0);
+        let mut p_hot = Particle::new(1, 1.0, Vec3::new(1.0, 0.0, 0.0), Vec3::zero());
+        p_hot.ptype = ParticleType::Gas;
+        p_hot.internal_energy = u_from_temperature(1e6, 5.0 / 3.0);
+        let (f_cold, f_warm, f_hot) = phase_fractions(&[p_cold, p_hot], 5.0 / 3.0);
+        let sum = f_cold + f_warm + f_hot;
+        assert!((sum - 1.0).abs() < 1e-12);
     }
 
     #[test]

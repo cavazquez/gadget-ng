@@ -1724,6 +1724,23 @@ mod tests {
     use super::*;
 
     use approx::assert_abs_diff_eq;
+    use gadget_ng_core::{ParticleType, Vec3};
+
+    #[test]
+    fn compute_dedner_div_b_empty() {
+        assert!(compute_dedner_div_b(&[]).is_empty());
+    }
+
+    #[test]
+    fn compute_dedner_div_b_gas_only_finite() {
+        let mut p = Particle::new(0, 1.0, Vec3::zero(), Vec3::zero());
+        p.ptype = ParticleType::Gas;
+        p.b_field = Vec3::new(0.0, 0.0, 1.0);
+        p.smoothing_length = 0.1;
+        let div = compute_dedner_div_b(&[p]);
+        assert_eq!(div.len(), 1);
+        assert!(div[0].is_finite());
+    }
 
     fn cleaning_particles() -> Vec<Particle> {
         (0..13)

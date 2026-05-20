@@ -265,14 +265,28 @@ mod tests {
 
     #[test]
     fn inject_cr_from_sn_adds_energy() {
-        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1)];
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::zero(),
+            Vec3::zero(),
+            1.0,
+            0.1,
+        )];
         inject_cr_from_sn(&mut particles, &[1.0], 0.1, 0.01);
         assert!(particles[0].cr_energy > 0.0);
     }
 
     #[test]
     fn apply_cr_hadronic_losses_reduces_cr_energy() {
-        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1)];
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::zero(),
+            Vec3::zero(),
+            1.0,
+            0.1,
+        )];
         particles[0].cr_energy = 1.0;
         apply_cr_hadronic_losses(&mut particles, 1.0, 0.1);
         assert!(particles[0].cr_energy < 1.0);

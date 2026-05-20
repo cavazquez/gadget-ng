@@ -83,6 +83,19 @@ impl HalofitCosmo {
 
 // ── Integrales de σ²(R) ──────────────────────────────────────────────────────
 
+/// Puntos de cuadratura log-k para σ²(R). Tarpaulin multiplica el coste ~10×;
+/// menos puntos mantienen tests estables con tolerancias ya amplias.
+#[inline]
+const fn sigma_sq_quadrature_points() -> usize {
+    if cfg!(tarpaulin) { 256 } else { 1000 }
+}
+
+/// Iteraciones de bisección para R_sigma (precisión suficiente en tests/CI).
+#[inline]
+const fn find_r_sigma_bisection_iters() -> usize {
+    if cfg!(tarpaulin) { 30 } else { 50 }
+}
+
 /// Filtro top-hat: W(x) = 3(sin x − x cos x)/x³.
 #[inline]
 fn tophat_win(x: f64) -> f64 {
@@ -95,8 +108,8 @@ fn tophat_win(x: f64) -> f64 {
 /// σ²(R) = (1/2π²) ∫₀^∞ k² P_lin(k) W²(kR) dk
 /// con integración trapezoidal en k log-equiespaciado.
 fn sigma_sq(r: f64, p_linear: &dyn Fn(f64) -> f64) -> f64 {
-    // Rango de integración log-espacio: k ∈ [1e-4, 1e3] h/Mpc, 1000 puntos.
-    let n = 1000usize;
+    // Rango de integración log-espacio: k ∈ [1e-4, 1e3] h/Mpc.
+    let n = sigma_sq_quadrature_points();
     let log_kmin = 1e-4_f64.ln();
     let log_kmax = 1e3_f64.ln();
     let dlog_k = (log_kmax - log_kmin) / (n as f64 - 1.0);
@@ -161,10 +174,10 @@ fn find_r_sigma(p_linear: &dyn Fn(f64) -> f64) -> Option<f64> {
         return Some(r_max);
     }
 
-    // Bisección: 50 iteraciones → precisión ~ (r_max - r_min) / 2^50 ~ 1e-12.
+    // Bisección: precisión ~ (r_max - r_min) / 2^n_iters.
     let mut lo = r_min;
     let mut hi = r_max;
-    for _ in 0..50 {
+    for _ in 0..find_r_sigma_bisection_iters() {
         let mid = 0.5 * (lo + hi);
         if sigma_sq(mid, p_linear) > 1.0 {
             lo = mid;

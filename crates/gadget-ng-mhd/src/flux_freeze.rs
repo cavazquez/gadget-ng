@@ -666,7 +666,14 @@ mod tests {
 
     #[test]
     fn apply_flux_freeze_scales_b_when_beta_high() {
-        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1e4, 0.1)];
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::zero(),
+            Vec3::zero(),
+            1e4,
+            0.1,
+        )];
         particles[0].b_field = Vec3::new(1.0, 0.0, 0.0);
         let b0 = particles[0].b_field.x;
         // rho_ref << densidad local (m/h³) para activar B ∝ ρ^{2/3}

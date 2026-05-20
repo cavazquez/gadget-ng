@@ -818,9 +818,15 @@ mod tests {
 
     #[test]
     fn pm_fifth_force_boost_gr_and_fr_limits() {
-        let gr = gadget_ng_core::FRParams { f_r0: 0.0, ..Default::default() };
+        let gr = gadget_ng_core::FRParams {
+            f_r0: 0.0,
+            ..Default::default()
+        };
         assert!((pm_fifth_force_boost(&gr) - 1.0).abs() < 1e-12);
-        let fr = gadget_ng_core::FRParams { f_r0: 1.0, ..Default::default() };
+        let fr = gadget_ng_core::FRParams {
+            f_r0: 1.0,
+            ..Default::default()
+        };
         assert!((pm_fifth_force_boost(&fr) - 4.0 / 3.0).abs() < 1e-12);
     }
 

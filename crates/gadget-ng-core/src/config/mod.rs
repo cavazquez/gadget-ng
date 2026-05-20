@@ -543,4 +543,21 @@ theta = 0.5
         let g_units = cfg.effective_g();
         assert!((g_units - cfg.units.compute_g()).abs() < 1e-12);
     }
+
+    #[test]
+    fn validate_rejects_gas_fraction_out_of_range() {
+        let mut cfg = minimal_run_config();
+        cfg.sph.enabled = true;
+        cfg.sph.gas_fraction = 1.5;
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::GasFractionOutOfRange(1.5)));
+    }
+
+    #[test]
+    fn validate_accepts_gas_fraction_in_unit_interval() {
+        let mut cfg = minimal_run_config();
+        cfg.sph.enabled = true;
+        cfg.sph.gas_fraction = 0.15;
+        assert!(cfg.validate().is_ok());
+    }
 }

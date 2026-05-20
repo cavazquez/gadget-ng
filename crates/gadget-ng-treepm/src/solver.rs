@@ -113,3 +113,38 @@ impl GravitySolver for TreePmSolver {
 // automáticamente) pero se mantienen para documentar thread-safety.
 unsafe impl Send for TreePmSolver {}
 unsafe impl Sync for TreePmSolver {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::GravitySolver;
+
+    #[test]
+    fn treepm_solver_two_particles_finite_acceleration() {
+        let solver = TreePmSolver {
+            grid_size: 8,
+            box_size: 1.0,
+            r_split: 0.0,
+        };
+        let positions = vec![Vec3::new(0.2, 0.5, 0.5), Vec3::new(0.8, 0.5, 0.5)];
+        let masses = vec![1.0, 1.0];
+        let mut acc = vec![Vec3::zero(); 2];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[0, 1], &mut acc);
+        let norm: f64 = acc.iter().map(|a| a.dot(*a)).sum::<f64>().sqrt();
+        assert!(norm > 0.0);
+    }
+
+    #[test]
+    fn treepm_solver_empty_indices_is_noop() {
+        let solver = TreePmSolver {
+            grid_size: 8,
+            box_size: 1.0,
+            r_split: 0.0,
+        };
+        let positions = vec![Vec3::new(0.5, 0.5, 0.5)];
+        let masses = vec![1.0];
+        let mut acc: Vec<Vec3> = vec![];
+        solver.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &[], &mut acc);
+        assert!(acc.is_empty());
+    }
+}

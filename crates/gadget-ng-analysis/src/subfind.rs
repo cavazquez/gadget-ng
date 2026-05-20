@@ -425,4 +425,87 @@ mod tests {
         let e = gravitational_potential_energy(&pos, &mass, 1.0, 0.0);
         assert!((e + 1.0).abs() < 1e-10, "E_pot = {e} ≠ -1");
     }
+
+    #[test]
+    fn find_subhalos_dense_cluster_returns_bound_group() {
+        let n = 48usize;
+        let center = Vec3::new(0.5, 0.5, 0.5);
+        let radius = 0.05;
+        let mut positions = Vec::with_capacity(n);
+        let mut velocities = Vec::with_capacity(n);
+        let mut masses = Vec::with_capacity(n);
+        let mut seed = 42u64;
+        let mut rng = || -> f64 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 33) as u32) as f64 / u32::MAX as f64
+        };
+        for _ in 0..n {
+            let (px, py, pz) = loop {
+                let x = rng() * 2.0 - 1.0;
+                let y = rng() * 2.0 - 1.0;
+                let z = rng() * 2.0 - 1.0;
+                let r2 = x * x + y * y + z * z;
+                if r2 <= 1.0 && r2 > 0.0 {
+                    let r = r2.sqrt() * radius;
+                    break (
+                        center.x + r * x / r2.sqrt(),
+                        center.y + r * y / r2.sqrt(),
+                        center.z + r * z / r2.sqrt(),
+                    );
+                }
+            };
+            positions.push(Vec3::new(px, py, pz));
+            velocities.push(Vec3::zero());
+            masses.push(1.0);
+        }
+        let halo = FofHalo {
+            halo_id: 0,
+            n_particles: n,
+            mass: n as f64,
+            x_com: center.x,
+            y_com: center.y,
+            z_com: center.z,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 0.0,
+            r_vir: 0.1,
+        };
+        let params = SubfindParams {
+            k_neighbors: 8,
+            min_subhalo_particles: 5,
+            ..Default::default()
+        };
+        let subhalos = find_subhalos(&halo, &positions, &velocities, &masses, &params);
+        assert!(!subhalos.is_empty());
+        assert!(subhalos.iter().all(|s| s.e_total < 0.0));
+    }
+
+    #[test]
+    fn find_subhalos_too_few_particles_returns_empty() {
+        let halo = FofHalo {
+            halo_id: 0,
+            n_particles: 2,
+            mass: 2.0,
+            x_com: 0.0,
+            y_com: 0.0,
+            z_com: 0.0,
+            vx_com: 0.0,
+            vy_com: 0.0,
+            vz_com: 0.0,
+            velocity_dispersion: 0.0,
+            r_vir: 0.1,
+        };
+        let params = SubfindParams::default();
+        let subhalos = find_subhalos(
+            &halo,
+            &[Vec3::zero(), Vec3::new(1.0, 0.0, 0.0)],
+            &[Vec3::zero(); 2],
+            &[1.0, 1.0],
+            &params,
+        );
+        assert!(subhalos.is_empty());
+    }
 }

@@ -597,7 +597,14 @@ mod tests {
 
     #[test]
     fn update_dust_grows_d_to_g_in_cold_metal_rich_gas() {
-        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1e-8, 0.1)];
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::zero(),
+            Vec3::zero(),
+            1e-8,
+            0.1,
+        )];
         particles[0].metallicity = 0.5;
         particles[0].dust_to_gas = 0.0;
         update_dust(&mut particles, &dust_cfg(), 5.0 / 3.0, 0.5);
@@ -628,12 +635,23 @@ mod tests {
     #[test]
     fn dust_ir_luminosity_zero_without_dust() {
         let p = Particle::new_gas(0, 1.0, Vec3::zero(), Vec3::zero(), 1.0, 0.1);
-        assert_abs_diff_eq!(dust_ir_luminosity(&p, 20.0, &dust_cfg()), 0.0, epsilon = 1e-30);
+        assert_abs_diff_eq!(
+            dust_ir_luminosity(&p, 20.0, &dust_cfg()),
+            0.0,
+            epsilon = 1e-30
+        );
     }
 
     #[test]
     fn radiation_pressure_kick_moves_gas_with_dust() {
-        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::new(0.0, 0.0, 1.0), Vec3::zero(), 1.0, 0.1)];
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::zero(),
+            1.0,
+            0.1,
+        )];
         particles[0].dust_to_gas = 0.01;
         let cfg = DustSection {
             enabled: true,

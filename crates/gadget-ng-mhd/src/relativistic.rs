@@ -372,14 +372,7 @@ mod tests {
             Particle::new_gas(0, 1.0, Vec3::new(0.0, 0.0, 0.1), Vec3::zero(), 0.1, 0.1),
             Particle::new_gas(1, 1.0, Vec3::new(0.0, 0.0, -0.1), Vec3::zero(), 0.1, 0.1),
         ];
-        inject_relativistic_jet(
-            &mut particles,
-            &[Vec3::zero()],
-            0.3,
-            1,
-            C_LIGHT,
-            1.0,
-        );
+        inject_relativistic_jet(&mut particles, &[Vec3::zero()], 0.3, 1, C_LIGHT, 1.0);
         assert!(particles[0].velocity.z > 0.0);
         assert!(particles[1].velocity.z < 0.0);
     }

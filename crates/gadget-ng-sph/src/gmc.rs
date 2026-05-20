@@ -337,7 +337,14 @@ mod tests {
             age_gyr: 0.01,
             metallicity: 0.02,
         };
-        let mut particles = vec![Particle::new_gas(0, 1.0, Vec3::new(0.1, 0.0, 0.0), Vec3::zero(), 1.0, 0.5)];
+        let mut particles = vec![Particle::new_gas(
+            0,
+            1.0,
+            Vec3::new(0.1, 0.0, 0.0),
+            Vec3::zero(),
+            1.0,
+            0.5,
+        )];
         let u0 = particles[0].internal_energy;
         inject_sn_from_cluster(&[cluster], &mut particles, 0.01, &SphSection::default());
         assert!(particles[0].internal_energy > u0);

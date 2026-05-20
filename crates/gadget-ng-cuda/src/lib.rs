@@ -98,10 +98,7 @@ mod integration_tests {
 
     #[test]
     fn pm_solver_try_new_checked() {
-        assert_solver_constructible!(
-            "CudaPmSolver",
-            CudaPmSolver::try_new_checked(16, 1.0)
-        );
+        assert_solver_constructible!("CudaPmSolver", CudaPmSolver::try_new_checked(16, 1.0));
     }
 
     #[test]
@@ -144,9 +141,6 @@ mod integration_tests {
 
     #[test]
     fn analysis_solver_try_new_checked() {
-        assert_solver_constructible!(
-            "CudaAnalysisSolver",
-            CudaAnalysisSolver::try_new_checked()
-        );
+        assert_solver_constructible!("CudaAnalysisSolver", CudaAnalysisSolver::try_new_checked());
     }
 }

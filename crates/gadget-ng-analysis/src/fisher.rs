@@ -536,6 +536,27 @@ mod tests {
     }
 
     #[test]
+    fn correlation_matrix_diagonal_is_one() {
+        let fiducial = planck_fiducial();
+        let config = small_config();
+        let fisher = fisher_matrix(&config, &fiducial);
+        let corr = correlation_matrix(&fisher);
+        let n = fisher.n_params;
+        for i in 0..n {
+            assert!((corr[i * n + i] - 1.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn k_bins_default_is_monotone_increasing() {
+        let bins = k_bins_default();
+        assert!(bins.len() >= 4);
+        for w in bins.windows(2) {
+            assert!(w[1] > w[0]);
+        }
+    }
+
+    #[test]
     fn derivative_converges_with_step() {
         let fiducial = planck_fiducial();
         let k = 0.1;
