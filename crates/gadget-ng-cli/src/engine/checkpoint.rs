@@ -203,4 +203,72 @@ mod tests {
         assert!(back.has_hierarchical_state);
         assert!(back.has_chem_state);
     }
+
+    #[test]
+    fn save_load_checkpoint_roundtrip_serial() {
+        use super::{load_checkpoint, save_checkpoint};
+        use crate::config_load;
+        use gadget_ng_core::{Particle, RunConfig, Vec3};
+        use gadget_ng_parallel::SerialRuntime;
+
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+dt = 0.01
+num_steps = 2
+softening = 0.05
+particle_count = 8
+box_size = 1.0
+seed = 99
+
+[initial_conditions]
+kind = "lattice"
+"#,
+        )
+        .expect("toml parse");
+        let hash = config_load::config_canonical_hash(&cfg).expect("hash");
+        let rt = SerialRuntime;
+        let total = cfg.simulation.particle_count;
+        let local: Vec<Particle> = (0..total)
+            .map(|i| {
+                Particle::new(
+                    i,
+                    1.0,
+                    Vec3::new((i % 2) as f64 * 0.5, ((i / 2) % 2) as f64 * 0.5, 0.5),
+                    Vec3::new(0.01, 0.0, 0.0),
+                )
+            })
+            .collect();
+        let dir = tempfile::tempdir().expect("tempdir");
+        save_checkpoint(
+            &rt,
+            2,
+            1.0,
+            &local,
+            total,
+            None,
+            dir.path(),
+            &hash,
+            &[],
+            &[],
+        )
+        .expect("save_checkpoint");
+        assert!(
+            dir.path()
+                .join("checkpoint")
+                .join("checkpoint.json")
+                .exists()
+        );
+
+        let (loaded, step, a, h_state, agn, chem) =
+            load_checkpoint(&rt, dir.path(), 0, total, &hash).expect("load_checkpoint");
+        assert_eq!(loaded.len(), total);
+        assert_eq!(step, 2);
+        assert!((a - 1.0).abs() < 1e-12);
+        assert!(h_state.is_none());
+        assert!(agn.is_none());
+        assert!(chem.is_none());
+        assert_eq!(loaded[0].global_id, 0);
+        assert!((loaded[0].mass - 1.0).abs() < 1e-12);
+    }
 }

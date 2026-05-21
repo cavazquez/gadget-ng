@@ -210,6 +210,67 @@ gas_fraction = 1.0
     run_stepping(&rt, &cfg, dir.path(), false, None).expect("sph smoke ok");
 }
 
+// ── MHD mínimo (gas + campo B uniforme) ─────────────────────────────────────
+
+#[test]
+fn smoke_stepping_mhd_minimal() {
+    run_toml(&base_toml(
+        r#"
+[sph]
+enabled      = true
+gas_fraction = 1.0
+
+[mhd]
+enabled = true
+b0_kind = "uniform"
+b0_uniform = [0.0, 0.0, 0.01]
+"#,
+    ));
+}
+
+// ── Integrador jerárquico (block timesteps) ───────────────────────────────────
+
+#[test]
+fn smoke_stepping_hierarchical_leapfrog() {
+    run_toml(&base_toml(
+        r#"
+[timestep]
+hierarchical = true
+eta = 0.05
+max_level = 2
+"#,
+    ));
+}
+
+// ── run_snapshot vía stepping + snapshot final ────────────────────────────────
+
+#[test]
+fn smoke_run_snapshot_via_stepping() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg: gadget_ng_core::RunConfig = toml::from_str(
+        r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 1
+softening      = 0.05
+seed           = 11
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0
+"#,
+    )
+    .expect("toml parse");
+    let rt = SerialRuntime;
+    run_stepping(&rt, &cfg, dir.path(), true, None).expect("stepping with snapshot ok");
+    assert!(dir.path().join("snapshot_final").exists());
+}
+
 // ── Yoshida-4 integrator ──────────────────────────────────────────────────────
 
 #[test]
