@@ -1814,4 +1814,28 @@ mod tests {
             assert_abs_diff_eq!(dispatched[idx].b_field.z, b_before.z, epsilon = 0.0);
         }
     }
+
+    #[test]
+    fn alfven_dt_finite_with_magnetized_gas() {
+        let parts = make_induction_particles(8, false);
+        let dt = alfven_dt(&parts, 0.2);
+        assert!(dt.is_finite() && dt > 0.0);
+    }
+
+    #[test]
+    fn alfven_dt_infinite_without_b_field() {
+        let parts: Vec<Particle> = (0..4)
+            .map(|i| {
+                Particle::new_gas(
+                    i,
+                    1.0,
+                    Vec3::new(i as f64 * 0.2, 0.0, 0.0),
+                    Vec3::zero(),
+                    1.0,
+                    0.1,
+                )
+            })
+            .collect();
+        assert_eq!(alfven_dt(&parts, 0.2), f64::INFINITY);
+    }
 }

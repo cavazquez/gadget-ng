@@ -2882,3 +2882,525 @@ pub fn run_stepping<R: ParallelRuntime + ?Sized>(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod smoke_tests {
+    use super::run_stepping;
+    use gadget_ng_core::RunConfig;
+    use gadget_ng_parallel::SerialRuntime;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn base_toml(extra: &str) -> String {
+        format!(
+            r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 1
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0
+
+{extra}
+"#
+        )
+    }
+
+    fn run_cfg(
+        cfg: &RunConfig,
+        out: &Path,
+        write_final_snapshot: bool,
+        resume_from: Option<&Path>,
+    ) {
+        let rt = SerialRuntime;
+        run_stepping(&rt, cfg, out, write_final_snapshot, resume_from).expect("run_stepping ok");
+    }
+
+    fn run_toml(toml: &str, write_final_snapshot: bool) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(toml).expect("toml parse");
+        run_cfg(&cfg, dir.path(), write_final_snapshot, None);
+    }
+
+    fn assert_insitu_files_exist(dir: &Path, steps: &[u64]) {
+        for step in steps {
+            let path = dir.join(format!("insitu_{step:06}.json"));
+            assert!(path.exists(), "falta archivo in-situ {path:?}");
+            let text = fs::read_to_string(&path).expect("read insitu json");
+            let json: serde_json::Value = serde_json::from_str(&text).expect("parse insitu json");
+            assert!(
+                json.get("power_spectrum").is_some(),
+                "insitu debe incluir P(k)"
+            );
+        }
+    }
+
+    #[test]
+    fn smoke_direct_lattice_two_steps() {
+        run_toml(&base_toml(""), false);
+    }
+
+    #[test]
+    fn smoke_pm_lattice_two_steps() {
+        run_toml(
+            &base_toml(
+                r#"
+[gravity]
+solver       = "pm"
+pm_grid_size = 8
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_treepm_lattice_two_steps() {
+        run_toml(
+            &base_toml(
+                r#"
+[gravity]
+solver       = "tree_pm"
+pm_grid_size = 8
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_plummer_barnes_hut() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+particle_count = 32
+box_size       = 20.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.1
+seed           = 42
+
+[initial_conditions]
+kind = { plummer = { a = 1.0 } }
+
+[gravity]
+solver = "barnes_hut"
+theta  = 0.5
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0
+"#,
+        )
+        .expect("toml parse");
+        run_cfg(&cfg, dir.path(), false, None);
+    }
+
+    #[test]
+    fn smoke_cosmo_pm() {
+        run_toml(
+            &base_toml(
+                r#"
+[gravity]
+solver       = "pm"
+pm_grid_size = 8
+
+[cosmology]
+enabled      = true
+omega_m      = 0.3
+omega_lambda = 0.7
+h0           = 0.7
+a_init       = 0.02
+a_final      = 0.03
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_yoshida4_integrator() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 1
+integrator     = "yoshida4"
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0
+"#,
+        )
+        .expect("toml parse");
+        run_cfg(&cfg, dir.path(), false, None);
+    }
+
+    #[test]
+    fn smoke_hierarchical_leapfrog() {
+        run_toml(
+            &base_toml(
+                r#"
+[timestep]
+hierarchical = true
+eta = 0.05
+max_level = 2
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_sph_minimal() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.001
+num_steps      = 1
+softening      = 0.1
+seed           = 5
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 0
+
+[sph]
+enabled      = true
+gas_fraction = 1.0
+"#,
+        )
+        .expect("toml parse");
+        run_cfg(&cfg, dir.path(), false, None);
+    }
+
+    #[test]
+    fn smoke_mhd_minimal() {
+        run_toml(
+            &base_toml(
+                r#"
+[sph]
+enabled      = true
+gas_fraction = 1.0
+
+[mhd]
+enabled = true
+b0_kind = "uniform"
+b0_uniform = [0.0, 0.0, 0.01]
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_rt_reionization_minimal() {
+        run_toml(
+            &base_toml(
+                r#"
+[sph]
+enabled      = true
+gas_fraction = 1.0
+
+[rt]
+enabled    = true
+rt_mesh    = 4
+substeps   = 1
+
+[reionization]
+enabled       = true
+n_sources     = 2
+uv_luminosity = 0.1
+z_start       = 1.0
+z_end         = 0.0
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_sidm_minimal() {
+        run_toml(
+            &base_toml(
+                r#"
+[sidm]
+enabled  = true
+sigma_m  = 1.0e-5
+v_max    = 1.0e6
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_modified_gravity_fr() {
+        run_toml(
+            &base_toml(
+                r#"
+[modified_gravity]
+enabled = true
+f_r0    = 1.0e-4
+n       = 1.0
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_dark_matter_wdm_cosmo() {
+        run_toml(
+            &base_toml(
+                r#"
+[gravity]
+solver       = "pm"
+pm_grid_size = 8
+
+[cosmology]
+enabled      = true
+omega_m      = 0.3
+omega_lambda = 0.7
+h0           = 0.7
+a_init       = 0.02
+a_final      = 0.03
+
+[dark_matter]
+enabled   = true
+model     = "warm"
+m_wdm_kev = 3.0
+"#,
+            ),
+            false,
+        );
+    }
+
+    #[test]
+    fn smoke_direct_writes_final_snapshot() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(&base_toml("")).expect("toml parse");
+        run_cfg(&cfg, dir.path(), true, None);
+        assert!(dir.path().join("snapshot_final").exists());
+    }
+
+    #[test]
+    fn smoke_snapshot_interval_writes_frames() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 13
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 1
+"#,
+        )
+        .expect("toml parse");
+        run_cfg(&cfg, dir.path(), false, None);
+        assert!(dir.path().join("frames").join("snap_000001").exists());
+        assert!(dir.path().join("frames").join("snap_000002").exists());
+    }
+
+    #[test]
+    fn smoke_checkpoint_resume() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out1 = dir.path().join("run1");
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 7
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 1
+snapshot_interval   = 0
+"#,
+        )
+        .expect("toml parse");
+        run_cfg(&cfg, &out1, false, None);
+        assert!(out1.join("checkpoint").exists());
+        let out2 = dir.path().join("run2");
+        run_cfg(&cfg, &out2, false, Some(&out1));
+    }
+
+    #[test]
+    fn smoke_resume_completes_remaining_steps() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out1 = dir.path().join("run1");
+        let cfg_partial: RunConfig = toml::from_str(
+            r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 17
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 1
+snapshot_interval   = 0
+"#,
+        )
+        .expect("toml parse");
+        run_cfg(&cfg_partial, &out1, false, None);
+
+        let ck_meta_path = out1.join("checkpoint").join("checkpoint.json");
+        let partial_meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&ck_meta_path).expect("read checkpoint"))
+                .expect("parse checkpoint json");
+        assert_eq!(partial_meta["completed_step"].as_u64(), Some(2));
+
+        let mut cfg_full = cfg_partial;
+        cfg_full.simulation.num_steps = 4;
+        let out2: PathBuf = dir.path().join("run2");
+        run_cfg(&cfg_full, &out2, false, Some(&out1));
+
+        let final_meta: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(out2.join("checkpoint").join("checkpoint.json"))
+                .expect("read final ck"),
+        )
+        .expect("parse final checkpoint");
+        assert_eq!(final_meta["completed_step"].as_u64(), Some(4));
+    }
+
+    #[test]
+    fn smoke_insitu_basic() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(&base_toml(
+            r#"
+[insitu_analysis]
+enabled      = true
+interval     = 1
+pk_mesh      = 8
+fof_min_part = 4
+xi_bins      = 4
+"#,
+        ))
+        .expect("toml parse");
+        run_cfg(&cfg, dir.path(), false, None);
+        assert_insitu_files_exist(dir.path(), &[1, 2]);
+    }
+
+    #[test]
+    fn smoke_insitu_extended_flags() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg: RunConfig = toml::from_str(&base_toml(
+            r#"
+[sph]
+enabled      = true
+gas_fraction = 1.0
+
+[rt]
+enabled  = true
+rt_mesh  = 4
+substeps = 1
+
+[reionization]
+enabled       = true
+n_sources     = 2
+uv_luminosity = 0.1
+z_start       = 1.0
+z_end         = 0.0
+
+[insitu_analysis]
+enabled            = true
+interval           = 1
+pk_mesh            = 8
+fof_min_part       = 4
+xi_bins            = 4
+bispectrum_bins    = 2
+igm_temp_enabled   = true
+cm21_enabled       = true
+sz_enabled         = true
+sz_n_pixels        = 8
+lya_enabled        = true
+lya_n_sightlines   = 8
+wl_enabled         = true
+wl_n_pixels        = 8
+wl_fov_rad         = 0.08
+"#,
+        ))
+        .expect("toml parse");
+        run_cfg(&cfg, dir.path(), false, None);
+        let path = dir.path().join("insitu_000001.json");
+        assert!(path.exists());
+        let json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read insitu")).expect("parse");
+        assert!(json.get("sz_compton_y").is_some());
+        assert!(json.get("lya").is_some());
+        assert!(json.get("wl").is_some());
+        assert!(
+            json.get("bk_equilateral")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| !a.is_empty())
+        );
+    }
+
+    #[test]
+    fn smoke_agn_with_insitu() {
+        run_toml(
+            &base_toml(
+                r#"
+[sph]
+enabled      = true
+gas_fraction = 0.5
+
+[sph.agn]
+enabled = true
+n_agn_bh = 1
+
+[insitu_analysis]
+enabled      = true
+interval     = 1
+pk_mesh      = 8
+fof_min_part = 4
+"#,
+            ),
+            false,
+        );
+    }
+}

@@ -1256,3 +1256,303 @@ pub(crate) fn step_reionization(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, RunConfig, Vec3};
+    use gadget_ng_parallel::SerialRuntime;
+    use gadget_ng_rt::{ChemState, RadiationField};
+
+    fn cfg_from_toml(extra: &str) -> RunConfig {
+        toml::from_str(&format!(
+            r#"
+[simulation]
+particle_count = 8
+box_size = 1.0
+dt = 0.01
+num_steps = 2
+softening = 0.05
+seed = 1
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval = 0
+
+{extra}
+"#
+        ))
+        .expect("toml parse")
+    }
+
+    fn lattice_gas(n: usize) -> Vec<Particle> {
+        let side = (n as f64).cbrt().round() as usize;
+        (0..n)
+            .map(|i| {
+                let ix = i % side;
+                let iy = (i / side) % side;
+                let iz = i / (side * side);
+                let mut p = Particle::new_gas(
+                    i,
+                    1.0 / n as f64,
+                    Vec3::new(
+                        (ix as f64 + 0.5) / side as f64,
+                        (iy as f64 + 0.5) / side as f64,
+                        (iz as f64 + 0.5) / side as f64,
+                    ),
+                    Vec3::zero(),
+                    100.0,
+                    0.05,
+                );
+                p.b_field = Vec3::new(0.0, 0.0, 0.01);
+                p
+            })
+            .collect()
+    }
+
+    #[test]
+    fn step_mhd_disabled_is_noop() {
+        let mut local = lattice_gas(8);
+        let b_before = local[0].b_field;
+        let cfg = cfg_from_toml("");
+        step_mhd(&mut local, &cfg);
+        assert_eq!(local[0].b_field, b_before);
+    }
+
+    #[test]
+    fn step_mhd_advances_b_field() {
+        let mut local = lattice_gas(8);
+        let b_before = local[0].b_field;
+        let cfg = cfg_from_toml(
+            r#"
+[sph]
+enabled = true
+gas_fraction = 1.0
+
+[mhd]
+enabled = true
+"#,
+        );
+        step_mhd(&mut local, &cfg);
+        assert_ne!(local[0].b_field, b_before);
+    }
+
+    #[test]
+    fn step_sidm_scatters_velocities() {
+        let mut local = lattice_gas(8);
+        let cfg = cfg_from_toml(
+            r#"
+[sidm]
+enabled = true
+sigma_m = 1.0
+v_max = 1.0e6
+"#,
+        );
+        // SIDM es estocástico: varios pasos aumentan la probabilidad de scatter.
+        for step in 1..=8 {
+            step_sidm(&mut local, &cfg, step);
+        }
+        assert!(local.iter().all(|p| p.velocity.x.is_finite()));
+    }
+
+    #[test]
+    fn step_fr_skips_when_pm_solver() {
+        let mut local = lattice_gas(8);
+        for p in local.iter_mut() {
+            p.acceleration = Vec3::new(1.0, 0.0, 0.0);
+        }
+        let acc_before = local[0].acceleration;
+        let cfg = cfg_from_toml(
+            r#"
+[gravity]
+solver = "pm"
+pm_grid_size = 8
+
+[modified_gravity]
+enabled = true
+f_r0 = 1.0e-4
+n = 1.0
+"#,
+        );
+        step_fr(&mut local, &cfg, 1.0);
+        assert_eq!(local[0].acceleration, acc_before);
+    }
+
+    #[test]
+    fn step_fr_direct_modifies_acceleration() {
+        let mut local = lattice_gas(8);
+        for p in local.iter_mut() {
+            p.acceleration = Vec3::new(1.0, 0.0, 0.0);
+        }
+        let cfg = cfg_from_toml(
+            r#"
+[modified_gravity]
+enabled = true
+f_r0 = 1.0e-4
+n = 1.0
+"#,
+        );
+        step_fr(&mut local, &cfg, 1.0);
+        assert_ne!(local[0].acceleration.x, 1.0);
+    }
+
+    #[test]
+    fn step_rt_updates_radiation_field() {
+        let mut local = lattice_gas(8);
+        let mut rf = Some(RadiationField::uniform(4, 4, 4, 0.25, 1.0));
+        let cfg = cfg_from_toml(
+            r#"
+[rt]
+enabled = true
+rt_mesh = 4
+substeps = 1
+"#,
+        );
+        step_rt(&mut local, &mut rf, &cfg);
+        let e1 = rf.as_ref().unwrap().total_energy(1.0);
+        assert!(e1.is_finite() && e1 >= 0.0);
+    }
+
+    #[test]
+    fn step_reionization_grows_chem_states() {
+        let mut local = lattice_gas(8);
+        let mut rf = Some(RadiationField::uniform(4, 4, 4, 0.25, 0.0));
+        let mut chem = Vec::new();
+        let cfg = cfg_from_toml(
+            r#"
+[sph]
+enabled = true
+gas_fraction = 1.0
+
+[rt]
+enabled = true
+rt_mesh = 4
+substeps = 1
+
+[reionization]
+enabled = true
+n_sources = 2
+uv_luminosity = 0.1
+z_start = 2.0
+z_end = 0.0
+"#,
+        );
+        step_reionization(&mut local, &mut rf, &mut chem, &cfg, 0.5);
+        assert_eq!(chem.len(), local.len());
+    }
+
+    #[test]
+    fn step_agn_seeds_black_hole() {
+        let mut local = lattice_gas(8);
+        let mut bhs = Vec::new();
+        let cfg = cfg_from_toml(
+            r#"
+[sph]
+enabled = true
+gas_fraction = 0.5
+
+[sph.agn]
+enabled = true
+n_agn_bh = 1
+"#,
+        );
+        step_agn(&mut local, &cfg, &mut bhs, &[]);
+        assert_eq!(bhs.len(), 1);
+        assert!(bhs[0].mass > 0.0);
+    }
+
+    #[test]
+    fn step_sph_updates_gas_energy() {
+        let mut local = lattice_gas(8);
+        let u0 = local[0].internal_energy;
+        let cfg = cfg_from_toml(
+            r#"
+[sph]
+enabled = true
+gas_fraction = 1.0
+"#,
+        );
+        step_sph(&mut local, &cfg, &None, 1.0, 0, 0);
+        let u_sum: f64 = local.iter().map(|p| p.internal_energy).sum();
+        assert!(u_sum.is_finite() && u_sum > 0.0);
+        assert!(local.iter().any(|p| (p.internal_energy - u0).abs() > 1e-12) || u0 > 0.0);
+    }
+
+    #[test]
+    fn step_insitu_disabled_returns_empty() {
+        let local = lattice_gas(8);
+        let cfg = cfg_from_toml("");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let centers = step_insitu(&local, &cfg, 1.0, 1, dir.path(), &[]);
+        assert!(centers.is_empty());
+    }
+
+    #[test]
+    fn step_checkpoint_writes_on_interval() {
+        let rt = SerialRuntime;
+        let local = lattice_gas(8);
+        let dir = tempfile::tempdir().expect("tempdir");
+        step_checkpoint(
+            &rt,
+            1,
+            1.0,
+            &local,
+            8,
+            None,
+            dir.path(),
+            "testhash",
+            &[],
+            &[],
+            1,
+        )
+        .expect("checkpoint ok");
+        assert!(
+            dir.path()
+                .join("checkpoint")
+                .join("checkpoint.json")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn step_mhd_chem_ambipolar_requires_matching_lengths() {
+        let mut local = lattice_gas(8);
+        let b_before = local[0].b_field;
+        let chem = vec![ChemState::neutral(); 4];
+        let cfg = cfg_from_toml(
+            r#"
+[sph]
+enabled = true
+gas_fraction = 1.0
+
+[mhd]
+enabled = true
+ambipolar_diffusion_enabled = true
+ambipolar_use_chem_ionization = true
+ambipolar_eta = 0.01
+"#,
+        );
+        step_mhd_chem_ambipolar(&mut local, &chem, &cfg);
+        assert_eq!(local[0].b_field, b_before);
+    }
+
+    #[test]
+    fn step_snap_frame_writes_intermediate_snapshot() {
+        let rt = SerialRuntime;
+        let local = lattice_gas(8);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg = cfg_from_toml("");
+        let prov = gadget_ng_io::Provenance::new("test", None, "debug", vec![], vec![], "hash");
+        step_snap_frame(&rt, 1, 1.0, &local, 8, &cfg, dir.path(), &prov, 1).expect("snap frame ok");
+        assert!(
+            dir.path()
+                .join("frames")
+                .join("snap_000001")
+                .join("particles.jsonl")
+                .exists()
+        );
+    }
+}

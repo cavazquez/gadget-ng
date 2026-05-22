@@ -431,4 +431,26 @@ mod tests {
             "energía interna total = {total_u:.4}"
         );
     }
+
+    #[test]
+    fn courant_dt_finite_for_uniform_gas() {
+        let n_side = 3usize;
+        let dx = 1.0 / n_side as f64;
+        let mut parts: Vec<SphParticle> = (0..n_side.pow(3))
+            .map(|k| {
+                let iz = k / (n_side * n_side);
+                let iy = (k / n_side) % n_side;
+                let ix = k % n_side;
+                let pos = Vec3::new(
+                    (ix as f64 + 0.5) * dx,
+                    (iy as f64 + 0.5) * dx,
+                    (iz as f64 + 0.5) * dx,
+                );
+                SphParticle::new_gas(k, 1.0, pos, Vec3::zero(), 1.0, 2.0 * dx)
+            })
+            .collect();
+        compute_density(&mut parts);
+        let dt = courant_dt(&parts, 0.3);
+        assert!(dt.is_finite() && dt > 0.0);
+    }
 }

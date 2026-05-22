@@ -55,3 +55,54 @@ pub fn render_snapshot_visualization(
         Err(e) => eprintln!("[vis] Error escribiendo imagen: {e}"),
     }
 }
+
+#[cfg(test)]
+mod vis_tests {
+    use super::render_snapshot_visualization;
+    use gadget_ng_core::{Particle, Vec3};
+    use gadget_ng_io::{Provenance, write_snapshot};
+    use std::fs;
+    use std::path::Path;
+
+    fn write_lattice_snapshot(dir: &Path, n: usize) {
+        let side = (n as f64).cbrt().round() as usize;
+        let particles: Vec<Particle> = (0..n)
+            .map(|i| {
+                let ix = i % side;
+                let iy = (i / side) % side;
+                let iz = i / (side * side);
+                Particle::new(
+                    i,
+                    1.0 / n as f64,
+                    Vec3::new(
+                        (ix as f64 + 0.5) / side as f64,
+                        (iy as f64 + 0.5) / side as f64,
+                        (iz as f64 + 0.5) / side as f64,
+                    ),
+                    Vec3::zero(),
+                )
+            })
+            .collect();
+        let prov = Provenance::new("test", None, "debug", vec![], vec![], "test");
+        write_snapshot(dir, &particles, &prov).expect("write_snapshot");
+    }
+
+    #[test]
+    fn render_snapshot_visualization_exports_ppm_and_png() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let snap = dir.path().join("snapshot_final");
+        fs::create_dir_all(&snap).expect("mkdir");
+        write_lattice_snapshot(&snap, 8);
+        render_snapshot_visualization(dir.path(), 0, "xz", "density", "ppm");
+        render_snapshot_visualization(dir.path(), 0, "xy", "points", "png");
+        assert!(dir.path().join("snapshot_final.ppm").exists());
+        assert!(dir.path().join("snapshot_final.png").exists());
+    }
+
+    #[test]
+    fn render_snapshot_visualization_skips_missing_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        render_snapshot_visualization(dir.path(), 0, "xy", "points", "ppm");
+        assert!(!dir.path().join("snapshot_final.ppm").exists());
+    }
+}

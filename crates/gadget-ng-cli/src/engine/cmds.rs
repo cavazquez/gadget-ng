@@ -99,3 +99,117 @@ pub fn run_visualize(
 
 // ── Analyse (legacy — reemplazado por Analyze) ─────────────────────────────────
 // `run_analyse` eliminado; usar `analyze_cmd::run_analyze` en su lugar.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{Particle, RunConfig, Vec3};
+    use gadget_ng_io::{Provenance, write_snapshot};
+    use gadget_ng_parallel::SerialRuntime;
+    use std::fs;
+    use std::path::Path;
+
+    fn write_lattice_snapshot(dir: &Path, n: usize) {
+        let side = (n as f64).cbrt().round() as usize;
+        let particles: Vec<Particle> = (0..n)
+            .map(|i| {
+                let ix = i % side;
+                let iy = (i / side) % side;
+                let iz = i / (side * side);
+                Particle::new(
+                    i,
+                    1.0 / n as f64,
+                    Vec3::new(
+                        (ix as f64 + 0.5) / side as f64,
+                        (iy as f64 + 0.5) / side as f64,
+                        (iz as f64 + 0.5) / side as f64,
+                    ),
+                    Vec3::zero(),
+                )
+            })
+            .collect();
+        let prov = Provenance::new("test", None, "debug", vec![], vec![], "test");
+        write_snapshot(dir, &particles, &prov).expect("write_snapshot");
+    }
+
+    fn minimal_lattice_cfg() -> RunConfig {
+        toml::from_str(
+            r#"
+[simulation]
+particle_count = 8
+box_size = 1.0
+dt = 0.01
+num_steps = 1
+softening = 0.05
+seed = 3
+
+[initial_conditions]
+kind = "lattice"
+"#,
+        )
+        .expect("toml parse")
+    }
+
+    #[test]
+    fn cmd_config_print_emits_canonical_hash() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cfg_path = dir.path().join("cfg.toml");
+        fs::write(
+            &cfg_path,
+            r#"
+[simulation]
+particle_count = 8
+box_size = 1.0
+dt = 0.01
+num_steps = 1
+softening = 0.05
+seed = 1
+
+[initial_conditions]
+kind = "lattice"
+"#,
+        )
+        .expect("write cfg");
+        cmd_config_print(&cfg_path).expect("cmd_config_print ok");
+    }
+
+    #[test]
+    fn run_snapshot_writes_jsonl() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("snap");
+        let cfg = minimal_lattice_cfg();
+        let rt = SerialRuntime;
+        run_snapshot(&rt, &cfg, &out).expect("run_snapshot ok");
+        assert!(out.join("particles.jsonl").exists());
+    }
+
+    #[test]
+    fn run_visualize_velocity_and_white_projections() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let snap = dir.path().join("snap");
+        fs::create_dir_all(&snap).expect("mkdir");
+        write_lattice_snapshot(&snap, 8);
+
+        let png_xy = dir.path().join("xy.png");
+        run_visualize(&snap, &png_xy, 64, 64, "xy", "velocity").expect("xy velocity");
+        assert!(png_xy.metadata().expect("meta").len() > 0);
+
+        for (proj, name) in [("xz", "xz.png"), ("yz", "yz.png")] {
+            let png = dir.path().join(name);
+            run_visualize(&snap, &png, 48, 48, proj, "white").expect("projection");
+            assert!(png.exists());
+        }
+    }
+
+    #[test]
+    fn run_visualize_empty_snapshot_is_ok() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let snap = dir.path().join("snap");
+        fs::create_dir_all(&snap).expect("mkdir");
+        let prov = Provenance::new("test", None, "debug", vec![], vec![], "test");
+        write_snapshot(&snap, &[], &prov).expect("empty snapshot");
+        let png = dir.path().join("empty.png");
+        run_visualize(&snap, &png, 32, 32, "xy", "velocity").expect("empty ok");
+        assert!(!png.exists());
+    }
+}

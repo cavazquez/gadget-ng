@@ -51,6 +51,22 @@ cargo tarpaulin --workspace --lib --features gadget-ng-io/hdf5
 
 +2–4 pp sobre 57,45% → **~60–61%** global `--lib`.
 
+## Medición (2026-05-22)
+
+**58,06%** (11 484 / 19 781 líneas, **+0,60 pp** vs 57,45% post-oleada 10).
+
+| Módulo | Antes → Después | Notas |
+|--------|-----------------|-------|
+| `gadget-ng-vis/ppm.rs` | 21/76 → **73/76** (+68 pp local) | Tests in-lib oleada 11 |
+| `gadget-ng-vis/projection.rs` | 14/24 → **22/24** | |
+| `gadget-ng-vis/renderer.rs` | 16/23 → **22/23** | |
+| `gadget-ng-cli/insitu.rs` | — → **123/195** (+27 pp local) | pk_rsd + assembly_bias |
+| `engine/cmds.rs` | 0/40 | Smokes en `tests/` no corren con `--lib` |
+| `engine/mod.rs` | 0/23 | Idem (`render_snapshot_visualization`) |
+| `stepping/mod.rs` | 0/1838 | Smokes en `tests/lib_stepping_smokes.rs` fuera de `--lib` |
+
+**Implicación:** `cargo tarpaulin --workspace --lib` solo ejecuta unit tests embebidos en `src/`, no los integration tests de `tests/*.rs`. Para subir `cmds.rs` / `engine/mod.rs` hay que añadir `#[cfg(test)]` en el crate o ampliar el perfil de tarpaulin.
+
 ## Fuera de alcance
 
 - Job CI `coverage-gpu` con lavapipe.

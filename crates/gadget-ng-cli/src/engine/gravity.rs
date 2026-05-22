@@ -774,6 +774,134 @@ mod unit_tests {
         assert!(out.is_empty());
     }
 
+    fn lattice_16() -> Vec<Particle> {
+        (0..16)
+            .map(|i| {
+                let x = (i % 4) as f64 * 0.2 + 0.01;
+                let y = ((i / 4) % 4) as f64 * 0.2 + 0.01;
+                Particle::new(i, 1.0, Vec3::new(x, y, 0.5), Vec3::zero())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn compute_forces_local_tree_non_empty() {
+        let parts = lattice_16();
+        let bh = local_bh_walk_params(&minimal_cfg());
+        let mut out = vec![Vec3::zero(); parts.len()];
+        compute_forces_local_tree(&parts, &[], 1.0, 0.01, &mut out, bh, false);
+        assert!(out.iter().any(|a| a.norm() > 0.0));
+    }
+
+    #[test]
+    fn compute_forces_local_tree_with_costs_populates() {
+        let parts = lattice_16();
+        let bh = local_bh_walk_params(&minimal_cfg());
+        let mut out = vec![Vec3::zero(); parts.len()];
+        let mut costs = Vec::new();
+        super::compute_forces_local_tree_with_costs(
+            &parts,
+            &[],
+            1.0,
+            0.01,
+            &mut out,
+            &mut costs,
+            bh,
+            false,
+        );
+        assert_eq!(costs.len(), parts.len());
+        assert!(costs.iter().any(|&c| c > 0));
+    }
+
+    #[test]
+    fn compute_forces_hierarchical_let_active_subset() {
+        let parts = lattice_16();
+        let active = vec![0usize, 3, 7];
+        let bh = local_bh_walk_params(&minimal_cfg());
+        let mut acc = vec![Vec3::zero(); active.len()];
+        compute_forces_hierarchical_let(&parts, &[], &active, 1.0, 0.01, &mut acc, bh, false);
+        assert!(acc.iter().any(|a| a.norm() > 0.0));
+    }
+
+    #[test]
+    fn compute_forces_sfc_let_includes_remote_contribution() {
+        use gadget_ng_tree::{RemoteMultipoleNode, pack_let_nodes};
+
+        let parts = lattice_16();
+        let bh = local_bh_walk_params(&minimal_cfg());
+        let mut local_only = vec![Vec3::zero(); parts.len()];
+        compute_forces_sfc_let(&parts, &[], 1.0, 0.01, &mut local_only, bh, false);
+
+        let remote = RemoteMultipoleNode {
+            com: Vec3::new(5.0, 5.0, 5.0),
+            mass: 50.0,
+            quad: [0.0; 6],
+            oct: [0.0; 7],
+            hex: [0.0; 15],
+            half_size: 0.5,
+        };
+        let remote_buf = pack_let_nodes(&[remote]);
+        let mut with_remote = vec![Vec3::zero(); parts.len()];
+        compute_forces_sfc_let(
+            &parts,
+            &[remote_buf],
+            1.0,
+            0.01,
+            &mut with_remote,
+            bh,
+            false,
+        );
+
+        let delta: f64 = local_only
+            .iter()
+            .zip(with_remote.iter())
+            .map(|(a, b)| (*a - *b).norm())
+            .sum();
+        assert!(
+            delta > 0.0,
+            "nodos LET remotos deben cambiar la aceleración"
+        );
+    }
+
+    #[test]
+    fn local_bh_walk_params_geometric_bmax() {
+        let mut cfg = minimal_cfg();
+        cfg.gravity.opening_criterion = OpeningCriterion::GeometricBmax;
+        let bh = local_bh_walk_params(&cfg);
+        assert!(bh.use_bmax_criterion);
+        assert!(!bh.use_relative_criterion);
+    }
+
+    #[test]
+    fn make_solver_pm_and_treepm_run() {
+        let positions: Vec<Vec3> = (0..8)
+            .map(|i| Vec3::new(0.1 + 0.11 * i as f64, 0.05 * i as f64, 0.5))
+            .collect();
+        let masses = vec![1.0; 8];
+        let indices: Vec<usize> = (0..8).collect();
+        let mut acc = vec![Vec3::zero(); 8];
+
+        let mut cfg_pm = minimal_cfg();
+        cfg_pm.gravity.solver = SolverKind::Pm;
+        cfg_pm.gravity.pm_grid_size = 8;
+        let pm = make_solver(&cfg_pm);
+        pm.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &indices, &mut acc);
+        assert!(
+            acc.iter()
+                .all(|a| a.x.is_finite() && a.y.is_finite() && a.z.is_finite())
+        );
+
+        let mut cfg_treepm = minimal_cfg();
+        cfg_treepm.gravity.solver = SolverKind::TreePm;
+        cfg_treepm.gravity.pm_grid_size = 8;
+        let treepm = make_solver(&cfg_treepm);
+        treepm.accelerations_for_indices(&positions, &masses, 0.01, 1.0, &indices, &mut acc);
+        assert!(
+            acc.iter()
+                .all(|a| a.x.is_finite() && a.y.is_finite() && a.z.is_finite())
+        );
+    }
+
     #[cfg(feature = "rayon")]
     #[test]
     fn local_bh_use_rayon_follows_deterministic_flag() {
