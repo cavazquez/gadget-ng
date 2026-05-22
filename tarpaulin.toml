@@ -2,7 +2,7 @@
 # El timeout usa formato humantime: "60s", "5m", "1h" (no un entero suelto).
 # Uso habitual: cargo tarpaulin --workspace --lib
 #
-# Ver también .github/workflows/ci.yml (job Coverage).
+# Ver también .github/workflows/coverage.yml (tarpaulin + Codecov).
 
 [run]
 workspace = true

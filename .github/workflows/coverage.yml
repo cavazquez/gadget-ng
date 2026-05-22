@@ -1,0 +1,55 @@
+# Cobertura `--lib` con tarpaulin + upload a Codecov.
+# No corre en push/PR de main (ver ci.yml); solo bajo demanda o cron semanal.
+#
+# Disparadores:
+#   git tag coverage/2026-05-22 && git push origin coverage/2026-05-22
+#   git tag coverage-v0.3.0 && git push origin coverage-v0.3.0
+#   Actions → Coverage → Run workflow
+#   Cron semanal (domingo 06:00 UTC)
+
+name: Coverage
+
+on:
+  push:
+    tags:
+      - "coverage/*"
+      - "coverage-*"
+  schedule:
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  tarpaulin:
+    name: Coverage (tarpaulin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
+        run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+      - name: Instalar tarpaulin
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+      - name: Ejecutar cobertura
+        # Solo unit tests en src/ (--lib). Los integration tests de gadget-ng-physics
+        # (p. ej. phase32, phase49) tardan 10×+ bajo tarpaulin y ya corren en CI Tests.
+        # tarpaulin.toml fija timeout=300; flags explícitos por compatibilidad con versiones antiguas.
+        # --features gadget-ng-io/hdf5 activa el path HDF5 en hdf5_parallel_writer.rs.
+        run: cargo tarpaulin --workspace --lib --features gadget-ng-io/hdf5 --out Xml --output-dir . --timeout 300
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: cobertura.xml
