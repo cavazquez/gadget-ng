@@ -743,14 +743,65 @@ mod tests {
         )
     }
 
+    fn make_gas(id: usize, u: f64) -> Particle {
+        Particle::new_gas(
+            id,
+            1.0,
+            Vec3::new(0.1 * (id as f64), 0.0, 0.0),
+            Vec3::zero(),
+            u,
+            0.05,
+        )
+    }
+
+    fn make_bh_like(id: usize) -> Particle {
+        make_gas(id, 2.0e4)
+    }
+
+    /// Grupo denso centrado para FoF / SUBFIND / c(M).
+    fn make_dense_cluster(n: usize, box_size: f64) -> Vec<Particle> {
+        let center = box_size * 0.5;
+        let radius = box_size * 0.05;
+        let mut seed = 42u64;
+        let mut rng = || -> f64 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 33) as u32) as f64 / u32::MAX as f64
+        };
+        (0..n)
+            .map(|id| {
+                let (px, py, pz) = loop {
+                    let x = rng() * 2.0 - 1.0;
+                    let y = rng() * 2.0 - 1.0;
+                    let z = rng() * 2.0 - 1.0;
+                    let r2 = x * x + y * y + z * z;
+                    if r2 <= 1.0 && r2 > 0.0 {
+                        let r = r2.sqrt() * radius;
+                        break (
+                            center + r * x / r2.sqrt(),
+                            center + r * y / r2.sqrt(),
+                            center + r * z / r2.sqrt(),
+                        );
+                    }
+                };
+                Particle::new(id, 1.0, Vec3::new(px, py, pz), Vec3::zero())
+            })
+            .collect()
+    }
+
     fn write_snap(dir: &std::path::Path, particles: &[Particle]) {
+        write_snap_with_box(dir, particles, 10.0);
+    }
+
+    fn write_snap_with_box(dir: &std::path::Path, particles: &[Particle], box_size: f64) {
         let snap_dir = dir.join("snap");
         std::fs::create_dir_all(&snap_dir).unwrap();
         let prov = Provenance::new("0-test", None, "debug", vec![], vec![], "hash");
         let env = SnapshotEnv {
             time: 1.0,
             redshift: 0.0,
-            box_size: 10.0,
+            box_size,
             ..Default::default()
         };
         write_snapshot_formatted(SnapshotFormat::Jsonl, &snap_dir, particles, &prov, &env).unwrap();
@@ -872,5 +923,158 @@ mod tests {
         assert!(out.exists());
         assert!(tmp.path().join("analyze").join("agn_stats.json").exists());
         assert!(tmp.path().join("analyze").join("eor_state.json").exists());
+    }
+
+    #[test]
+    fn analyze_cm21_and_igm_temp_with_gas() {
+        let tmp = tempfile::tempdir().unwrap();
+        let particles: Vec<_> = (0..8).map(|i| make_gas(i, 50.0)).collect();
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            cm21: true,
+            igm_temp: true,
+            pk_mesh: 8,
+            cosmology: Some((0.315, 0.685, 6.0)),
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        assert!(tmp.path().join("analyze").join("cm21_output.json").exists());
+        assert!(tmp.path().join("analyze").join("igm_temp.json").exists());
+    }
+
+    #[test]
+    fn analyze_agn_and_eor_with_gas_particles() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut particles: Vec<_> = (0..6).map(|i| make_gas(i, 150.0)).collect();
+        particles.push(make_bh_like(6));
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            agn_stats: true,
+            eor_state: true,
+            pk_mesh: 8,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        let agn: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("analyze").join("agn_stats.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(agn["n_bh_candidates"].as_u64().unwrap(), 1);
+        let eor: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("analyze").join("eor_state.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(eor["x_hii_mean_estimate"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn analyze_luminosity_and_xray_with_stars_and_gas() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut star = Particle::new_star(0, 1.0e8, Vec3::new(1.0, 1.0, 1.0), Vec3::zero(), 0.02);
+        star.stellar_age = 1.0;
+        let gas = make_gas(1, 80.0);
+        write_snap(tmp.path(), &[star, gas]);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            luminosity: true,
+            xray: true,
+            pk_mesh: 4,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        let lum: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("analyze").join("luminosity.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(lum["n_stars"].as_u64().unwrap(), 1);
+        assert!(lum["l_total_lsun"].as_f64().unwrap() > 0.0);
+        let xray: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("analyze").join("xray.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(xray["l_xray_total"].as_f64().unwrap() >= 0.0);
+    }
+
+    #[test]
+    fn analyze_subfind_on_dense_cluster() {
+        let tmp = tempfile::tempdir().unwrap();
+        let particles = make_dense_cluster(64, 10.0);
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            min_particles: 8,
+            subfind: true,
+            subfind_min_particles: 5,
+            pk_mesh: 8,
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        let results: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        assert!(
+            !results["halos"].as_array().unwrap().is_empty(),
+            "FoF debe encontrar al menos un halo denso"
+        );
+        assert!(results.get("subfind").is_some());
+    }
+
+    #[test]
+    fn analyze_cosmology_populates_concentration_mass() {
+        let tmp = tempfile::tempdir().unwrap();
+        // c(M) usa imagen mínima en coords normalizadas [0, 1].
+        let particles = make_dense_cluster(64, 1.0);
+        write_snap_with_box(tmp.path(), &particles, 1.0);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            min_particles: 8,
+            nfw_min_part: 20,
+            pk_mesh: 8,
+            cosmology: Some((0.315, 0.685, 0.5)),
+            box_size_mpc_h: Some(1.0),
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        let results: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        let cm = results["concentration_mass"].as_array().unwrap();
+        assert!(
+            !cm.is_empty(),
+            "c(M) debe incluir halos masivos con cosmología activa"
+        );
+    }
+
+    #[test]
+    fn analyze_hdf5_catalog_writes_halo_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let particles = make_dense_cluster(32, 10.0);
+        write_snap(tmp.path(), &particles);
+        let out = tmp.path().join("results.json");
+        let params = AnalyzeParams {
+            snapshot_dir: &tmp.path().join("snap"),
+            out_path: &out,
+            min_particles: 8,
+            hdf5_catalog: true,
+            pk_mesh: 8,
+            cosmology: Some((0.315, 0.685, 0.0)),
+            box_size_mpc_h: Some(10.0),
+            ..Default::default()
+        };
+        run_analyze(&params).unwrap();
+        #[cfg(feature = "hdf5")]
+        assert!(tmp.path().join("halos.hdf5").exists());
+        #[cfg(not(feature = "hdf5"))]
+        assert!(tmp.path().join("halos.jsonl").exists());
     }
 }

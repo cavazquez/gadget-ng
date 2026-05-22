@@ -271,4 +271,145 @@ kind = "lattice"
         assert_eq!(loaded[0].global_id, 0);
         assert!((loaded[0].mass - 1.0).abs() < 1e-12);
     }
+
+    #[test]
+    fn save_load_checkpoint_with_hierarchical_state() {
+        use super::{load_checkpoint, save_checkpoint};
+        use crate::config_load;
+        use gadget_ng_core::{Particle, RunConfig, Vec3};
+        use gadget_ng_integrators::HierarchicalState;
+        use gadget_ng_parallel::SerialRuntime;
+
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+dt = 0.01
+num_steps = 4
+softening = 0.05
+particle_count = 8
+box_size = 1.0
+seed = 77
+
+[initial_conditions]
+kind = "lattice"
+
+[timestep]
+hierarchical = true
+"#,
+        )
+        .expect("toml parse");
+        let hash = config_load::config_canonical_hash(&cfg).expect("hash");
+        let rt = SerialRuntime;
+        let total = cfg.simulation.particle_count;
+        let local: Vec<Particle> = (0..total)
+            .map(|i| {
+                Particle::new(
+                    i,
+                    1.0,
+                    Vec3::new((i % 2) as f64 * 0.5, ((i / 2) % 2) as f64 * 0.5, 0.5),
+                    Vec3::zero(),
+                )
+            })
+            .collect();
+        let mut h_state = HierarchicalState::new(total);
+        h_state.levels[0] = 1;
+        h_state.levels[3] = 2;
+        h_state.elapsed[1] = 4;
+        let dir = tempfile::tempdir().expect("tempdir");
+        save_checkpoint(
+            &rt,
+            3,
+            0.25,
+            &local,
+            total,
+            Some(&h_state),
+            dir.path(),
+            &hash,
+            &[],
+            &[],
+        )
+        .expect("save_checkpoint");
+        assert!(
+            dir.path()
+                .join("checkpoint")
+                .join("hierarchical_state.json")
+                .exists()
+        );
+
+        let (loaded, step, a, loaded_h, agn, chem) =
+            load_checkpoint(&rt, dir.path(), 0, total, &hash).expect("load_checkpoint");
+        assert_eq!(loaded.len(), total);
+        assert_eq!(step, 3);
+        assert!((a - 0.25).abs() < 1e-12);
+        let hs = loaded_h.expect("hierarchical state");
+        assert_eq!(hs.levels, h_state.levels);
+        assert_eq!(hs.elapsed, h_state.elapsed);
+        assert!(agn.is_none());
+        assert!(chem.is_none());
+    }
+
+    #[test]
+    fn save_load_checkpoint_with_agn_and_chem() {
+        use super::{load_checkpoint, save_checkpoint};
+        use crate::config_load;
+        use gadget_ng_core::{Particle, RunConfig, Vec3};
+        use gadget_ng_parallel::SerialRuntime;
+        use gadget_ng_rt::ChemState;
+        use gadget_ng_sph::BlackHole;
+
+        let cfg: RunConfig = toml::from_str(
+            r#"
+[simulation]
+dt = 0.01
+num_steps = 2
+softening = 0.05
+particle_count = 4
+box_size = 1.0
+seed = 88
+
+[initial_conditions]
+kind = "lattice"
+"#,
+        )
+        .expect("toml parse");
+        let hash = config_load::config_canonical_hash(&cfg).expect("hash");
+        let rt = SerialRuntime;
+        let total = cfg.simulation.particle_count;
+        let local: Vec<Particle> = (0..total)
+            .map(|i| Particle::new(i, 1.0, Vec3::new(i as f64 * 0.2, 0.0, 0.0), Vec3::zero()))
+            .collect();
+        let agn_bhs = vec![BlackHole::with_spin(Vec3::new(0.5, 0.5, 0.5), 1.0e6, 0.3)];
+        let mut chem_states = vec![ChemState::neutral(); total];
+        chem_states[1] = ChemState::fully_ionized();
+        let dir = tempfile::tempdir().expect("tempdir");
+        save_checkpoint(
+            &rt,
+            1,
+            1.0,
+            &local,
+            total,
+            None,
+            dir.path(),
+            &hash,
+            &agn_bhs,
+            &chem_states,
+        )
+        .expect("save_checkpoint");
+        let ck = dir.path().join("checkpoint");
+        assert!(ck.join("agn_bhs.json").exists());
+        assert!(ck.join("chem_states.json").exists());
+
+        let (loaded, step, _, h_state, loaded_agn, loaded_chem) =
+            load_checkpoint(&rt, dir.path(), 0, total, &hash).expect("load_checkpoint");
+        assert_eq!(loaded.len(), total);
+        assert_eq!(step, 1);
+        assert!(h_state.is_none());
+        let bhs = loaded_agn.expect("agn bhs");
+        assert_eq!(bhs.len(), 1);
+        assert!((bhs[0].mass - 1.0e6).abs() < 1.0);
+        assert!((bhs[0].spin - 0.3).abs() < 1e-12);
+        let chem = loaded_chem.expect("chem states");
+        assert_eq!(chem.len(), total);
+        assert!(chem[1].x_hii > 0.9);
+    }
 }

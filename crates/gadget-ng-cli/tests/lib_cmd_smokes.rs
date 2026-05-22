@@ -37,6 +37,31 @@ fn write_lattice_snapshot(dir: &Path, n: usize) {
     write_snapshot(dir, &particles, &prov).expect("write_snapshot");
 }
 
+fn write_gas_lattice_snapshot(dir: &Path, n: usize) {
+    let side = (n as f64).cbrt().round() as usize;
+    let particles: Vec<Particle> = (0..n)
+        .map(|i| {
+            let ix = i % side;
+            let iy = (i / side) % side;
+            let iz = i / (side * side);
+            Particle::new_gas(
+                i,
+                1.0 / n as f64,
+                Vec3::new(
+                    (ix as f64 + 0.5) / side as f64,
+                    (iy as f64 + 0.5) / side as f64,
+                    (iz as f64 + 0.5) / side as f64,
+                ),
+                Vec3::zero(),
+                100.0,
+                0.05,
+            )
+        })
+        .collect();
+    let prov = Provenance::new("test", None, "debug", vec![], vec![], "test");
+    write_snapshot(dir, &particles, &prov).expect("write_snapshot");
+}
+
 #[test]
 fn smoke_cmd_config_print_valid_toml() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -128,6 +153,44 @@ fn smoke_run_analyze_lattice() {
     assert!(out.exists());
     let text = fs::read_to_string(&out).expect("read results");
     assert!(text.contains("halos") || text.contains("power_spectrum"));
+}
+
+#[test]
+fn smoke_run_analyze_extended_flags_gas() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let snap = dir.path().join("snap");
+    fs::create_dir_all(&snap).expect("mkdir");
+    write_gas_lattice_snapshot(&snap, 8);
+    let out = dir.path().join("results.json");
+    let params = AnalyzeParams {
+        snapshot_dir: &snap,
+        out_path: &out,
+        fof_b: 0.2,
+        min_particles: 4,
+        pk_mesh: 8,
+        xi_bins: 4,
+        nfw_min_part: 50,
+        cosmology: Some((0.315, 0.685, 3.0)),
+        box_size_mpc_h: Some(1.0),
+        subfind: false,
+        subfind_min_particles: 50,
+        hdf5_catalog: false,
+        cm21: true,
+        igm_temp: true,
+        agn_stats: true,
+        eor_state: true,
+        luminosity: false,
+        xray: true,
+        cuda_analysis: false,
+    };
+    run_analyze(&params).expect("run_analyze extended ok");
+    assert!(out.exists());
+    let analyze_dir = dir.path().join("analyze");
+    assert!(analyze_dir.join("cm21_output.json").exists());
+    assert!(analyze_dir.join("igm_temp.json").exists());
+    assert!(analyze_dir.join("agn_stats.json").exists());
+    assert!(analyze_dir.join("eor_state.json").exists());
+    assert!(analyze_dir.join("xray.json").exists());
 }
 
 #[test]

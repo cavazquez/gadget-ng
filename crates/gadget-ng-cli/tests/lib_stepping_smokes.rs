@@ -300,3 +300,142 @@ snapshot_interval   = 0
     let rt = SerialRuntime;
     run_stepping(&rt, &cfg, dir.path(), false, None).expect("yoshida4 smoke ok");
 }
+
+// ── Snapshots intermedios (snapshot_interval > 0) ────────────────────────────
+
+#[test]
+fn smoke_stepping_snapshot_interval_writes_frames() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg: gadget_ng_core::RunConfig = toml::from_str(
+        r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 13
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 0
+snapshot_interval   = 1
+"#,
+    )
+    .expect("toml parse");
+    let rt = SerialRuntime;
+    run_stepping(&rt, &cfg, dir.path(), false, None).expect("snapshot interval smoke ok");
+    assert!(
+        dir.path().join("frames").join("snap_000001").exists(),
+        "snap_000001 must exist when snapshot_interval=1"
+    );
+    assert!(
+        dir.path().join("frames").join("snap_000002").exists(),
+        "snap_000002 must exist when snapshot_interval=1"
+    );
+    assert!(
+        dir.path()
+            .join("frames")
+            .join("snap_000001")
+            .join("particles.jsonl")
+            .exists()
+    );
+}
+
+// ── Resume end-to-end (pasos restantes tras checkpoint) ───────────────────────
+
+#[test]
+fn smoke_stepping_resume_completes_remaining_steps() {
+    use std::fs;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out1 = dir.path().join("run1");
+    let cfg_partial: gadget_ng_core::RunConfig = toml::from_str(
+        r#"
+[simulation]
+particle_count = 8
+box_size       = 1.0
+dt             = 0.01
+num_steps      = 2
+softening      = 0.05
+seed           = 17
+
+[initial_conditions]
+kind = "lattice"
+
+[output]
+checkpoint_interval = 1
+snapshot_interval   = 0
+"#,
+    )
+    .expect("toml parse");
+    let rt = SerialRuntime;
+    run_stepping(&rt, &cfg_partial, &out1, false, None).expect("partial run ok");
+
+    let ck_meta_path = out1.join("checkpoint").join("checkpoint.json");
+    let partial_meta: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&ck_meta_path).expect("read checkpoint"))
+            .expect("parse checkpoint json");
+    assert_eq!(
+        partial_meta["completed_step"].as_u64(),
+        Some(2),
+        "primer tramo debe completar 2 pasos"
+    );
+
+    let mut cfg_full = cfg_partial;
+    cfg_full.simulation.num_steps = 4;
+    let out2 = dir.path().join("run2");
+    run_stepping(&rt, &cfg_full, &out2, false, Some(&out1)).expect("resume run ok");
+
+    let final_meta: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(out2.join("checkpoint").join("checkpoint.json"))
+            .expect("read final ck"),
+    )
+    .expect("parse final checkpoint");
+    assert_eq!(
+        final_meta["completed_step"].as_u64(),
+        Some(4),
+        "resume debe completar hasta num_steps=4"
+    );
+}
+
+// ── RT + reionización mínima (SPH + M1) ───────────────────────────────────────
+
+#[test]
+fn smoke_stepping_rt_reionization_minimal() {
+    run_toml(&base_toml(
+        r#"
+[sph]
+enabled      = true
+gas_fraction = 1.0
+
+[rt]
+enabled    = true
+rt_mesh    = 4
+substeps   = 1
+
+[reionization]
+enabled       = true
+n_sources     = 2
+uv_luminosity = 0.1
+z_start       = 1.0
+z_end         = 0.0
+"#,
+    ));
+}
+
+// ── SIDM mínimo ───────────────────────────────────────────────────────────────
+
+#[test]
+fn smoke_stepping_sidm_minimal() {
+    run_toml(&base_toml(
+        r#"
+[sidm]
+enabled  = true
+sigma_m  = 1.0e-5
+v_max    = 1.0e6
+"#,
+    ));
+}
