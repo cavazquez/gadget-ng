@@ -621,3 +621,91 @@ pub fn maybe_run_insitu(
         (true, InsituSideEffects { halo_centers })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gadget_ng_core::{InsituAnalysisSection, Particle, Vec3};
+    use std::path::Path;
+
+    fn lattice_gas(n: usize) -> Vec<Particle> {
+        let side = (n as f64).cbrt().round() as usize;
+        (0..n)
+            .map(|i| {
+                let ix = i % side;
+                let iy = (i / side) % side;
+                let iz = i / (side * side);
+                Particle::new_gas(
+                    i,
+                    1.0 / n as f64,
+                    Vec3::new(
+                        (ix as f64 + 0.5) / side as f64,
+                        (iy as f64 + 0.5) / side as f64,
+                        (iz as f64 + 0.5) / side as f64,
+                    ),
+                    Vec3::zero(),
+                    80.0,
+                    0.05,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn maybe_run_insitu_igm_temp_and_cm21_with_hot_gas() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let particles = lattice_gas(8);
+        let chem: Vec<gadget_ng_rt::ChemState> = particles
+            .iter()
+            .map(|_| gadget_ng_rt::ChemState::neutral())
+            .collect();
+        let cfg = InsituAnalysisSection {
+            enabled: true,
+            interval: 1,
+            pk_mesh: 8,
+            fof_min_part: 4,
+            igm_temp_enabled: true,
+            cm21_enabled: true,
+            ..Default::default()
+        };
+        let (ran, _) = maybe_run_insitu(
+            &particles,
+            &cfg,
+            1.0,
+            1.0,
+            1,
+            tmp.path(),
+            Some(&chem),
+            0.7,
+            0.3,
+            0.7,
+        );
+        assert!(ran);
+        let path = tmp.path().join("insitu_000001.json");
+        assert!(path.exists());
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read")).expect("parse");
+        assert!(json.get("igm_temp").is_some());
+        assert!(json.get("cm21").is_some());
+    }
+
+    #[test]
+    fn maybe_run_insitu_skips_when_disabled() {
+        let particles = lattice_gas(8);
+        let cfg = InsituAnalysisSection::default();
+        let (ran, fx) = maybe_run_insitu(
+            &particles,
+            &cfg,
+            1.0,
+            1.0,
+            1,
+            Path::new("."),
+            None,
+            0.7,
+            0.3,
+            0.7,
+        );
+        assert!(!ran);
+        assert!(fx.halo_centers.is_empty());
+    }
+}
