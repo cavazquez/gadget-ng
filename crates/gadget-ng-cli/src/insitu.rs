@@ -708,4 +708,126 @@ mod tests {
         assert!(!ran);
         assert!(fx.halo_centers.is_empty());
     }
+
+    fn dense_cluster(n: usize, box_size: f64) -> Vec<Particle> {
+        let center = box_size * 0.5;
+        let radius = box_size * 0.05;
+        let mut seed = 42u64;
+        let mut rng = || -> f64 {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 33) as u32) as f64 / u32::MAX as f64
+        };
+        (0..n)
+            .map(|id| {
+                let (px, py, pz) = loop {
+                    let x = rng() * 2.0 - 1.0;
+                    let y = rng() * 2.0 - 1.0;
+                    let z = rng() * 2.0 - 1.0;
+                    let r2 = x * x + y * y + z * z;
+                    if r2 <= 1.0 && r2 > 0.0 {
+                        let r = r2.sqrt() * radius;
+                        break (
+                            center + r * x / r2.sqrt(),
+                            center + r * y / r2.sqrt(),
+                            center + r * z / r2.sqrt(),
+                        );
+                    }
+                };
+                Particle::new(id, 1.0, Vec3::new(px, py, pz), Vec3::zero())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn maybe_run_insitu_pk_rsd_bins_populated() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let particles = dense_cluster(64, 1.0);
+        let cfg = InsituAnalysisSection {
+            enabled: true,
+            interval: 1,
+            pk_mesh: 8,
+            fof_min_part: 8,
+            pk_rsd_bins: 4,
+            ..Default::default()
+        };
+        let (ran, _) = maybe_run_insitu(
+            &particles,
+            &cfg,
+            1.0,
+            1.0,
+            1,
+            tmp.path(),
+            None,
+            0.7,
+            0.3,
+            0.7,
+        );
+        assert!(ran);
+        let json: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("insitu_000001.json")).expect("read"),
+        )
+        .expect("parse");
+        let pk_rsd = json["pk_rsd"].as_array().expect("pk_rsd array");
+        assert!(!pk_rsd.is_empty());
+        let pk_mult = json["pk_multipoles"].as_array().expect("multipoles");
+        assert!(!pk_mult.is_empty());
+    }
+
+    #[test]
+    fn maybe_run_insitu_assembly_bias_on_dense_halos() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Cuatro sub-clusters para FoF ≥ 4 halos (requisito de assembly_bias).
+        let mut particles = Vec::new();
+        let centers = [
+            (0.2, 0.2, 0.2),
+            (0.8, 0.2, 0.2),
+            (0.2, 0.8, 0.8),
+            (0.8, 0.8, 0.2),
+        ];
+        let mut id = 0usize;
+        for (cx, cy, cz) in centers {
+            for _ in 0..16 {
+                particles.push(Particle::new(
+                    id,
+                    1.0,
+                    Vec3::new(cx, cy, cz),
+                    Vec3::new(0.01 * (id as f64), 0.0, 0.0),
+                ));
+                id += 1;
+            }
+        }
+        let cfg = InsituAnalysisSection {
+            enabled: true,
+            interval: 1,
+            pk_mesh: 8,
+            fof_min_part: 8,
+            fof_b: 0.15,
+            assembly_bias_enabled: true,
+            ..Default::default()
+        };
+        let (ran, fx) = maybe_run_insitu(
+            &particles,
+            &cfg,
+            1.0,
+            1.0,
+            1,
+            tmp.path(),
+            None,
+            0.7,
+            0.3,
+            0.7,
+        );
+        assert!(ran);
+        assert!(!fx.halo_centers.is_empty());
+        let json: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("insitu_000001.json")).expect("read"),
+        )
+        .expect("parse");
+        assert!(
+            json.get("assembly_bias").is_some(),
+            "assembly_bias requiere ≥4 halos FoF"
+        );
+    }
 }

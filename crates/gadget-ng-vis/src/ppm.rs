@@ -290,4 +290,33 @@ mod tests {
             "solo 1 partícula dentro de la caja debe aparecer"
         );
     }
+
+    #[test]
+    fn ppm_projection_xz_marks_expected_pixel() {
+        let pos = vec![Vec3::new(25.0, 0.0, 75.0)];
+        let pixels = render_ppm_projection(&pos, 100.0, 100, 100, Projection::XZ);
+        let idx = 24 * 100 * 3 + 25 * 3;
+        assert_eq!(pixels[idx], 255);
+    }
+
+    #[test]
+    fn density_ppm_cluster_pixel_brightest() {
+        let cluster: Vec<Vec3> = (0..50).map(|_| Vec3::new(50.0, 50.0, 0.0)).collect();
+        let pixels = render_density_ppm(&cluster, 100.0, 32, 32, Projection::XY);
+        let max_brightness: u32 = pixels
+            .chunks(3)
+            .map(|c| c[0] as u32 + c[1] as u32 + c[2] as u32)
+            .max()
+            .unwrap_or(0);
+        assert!(max_brightness > 255);
+    }
+
+    #[test]
+    fn write_png_roundtrip_magic_bytes() {
+        let tmp = std::env::temp_dir().join("gadget_ng_vis_ppm_png_test.png");
+        write_png(&tmp, &[0u8, 0, 0], 1, 1).expect("write_png");
+        let buf = std::fs::read(&tmp).expect("read png");
+        assert_eq!(&buf[0..4], &[0x89, 0x50, 0x4e, 0x47]);
+        let _ = std::fs::remove_file(&tmp);
+    }
 }

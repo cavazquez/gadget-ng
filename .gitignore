@@ -41,6 +41,7 @@ experiments/validation_papers/**/*.png
 
 # Copilot / AI agent artifacts
 .agents/
+.antigravitycli/
 skills-lock.json
 
 # Proptest regression files

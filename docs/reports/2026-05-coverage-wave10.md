@@ -36,6 +36,10 @@ cargo tarpaulin --workspace --lib --features gadget-ng-io/hdf5
 
 +1–3 pp sobre oleada 9 → **~66–72%** global `--lib`.
 
+## Medición (2026-05)
+
+**57,45%** (11 365 / 19 781 líneas, **+2,86 pp** vs pre-oleada 9).
+
 ## Fuera de alcance (oleada 10)
 
 - Job CI `coverage-gpu` con lavapipe.

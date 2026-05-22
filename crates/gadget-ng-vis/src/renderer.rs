@@ -168,4 +168,19 @@ mod tests {
         r.render_frame(&pos, &vel);
         assert!(r.canvas().non_black_pixels() > 0);
     }
+
+    #[test]
+    fn density_mode_with_external_scalars() {
+        let cfg = RendererConfig {
+            width: 64,
+            height: 64,
+            box_size: 1.0,
+            projection: Projection::XZ,
+            color_mode: ColorMode::Density,
+        };
+        let mut r = Renderer::new(cfg);
+        let pos = vec![Vec3::new(0.5, 0.0, 0.5)];
+        r.render_frame_with_scalars(&pos, &[1.0]);
+        assert!(r.canvas().non_black_pixels() > 0);
+    }
 }

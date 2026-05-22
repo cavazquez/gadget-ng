@@ -122,6 +122,34 @@ fn smoke_run_visualize_from_snapshot() {
 }
 
 #[test]
+fn smoke_run_visualize_projections_and_white() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let snap = dir.path().join("snap");
+    fs::create_dir_all(&snap).expect("mkdir");
+    write_lattice_snapshot(&snap, 8);
+    for (proj, name) in [("xz", "xz.png"), ("yz", "yz.png")] {
+        let png = dir.path().join(name);
+        run_visualize(&snap, &png, 48, 48, proj, "white").expect("run_visualize ok");
+        assert!(png.exists());
+        assert!(png.metadata().expect("meta").len() > 0);
+    }
+}
+
+#[test]
+fn smoke_render_snapshot_visualization_exports() {
+    use gadget_ng_cli::render_snapshot_visualization;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let snap = dir.path().join("snapshot_final");
+    fs::create_dir_all(&snap).expect("mkdir");
+    write_lattice_snapshot(&snap, 8);
+    render_snapshot_visualization(dir.path(), 0, "xz", "density", "ppm");
+    render_snapshot_visualization(dir.path(), 0, "xy", "points", "png");
+    assert!(dir.path().join("snapshot_final.ppm").exists());
+    assert!(dir.path().join("snapshot_final.png").exists());
+}
+
+#[test]
 fn smoke_run_analyze_lattice() {
     let dir = tempfile::tempdir().expect("tempdir");
     let snap = dir.path().join("snap");

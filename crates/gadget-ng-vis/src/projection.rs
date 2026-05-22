@@ -93,4 +93,35 @@ mod tests {
         assert_eq!(px, 50);
         assert_eq!(py, 49); // y invertida
     }
+
+    #[test]
+    fn xz_and_yz_projections() {
+        let p = Vec3::new(1.0, 2.0, 3.0);
+        let (x, z) = Projection::XZ.project(p);
+        assert_eq!(x, 1.0);
+        assert_eq!(z, 3.0);
+        let (y, z2) = Projection::YZ.project(p);
+        assert_eq!(y, 2.0);
+        assert_eq!(z2, 3.0);
+    }
+
+    #[test]
+    fn perspective_scales_with_depth() {
+        let proj = Projection::Perspective {
+            fov: 1.0,
+            camera_z: 10.0,
+        };
+        let (x, y) = proj.project(Vec3::new(2.0, 4.0, 5.0));
+        assert!((x - 0.4).abs() < 1e-12);
+        assert!((y - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn world_to_pixel_out_of_range_returns_none() {
+        let proj = Projection::XY;
+        assert!(
+            proj.world_to_pixel(2.0, 0.5, (0.0, 0.0), (1.0, 1.0), 10, 10)
+                .is_none()
+        );
+    }
 }
