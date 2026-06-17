@@ -49,7 +49,7 @@ jobs:
         # --features gadget-ng-io/hdf5 activa el path HDF5 en hdf5_parallel_writer.rs.
         run: cargo tarpaulin --workspace --lib --features gadget-ng-io/hdf5 --out Xml --output-dir . --timeout 300
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cobertura.xml
