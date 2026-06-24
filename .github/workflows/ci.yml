@@ -19,7 +19,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -30,7 +30,7 @@ jobs:
     name: Example TOML configs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (consistencia con crates que enlazan hdf5)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -43,7 +43,7 @@ jobs:
     name: MSRV (1.95)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.95.0
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -57,7 +57,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -71,7 +71,7 @@ jobs:
     name: Clippy all-targets (blocking)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -85,7 +85,7 @@ jobs:
     name: Doc build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -99,7 +99,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -113,7 +113,7 @@ jobs:
     name: Benchmarks (compile + dry-run)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar HDF5 (hdf5-metno-sys / gadget-ng-io)
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
@@ -137,7 +137,7 @@ jobs:
           - "hdf5"       # HDF5 I/O
           - "mpi,hdf5"   # MPI + HDF5 combinados
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Instalar dependencias de sistema
         run: sudo apt-get update && sudo apt-get install -y libhdf5-dev libnetcdf-dev libopenmpi-dev openmpi-bin
@@ -158,7 +158,7 @@ jobs:
     name: Tests parallel (serial runtime)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p gadget-ng-parallel
@@ -168,7 +168,7 @@ jobs:
     name: Tests MPI multirank (2 y 4 rangos)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Instalar OpenMPI y HDF5
@@ -203,7 +203,7 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo install cargo-audit --locked
       - run: |
           cargo audit --deny warnings \
@@ -216,7 +216,7 @@ jobs:
     name: License & dependency check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo install cargo-deny --locked
       - run: cargo deny check licenses
       - run: cargo deny check bans
@@ -226,7 +226,7 @@ jobs:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master
         with:
