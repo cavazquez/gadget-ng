@@ -183,6 +183,7 @@ impl GpuTreePmShortRange {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: true,
             })
             .await
             .ok()?;
@@ -455,7 +456,10 @@ impl GpuTreePmShortRange {
             .expect("map_async recv")
             .expect("GPU buffer map failed");
 
-        let view = buf_rb.slice(..).get_mapped_range();
+        let view = buf_rb
+            .slice(..)
+            .get_mapped_range()
+            .expect("GPU buffer map range failed");
         let result = bytes_to_f32s(&view);
         drop(view);
         buf_rb.unmap();

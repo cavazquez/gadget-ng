@@ -350,6 +350,7 @@ impl GpuBarnesHutFmm {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: true,
             })
             .await
             .ok()?;
@@ -752,7 +753,11 @@ impl GpuBarnesHutFmm {
             .expect("map_async recv")
             .expect("GPU buffer map failed");
 
-        let view = ctx.buf_rb.slice(..).get_mapped_range();
+        let view = ctx
+            .buf_rb
+            .slice(..)
+            .get_mapped_range()
+            .expect("GPU buffer map range failed");
         let result = bytes_to_f32s(&view);
         drop(view);
         ctx.buf_rb.unmap();

@@ -1,13 +1,16 @@
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Actualizaciones de dependencias: una vez al año, el 1 de diciembre (09:00 UTC).
+# Evita PRs semanales; revisar manualmente tras el cron o con workflow_dispatch local.
 
 version: 2
 updates:
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "0 9 1 12 *"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "0 9 1 12 *"
