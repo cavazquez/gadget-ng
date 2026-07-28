@@ -1470,9 +1470,9 @@ dependencies = [
 
 [[package]]
 name = "netcdf"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "032d47fcd93a63a21232184aabfd202e1e50116d31bbd382580503308887d0f9"
+checksum = "db1b055d2ad9d2e845876173c99ac9d8874a56413d5579618da22df35abe342c"
 dependencies = [
  "bitflags",
  "libc",
@@ -2326,7 +2326,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix",
  "windows-sys",
